@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>醫療器材產業 4 項核心 API 實務清單</title>
+    <style>
+        body {
+            font-family: 'Arial', 'Microsoft JhengHei', sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .table-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 12px;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #2980b9;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        td {
+            padding: 10px 8px;
+            border: 1px solid #bdc3c7;
+            vertical-align: top;
+            line-height: 1.4;
+        }
+        tr:nth-child(even) {
+            background-color: #ecf0f1;
+        }
+        tr:nth-child(odd) {
+            background-color: #fff;
+        }
+        tr:hover {
+            background-color: #e8f6f3;
+        }
+        .usage-cell {
+            font-size: 11px;
+            line-height: 1.3;
+        }
+        .endpoint-cell {
+            font-size: 10px;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            color: #2c3e50;
+        }
+        .free {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .paid {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .category {
+            font-size: 11px;
+            color: #34495e;
+        }
+    </style>
+</head>
+<body>
+    <div class="table-container">
+        <h1>醫療器材產業 4 項核心 API 實務清單</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>API 名稱</th>
+                    <th>類別</th>
+                    <th>免費/付費</th>
+                    <th>主要功能</th>
+                    <th>實務用途 - 研發</th>
+                    <th>實務用途 - 法規</th>
+                    <th>實務用途 - 市場</th>
+                    <th>實務用途 - 臨床整合</th>
+                    <th>代表 endpoint / FHIR resource</th>
+                    <th>你當前專案的具體應用場景</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>openFDA</strong></td>
+                    <td class="category">法規 / 上市後監控</td>
+                    <td class="free">免費</td>
+                    <td>FDA 醫療器材、MAUDE 不良事件、召回、註冊/清單查詢</td>
+                    <td class="usage-cell">監測 hydrophilic coating 相關不良事件（感染、血栓、夾閉）</td>
+                    <td class="usage-cell">510K 風險評估、MAUDE 趨勢分析、DHF 風險管理文件</td>
+                    <td class="usage-cell">競品 510K 號查詢、技術名稱與分類分析、逆推競品技術</td>
+                    <td class="usage-cell">尿科/透析導管不良事件分類與趨勢分析</td>
+                    <td class="endpoint-cell">
+                        GET https://api.openfda.org/device/event.json (MAUDE)<br>
+                        GET https://api.openfda.org/device/listing.json (註冊清單)
+                    </td>
+                    <td class="usage-cell">
+                        • hydrophilic catheter coating 不良事件監測<br>
+                        • biopsy needle 斷針/取样失敗事件<br>
+                        • dialysis catheter 血栓/感染/recirculation 事件
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>NPPES NPI Registry API</strong></td>
+                    <td class="category">臨床整合 / 市場拓展</td>
+                    <td class="free">免費</td>
+                    <td>查詢美國醫療提供者與機構登錄資料</td>
+                    <td class="usage-cell">篩選 biopsy needle 臨床試驗中心（放射/腫瘤）</td>
+                    <td class="usage-cell">臨床試驗機構清單整理、TFDA/海外臨床試驗機構篩選</td>
+                    <td class="usage-cell">潛在客戶名單、商務開發前置資料整理、透析/尿科產品市場拓展</td>
+                    <td class="usage-cell">臨床試驗合作單位篩選、透析中心名單整理</td>
+                    <td class="endpoint-cell">
+                        GET https://npiregistry.cms.hhs.gov/api<br>
+                        參數：taxonomy, name, address, limit
+                    </td>
+                    <td class="usage-cell">
+                        • biopsy needle 臨床試驗中心篩選<br>
+                        • 透析/尿科導管臨床合作中心<br>
+                        • 台灣 TFDA 或海外臨床試驗機構清單
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Cloud Healthcare API</strong></td>
+                    <td class="category">臨床整合 / 研發（醫材軟體）</td>
+                    <td class="paid">免費試用→付費</td>
+                    <td>FHIR/DICOM/HL7 醫療資料管理與互通</td>
+                    <td class="usage-cell">透析 catheter 監測數據上傳雲端、遠距監測系統整合</td>
+                    <td class="usage-cell">臨床數據互通、RWD/RWE 收集、DHF 中臨床證據包整合</td>
+                    <td class="usage-cell">術後追蹤 SaaS 平台、遠距監測 App 與醫院系統整合</td>
+                    <td class="usage-cell">透析/尿科監測數據上傳 EHR、AI-guided biopsy 影像整合</td>
+                    <td class="endpoint-cell">
+                        POST .../fhir/Patient<br>
+                        GET .../fhir/Observation<br>
+                        FHIR resource: Patient, Observation, Device, Procedure
+                    </td>
+                    <td class="usage-cell">
+                        • dialysis catheter flow/pressure 數據上傳<br>
+                        • biopsy needle + 影像導引 DICOM 整合<br>
+                        • 尿科/引流導管遠距監測 App
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Scopus API</strong></td>
+                    <td class="category">研發 / 市場 / 法規證據</td>
+                    <td class="paid">付費</td>
+                    <td>文獻、引用、作者、期刊、bibliometrics</td>
+                    <td class="usage-cell">追蹤 hydrophilic coating 技術（PVP、PDADMAC、phosphobetaine）與 TPU/PEBAX 材料趨勢</td>
+                    <td class="usage-cell">為 510K/CE-MDR 文件提供文獻支持證據（生物相容性、臨床表現）</td>
+                    <td class="usage-cell">識別 KOL/重點機構、技術趨勢圖、董事會簡報材料</td>
+                    <td class="usage-cell">臨床證據包、技術白皮書、KOL 網絡分析</td>
+                    <td class="endpoint-cell">
+                        GET https://api.scopus.com/scopus/search<br>
+                        參數：query, dateRange, limit<br>
+                        author, institution endpoints
+                    </td>
+                    <td class="usage-cell">
+                        • hydrophilic coating 新配方開發前技術路線<br>
+                        • biopsy needle notch geometry/core sample volume 文獻支持<br>
+                        • dialysis catheter 臨床證據與技術趨勢<br>
+                        • 高層簡報技術趨勢圖與 KOL 網絡
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
