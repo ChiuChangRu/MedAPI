@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Medtec China 2026 展商作戰地圖｜邦特團隊版</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <div class="header-row">
+      <div>
+        <h1 id="event-title">Medtec China 2026 展商作戰地圖</h1>
+        <p id="event-sub">邦特團隊版 · 載入中...</p>
+      </div>
+      <div class="header-actions">
+        <span class="user-chip" id="user-chip" title="點擊切換使用者">👤 未登入</span>
+        <button class="btn small ghost" id="btn-export">📥 匯出 CSV</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="offline-banner" id="offline-banner" style="display:none;">
+  ⚠️ 共筆後端未連線——瀏覽與篩選功能正常，但看不到也無法寫入團隊紀錄。
+</div>
+
+<div class="container">
+
+  <!-- 首頁雙入口 -->
+  <section class="entry-section" id="entry-section">
+    <div class="entry-block">
+      <h2>👥 我是哪個部門？</h2>
+      <p class="entry-sub">選部門，直接看「跟你的工作有關」的廠商。</p>
+      <div class="dept-grid" id="dept-grid"></div>
+    </div>
+    <div class="entry-block">
+      <h2>🏥 從邦特產品線出發</h2>
+      <p class="entry-sub">選產品線，看上游供應、製程設備、技術延伸與市場合作的相關廠商（關鍵字自動比對，供起點參考）。</p>
+      <div class="line-grid" id="line-grid"></div>
+    </div>
+  </section>
+
+  <!-- 篩選列 -->
+  <div class="controls">
+    <input type="text" id="search" placeholder="搜尋公司名稱、產品、關鍵字（交叉檢索：空格分隔多個關鍵字）..." />
+    <select id="hall-filter"><option value="">全部展館</option></select>
+    <select id="country-filter"><option value="">全部國家</option></select>
+    <select id="status-filter">
+      <option value="">全部狀態</option>
+    </select>
+    <select id="sort-select">
+      <option value="default">預設排序</option>
+      <option value="booth">依館別攤位（排路線）</option>
+      <option value="notes">依紀錄數</option>
+    </select>
+    <button class="btn small" id="btn-pocket-filter">⭐ 只看口袋名單</button>
+    <button class="btn small ghost" id="btn-clear">✕ 清除全部條件</button>
+  </div>
+
+  <div class="active-preset" id="active-preset" style="display:none;"></div>
+
+  <div class="chips" id="category-chips"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none;">找不到符合條件的廠商，換個關鍵字或清除條件試試。</div>
+</div>
+
+<!-- 登入 overlay -->
+<div class="overlay" id="login-overlay">
+  <div class="modal narrow">
+    <h2>🔐 邦特團隊登入</h2>
+    <p class="sub">輸入團隊 PIN 碼，並選擇（或輸入）你的名字。所有共筆紀錄都會署名。</p>
+    <label>團隊 PIN 碼</label>
+    <input type="password" id="login-pin" placeholder="共用 PIN" />
+    <label>你的名字</label>
+    <div id="member-choices" class="member-choices"></div>
+    <input type="text" id="login-name" placeholder="輸入名字（第一次使用）" />
+    <label>部門（選填）</label>
+    <select id="login-dept">
+      <option value="">— 選擇部門 —</option>
+    </select>
+    <div class="modal-actions">
+      <button class="btn primary" id="btn-login">進入</button>
+    </div>
+    <p class="sub" id="login-error" style="color:#dc2626; display:none;"></p>
+  </div>
+</div>
+
+<!-- 展商詳情 modal -->
+<div class="overlay" id="detail-overlay">
+  <div class="modal wide" id="detail-modal">
+    <!-- 動態填入 -->
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

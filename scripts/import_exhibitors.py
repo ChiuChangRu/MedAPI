@@ -23,7 +23,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_FILES = [ROOT / "app" / "data" / "exhibitors.json", ROOT / "docs" / "data" / "exhibitors.json"]
+DATA_FILES = [
+    ROOT / "app" / "data" / "exhibitors.json",
+    ROOT / "docs" / "data" / "exhibitors.json",
+    ROOT / "cloudflare" / "public" / "data" / "exhibitors.json",
+]
 
 
 def split_multi(value: str) -> list[str]:
