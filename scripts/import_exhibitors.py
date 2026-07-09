@@ -12,15 +12,18 @@ CSV 欄位（第一列為標題，順序不拘）：
   的 "categories" 陣列新增一筆。
 - tags、products 若有多個值，用「;」分隔，例如：親水塗層;導管材料
 
-轉換後會直接覆寫 app/data/exhibitors.json 的 "exhibitors" 陣列，
-event 與 categories 區塊維持不變（可自行到該檔案調整活動資訊）。
+轉換後會同步覆寫 app/data/exhibitors.json 與 docs/data/exhibitors.json 的
+"exhibitors" 陣列（兩份資料要一致，分別給完整版 FastAPI 網頁與 GitHub Pages
+靜態版網頁使用），event 與 categories 區塊維持不變（可自行到 app/data/exhibitors.json
+調整活動資訊，腳本會一併同步到 docs）。
 """
 import csv
 import json
 import sys
 from pathlib import Path
 
-DATA_FILE = Path(__file__).resolve().parent.parent / "app" / "data" / "exhibitors.json"
+ROOT = Path(__file__).resolve().parent.parent
+DATA_FILES = [ROOT / "app" / "data" / "exhibitors.json", ROOT / "docs" / "data" / "exhibitors.json"]
 
 
 def split_multi(value: str) -> list[str]:
@@ -53,16 +56,16 @@ def main() -> None:
                 }
             )
 
-    with open(DATA_FILE, encoding="utf-8") as f:
+    with open(DATA_FILES[0], encoding="utf-8") as f:
         data = json.load(f)
 
     data["exhibitors"] = exhibitors
     data["event"]["note"] = "本資料已由 scripts/import_exhibitors.py 匯入真實展商名單。"
 
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    print(f"已匯入 {len(exhibitors)} 家廠商至 {DATA_FILE}")
+    for data_file in DATA_FILES:
+        with open(data_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"已匯入 {len(exhibitors)} 家廠商至 {data_file}")
 
 
 if __name__ == "__main__":
