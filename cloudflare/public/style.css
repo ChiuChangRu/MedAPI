@@ -76,8 +76,11 @@ header.top p { margin: 0; opacity: 0.9; font-size: 13px; }
 .entry-block h2 { margin: 0 0 4px; font-size: 16px; }
 .entry-sub { margin: 0 0 12px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 
+.entry-wide { grid-column: 1 / -1; }
+
 .dept-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .line-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.spec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 
 .entry-card {
   border: 1px solid var(--border);

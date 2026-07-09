@@ -4,14 +4,16 @@ let EXHIBITORS = [];
 let CATEGORIES = [];
 let CAT_MAP = {};
 let LINE_MATCHES = {};      // lineId -> Set(exhibitorId)
+let SPEC_MATCHES = {};      // specId -> Set(exhibitorId)
 let STATE = {};             // exhibitorId -> 共筆狀態
 let MEMBERS = [];
 let API_OK = false;
 
-// 篩選條件
+// 篩選條件（單位、產品別、科別三個維度可交叉組合）
 let ACTIVE_CATS = new Set();
 let ACTIVE_LINE = "";
 let ACTIVE_DEPT = "";
+let ACTIVE_SPEC = "";
 let POCKET_ONLY = false;
 
 let CURRENT_ID = null;      // detail modal 顯示中的展商
@@ -157,6 +159,14 @@ function computeLineMatches() {
     }
     LINE_MATCHES[line.id] = set;
   }
+  for (const spec of HOSPITAL_SPECIALTIES) {
+    const set = new Set();
+    for (const e of EXHIBITORS) {
+      const text = exhibitorText(e);
+      if (spec.keywords.some((k) => text.includes(k.toLowerCase()))) set.add(e.id);
+    }
+    SPEC_MATCHES[spec.id] = set;
+  }
 }
 
 // ---------- 首頁入口 ----------
@@ -186,6 +196,19 @@ function buildEntrySection() {
     card.onclick = () => applyLinePreset(line.id);
     lineGrid.appendChild(card);
   }
+
+  const specGrid = $("spec-grid");
+  specGrid.innerHTML = "";
+  for (const spec of HOSPITAL_SPECIALTIES) {
+    const count = SPEC_MATCHES[spec.id].size;
+    const card = document.createElement("div");
+    card.className = "entry-card";
+    card.dataset.spec = spec.id;
+    card.innerHTML = `<div class="entry-icon">${spec.icon}</div><div class="entry-name">${spec.name}</div><div class="entry-count">${count} 家</div>`;
+    card.title = `關鍵字：${spec.keywords.join("、")}`;
+    card.onclick = () => applySpecPreset(spec.id);
+    specGrid.appendChild(card);
+  }
 }
 
 function deptMatch(d, e) {
@@ -201,7 +224,6 @@ function applyDeptPreset(deptId) {
   if (ACTIVE_DEPT === deptId) { ACTIVE_DEPT = ""; ACTIVE_CATS.clear(); }
   else {
     ACTIVE_DEPT = deptId;
-    ACTIVE_LINE = "";
     const d = DEPT_PRESETS.find((x) => x.id === deptId);
     ACTIVE_CATS = new Set(d.cats);
   }
@@ -210,8 +232,13 @@ function applyDeptPreset(deptId) {
 }
 
 function applyLinePreset(lineId) {
-  if (ACTIVE_LINE === lineId) ACTIVE_LINE = "";
-  else { ACTIVE_LINE = lineId; ACTIVE_DEPT = ""; ACTIVE_CATS.clear(); }
+  ACTIVE_LINE = ACTIVE_LINE === lineId ? "" : lineId;
+  refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
+  $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function applySpecPreset(specId) {
+  ACTIVE_SPEC = ACTIVE_SPEC === specId ? "" : specId;
   refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
   $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -220,19 +247,28 @@ function refreshEntryCards() {
   document.querySelectorAll(".entry-card").forEach((c) => {
     c.classList.toggle("active", Boolean(
       (c.dataset.dept && c.dataset.dept === ACTIVE_DEPT) ||
-      (c.dataset.line && c.dataset.line === ACTIVE_LINE)));
+      (c.dataset.line && c.dataset.line === ACTIVE_LINE) ||
+      (c.dataset.spec && c.dataset.spec === ACTIVE_SPEC)));
   });
 }
 
 function refreshPresetBar() {
   const bar = $("active-preset");
+  const parts = [];
   if (ACTIVE_DEPT) {
     const d = DEPT_PRESETS.find((x) => x.id === ACTIVE_DEPT);
-    bar.innerHTML = `<strong>${d.icon} ${d.name}視角</strong>：${d.hint} <button class="btn small ghost" onclick="applyDeptPreset('${d.id}')">✕ 取消</button>`;
-    bar.style.display = "block";
-  } else if (ACTIVE_LINE) {
+    parts.push(`<strong>${d.icon} ${d.name}</strong>：${d.hint} <button class="btn small ghost" onclick="applyDeptPreset('${d.id}')">✕</button>`);
+  }
+  if (ACTIVE_LINE) {
     const l = BIOTEQ_LINES.find((x) => x.id === ACTIVE_LINE);
-    bar.innerHTML = `<strong>${l.icon} ${l.name}</strong>：${l.desc}（依關鍵字「${l.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applyLinePreset('${l.id}')">✕ 取消</button>`;
+    parts.push(`<strong>${l.icon} ${l.name}</strong>：${l.desc}（關鍵字「${l.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applyLinePreset('${l.id}')">✕</button>`);
+  }
+  if (ACTIVE_SPEC) {
+    const s = HOSPITAL_SPECIALTIES.find((x) => x.id === ACTIVE_SPEC);
+    parts.push(`<strong>${s.icon} ${s.name}</strong>（關鍵字「${s.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applySpecPreset('${s.id}')">✕</button>`);
+  }
+  if (parts.length) {
+    bar.innerHTML = parts.join("<br/>");
     bar.style.display = "block";
   } else {
     bar.style.display = "none";
@@ -303,7 +339,7 @@ function refreshPocketBtn() {
 }
 
 function clearAll() {
-  ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; POCKET_ONLY = false;
+  ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; ACTIVE_SPEC = ""; POCKET_ONLY = false;
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
   $("sort-select").value = "default";
   refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); render();
@@ -320,11 +356,13 @@ function filtered() {
   const country = $("country-filter").value;
   const statusF = $("status-filter").value;
   const lineSet = ACTIVE_LINE ? LINE_MATCHES[ACTIVE_LINE] : null;
+  const specSet = ACTIVE_SPEC ? SPEC_MATCHES[ACTIVE_SPEC] : null;
   const dept = ACTIVE_DEPT ? DEPT_PRESETS.find((d) => d.id === ACTIVE_DEPT) : null;
 
   return EXHIBITORS.filter((e) => {
     if (ACTIVE_CATS.size && !ACTIVE_CATS.has(e.category)) return false;
     if (lineSet && !lineSet.has(e.id)) return false;
+    if (specSet && !specSet.has(e.id)) return false;
     if (dept && dept.keywords && !deptMatch(dept, e)) return false;
     if (hall && e.hall !== hall) return false;
     if (country && e.country !== country) return false;
@@ -358,8 +396,8 @@ function render() {
   grid.innerHTML = "";
   $("empty").style.display = list.length ? "none" : "block";
 
-  // 依關聯分組（產品線視角時）
-  if (ACTIVE_LINE && list.length) {
+  // 依關聯分組（產品線或科別視角時）
+  if ((ACTIVE_LINE || ACTIVE_SPEC) && list.length) {
     const groups = {};
     for (const e of list) {
       const role = CAT_ROLES[e.category] || "service";
@@ -447,6 +485,7 @@ async function openDetail(id) {
   const modal = $("detail-modal");
 
   const lineHits = BIOTEQ_LINES.filter((l) => LINE_MATCHES[l.id].has(id));
+  const specHits = HOSPITAL_SPECIALTIES.filter((s) => SPEC_MATCHES[s.id].has(id));
 
   modal.innerHTML = `
     <div class="detail-head">
@@ -459,6 +498,7 @@ async function openDetail(id) {
           ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">🔗 官方展商頁</a>` : ""}
         </p>
         ${lineHits.length ? `<p class="sub">🔗 邦特關聯：${lineHits.map((l) => l.icon + " " + l.name).join("、")}</p>` : ""}
+        ${specHits.length ? `<p class="sub">🩺 科別關聯：${specHits.map((s) => s.icon + " " + s.name).join("、")}</p>` : ""}
       </div>
       <button class="btn small ghost" id="d-close">✕</button>
     </div>

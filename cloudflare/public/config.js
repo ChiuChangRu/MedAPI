@@ -177,6 +177,77 @@ const BIOTEQ_LINES = [
   },
 ];
 
+// 醫院科別視角：獨立的第三個維度，可與單位、產品別交叉組合
+// 同樣用關鍵字比對展商的名稱/簡介/產品（繁體）
+const HOSPITAL_SPECIALTIES = [
+  {
+    id: "cardio",
+    name: "心血管/介入",
+    icon: "🫀",
+    keywords: ["心血管", "心臟", "介入", "支架", "球囊", "導絲"],
+  },
+  {
+    id: "neuro",
+    name: "神經科",
+    icon: "🧠",
+    keywords: ["神經", "顱", "腦"],
+  },
+  {
+    id: "mis",
+    name: "微創/內視鏡",
+    icon: "🔬",
+    keywords: ["微創", "內視鏡", "內窺鏡", "腹腔鏡", "內鏡"],
+  },
+  {
+    id: "nephro",
+    name: "腎臟/透析",
+    icon: "🩸",
+    keywords: ["透析", "血液淨化", "腎"],
+  },
+  {
+    id: "uro",
+    name: "泌尿科",
+    icon: "🧫",
+    keywords: ["泌尿", "輸尿管", "取石", "碎石"],
+  },
+  {
+    id: "gastro",
+    name: "消化內科",
+    icon: "🍃",
+    keywords: ["胃腸", "消化", "腸內營養", "胃管"],
+  },
+  {
+    id: "resp",
+    name: "呼吸/胸腔",
+    icon: "🫁",
+    keywords: ["呼吸", "氧氣", "氣管", "霧化", "麻醉"],
+  },
+  {
+    id: "ortho",
+    name: "骨科",
+    icon: "🦴",
+    keywords: ["骨科", "骨釘", "脊椎", "關節", "植入物"],
+  },
+  {
+    id: "dental",
+    name: "牙科",
+    icon: "🦷",
+    keywords: ["牙科", "齒科", "種植牙"],
+  },
+  {
+    id: "ophthal",
+    name: "眼科",
+    icon: "👁️",
+    keywords: ["眼科", "人工水晶體", "眼內"],
+  },
+  {
+    id: "lab",
+    name: "檢驗科/IVD",
+    icon: "🧪",
+    keywords: ["ivd", "診斷", "試劑", "檢驗"],
+  },
+];
+
 // 依展商分類把「相關廠商」再分成三種關聯，方便判讀
 const CAT_ROLES = {
   "cat-01": "supply", "cat-02": "supply", "cat-03": "supply", "cat-04": "supply",
