@@ -104,7 +104,11 @@ function renderCard(e) {
     <p class="name-en">${e.name_en || ""}</p>
     <p class="desc">${e.description || ""}</p>
     <div class="tags">${(e.tags || []).map((t) => `<span class="tag">#${t}</span>`).join("")}</div>
-    ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">🔗 官方展商頁</a>` : ""}
+    <div class="link-row">
+      ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">🌐 官網</a>` : ""}
+      ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">📄 型錄${e.pdfs.length > 1 ? i + 1 : ""}</a>`).join("")}
+      ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">🔗 展商頁</a>` : ""}
+    </div>
     <button class="ask" data-id="${e.id}">留言 / 我要洽談</button>
   `;
   card.querySelector("button.ask").onclick = () => openModal(e);

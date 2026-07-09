@@ -411,7 +411,11 @@ function renderCard(e) {
     <div class="card-footer">
       ${st.dept_tags.length ? st.dept_tags.map((t) => `<span class="dept-tag">${esc(t)}</span>`).join("") : ""}
       <span class="note-count">${st.note_count ? "💬 " + st.note_count : ""}</span>
-      ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🔗 官方展商頁</a>` : ""}
+    </div>
+    <div class="link-row">
+      ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">🌐 官網</a>` : ""}
+      ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">📄 型錄${e.pdfs.length > 1 ? i + 1 : ""}</a>`).join("")}
+      ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">🔗 展商頁</a>` : ""}
     </div>
     <button class="ask">📝 查看 / 共筆</button>
   `;
@@ -449,7 +453,11 @@ async function openDetail(id) {
       <div>
         <h2>${esc(e.name_zh)} <button class="star big ${st.pocket ? "on" : ""}" id="d-star">${st.pocket ? "⭐" : "☆"}</button></h2>
         <p class="sub">${esc(e.name_en || "")}｜${esc(cat ? cat.name_zh : "")}｜攤位 ${esc(e.booth_no)}｜${esc(e.country)}</p>
-        ${e.directory_url ? `<p class="sub"><a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">🔗 前往官方展商頁</a></p>` : ""}
+        <p class="sub link-row">
+          ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">🌐 公司官網</a>` : ""}
+          ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">📄 型錄 PDF${e.pdfs.length > 1 ? " " + (i + 1) : ""}</a>`).join("")}
+          ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">🔗 官方展商頁</a>` : ""}
+        </p>
         ${lineHits.length ? `<p class="sub">🔗 邦特關聯：${lineHits.map((l) => l.icon + " " + l.name).join("、")}</p>` : ""}
       </div>
       <button class="btn small ghost" id="d-close">✕</button>
