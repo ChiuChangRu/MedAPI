@@ -1,0 +1,130 @@
+{
+  "event": {
+    "name_zh": "Medtec China 2026（上海醫療器械設計與製造技術展）",
+    "name_en": "Medtec China 2026",
+    "dates": "2026-09-01 至 2026-09-03",
+    "venue_zh": "上海新國際博覽中心 (SNIEC) N1-N4 館",
+    "venue_en": "Shanghai New International Expo Centre (SNIEC), Halls N1-N4",
+    "official_site": "https://en.medtecchina.com/",
+    "exhibitor_directory": "https://exhibitors.informamarkets-info.com/event/2026Medtec",
+    "note": "本檔案為「示範資料」，非官方真實廠商名單。因執行環境的網路白名單限制，系統暫時無法自動連線至展覽官方廠商目錄擷取真實資料，請依 README.md 指示，將官方名單匯出後置換此檔案。"
+  },
+  "categories": [
+    { "id": "materials", "name_zh": "原材料與零組件", "name_en": "Materials & Components" },
+    { "id": "electronics", "name_zh": "電子製造 / PCBA", "name_en": "Electronic Manufacturing" },
+    { "id": "machining", "name_zh": "精密加工與射出成型", "name_en": "Precision Machining & Injection Molding" },
+    { "id": "packaging", "name_zh": "包裝與滅菌", "name_en": "Packaging & Sterilization" },
+    { "id": "automation", "name_zh": "自動化與智慧製造", "name_en": "Automation & Smart Manufacturing" },
+    { "id": "testing", "name_zh": "檢測、品保與法規顧問", "name_en": "Testing, QA & Regulatory" },
+    { "id": "oem", "name_zh": "研發設計與委外代工 (OEM/ODM/CDMO)", "name_en": "R&D, Design & Contract Manufacturing" },
+    { "id": "ivd", "name_zh": "體外診斷 (IVD) 相關", "name_en": "In-Vitro Diagnostics" },
+    { "id": "digital", "name_zh": "數位醫療 / 軟體與資料整合", "name_en": "Digital Health & Software" }
+  ],
+  "exhibitors": [
+    {
+      "id": "demo-001",
+      "name_zh": "【示範】精密射出成型 A",
+      "name_en": "[DEMO] Precision Molding A",
+      "booth_no": "N3-D01（示範）",
+      "hall": "N3",
+      "country": "中國",
+      "category": "machining",
+      "tags": ["射出成型", "TPU/PEBAX", "導管零件"],
+      "description": "示範用途：假設此廠商提供醫療導管用精密射出成型與微型零件加工服務。",
+      "products": ["微型射出成型件", "導管接頭", "客製化模具開發"],
+      "website": ""
+    },
+    {
+      "id": "demo-002",
+      "name_zh": "【示範】親水塗層材料 B",
+      "name_en": "[DEMO] Hydrophilic Coating B",
+      "booth_no": "N2-C12（示範）",
+      "hall": "N2",
+      "country": "美國",
+      "category": "materials",
+      "tags": ["親水塗層", "PVP", "生物相容性"],
+      "description": "示範用途：假設此廠商提供導管親水塗層材料與塗佈製程技術授權。",
+      "products": ["親水塗層原料", "塗佈製程技術支援", "生物相容性測試協助"],
+      "website": ""
+    },
+    {
+      "id": "demo-003",
+      "name_zh": "【示範】滅菌包裝方案 C",
+      "name_en": "[DEMO] Sterile Packaging C",
+      "booth_no": "N1-A08（示範）",
+      "hall": "N1",
+      "country": "德國",
+      "category": "packaging",
+      "tags": ["Tyvek 包裝", "EO 滅菌", "包裝驗證"],
+      "description": "示範用途：假設此廠商提供醫材滅菌包裝材料與包裝驗證（Packaging Validation）服務。",
+      "products": ["Tyvek 透析包裝袋", "滅菌相容性驗證", "包裝生產線設備"],
+      "website": ""
+    },
+    {
+      "id": "demo-004",
+      "name_zh": "【示範】自動化組裝設備 D",
+      "name_en": "[DEMO] Assembly Automation D",
+      "booth_no": "N4-B15（示範）",
+      "hall": "N4",
+      "country": "台灣",
+      "category": "automation",
+      "tags": ["自動化產線", "雷射熔接", "視覺檢測"],
+      "description": "示範用途：假設此廠商提供醫材產線自動化組裝、雷射熔接與 AOI 視覺檢測整合方案。",
+      "products": ["自動化組裝線體", "雷射熔接機", "AOI 視覺檢測系統"],
+      "website": ""
+    },
+    {
+      "id": "demo-005",
+      "name_zh": "【示範】法規與檢測顧問 E",
+      "name_en": "[DEMO] Regulatory & Testing E",
+      "booth_no": "N2-E20（示範）",
+      "hall": "N2",
+      "country": "中國",
+      "country_note": "",
+      "category": "testing",
+      "tags": ["510K", "NMPA", "生物相容性測試"],
+      "description": "示範用途：假設此廠商提供 510(k)／NMPA 法規申請顧問與 ISO 10993 生物相容性檢測服務。",
+      "products": ["510(k)/NMPA 申請顧問", "ISO 10993 生物相容性測試", "臨床證據文件撰寫"],
+      "website": ""
+    },
+    {
+      "id": "demo-006",
+      "name_zh": "【示範】CDMO 委外代工 F",
+      "name_en": "[DEMO] CDMO Manufacturing F",
+      "booth_no": "N3-F03（示範）",
+      "hall": "N3",
+      "country": "中國",
+      "category": "oem",
+      "tags": ["CDMO", "透析導管", "切片針"],
+      "description": "示範用途：假設此廠商提供透析導管、切片針等介入器材的委外設計與代工生產服務。",
+      "products": ["透析導管代工", "切片針組裝", "DHF 文件協作"],
+      "website": ""
+    },
+    {
+      "id": "demo-007",
+      "name_zh": "【示範】體外診斷試劑 G",
+      "name_en": "[DEMO] IVD Reagents G",
+      "booth_no": "N1-G11（示範）",
+      "hall": "N1",
+      "country": "日本",
+      "category": "ivd",
+      "tags": ["POCT", "免疫檢測", "試劑原料"],
+      "description": "示範用途：假設此廠商提供 POCT 免疫檢測試劑原料與快篩平台技術。",
+      "products": ["POCT 試劑原料", "免疫層析平台", "快篩讀取儀"],
+      "website": ""
+    },
+    {
+      "id": "demo-008",
+      "name_zh": "【示範】遠距監測軟體 H",
+      "name_en": "[DEMO] Remote Monitoring Software H",
+      "booth_no": "N4-H07（示範）",
+      "hall": "N4",
+      "country": "中國",
+      "category": "digital",
+      "tags": ["FHIR", "遠距監測", "雲端平台"],
+      "description": "示範用途：假設此廠商提供術後遠距監測 App 與醫院 EHR/FHIR 資料整合平台。",
+      "products": ["遠距監測 App", "FHIR 資料整合服務", "雲端數據儀表板"],
+      "website": ""
+    }
+  ]
+}

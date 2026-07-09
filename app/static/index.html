@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Medtec China 2026 展商導覽</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <h1 id="event-title">Medtec China 2026 展商導覽</h1>
+    <p id="event-sub">上海新國際博覽中心 · 載入中...</p>
+  </div>
+  <nav class="tabs">
+    <a href="index.html" class="active">展商導覽</a>
+    <a href="admin.html">需求留言後台</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="notice" id="event-notice"></div>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="搜尋公司名稱、產品、關鍵字..." />
+    <select id="hall-filter">
+      <option value="">全部展館</option>
+    </select>
+  </div>
+
+  <div class="chips" id="category-chips"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none;">找不到符合條件的廠商，換個關鍵字試試。</div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="modal-title">留下您的需求</h2>
+    <p class="sub" id="modal-sub"></p>
+    <label>您的姓名 *</label>
+    <input type="text" id="f-name" placeholder="王小明" />
+    <label>部門</label>
+    <input type="text" id="f-dept" placeholder="研發部 / 業務部..." />
+    <label>聯絡方式（Email 或分機）*</label>
+    <input type="text" id="f-contact" placeholder="name@company.com" />
+    <label>需求內容 *</label>
+    <textarea id="f-message" placeholder="想了解的產品規格、想約談的時段、想索取的資料..."></textarea>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn primary" onclick="submitInquiry()">送出，由窗口代為轉達</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
