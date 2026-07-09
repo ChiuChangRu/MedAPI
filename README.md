@@ -31,35 +31,31 @@
 const TEAM_EMAIL = "your-real-team@company.com";
 ```
 
-## ⚠️ 目前資料狀態（請務必先讀）
+## ✅ 目前資料狀態
 
-`app/data/exhibitors.json` 與 `docs/data/exhibitors.json` 都是**示範資料
-（8 家假想廠商）**，不是官方真實名單。
+`app/data/exhibitors.json` 與 `docs/data/exhibitors.json` 已於 2026-07-09
+匯入 **Medtec China 2026 官方展商目錄的真實資料**，共 585 家展商（來源為
+官方展商目錄 API 提供的 1430 筆產品資料，依廠商去重後統計）。分類採官方
+17 大類（含 8.1-8.6 子類，另有少量無分類資料歸入「尚未分類」）。
 
-原因：這個開發環境的網路白名單擋掉了對外部網站（包含官方展商目錄
-`exhibitors.informamarkets-info.com` 及 `en.medtecchina.com`）的直接連線，
-系統本身無法自動爬取真實名單。功能與介面都已完整可用，**只差真實資料**。
+若之後官方名單有更新，或要重新整理成 CSV 匯入，可依下列方式操作：
 
-### 取得真實名單並匯入的方式
+### 從 CSV 匯入 / 更新名單的方式
 
-1. 用瀏覽器登入官方展商目錄：
-   https://exhibitors.informamarkets-info.com/event/2026Medtec
-   通常可用篩選/匯出功能，或用「另存頁面」「複製表格」等方式，將公司名稱、
-   攤位號、分類、產品說明整理成 CSV。
-2. 依照下列欄位整理成 CSV（第一列為標題，順序不拘）：
+1. 依照下列欄位整理成 CSV（第一列為標題，順序不拘）：
    ```
    name_zh, name_en, booth_no, hall, country, category, tags, description, products, website
    ```
    - `category` 請填入 `app/data/exhibitors.json` 裡 `categories` 區塊的 id
-     （`materials` / `electronics` / `machining` / `packaging` /
-     `automation` / `testing` / `oem` / `ivd` / `digital`），
+     （目前為官方分類 `cat-01` ~ `cat-17`，其中 `cat-08-1` ~ `cat-08-6`
+     為第 8 類子項，另有 `cat-00` 代表尚未分類），
      沒有合適分類可直接在該檔案的 `categories` 陣列新增一筆。
    - `tags`、`products` 若有多個值用「;」分隔，例如 `親水塗層;導管材料`。
-3. 執行匯入腳本（會同步更新 `app/data/` 與 `docs/data/` 兩份資料）：
+2. 執行匯入腳本（會同步更新 `app/data/` 與 `docs/data/` 兩份資料）：
    ```bash
    python3 scripts/import_exhibitors.py 真實展商名單.csv
    ```
-4. `git commit` + `push`，GitHub Pages 網址會自動更新為真實名單。
+3. `git commit` + `push`，GitHub Pages 網址會自動更新為最新名單。
 
 ## 功能
 
@@ -94,7 +90,7 @@ http://localhost:8000/admin.html。
 
 ## 目前限制與待辦
 
-- [ ] 用真實官方展商名單取代示範資料（見上方「取得真實名單」）
+- [x] 用真實官方展商名單取代示範資料（2026-07-09 已匯入 585 家）
 - [ ] `docs/app.js` 的 `TEAM_EMAIL` 換成真實窗口信箱
 - [ ] 在 repo Settings → Pages 開啟一次靜態版部署（見上方步驟）
 - [ ] 完整版後台加上登入驗證，避免留言內容外流
