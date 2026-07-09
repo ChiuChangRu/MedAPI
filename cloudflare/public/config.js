@@ -23,7 +23,7 @@ const DEPT_PRESETS = [
     name: "文管",
     icon: "🗂️",
     cats: ["cat-16"],
-    keywords: ["软件", "系统", "数据", "追溯", "标签"],
+    keywords: ["軟體", "系統", "資料", "追溯", "標籤"],
     hint: "文件/eQMS 軟體、標籤與追溯系統、資料管理服務。",
   },
   {
@@ -63,7 +63,8 @@ const DEPT_PRESETS = [
   },
 ];
 
-// 邦特產品線視角：每條產品線用關鍵字比對展商的名稱/簡介/產品（資料為簡體）
+// 邦特產品線視角：每條產品線用關鍵字比對展商的名稱/簡介/產品
+// （展商資料與關鍵字均已轉為繁體，兩邊需一致才能比對得到）
 // match: keywords 命中「展商文字」即列入該產品線的相關廠商
 const BIOTEQ_LINES = [
   {
@@ -71,21 +72,21 @@ const BIOTEQ_LINES = [
     name: "透析",
     icon: "🩸",
     desc: "血液回路管、血液透析導管組、內廔管翼狀針、氣球導管",
-    keywords: ["透析", "血液回路", "血液净化", "内瘘", "穿刺针", "血路"],
+    keywords: ["透析", "血液迴路", "血液淨化", "內瘻", "穿刺針", "血路"],
   },
   {
     id: "vascular",
     name: "血管通路",
     icon: "🫀",
     desc: "中心靜脈導管、導引器材",
-    keywords: ["中心静脉", "静脉导管", "导引", "鞘管", "picc", "cvc", "血管介入", "导管挤出"],
+    keywords: ["中心靜脈", "靜脈導管", "導引", "鞘管", "picc", "cvc", "血管介入", "導管擠出"],
   },
   {
     id: "respiratory",
     name: "呼吸治療",
     icon: "🫁",
     desc: "封閉式抽痰管組、氧氣/麻醉面罩、噴霧器、氣管內管",
-    keywords: ["呼吸", "氧气", "面罩", "气管插管", "雾化", "麻醉", "吸痰"],
+    keywords: ["呼吸", "氧氣", "面罩", "氣管插管", "霧化", "麻醉", "吸痰"],
   },
   {
     id: "drainage",
@@ -99,56 +100,56 @@ const BIOTEQ_LINES = [
     name: "泌尿科",
     icon: "🧫",
     desc: "輸尿管導管、Guidewire、推進管、取石網",
-    keywords: ["泌尿", "输尿管", "导丝", "取石", "碎石", "guidewire"],
+    keywords: ["泌尿", "輸尿管", "導絲", "取石", "碎石", "guidewire"],
   },
   {
     id: "infusion",
     name: "輸液治療",
     icon: "💉",
     desc: "注射器、高壓注射器、輸液延長管、三通",
-    keywords: ["输液", "注射器", "三通", "鲁尔", "luer", "延长管"],
+    keywords: ["輸液", "注射器", "三通", "魯爾", "luer", "延長管"],
   },
   {
     id: "gi",
     name: "消化內科",
     icon: "🍃",
     desc: "胃腸相關導管及配件",
-    keywords: ["胃肠", "胃管", "肠内营养", "内窥镜", "内镜"],
+    keywords: ["胃腸", "胃管", "腸內營養", "內窺鏡", "內鏡"],
   },
   {
     id: "parts",
     name: "醫療零件",
     icon: "🧩",
     desc: "Luer Connector、射出件、OEM 零件",
-    keywords: ["连接器", "注塑", "接头", "精密零件", "模具", "luer"],
+    keywords: ["連接器", "注塑", "接頭", "精密零件", "模具", "luer"],
   },
   {
     id: "homecare",
     name: "居家照護",
     icon: "🏠",
     desc: "居家醫療用品",
-    keywords: ["家用", "居家", "康复"],
+    keywords: ["家用", "居家", "康復"],
   },
   {
     id: "tpu",
     name: "TPU 導管（核心技術）",
     icon: "⭐",
     desc: "既有技術重點：TPU 材料、導管押出",
-    keywords: ["tpu", "聚氨酯", "挤出", "导管", "pebax", "医用管"],
+    keywords: ["tpu", "聚氨酯", "擠出", "導管", "pebax", "醫用管"],
   },
   {
     id: "braided",
     name: "編織管（未來重點）",
     icon: "🚀",
     desc: "未來技術重點：編織增強導管",
-    keywords: ["编织", "braid", "增强导管", "编织管"],
+    keywords: ["編織", "braid", "增強導管", "編織管"],
   },
   {
     id: "balloon",
     name: "球囊（未來重點）",
     icon: "🎈",
     desc: "未來技術重點：球囊導管、球囊成型",
-    keywords: ["球囊", "balloon", "气球导管", "球囊成型"],
+    keywords: ["球囊", "balloon", "氣球導管", "球囊成型"],
   },
 ];
 
