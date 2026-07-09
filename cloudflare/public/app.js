@@ -218,9 +218,9 @@ function applyLinePreset(lineId) {
 
 function refreshEntryCards() {
   document.querySelectorAll(".entry-card").forEach((c) => {
-    c.classList.toggle("active",
+    c.classList.toggle("active", Boolean(
       (c.dataset.dept && c.dataset.dept === ACTIVE_DEPT) ||
-      (c.dataset.line && c.dataset.line === ACTIVE_LINE));
+      (c.dataset.line && c.dataset.line === ACTIVE_LINE)));
   });
 }
 
