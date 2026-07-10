@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Medtec China 2026 展商作戰地圖｜邦特團隊版</title>
+<title>Medtec China 2026 展商作戰地圖</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>" />
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -12,37 +12,37 @@
   <div class="inner">
     <div class="header-row">
       <div>
-        <h1 id="event-title">Medtec China 2026 展商作戰地圖</h1>
-        <p id="event-sub">邦特團隊版 · 載入中...</p>
+        <h1 id="event-title">展商作戰地圖</h1>
+        <p id="event-sub">載入中...</p>
       </div>
       <div class="header-actions">
-        <span class="user-chip" id="user-chip" title="點擊切換使用者">👤 未登入</span>
-        <button class="btn small ghost" id="btn-export">📥 匯出 CSV</button>
+        <span class="user-chip" id="user-chip" title="點擊切換使用者">未登入</span>
+        <button class="btn small ghost" id="btn-export">匯出 CSV</button>
       </div>
     </div>
   </div>
 </header>
 
 <div class="offline-banner" id="offline-banner" style="display:none;">
-  ⚠️ 共筆後端未連線——瀏覽與篩選功能正常，但看不到也無法寫入團隊紀錄。
+  共筆後端未連線：瀏覽與篩選功能正常，但無法讀寫團隊紀錄。
 </div>
 
 <div class="container">
 
-  <!-- 首頁雙入口 -->
+  <!-- 三欄位入口：單位 × 產品別 × 醫院科別 -->
   <section class="entry-section" id="entry-section">
     <div class="entry-block">
-      <h2>👥 我是哪個部門？</h2>
-      <p class="entry-sub">選部門，直接看「跟你的工作有關」的廠商。</p>
+      <h2>單位</h2>
+      <p class="entry-sub">選你的單位，直接看「跟你的工作有關」的廠商。</p>
       <div class="dept-grid" id="dept-grid"></div>
     </div>
     <div class="entry-block">
-      <h2>🏥 從邦特產品線出發</h2>
-      <p class="entry-sub">選產品線，看上游供應、製程設備、技術延伸與市場合作的相關廠商（關鍵字自動比對，供起點參考）。</p>
+      <h2>產品別</h2>
+      <p class="entry-sub">從自家產品線出發，看上游供應、製程設備、技術延伸與市場合作的相關廠商（關鍵字自動比對，供起點參考）。</p>
       <div class="line-grid" id="line-grid"></div>
     </div>
     <div class="entry-block entry-wide">
-      <h2>🩺 醫院科別</h2>
+      <h2>醫院科別</h2>
       <p class="entry-sub">依醫院科別看相關廠商，可與單位、產品別交叉組合篩選（例如：研發 × 心血管）。</p>
       <div class="spec-grid" id="spec-grid"></div>
     </div>
@@ -61,8 +61,12 @@
       <option value="booth">依館別攤位（排路線）</option>
       <option value="notes">依紀錄數</option>
     </select>
-    <button class="btn small" id="btn-pocket-filter">⭐ 只看口袋名單</button>
-    <button class="btn small ghost" id="btn-clear">✕ 清除全部條件</button>
+    <div class="view-toggle">
+      <button id="view-cards" class="on">卡片</button>
+      <button id="view-table">列表</button>
+    </div>
+    <button class="btn small" id="btn-pocket-filter">★ 口袋名單</button>
+    <button class="btn small ghost" id="btn-clear">清除全部條件</button>
   </div>
 
   <div class="active-preset" id="active-preset" style="display:none;"></div>
@@ -78,21 +82,21 @@
 <!-- 登入 overlay -->
 <div class="overlay" id="login-overlay">
   <div class="modal narrow">
-    <h2>🔐 邦特團隊登入</h2>
+    <h2>團隊登入</h2>
     <p class="sub">輸入團隊 PIN 碼，並選擇（或輸入）你的名字。所有共筆紀錄都會署名。</p>
     <label>團隊 PIN 碼</label>
     <input type="password" id="login-pin" placeholder="共用 PIN" />
     <label>你的名字</label>
     <div id="member-choices" class="member-choices"></div>
     <input type="text" id="login-name" placeholder="輸入名字（第一次使用）" />
-    <label>部門（選填）</label>
+    <label>單位（選填）</label>
     <select id="login-dept">
-      <option value="">— 選擇部門 —</option>
+      <option value="">— 選擇單位 —</option>
     </select>
     <div class="modal-actions">
       <button class="btn primary" id="btn-login">進入</button>
     </div>
-    <p class="sub" id="login-error" style="color:#dc2626; display:none;"></p>
+    <p class="sub" id="login-error" style="color:#c8102e; display:none;"></p>
   </div>
 </div>
 

@@ -1,4 +1,4 @@
-// ===== Medtec China 2026 展商作戰地圖（邦特團隊版）=====
+// ===== Medtec China 2026 展商作戰地圖（團隊版）=====
 
 let EXHIBITORS = [];
 let CATEGORIES = [];
@@ -17,6 +17,7 @@ let ACTIVE_SPEC = "";
 let POCKET_ONLY = false;
 
 let CURRENT_ID = null;      // detail modal 顯示中的展商
+let VIEW = localStorage.getItem("medtec_view") || "cards";
 
 const $ = (id) => document.getElementById(id);
 
@@ -50,8 +51,7 @@ async function init() {
   CATEGORIES = data.categories;
   for (const c of CATEGORIES) CAT_MAP[c.id] = c;
 
-  $("event-title").textContent = data.event.name_zh.replace(/（.*）/, "") + " 展商作戰地圖";
-  $("event-sub").textContent = `邦特團隊版 · ${data.event.dates} · ${data.event.venue_zh} · 共 ${EXHIBITORS.length} 家展商`;
+  $("event-sub").textContent = `團隊內部版 · ${data.event.dates} · ${data.event.venue_zh} · 共 ${EXHIBITORS.length} 家展商`;
 
   computeLineMatches();
   buildEntrySection();
@@ -64,6 +64,9 @@ async function init() {
   $("status-filter").addEventListener("change", render);
   $("sort-select").addEventListener("change", render);
   $("btn-pocket-filter").onclick = () => { POCKET_ONLY = !POCKET_ONLY; refreshPocketBtn(); render(); };
+  $("view-cards").onclick = () => setView("cards");
+  $("view-table").onclick = () => setView("table");
+  refreshViewToggle();
   $("btn-clear").onclick = clearAll;
   $("btn-export").onclick = exportCsv;
   $("user-chip").onclick = () => { if (confirm("要切換使用者嗎？")) logout(); };
@@ -83,7 +86,7 @@ async function connectBackend() {
     if (!pin() && MEMBERS !== null) {
       // TEAM_PIN 未設定（開發模式）也需要選名字
     }
-    if (!me()) { showLogin(); } else { $("user-chip").textContent = `👤 ${me()}`; }
+    if (!me()) { showLogin(); } else { $("user-chip").textContent = me(); }
     STATE = await api("/state");
     render();
   } catch (err) {
@@ -97,7 +100,7 @@ async function connectBackend() {
 function showLogin() {
   $("login-overlay").classList.add("open");
   const deptSel = $("login-dept");
-  deptSel.innerHTML = '<option value="">— 選擇部門 —</option>' +
+  deptSel.innerHTML = '<option value="">— 選擇單位 —</option>' +
     DEPT_PRESETS.map((d) => `<option value="${d.name}">${d.name}</option>`).join("");
   $("login-pin").value = pin();
   renderMemberChoices();
@@ -131,7 +134,7 @@ async function doLogin() {
   try {
     MEMBERS = await api("/members", { method: "POST", body: JSON.stringify({ name, dept }) });
     localStorage.setItem("medtec_user", name);
-    $("user-chip").textContent = `👤 ${name}`;
+    $("user-chip").textContent = name;
     $("login-overlay").classList.remove("open");
     API_OK = true;
     $("offline-banner").style.display = "none";
@@ -143,7 +146,7 @@ async function doLogin() {
   }
 }
 
-// ---------- 邦特產品線比對 ----------
+// ---------- 產品別／科別關鍵字比對 ----------
 function exhibitorText(e) {
   return [e.name_zh, e.name_en, e.description, ...(e.products || []), ...(e.tags || [])]
     .join(" ")
@@ -151,7 +154,7 @@ function exhibitorText(e) {
 }
 
 function computeLineMatches() {
-  for (const line of BIOTEQ_LINES) {
+  for (const line of PRODUCT_LINES) {
     const set = new Set();
     for (const e of EXHIBITORS) {
       const text = exhibitorText(e);
@@ -178,7 +181,7 @@ function buildEntrySection() {
     const card = document.createElement("div");
     card.className = "entry-card";
     card.dataset.dept = d.id;
-    card.innerHTML = `<div class="entry-icon">${d.icon}</div><div class="entry-name">${d.name}</div><div class="entry-count">${count} 家</div>`;
+    card.innerHTML = `<div class="entry-name">${d.name}</div><div class="entry-count">${count} 家</div>`;
     card.title = d.hint;
     card.onclick = () => applyDeptPreset(d.id);
     deptGrid.appendChild(card);
@@ -186,12 +189,12 @@ function buildEntrySection() {
 
   const lineGrid = $("line-grid");
   lineGrid.innerHTML = "";
-  for (const line of BIOTEQ_LINES) {
+  for (const line of PRODUCT_LINES) {
     const count = LINE_MATCHES[line.id].size;
     const card = document.createElement("div");
     card.className = "entry-card";
     card.dataset.line = line.id;
-    card.innerHTML = `<div class="entry-icon">${line.icon}</div><div class="entry-name">${line.name}</div><div class="entry-count">${count} 家</div>`;
+    card.innerHTML = `<div class="entry-name">${line.name}</div><div class="entry-count">${count} 家</div>`;
     card.title = line.desc;
     card.onclick = () => applyLinePreset(line.id);
     lineGrid.appendChild(card);
@@ -204,7 +207,7 @@ function buildEntrySection() {
     const card = document.createElement("div");
     card.className = "entry-card";
     card.dataset.spec = spec.id;
-    card.innerHTML = `<div class="entry-icon">${spec.icon}</div><div class="entry-name">${spec.name}</div><div class="entry-count">${count} 家</div>`;
+    card.innerHTML = `<div class="entry-name">${spec.name}</div><div class="entry-count">${count} 家</div>`;
     card.title = `關鍵字：${spec.keywords.join("、")}`;
     card.onclick = () => applySpecPreset(spec.id);
     specGrid.appendChild(card);
@@ -257,15 +260,15 @@ function refreshPresetBar() {
   const parts = [];
   if (ACTIVE_DEPT) {
     const d = DEPT_PRESETS.find((x) => x.id === ACTIVE_DEPT);
-    parts.push(`<strong>${d.icon} ${d.name}</strong>：${d.hint} <button class="btn small ghost" onclick="applyDeptPreset('${d.id}')">✕</button>`);
+    parts.push(`<strong>單位｜${d.name}</strong>：${d.hint} <button class="btn small ghost" onclick="applyDeptPreset('${d.id}')">取消</button>`);
   }
   if (ACTIVE_LINE) {
-    const l = BIOTEQ_LINES.find((x) => x.id === ACTIVE_LINE);
-    parts.push(`<strong>${l.icon} ${l.name}</strong>：${l.desc}（關鍵字「${l.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applyLinePreset('${l.id}')">✕</button>`);
+    const l = PRODUCT_LINES.find((x) => x.id === ACTIVE_LINE);
+    parts.push(`<strong>產品別｜${l.name}</strong>：${l.desc}（關鍵字「${l.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applyLinePreset('${l.id}')">取消</button>`);
   }
   if (ACTIVE_SPEC) {
     const s = HOSPITAL_SPECIALTIES.find((x) => x.id === ACTIVE_SPEC);
-    parts.push(`<strong>${s.icon} ${s.name}</strong>（關鍵字「${s.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applySpecPreset('${s.id}')">✕</button>`);
+    parts.push(`<strong>科別｜${s.name}</strong>（關鍵字「${s.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applySpecPreset('${s.id}')">取消</button>`);
   }
   if (parts.length) {
     bar.innerHTML = parts.join("<br/>");
@@ -338,6 +341,18 @@ function refreshPocketBtn() {
   $("btn-pocket-filter").classList.toggle("primary", POCKET_ONLY);
 }
 
+function setView(view) {
+  VIEW = view;
+  localStorage.setItem("medtec_view", view);
+  refreshViewToggle();
+  render();
+}
+
+function refreshViewToggle() {
+  $("view-cards").classList.toggle("on", VIEW === "cards");
+  $("view-table").classList.toggle("on", VIEW === "table");
+}
+
 function clearAll() {
   ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; ACTIVE_SPEC = ""; POCKET_ONLY = false;
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
@@ -390,11 +405,16 @@ function render() {
   const pocketCount = Object.values(STATE).filter((s) => s.pocket).length;
   $("stats").textContent =
     `共 ${EXHIBITORS.length} 家展商，符合條件 ${list.length} 家` +
-    (API_OK ? `｜⭐ 口袋名單 ${pocketCount} 家` : "");
+    (API_OK ? `｜口袋名單 ${pocketCount} 家` : "");
 
   const grid = $("grid");
   grid.innerHTML = "";
   $("empty").style.display = list.length ? "none" : "block";
+
+  if (VIEW === "table") {
+    if (list.length) grid.appendChild(renderTable(list));
+    return;
+  }
 
   // 依關聯分組（產品線或科別視角時）
   if ((ACTIVE_LINE || ACTIVE_SPEC) && list.length) {
@@ -422,6 +442,52 @@ function render() {
   }
 }
 
+// ---------- 列表檢視 ----------
+function renderTable(list) {
+  const wrap = document.createElement("div");
+  wrap.className = "table-wrap";
+  const table = document.createElement("table");
+  table.className = "listview";
+  table.innerHTML = `
+    <thead><tr>
+      <th></th><th>公司</th><th>攤位</th><th>分類</th><th>國家</th>
+      ${API_OK ? "<th>狀態</th><th>負責</th><th>紀錄</th>" : ""}
+      <th>連結</th>
+    </tr></thead>`;
+  const tbody = document.createElement("tbody");
+
+  for (const e of list) {
+    const st = getState(e.id);
+    const cat = CAT_MAP[e.category];
+    const statusColor = STATUS_COLORS[st.status] || "#8a8a82";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="row-star ${st.pocket ? "on" : ""}" title="口袋名單">${st.pocket ? "★" : "☆"}</span></td>
+      <td class="co"><div class="zh">${esc(e.name_zh)}</div><div class="en">${esc(e.name_en || "")}</div></td>
+      <td class="booth-cell">${esc(e.booth_no)}</td>
+      <td>${esc(cat ? cat.name_zh : e.category)}</td>
+      <td>${esc(e.country)}</td>
+      ${API_OK ? `
+      <td class="status-cell"><span class="status-dot" style="background:${statusColor};"></span>${esc(st.status)}</td>
+      <td>${esc(st.assignee || "—")}</td>
+      <td>${st.note_count || ""}</td>` : ""}
+      <td class="links-cell">
+        ${e.website ? `<a href="${e.website}" target="_blank" rel="noopener">官網</a>` : ""}
+        ${(e.pdfs || []).map((p, i) => `<a href="${p}" target="_blank" rel="noopener">型錄${e.pdfs.length > 1 ? i + 1 : ""}</a>`).join("")}
+        ${e.directory_url ? `<a href="${e.directory_url}" target="_blank" rel="noopener">展商頁</a>` : ""}
+      </td>`;
+    tr.onclick = (ev) => {
+      if (ev.target.closest("a")) return;
+      if (ev.target.closest(".row-star")) { togglePocket(e.id); return; }
+      openDetail(e.id);
+    };
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -437,25 +503,25 @@ function renderCard(e) {
       <span class="badge">${esc(cat ? cat.name_zh : e.category)}</span>
       <span class="badge booth">攤位 ${esc(e.booth_no)}</span>
       ${API_OK ? `<span class="badge status" style="background:${statusColor}1a; color:${statusColor}; border-color:${statusColor}55;">${esc(st.status)}</span>` : ""}
-      ${st.assignee ? `<span class="badge">👤 ${esc(st.assignee)}</span>` : ""}
+      ${st.assignee ? `<span class="badge">負責 ${esc(st.assignee)}</span>` : ""}
     </div>
     <div class="card-title-row">
       <h3>${esc(e.name_zh)}</h3>
-      <button class="star ${st.pocket ? "on" : ""}" title="加入/移出口袋名單">${st.pocket ? "⭐" : "☆"}</button>
+      <button class="star ${st.pocket ? "on" : ""}" title="加入/移出口袋名單">${st.pocket ? "★" : "☆"}</button>
     </div>
     <p class="name-en">${esc(e.name_en || "")} ${e.country ? "· " + esc(e.country) : ""}</p>
     <p class="desc">${esc((e.description || "").slice(0, 100))}${(e.description || "").length > 100 ? "…" : ""}</p>
     <div class="tags">${(e.products || []).slice(0, 3).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>
     <div class="card-footer">
       ${st.dept_tags.length ? st.dept_tags.map((t) => `<span class="dept-tag">${esc(t)}</span>`).join("") : ""}
-      <span class="note-count">${st.note_count ? "💬 " + st.note_count : ""}</span>
+      <span class="note-count">${st.note_count ? st.note_count + " 則紀錄" : ""}</span>
     </div>
     <div class="link-row">
-      ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">🌐 官網</a>` : ""}
-      ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">📄 型錄${e.pdfs.length > 1 ? i + 1 : ""}</a>`).join("")}
-      ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">🔗 展商頁</a>` : ""}
+      ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">官網</a>` : ""}
+      ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">型錄${e.pdfs.length > 1 ? i + 1 : ""}</a>`).join("")}
+      ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">展商頁</a>` : ""}
     </div>
-    <button class="ask">📝 查看 / 共筆</button>
+    <button class="ask">查看 / 共筆</button>
   `;
   card.querySelector("button.ask").onclick = () => openDetail(e.id);
   card.querySelector("button.star").onclick = (ev) => { ev.stopPropagation(); togglePocket(e.id); };
@@ -484,21 +550,21 @@ async function openDetail(id) {
   const cat = CAT_MAP[e.category];
   const modal = $("detail-modal");
 
-  const lineHits = BIOTEQ_LINES.filter((l) => LINE_MATCHES[l.id].has(id));
+  const lineHits = PRODUCT_LINES.filter((l) => LINE_MATCHES[l.id].has(id));
   const specHits = HOSPITAL_SPECIALTIES.filter((s) => SPEC_MATCHES[s.id].has(id));
 
   modal.innerHTML = `
     <div class="detail-head">
       <div>
-        <h2>${esc(e.name_zh)} <button class="star big ${st.pocket ? "on" : ""}" id="d-star">${st.pocket ? "⭐" : "☆"}</button></h2>
+        <h2>${esc(e.name_zh)} <button class="star big ${st.pocket ? "on" : ""}" id="d-star">${st.pocket ? "★" : "☆"}</button></h2>
         <p class="sub">${esc(e.name_en || "")}｜${esc(cat ? cat.name_zh : "")}｜攤位 ${esc(e.booth_no)}｜${esc(e.country)}</p>
         <p class="sub link-row">
-          ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">🌐 公司官網</a>` : ""}
-          ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">📄 型錄 PDF${e.pdfs.length > 1 ? " " + (i + 1) : ""}</a>`).join("")}
-          ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">🔗 官方展商頁</a>` : ""}
+          ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">公司官網</a>` : ""}
+          ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">型錄 PDF${e.pdfs.length > 1 ? " " + (i + 1) : ""}</a>`).join("")}
+          ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">官方展商頁</a>` : ""}
         </p>
-        ${lineHits.length ? `<p class="sub">🔗 邦特關聯：${lineHits.map((l) => l.icon + " " + l.name).join("、")}</p>` : ""}
-        ${specHits.length ? `<p class="sub">🩺 科別關聯：${specHits.map((s) => s.icon + " " + s.name).join("、")}</p>` : ""}
+        ${lineHits.length ? `<p class="sub">產品別關聯：${lineHits.map((l) => l.name).join("、")}</p>` : ""}
+        ${specHits.length ? `<p class="sub">科別關聯：${specHits.map((s) => s.name).join("、")}</p>` : ""}
       </div>
       <button class="btn small ghost" id="d-close">✕</button>
     </div>
@@ -534,7 +600,7 @@ async function openDetail(id) {
     </div>
 
     <hr/>
-    <h3 class="section-title">💬 團隊紀錄（任何人可新增、修改）</h3>
+    <h3 class="section-title">團隊紀錄（任何人可新增、修改）</h3>
     <div class="note-form">
       <select id="d-note-type">
         <option>現場紀錄</option>
@@ -546,8 +612,8 @@ async function openDetail(id) {
       <button class="btn primary small" id="d-note-add">送出</button>
     </div>
     <div id="d-notes" class="notes-list">載入中...</div>
-    <details id="d-history-wrap"><summary>🕐 修改歷程</summary><div id="d-history">載入中...</div></details>
-    ` : `<p class="sub">⚠️ 共筆後端未連線，僅供瀏覽。</p>`}
+    <details id="d-history-wrap"><summary>修改歷程</summary><div id="d-history">載入中...</div></details>
+    ` : `<p class="sub">共筆後端未連線，僅供瀏覽。</p>`}
   `;
 
   $("detail-overlay").classList.add("open");
