@@ -313,3 +313,33 @@ const COLLECTED_OPTIONS = [
   { id: "sample", label: "樣品" },
   { id: "quote", label: "報價" },
 ];
+
+// 觀展目標標籤（勾在每家展商上，展後匯出可按目標分組）
+const GOAL_OPTIONS = ["Cost Down", "第二供應商", "新材料", "新設備", "自動化", "AI"];
+
+// 資質確認（現場詢問後勾選）
+const QUAL_OPTIONS = [
+  { id: "iso13485", label: "ISO 13485" },
+  { id: "fda", label: "FDA" },
+  { id: "ce_mdr", label: "CE/MDR" },
+];
+
+// 展後供應商分類（回台彙整用）
+const POST_CLASS_OPTIONS = ["立即導入", "追蹤", "備用", "不採用"];
+const POST_CLASS_COLORS = { "立即導入": "#15803d", "追蹤": "#1d4ed8", "備用": "#8a8a82", "不採用": "#b45309" };
+
+// 技術快搜（欲尋找之技術清單，點了自動帶關鍵字搜尋；q 為實際比對字串，
+// 已對應展商資料用語，例如射出成型在資料中多寫作「注塑」）
+const TECH_SEARCHES = [
+  { label: "導管", q: "導管" },
+  { label: "擠出", q: "擠出" },
+  { label: "編織 Braiding", q: "編織" },
+  { label: "Tip Forming", q: "tip" },
+  { label: "射出", q: "注塑" },
+  { label: "矽膠", q: "矽膠" },
+  { label: "包裝", q: "包裝" },
+  { label: "檢測設備", q: "檢測" },
+];
+
+// 紀錄類型
+const NOTE_TYPES = ["現場紀錄", "想詢問的問題", "RFQ 需求", "索取資料備註", "後續追蹤"];

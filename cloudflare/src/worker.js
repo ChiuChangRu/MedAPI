@@ -25,6 +25,9 @@ const SCHEMA = [
     assignee TEXT DEFAULT '',
     dept_tags TEXT DEFAULT '[]',
     collected TEXT DEFAULT '[]',
+    goal_tags TEXT DEFAULT '[]',
+    quals TEXT DEFAULT '[]',
+    post_class TEXT DEFAULT '',
     pocket INTEGER DEFAULT 0,
     updated_by TEXT DEFAULT '',
     updated_at TEXT
@@ -51,11 +54,25 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
 ];
 
+// 後續新增的欄位（既有資料表用 ALTER 補上，新表已含在下方 MIGRATIONS 對既有表無害）
+const MIGRATIONS = [
+  `ALTER TABLE exhibitor_state ADD COLUMN goal_tags TEXT DEFAULT '[]'`,
+  `ALTER TABLE exhibitor_state ADD COLUMN quals TEXT DEFAULT '[]'`,
+  `ALTER TABLE exhibitor_state ADD COLUMN post_class TEXT DEFAULT ''`,
+];
+
 let schemaReady = false;
 
 async function ensureSchema(db) {
   if (schemaReady) return;
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
+  for (const sql of MIGRATIONS) {
+    try {
+      await db.prepare(sql).run();
+    } catch (err) {
+      if (!String(err.message || err).includes("duplicate column")) throw err;
+    }
+  }
   schemaReady = true;
 }
 
@@ -81,8 +98,12 @@ async function logHistory(db, exhibitorId, author, action, detail) {
     .run();
 }
 
-const STATE_FIELDS = ["status", "assignee", "dept_tags", "collected", "pocket"];
-const STATE_LABELS = { status: "拜訪狀態", assignee: "負責人", dept_tags: "部門標籤", collected: "索取資料", pocket: "口袋名單" };
+const STATE_FIELDS = ["status", "assignee", "dept_tags", "collected", "pocket", "goal_tags", "quals", "post_class"];
+const JSON_FIELDS = ["dept_tags", "collected", "goal_tags", "quals"];
+const STATE_LABELS = {
+  status: "拜訪狀態", assignee: "負責人", dept_tags: "部門標籤", collected: "索取資料",
+  pocket: "口袋名單", goal_tags: "觀展目標", quals: "資質確認", post_class: "展後分類",
+};
 
 async function handleApi(request, env, url) {
   const db = env.DB;
@@ -123,6 +144,9 @@ async function handleApi(request, env, url) {
         assignee: s.assignee,
         dept_tags: JSON.parse(s.dept_tags || "[]"),
         collected: JSON.parse(s.collected || "[]"),
+        goal_tags: JSON.parse(s.goal_tags || "[]"),
+        quals: JSON.parse(s.quals || "[]"),
+        post_class: s.post_class || "",
         pocket: !!s.pocket,
         updated_by: s.updated_by,
         updated_at: s.updated_at,
@@ -130,7 +154,7 @@ async function handleApi(request, env, url) {
       };
     }
     for (const id of Object.keys(countMap)) {
-      if (!out[id]) out[id] = { status: "未排定", assignee: "", dept_tags: [], collected: [], pocket: false, note_count: countMap[id] };
+      if (!out[id]) out[id] = { status: "未排定", assignee: "", dept_tags: [], collected: [], goal_tags: [], quals: [], post_class: "", pocket: false, note_count: countMap[id] };
     }
     return json(out);
   }
@@ -146,7 +170,7 @@ async function handleApi(request, env, url) {
     for (const f of STATE_FIELDS) {
       if (!(f in body)) continue;
       let v = body[f];
-      if (f === "dept_tags" || f === "collected") v = JSON.stringify(Array.isArray(v) ? v : []);
+      if (JSON_FIELDS.includes(f)) v = JSON.stringify(Array.isArray(v) ? v : []);
       if (f === "pocket") v = v ? 1 : 0;
       updates[f] = v;
     }
@@ -173,6 +197,9 @@ async function handleApi(request, env, url) {
       assignee: row.assignee,
       dept_tags: JSON.parse(row.dept_tags || "[]"),
       collected: JSON.parse(row.collected || "[]"),
+      goal_tags: JSON.parse(row.goal_tags || "[]"),
+      quals: JSON.parse(row.quals || "[]"),
+      post_class: row.post_class || "",
       pocket: !!row.pocket,
       updated_by: row.updated_by,
       updated_at: row.updated_at,
@@ -256,8 +283,9 @@ async function handleApi(request, env, url) {
     }
 
     const COLLECTED_LABELS = { catalog: "型錄", card: "名片", sample: "樣品", quote: "報價" };
+    const QUAL_LABELS = { iso13485: "ISO 13485", fda: "FDA", ce_mdr: "CE/MDR" };
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = ["﻿廠商,攤位,館別,拜訪狀態,負責人,部門標籤,索取資料,口袋名單,紀錄數,所有紀錄"];
+    const lines = ["﻿廠商,攤位,館別,拜訪狀態,展後分類,觀展目標,資質確認,負責人,部門標籤,索取資料,口袋名單,紀錄數,所有紀錄"];
 
     const allIds = new Set([...states.map((s) => s.exhibitor_id), ...Object.keys(notesByEx)]);
     for (const id of allIds) {
@@ -266,12 +294,16 @@ async function handleApi(request, env, url) {
       const exNotes = notesByEx[id] || [];
       const noteText = exNotes.map((n) => `[${n.created_at} ${n.author}/${n.type}] ${n.content}`).join("\n");
       const collected = JSON.parse(s.collected || "[]").map((c) => COLLECTED_LABELS[c] || c).join("、");
+      const quals = JSON.parse(s.quals || "[]").map((q) => QUAL_LABELS[q] || q).join("、");
       lines.push(
         [
           esc(ex.name_zh || id),
           esc(ex.booth_no || ""),
           esc(ex.hall || ""),
           esc(s.status || "未排定"),
+          esc(s.post_class || ""),
+          esc(JSON.parse(s.goal_tags || "[]").join("、")),
+          esc(quals),
           esc(s.assignee || ""),
           esc(JSON.parse(s.dept_tags || "[]").join("、")),
           esc(collected),

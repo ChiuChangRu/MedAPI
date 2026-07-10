@@ -57,8 +57,9 @@ async function init() {
   buildEntrySection();
   buildCategoryChips();
   buildSelectOptions();
+  buildTechSearch();
 
-  $("search").addEventListener("input", render);
+  $("search").addEventListener("input", () => { refreshTechChips(); render(); });
   $("hall-filter").addEventListener("change", render);
   $("country-filter").addEventListener("change", render);
   $("status-filter").addEventListener("change", render);
@@ -371,6 +372,32 @@ function buildSelectOptions() {
   }
 }
 
+function buildTechSearch() {
+  const wrap = $("tech-search");
+  wrap.innerHTML = '<span class="recommend-label">技術快搜：</span>';
+  for (const t of TECH_SEARCHES) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = t.label;
+    chip.onclick = () => {
+      const search = $("search");
+      const active = search.value.trim() === t.q;
+      search.value = active ? "" : t.q;
+      refreshTechChips();
+      render();
+    };
+    chip.dataset.q = t.q;
+    wrap.appendChild(chip);
+  }
+}
+
+function refreshTechChips() {
+  const current = $("search").value.trim();
+  document.querySelectorAll("#tech-search .chip").forEach((c) => {
+    c.classList.toggle("active", c.dataset.q === current);
+  });
+}
+
 function refreshPocketBtn() {
   $("btn-pocket-filter").classList.toggle("primary", POCKET_ONLY);
   $("btn-visit-filter").classList.toggle("primary", VISIT_ONLY);
@@ -393,12 +420,12 @@ function clearAll() {
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
   $("assignee-filter").value = "";
   $("sort-select").value = "default";
-  refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); render();
+  refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); refreshTechChips(); render();
 }
 
 // ---------- 主列表 ----------
 function getState(id) {
-  return STATE[id] || { status: "未排定", assignee: "", dept_tags: [], collected: [], pocket: false, note_count: 0 };
+  return STATE[id] || { status: "未排定", assignee: "", dept_tags: [], collected: [], goal_tags: [], quals: [], post_class: "", pocket: false, note_count: 0 };
 }
 
 function filtered() {
@@ -439,10 +466,13 @@ function render() {
     list = [...list].sort((a, b) => getState(b.id).note_count - getState(a.id).note_count);
   }
 
-  const pocketCount = Object.values(STATE).filter((s) => s.pocket).length;
+  const allStates = Object.values(STATE);
+  const pocketCount = allStates.filter((s) => s.pocket).length;
+  const kpi = { "已拜訪": 0, "已排定": 0, "需追蹤": 0 };
+  for (const s of allStates) if (s.status in kpi) kpi[s.status]++;
   $("stats").textContent =
     `共 ${EXHIBITORS.length} 家展商，符合條件 ${list.length} 家` +
-    (API_OK ? `｜口袋名單 ${pocketCount} 家` : "");
+    (API_OK ? `｜已拜訪 ${kpi["已拜訪"]}・已排定 ${kpi["已排定"]}・需追蹤 ${kpi["需追蹤"]}｜口袋名單 ${pocketCount} 家` : "");
 
   const grid = $("grid");
   grid.innerHTML = "";
@@ -488,7 +518,7 @@ function renderTable(list) {
   table.innerHTML = `
     <thead><tr>
       <th></th><th>公司</th><th>攤位</th><th>分類</th><th>國家</th>
-      ${API_OK ? "<th>狀態</th><th>負責</th><th>紀錄</th>" : ""}
+      ${API_OK ? "<th>狀態</th><th>展後</th><th>目標</th><th>負責</th><th>紀錄</th>" : ""}
       <th>連結</th>
     </tr></thead>`;
   const tbody = document.createElement("tbody");
@@ -506,6 +536,8 @@ function renderTable(list) {
       <td>${esc(e.country)}</td>
       ${API_OK ? `
       <td class="status-cell"><span class="status-dot" style="background:${statusColor};"></span>${esc(st.status)}</td>
+      <td class="status-cell">${st.post_class ? `<span class="status-dot" style="background:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"};"></span>${esc(st.post_class)}` : "—"}</td>
+      <td>${st.goal_tags.length ? st.goal_tags.map((t) => `<span class="goal-tag">${esc(t)}</span>`).join(" ") : "—"}</td>
       <td>${esc(st.assignee || "—")}</td>
       <td>${st.note_count || ""}</td>` : ""}
       <td class="links-cell">
@@ -542,6 +574,7 @@ function renderCard(e) {
       <span class="badge">${esc(cat ? cat.name_zh : e.category)}</span>
       <span class="badge booth">攤位 ${esc(e.booth_no)}</span>
       ${API_OK ? `<span class="badge status" style="background:${statusColor}1a; color:${statusColor}; border-color:${statusColor}55;">${esc(st.status)}</span>` : ""}
+      ${st.post_class ? `<span class="badge status" style="background:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"}1a; color:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"}; border-color:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"}55;">${esc(st.post_class)}</span>` : ""}
       ${st.assignee ? `<span class="badge">負責 ${esc(st.assignee)}</span>` : ""}
     </div>
     <div class="card-title-row">
@@ -552,6 +585,7 @@ function renderCard(e) {
     <p class="desc">${esc((e.description || "").slice(0, 100))}${(e.description || "").length > 100 ? "…" : ""}</p>
     <div class="tags">${(e.products || []).slice(0, 3).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>
     <div class="card-footer">
+      ${st.goal_tags.length ? st.goal_tags.map((t) => `<span class="goal-tag">${esc(t)}</span>`).join("") : ""}
       ${st.dept_tags.length ? st.dept_tags.map((t) => `<span class="dept-tag">${esc(t)}</span>`).join("") : ""}
       <span class="note-count">${st.note_count ? st.note_count + " 則紀錄" : ""}</span>
     </div>
@@ -636,16 +670,32 @@ async function openDetail(id) {
           ${COLLECTED_OPTIONS.map((c) => `<label class="check-chip ${st.collected.includes(c.id) ? "on" : ""}"><input type="checkbox" value="${c.id}" ${st.collected.includes(c.id) ? "checked" : ""}/>${c.label}</label>`).join("")}
         </div>
       </div>
+      <div>
+        <label>觀展目標（為什麼看這家）</label>
+        <div class="check-row" id="d-goal-tags">
+          ${GOAL_OPTIONS.map((g) => `<label class="check-chip ${st.goal_tags.includes(g) ? "on" : ""}"><input type="checkbox" value="${esc(g)}" ${st.goal_tags.includes(g) ? "checked" : ""}/>${esc(g)}</label>`).join("")}
+        </div>
+      </div>
+      <div>
+        <label>資質確認（現場詢問後勾選）</label>
+        <div class="check-row" id="d-quals">
+          ${QUAL_OPTIONS.map((q) => `<label class="check-chip ${st.quals.includes(q.id) ? "on" : ""}"><input type="checkbox" value="${q.id}" ${st.quals.includes(q.id) ? "checked" : ""}/>${q.label}</label>`).join("")}
+        </div>
+      </div>
+      <div>
+        <label>展後分類（回台彙整用）</label>
+        <select id="d-post-class">
+          <option value="">— 未分類 —</option>
+          ${POST_CLASS_OPTIONS.map((p) => `<option ${p === st.post_class ? "selected" : ""}>${p}</option>`).join("")}
+        </select>
+      </div>
     </div>
 
     <hr/>
     <h3 class="section-title">團隊紀錄（任何人可新增、修改）</h3>
     <div class="note-form">
       <select id="d-note-type">
-        <option>現場紀錄</option>
-        <option>想詢問的問題</option>
-        <option>索取資料備註</option>
-        <option>後續追蹤</option>
+        ${NOTE_TYPES.map((t) => `<option>${t}</option>`).join("")}
       </select>
       <textarea id="d-note-content" placeholder="想請去的同事代為詢問什麼？現場聊到什麼？要跟進什麼？"></textarea>
       <button class="btn primary small" id="d-note-add">送出</button>
@@ -666,6 +716,9 @@ async function openDetail(id) {
   $("d-assignee").onchange = () => saveState(id, { assignee: $("d-assignee").value });
   bindCheckRow("d-dept-tags", (values) => saveState(id, { dept_tags: values }));
   bindCheckRow("d-collected", (values) => saveState(id, { collected: values }));
+  bindCheckRow("d-goal-tags", (values) => saveState(id, { goal_tags: values }));
+  bindCheckRow("d-quals", (values) => saveState(id, { quals: values }));
+  $("d-post-class").onchange = () => saveState(id, { post_class: $("d-post-class").value });
   $("d-note-add").onclick = () => addNote(id);
 
   loadNotes(id);
