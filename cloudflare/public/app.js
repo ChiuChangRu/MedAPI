@@ -91,7 +91,7 @@ async function connectBackend() {
     if (!pin() && MEMBERS !== null) {
       // TEAM_PIN 未設定（開發模式）也需要選名字
     }
-    if (!me()) { showLogin(); } else { $("user-chip").textContent = me(); renderRecommendBar(); }
+    if (!me()) { showLogin(); } else { document.body.classList.remove("locked"); $("user-chip").textContent = me(); renderRecommendBar(); }
     STATE = await api("/state");
     render();
   } catch (err) {
@@ -103,6 +103,7 @@ async function connectBackend() {
 
 // ---------- 登入 ----------
 function showLogin() {
+  document.body.classList.add("locked");
   $("login-overlay").classList.add("open");
   const deptSel = $("login-dept");
   deptSel.innerHTML = '<option value="">— 選擇單位 —</option>' +
@@ -149,6 +150,7 @@ async function doLogin() {
     localStorage.setItem("medtec_user", name);
     $("user-chip").textContent = name;
     renderRecommendBar();
+    document.body.classList.remove("locked");
     $("login-overlay").classList.remove("open");
     API_OK = true;
     $("offline-banner").style.display = "none";

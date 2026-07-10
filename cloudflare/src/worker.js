@@ -509,11 +509,12 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname.startsWith("/api/")) {
-      // PIN 驗證：TEAM_PIN 未設定時放行（開發模式）
-      if (env.TEAM_PIN) {
-        const pin = request.headers.get("x-team-pin") || url.searchParams.get("pin") || "";
-        if (pin !== env.TEAM_PIN) return bad("PIN 錯誤或未提供", 401);
+      // PIN 驗證：一律要求正確 PIN；TEAM_PIN 未設定時全部拒絕（fail-closed）
+      if (!env.TEAM_PIN) {
+        return bad("系統尚未設定團隊 PIN：請至 Worker 的 Settings → Variables and Secrets 新增 Secret「TEAM_PIN」", 401);
       }
+      const pin = request.headers.get("x-team-pin") || url.searchParams.get("pin") || "";
+      if (pin !== env.TEAM_PIN) return bad("PIN 錯誤或未提供", 401);
       try {
         return await handleApi(request, env, url);
       } catch (err) {

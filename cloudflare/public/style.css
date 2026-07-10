@@ -64,6 +64,14 @@ header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 
 .container { max-width: 1240px; margin: 20px auto; padding: 0 16px 60px; }
 
+/* 未登入時鎖定內容 */
+body.locked .container,
+body.locked header.top .header-actions {
+  filter: blur(7px);
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ===== 三欄位入口 ===== */
 .entry-section {
   display: grid;
