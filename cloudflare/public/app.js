@@ -832,8 +832,17 @@ async function uploadFile(id, input) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || `HTTP ${res.status}`);
     }
+    const uploaded = await res.json();
     status.textContent = "";
     showToast("已上傳");
+    // 上傳完直接寫說明（可留空跳過，之後也能補）
+    const caption = prompt("為這個檔案寫一段說明（可留空，之後也能補）：", "");
+    if (caption && caption.trim()) {
+      await api(`/attachments/${uploaded.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ caption: caption.trim(), author: me() }),
+      }).catch(() => {});
+    }
     loadAttachments(id);
     loadHistory(id);
   } catch (err) {
@@ -857,11 +866,12 @@ async function loadAttachments(id) {
       } else if ((a.mime || "").startsWith("video/")) {
         preview = `<video controls preload="none" src="${url}" class="att-video"></video>`;
       }
-      return `<div class="note" data-id="${a.id}">
+      return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}">
         <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB
-          <span class="note-actions"><a href="#" data-act="del-att">刪除</a></span>
+          <span class="note-actions"><a href="#" data-act="cap-att">${a.caption ? "編輯說明" : "加說明"}</a> <a href="#" data-act="del-att">刪除</a></span>
         </div>
         ${preview}
+        ${a.caption ? `<div class="att-caption">${esc(a.caption)}</div>` : ""}
       </div>`;
     }).join("");
     wrap.querySelectorAll('a[data-act="del-att"]').forEach((a) => {
@@ -873,6 +883,21 @@ async function loadAttachments(id) {
           await api(`/attachments/${attId}?author=${encodeURIComponent(me())}`, { method: "DELETE" });
           loadAttachments(id); loadHistory(id);
         } catch (err) { showToast("刪除失敗：" + err.message); }
+      };
+    });
+    wrap.querySelectorAll('a[data-act="cap-att"]').forEach((a) => {
+      a.onclick = async (ev) => {
+        ev.preventDefault();
+        const noteEl = a.closest(".note");
+        const caption = prompt("這個檔案的說明：", noteEl.dataset.caption || "");
+        if (caption === null) return;
+        try {
+          await api(`/attachments/${noteEl.dataset.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ caption: caption.trim(), author: me() }),
+          });
+          loadAttachments(id); loadHistory(id);
+        } catch (err) { showToast("儲存失敗：" + err.message); }
       };
     });
   } catch {

@@ -58,6 +58,7 @@ const SCHEMA = [
     key TEXT NOT NULL,
     size INTEGER DEFAULT 0,
     mime TEXT DEFAULT '',
+    caption TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
@@ -70,6 +71,7 @@ const MIGRATIONS = [
   `ALTER TABLE exhibitor_state ADD COLUMN goal_tags TEXT DEFAULT '[]'`,
   `ALTER TABLE exhibitor_state ADD COLUMN quals TEXT DEFAULT '[]'`,
   `ALTER TABLE exhibitor_state ADD COLUMN post_class TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN caption TEXT DEFAULT ''`,
 ];
 
 let schemaReady = false;
@@ -168,6 +170,19 @@ async function handleApi(request, env, url) {
       },
     });
   }
+  const attCapMatch = path.match(/^\/attachments\/(\d+)$/);
+  if (attCapMatch && method === "PUT") {
+    const id = Number(attCapMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const caption = (body.caption || "").trim();
+    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到附件", 404);
+    await db.prepare("UPDATE attachments SET caption = ? WHERE id = ?").bind(caption, id).run();
+    await logHistory(db, old.exhibitor_id, author, "附件說明", `${old.filename}：「${caption.slice(0, 80)}」`);
+    return json({ ok: true });
+  }
+
   const attDelMatch = path.match(/^\/attachments\/(\d+)$/);
   if (attDelMatch && method === "DELETE") {
     const id = Number(attDelMatch[1]);
@@ -388,7 +403,7 @@ async function handleApi(request, env, url) {
         .map((n) => `<div class="note"><span class="meta">[${h(n.type)}｜${h(n.created_at)}]</span> ${h(n.content)}</div>`)
         .join("");
       const atts = (attsByEx[id] || [])
-        .map((a) => `<li>${h(a.filename)}（${(a.size / 1024 / 1024).toFixed(1)}MB）</li>`)
+        .map((a) => `<li>${h(a.filename)}（${(a.size / 1024 / 1024).toFixed(1)}MB）${a.caption ? `──${h(a.caption)}` : ""}</li>`)
         .join("");
       const facts = [
         st.status && st.status !== "未排定" ? `狀態：${h(st.status)}` : "",
