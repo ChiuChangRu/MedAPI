@@ -236,6 +236,21 @@ header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 
 .badge.status { font-weight: 600; }
 
+.badge.visit {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.visit-info {
+  background: #fdf0f1;
+  border: 1px solid #f3c2c9;
+  border-radius: 4px;
+  padding: 6px 10px;
+  color: var(--accent-dark) !important;
+}
+
 .card-title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .card h3 { margin: 2px 0 0; font-size: 15px; line-height: 1.4; }
 

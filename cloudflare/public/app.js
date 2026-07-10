@@ -15,6 +15,8 @@ let ACTIVE_LINE = "";
 let ACTIVE_DEPT = "";
 let ACTIVE_SPEC = "";
 let POCKET_ONLY = false;
+let VISIT_ONLY = false;
+let KEY_VISIT_MAP = {};     // exhibitorId -> KEY_VISITS 項目
 
 let CURRENT_ID = null;      // detail modal 顯示中的展商
 let VIEW = localStorage.getItem("medtec_view") || "cards";
@@ -64,6 +66,7 @@ async function init() {
   $("status-filter").addEventListener("change", render);
   $("sort-select").addEventListener("change", render);
   $("btn-pocket-filter").onclick = () => { POCKET_ONLY = !POCKET_ONLY; refreshPocketBtn(); render(); };
+  $("btn-visit-filter").onclick = () => { VISIT_ONLY = !VISIT_ONLY; refreshPocketBtn(); render(); };
   $("view-cards").onclick = () => setView("cards");
   $("view-table").onclick = () => setView("table");
   refreshViewToggle();
@@ -169,6 +172,13 @@ function computeLineMatches() {
       if (spec.keywords.some((k) => text.includes(k.toLowerCase()))) set.add(e.id);
     }
     SPEC_MATCHES[spec.id] = set;
+  }
+  for (const v of KEY_VISITS) {
+    for (const e of EXHIBITORS) {
+      if (e.name_zh.includes(v.match) || (e.name_en || "").includes(v.match)) {
+        KEY_VISIT_MAP[e.id] = v;
+      }
+    }
   }
 }
 
@@ -339,6 +349,7 @@ function buildSelectOptions() {
 
 function refreshPocketBtn() {
   $("btn-pocket-filter").classList.toggle("primary", POCKET_ONLY);
+  $("btn-visit-filter").classList.toggle("primary", VISIT_ONLY);
 }
 
 function setView(view) {
@@ -354,7 +365,7 @@ function refreshViewToggle() {
 }
 
 function clearAll() {
-  ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; ACTIVE_SPEC = ""; POCKET_ONLY = false;
+  ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; ACTIVE_SPEC = ""; POCKET_ONLY = false; VISIT_ONLY = false;
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
   $("sort-select").value = "default";
   refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); render();
@@ -383,6 +394,7 @@ function filtered() {
     if (country && e.country !== country) return false;
     const st = getState(e.id);
     if (POCKET_ONLY && !st.pocket) return false;
+    if (VISIT_ONLY && !KEY_VISIT_MAP[e.id]) return false;
     if (statusF && st.status !== statusF) return false;
     if (keywords.length) {
       const text = exhibitorText(e);
@@ -463,7 +475,7 @@ function renderTable(list) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><span class="row-star ${st.pocket ? "on" : ""}" title="口袋名單">${st.pocket ? "★" : "☆"}</span></td>
-      <td class="co"><div class="zh">${esc(e.name_zh)}</div><div class="en">${esc(e.name_en || "")}</div></td>
+      <td class="co"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${esc(e.name_zh)}</div><div class="en">${esc(e.name_en || "")}</div></td>
       <td class="booth-cell">${esc(e.booth_no)}</td>
       <td>${esc(cat ? cat.name_zh : e.category)}</td>
       <td>${esc(e.country)}</td>
@@ -498,8 +510,10 @@ function renderCard(e) {
   card.className = "card";
   const cat = CAT_MAP[e.category];
   const statusColor = STATUS_COLORS[st.status] || "#94a3b8";
+  const visit = KEY_VISIT_MAP[e.id];
   card.innerHTML = `
     <div class="badge-row">
+      ${visit ? `<span class="badge visit">行程重點</span>` : ""}
       <span class="badge">${esc(cat ? cat.name_zh : e.category)}</span>
       <span class="badge booth">攤位 ${esc(e.booth_no)}</span>
       ${API_OK ? `<span class="badge status" style="background:${statusColor}1a; color:${statusColor}; border-color:${statusColor}55;">${esc(st.status)}</span>` : ""}
@@ -552,6 +566,7 @@ async function openDetail(id) {
 
   const lineHits = PRODUCT_LINES.filter((l) => LINE_MATCHES[l.id].has(id));
   const specHits = HOSPITAL_SPECIALTIES.filter((s) => SPEC_MATCHES[s.id].has(id));
+  const visit = KEY_VISIT_MAP[id];
 
   modal.innerHTML = `
     <div class="detail-head">
@@ -563,6 +578,7 @@ async function openDetail(id) {
           ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">型錄 PDF${e.pdfs.length > 1 ? " " + (i + 1) : ""}</a>`).join("")}
           ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">官方展商頁</a>` : ""}
         </p>
+        ${visit ? `<p class="sub visit-info"><strong>行程重點</strong>：${esc(visit.when)}${visit.contact ? `｜${esc(visit.contact)}` : ""}${visit.note ? `｜${esc(visit.note)}` : ""}</p>` : ""}
         ${lineHits.length ? `<p class="sub">產品別關聯：${lineHits.map((l) => l.name).join("、")}</p>` : ""}
         ${specHits.length ? `<p class="sub">科別關聯：${specHits.map((s) => s.name).join("、")}</p>` : ""}
       </div>
