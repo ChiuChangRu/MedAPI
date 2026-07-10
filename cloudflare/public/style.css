@@ -36,16 +36,6 @@ header.top h1 {
   letter-spacing: 0.02em;
 }
 
-header.top h1::before {
-  content: "MEDTEC CHINA 2026";
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  opacity: 0.85;
-  margin-bottom: 6px;
-}
-
 header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 
 .header-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -339,9 +329,21 @@ table.listview td {
   vertical-align: top;
 }
 
+table.listview th.sortable { cursor: pointer; user-select: none; }
+table.listview th.sortable:hover { color: var(--accent); }
+
 table.listview tbody tr { cursor: pointer; }
 table.listview tbody tr:hover { background: #fafaf8; }
 table.listview tr:last-child td { border-bottom: none; }
+
+/* 已有團隊紀錄/分配的列：差異化顯示 */
+table.listview tbody tr.has-data { background: #fdf7f7; }
+table.listview tbody tr.has-data td:first-child { border-left: 3px solid var(--accent); }
+table.listview tbody tr.has-data:hover { background: #fbeef0; }
+.data-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); vertical-align: middle; margin-left: 4px;
+}
 
 td.co .zh { font-weight: 500; }
 td.co .en { font-size: 11px; color: var(--text-muted); }
@@ -451,3 +453,33 @@ header .btn.ghost { color: #fff; border-color: rgba(255,255,255,0.4); }
   pointer-events: none; transition: opacity 0.2s; z-index: 60;
 }
 .toast.show { opacity: 1; }
+
+/* ===== 附件 ===== */
+.upload-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.upload-row label { margin: 0; cursor: pointer; }
+.att-thumb { max-width: 180px; max-height: 140px; border-radius: 4px; border: 1px solid var(--border); display: block; }
+.att-video { max-width: 100%; max-height: 240px; border-radius: 4px; }
+
+/* ===== 手機版面 ===== */
+@media (max-width: 700px) {
+  header.top { padding: 14px 14px; }
+  header.top h1 { font-size: 16px; }
+  header.top p { font-size: 11px; }
+  .header-actions { gap: 6px; }
+  .header-actions .btn { padding: 6px 9px; font-size: 12px; }
+  .user-chip { padding: 5px 10px; font-size: 12px; }
+
+  .container { margin: 12px auto; padding: 0 10px 40px; }
+  .entry-block { padding: 12px; }
+  .dept-grid, .line-grid { grid-template-columns: repeat(2, 1fr); }
+  .controls select { max-width: none; flex: 1; min-width: 40%; }
+
+  /* 精簡欄位：手機只留 星號/公司/攤位/狀態/負責 */
+  .col-cat, .col-country, .col-links, .col-goal, .col-post, .col-notes { display: none; }
+  table.listview { min-width: 0; }
+  table.listview th, table.listview td { padding: 8px 6px; }
+
+  .overlay { padding: 6px; }
+  .modal { padding: 14px; max-height: 96vh; }
+  .state-grid { grid-template-columns: 1fr; }
+}

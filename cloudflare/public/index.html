@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Medtec China 2026 展商作戰地圖</title>
+<title>2026 上海 Medtec 醫療器材展參展管理系統</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>" />
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -12,11 +12,13 @@
   <div class="inner">
     <div class="header-row">
       <div>
-        <h1 id="event-title">展商作戰地圖</h1>
+        <h1 id="event-title">2026 上海 Medtec 醫療器材展參展管理系統</h1>
         <p id="event-sub">載入中...</p>
       </div>
       <div class="header-actions">
         <span class="user-chip" id="user-chip" title="點擊切換使用者">未登入</span>
+        <button class="btn small ghost" id="btn-my-list">我的清單</button>
+        <button class="btn small ghost" id="btn-my-report">我的報告</button>
         <button class="btn small ghost" id="btn-activity">團隊動態</button>
         <button class="btn small ghost" id="btn-export">匯出 CSV</button>
       </div>
@@ -57,15 +59,6 @@
     <select id="assignee-filter">
       <option value="">全部負責人</option>
     </select>
-    <select id="sort-select">
-      <option value="default">預設排序</option>
-      <option value="booth">依館別攤位（排路線）</option>
-      <option value="notes">依紀錄數</option>
-    </select>
-    <div class="view-toggle">
-      <button id="view-cards" class="on">卡片</button>
-      <button id="view-table">列表</button>
-    </div>
     <button class="btn small" id="btn-visit-filter">行程重點</button>
     <button class="btn small" id="btn-pocket-filter">★ 口袋名單</button>
     <button class="btn small ghost" id="btn-clear">清除全部條件</button>

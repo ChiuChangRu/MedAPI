@@ -7,6 +7,7 @@ let LINE_MATCHES = {};      // lineId -> Set(exhibitorId)
 let STATE = {};             // exhibitorId -> 共筆狀態
 let MEMBERS = [];
 let API_OK = false;
+let UPLOADS_ENABLED = false;
 
 // 篩選條件（單位、產品／科別兩個維度可交叉組合）
 let ACTIVE_CATS = new Set();
@@ -17,7 +18,6 @@ let VISIT_ONLY = false;
 let KEY_VISIT_MAP = {};     // exhibitorId -> KEY_VISITS 項目
 
 let CURRENT_ID = null;      // detail modal 顯示中的展商
-let VIEW = localStorage.getItem("medtec_view") || "cards";
 
 const $ = (id) => document.getElementById(id);
 
@@ -63,12 +63,10 @@ async function init() {
   $("hall-filter").addEventListener("change", render);
   $("country-filter").addEventListener("change", render);
   $("status-filter").addEventListener("change", render);
-  $("sort-select").addEventListener("change", render);
   $("btn-pocket-filter").onclick = () => { POCKET_ONLY = !POCKET_ONLY; refreshPocketBtn(); render(); };
   $("btn-visit-filter").onclick = () => { VISIT_ONLY = !VISIT_ONLY; refreshPocketBtn(); render(); };
-  $("view-cards").onclick = () => setView("cards");
-  $("view-table").onclick = () => setView("table");
-  refreshViewToggle();
+  $("btn-my-list").onclick = openMyList;
+  $("btn-my-report").onclick = openMyReport;
   $("btn-clear").onclick = clearAll;
   $("btn-export").onclick = exportCsv;
   $("assignee-filter").addEventListener("change", render);
@@ -89,6 +87,7 @@ async function connectBackend() {
     MEMBERS = await api("/members");
     API_OK = true;
     $("offline-banner").style.display = "none";
+    try { UPLOADS_ENABLED = (await api("/config")).uploads; } catch { UPLOADS_ENABLED = false; }
     if (!pin() && MEMBERS !== null) {
       // TEAM_PIN 未設定（開發模式）也需要選名字
     }
@@ -403,23 +402,28 @@ function refreshPocketBtn() {
   $("btn-visit-filter").classList.toggle("primary", VISIT_ONLY);
 }
 
-function setView(view) {
-  VIEW = view;
-  localStorage.setItem("medtec_view", view);
-  refreshViewToggle();
+// 我的清單：指派給我的廠商，依攤位排路線
+function openMyList() {
+  if (!me()) { showLogin(); return; }
+  clearAll();
+  $("assignee-filter").value = me();
+  SORT_KEY = "booth"; SORT_DIR = 1;
   render();
+  $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+  showToast(`我的清單：指派給 ${me()} 的廠商（依攤位排序）`);
 }
 
-function refreshViewToggle() {
-  $("view-cards").classList.toggle("on", VIEW === "cards");
-  $("view-table").classList.toggle("on", VIEW === "table");
+// 我的報告：開啟個人參訪報告頁（可列印存 PDF）
+function openMyReport() {
+  if (!me()) { showLogin(); return; }
+  const url = `/api/report?author=${encodeURIComponent(me())}&pin=${encodeURIComponent(pin())}`;
+  window.open(url, "_blank");
 }
 
 function clearAll() {
   ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; POCKET_ONLY = false; VISIT_ONLY = false;
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
   $("assignee-filter").value = "";
-  $("sort-select").value = "default";
   refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); refreshTechChips(); render();
 }
 
@@ -457,14 +461,37 @@ function filtered() {
   });
 }
 
+// ---------- 排序 ----------
+let SORT_KEY = "booth";
+let SORT_DIR = 1; // 1 升冪, -1 降冪
+
+const SORT_COLUMNS = [
+  { key: "pocket", label: "★", get: (e, st) => (st.pocket ? 0 : 1) },
+  { key: "name", label: "公司", get: (e) => e.name_zh },
+  { key: "booth", label: "攤位", get: (e) => e.booth_no || "" },
+  { key: "cat", label: "分類", get: (e) => (CAT_MAP[e.category] ? CAT_MAP[e.category].name_zh : ""), cls: "col-cat" },
+  { key: "country", label: "國家", get: (e) => e.country, cls: "col-country" },
+  { key: "status", label: "狀態", get: (e, st) => STATUS_OPTIONS.indexOf(st.status), team: true },
+  { key: "post", label: "展後", get: (e, st) => st.post_class || "～", team: true, cls: "col-post" },
+  { key: "goal", label: "目標", get: (e, st) => -st.goal_tags.length, team: true, cls: "col-goal" },
+  { key: "assignee", label: "負責", get: (e, st) => st.assignee || "～", team: true },
+  { key: "notes", label: "紀錄", get: (e, st) => -st.note_count, team: true, cls: "col-notes" },
+  { key: "", label: "連結", get: null, cls: "col-links" },
+];
+
+function sortList(list) {
+  const col = SORT_COLUMNS.find((c) => c.key === SORT_KEY);
+  if (!col || !col.get) return list;
+  return [...list].sort((a, b) => {
+    const va = col.get(a, getState(a.id));
+    const vb = col.get(b, getState(b.id));
+    const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "zh-Hant");
+    return cmp * SORT_DIR;
+  });
+}
+
 function render() {
-  let list = filtered();
-  const sort = $("sort-select").value;
-  if (sort === "booth") {
-    list = [...list].sort((a, b) => (a.booth_no || "").localeCompare(b.booth_no || ""));
-  } else if (sort === "notes") {
-    list = [...list].sort((a, b) => getState(b.id).note_count - getState(a.id).note_count);
-  }
+  const list = sortList(filtered());
 
   const allStates = Object.values(STATE);
   const pocketCount = allStates.filter((s) => s.pocket).length;
@@ -477,70 +504,60 @@ function render() {
   const grid = $("grid");
   grid.innerHTML = "";
   $("empty").style.display = list.length ? "none" : "block";
-
-  if (VIEW === "table") {
-    if (list.length) grid.appendChild(renderTable(list));
-    return;
-  }
-
-  // 依關聯分組（產品／科別視角時）
-  if (ACTIVE_LINE && list.length) {
-    const groups = {};
-    for (const e of list) {
-      const role = CAT_ROLES[e.category] || "service";
-      (groups[role] = groups[role] || []).push(e);
-    }
-    for (const role of ["supply", "process", "tech", "market", "service"]) {
-      if (!groups[role]) continue;
-      const h = document.createElement("h3");
-      h.className = "group-title";
-      h.textContent = `${ROLE_LABELS[role]}（${groups[role].length}）`;
-      grid.appendChild(h);
-      const sub = document.createElement("div");
-      sub.className = "grid-inner";
-      for (const e of groups[role]) sub.appendChild(renderCard(e));
-      grid.appendChild(sub);
-    }
-  } else {
-    const sub = document.createElement("div");
-    sub.className = "grid-inner";
-    for (const e of list) sub.appendChild(renderCard(e));
-    grid.appendChild(sub);
-  }
+  if (list.length) grid.appendChild(renderTable(list));
 }
 
-// ---------- 列表檢視 ----------
+// ---------- 列表（唯一檢視，欄位標題可排序）----------
 function renderTable(list) {
   const wrap = document.createElement("div");
   wrap.className = "table-wrap";
   const table = document.createElement("table");
   table.className = "listview";
-  table.innerHTML = `
-    <thead><tr>
-      <th></th><th>公司</th><th>攤位</th><th>分類</th><th>國家</th>
-      ${API_OK ? "<th>狀態</th><th>展後</th><th>目標</th><th>負責</th><th>紀錄</th>" : ""}
-      <th>連結</th>
-    </tr></thead>`;
-  const tbody = document.createElement("tbody");
 
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const col of SORT_COLUMNS) {
+    if (col.team && !API_OK) continue;
+    const th = document.createElement("th");
+    th.textContent = col.label;
+    if (col.cls) th.className = col.cls;
+    if (col.get) {
+      th.classList.add("sortable");
+      if (SORT_KEY === col.key) th.textContent = `${col.label} ${SORT_DIR === 1 ? "▲" : "▼"}`;
+      th.onclick = () => {
+        if (SORT_KEY === col.key) SORT_DIR = -SORT_DIR;
+        else { SORT_KEY = col.key; SORT_DIR = 1; }
+        render();
+      };
+    }
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
   for (const e of list) {
     const st = getState(e.id);
     const cat = CAT_MAP[e.category];
     const statusColor = STATUS_COLORS[st.status] || "#8a8a82";
+    // 有任何團隊紀錄/分配 → 列的差異化顯示
+    const hasData = Boolean(st.assignee || st.status !== "未排定" || st.note_count || st.pocket ||
+      st.post_class || st.goal_tags.length || st.quals.length || st.collected.length || st.dept_tags.length);
     const tr = document.createElement("tr");
+    if (hasData) tr.className = "has-data";
     tr.innerHTML = `
       <td><span class="row-star ${st.pocket ? "on" : ""}" title="口袋名單">${st.pocket ? "★" : "☆"}</span></td>
-      <td class="co"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${esc(e.name_zh)}</div><div class="en">${esc(e.name_en || "")}</div></td>
+      <td class="co"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${esc(e.name_zh)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}</div><div class="en">${esc(e.name_en || "")}</div></td>
       <td class="booth-cell">${esc(e.booth_no)}</td>
-      <td>${esc(cat ? cat.name_zh : e.category)}</td>
-      <td>${esc(e.country)}</td>
+      <td class="col-cat">${esc(cat ? cat.name_zh : e.category)}</td>
+      <td class="col-country">${esc(e.country)}</td>
       ${API_OK ? `
       <td class="status-cell"><span class="status-dot" style="background:${statusColor};"></span>${esc(st.status)}</td>
-      <td class="status-cell">${st.post_class ? `<span class="status-dot" style="background:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"};"></span>${esc(st.post_class)}` : "—"}</td>
-      <td>${st.goal_tags.length ? st.goal_tags.map((t) => `<span class="goal-tag">${esc(t)}</span>`).join(" ") : "—"}</td>
+      <td class="status-cell col-post">${st.post_class ? `<span class="status-dot" style="background:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"};"></span>${esc(st.post_class)}` : "—"}</td>
+      <td class="col-goal">${st.goal_tags.length ? st.goal_tags.map((t) => `<span class="goal-tag">${esc(t)}</span>`).join(" ") : "—"}</td>
       <td>${esc(st.assignee || "—")}</td>
-      <td>${st.note_count || ""}</td>` : ""}
-      <td class="links-cell">
+      <td class="col-notes">${st.note_count || ""}</td>` : ""}
+      <td class="links-cell col-links">
         ${e.website ? `<a href="${e.website}" target="_blank" rel="noopener">官網</a>` : ""}
         ${(e.pdfs || []).map((p, i) => `<a href="${p}" target="_blank" rel="noopener">型錄${e.pdfs.length > 1 ? i + 1 : ""}</a>`).join("")}
         ${e.directory_url ? `<a href="${e.directory_url}" target="_blank" rel="noopener">展商頁</a>` : ""}
@@ -559,46 +576,6 @@ function renderTable(list) {
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-function renderCard(e) {
-  const st = getState(e.id);
-  const card = document.createElement("div");
-  card.className = "card";
-  const cat = CAT_MAP[e.category];
-  const statusColor = STATUS_COLORS[st.status] || "#94a3b8";
-  const visit = KEY_VISIT_MAP[e.id];
-  card.innerHTML = `
-    <div class="badge-row">
-      ${visit ? `<span class="badge visit">行程重點</span>` : ""}
-      <span class="badge">${esc(cat ? cat.name_zh : e.category)}</span>
-      <span class="badge booth">攤位 ${esc(e.booth_no)}</span>
-      ${API_OK ? `<span class="badge status" style="background:${statusColor}1a; color:${statusColor}; border-color:${statusColor}55;">${esc(st.status)}</span>` : ""}
-      ${st.post_class ? `<span class="badge status" style="background:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"}1a; color:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"}; border-color:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"}55;">${esc(st.post_class)}</span>` : ""}
-      ${st.assignee ? `<span class="badge">負責 ${esc(st.assignee)}</span>` : ""}
-    </div>
-    <div class="card-title-row">
-      <h3>${esc(e.name_zh)}</h3>
-      <button class="star ${st.pocket ? "on" : ""}" title="加入/移出口袋名單">${st.pocket ? "★" : "☆"}</button>
-    </div>
-    <p class="name-en">${esc(e.name_en || "")} ${e.country ? "· " + esc(e.country) : ""}</p>
-    <p class="desc">${esc((e.description || "").slice(0, 100))}${(e.description || "").length > 100 ? "…" : ""}</p>
-    <div class="tags">${(e.products || []).slice(0, 3).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>
-    <div class="card-footer">
-      ${st.goal_tags.length ? st.goal_tags.map((t) => `<span class="goal-tag">${esc(t)}</span>`).join("") : ""}
-      ${st.dept_tags.length ? st.dept_tags.map((t) => `<span class="dept-tag">${esc(t)}</span>`).join("") : ""}
-      <span class="note-count">${st.note_count ? st.note_count + " 則紀錄" : ""}</span>
-    </div>
-    <div class="link-row">
-      ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">官網</a>` : ""}
-      ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">型錄${e.pdfs.length > 1 ? i + 1 : ""}</a>`).join("")}
-      ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">展商頁</a>` : ""}
-    </div>
-    <button class="ask">查看 / 共筆</button>
-  `;
-  card.querySelector("button.ask").onclick = () => openDetail(e.id);
-  card.querySelector("button.star").onclick = (ev) => { ev.stopPropagation(); togglePocket(e.id); };
-  return card;
 }
 
 async function togglePocket(id) {
@@ -701,6 +678,16 @@ async function openDetail(id) {
       <button class="btn primary small" id="d-note-add">送出</button>
     </div>
     <div id="d-notes" class="notes-list">載入中...</div>
+
+    <hr/>
+    <h3 class="section-title">附件（照片／錄音／影片）</h3>
+    ${UPLOADS_ENABLED ? `
+    <div class="upload-row">
+      <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*" hidden /></label>
+      <span id="d-upload-status" class="sub"></span>
+    </div>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
+    <div id="d-attachments" class="notes-list"></div>
+
     <details id="d-history-wrap"><summary>修改歷程</summary><div id="d-history">載入中...</div></details>
     ` : `<p class="sub">共筆後端未連線，僅供瀏覽。</p>`}
   `;
@@ -720,8 +707,11 @@ async function openDetail(id) {
   bindCheckRow("d-quals", (values) => saveState(id, { quals: values }));
   $("d-post-class").onchange = () => saveState(id, { post_class: $("d-post-class").value });
   $("d-note-add").onclick = () => addNote(id);
+  const fileInput = $("d-file");
+  if (fileInput) fileInput.onchange = () => uploadFile(id, fileInput);
 
   loadNotes(id);
+  loadAttachments(id);
   loadHistory(id);
 }
 
@@ -812,6 +802,82 @@ async function deleteNote(exhibitorId, noteId) {
     STATE[exhibitorId] = { ...st, note_count: Math.max(0, (st.note_count || 0) - 1) };
     loadNotes(exhibitorId); loadHistory(exhibitorId); render();
   } catch (err) { showToast("刪除失敗：" + err.message); }
+}
+
+// ---------- 附件 ----------
+function fileUrl(key) {
+  return `/api/file/${encodeURIComponent(key)}?pin=${encodeURIComponent(pin())}`;
+}
+
+async function uploadFile(id, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  input.value = "";
+  const status = $("d-upload-status");
+  if (file.size > 50 * 1024 * 1024) { status.textContent = "檔案超過 50MB，長影片請縮短"; return; }
+  status.textContent = `上傳中…（${(file.size / 1024 / 1024).toFixed(1)}MB）`;
+  try {
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        "x-team-pin": pin(),
+        "x-exhibitor-id": id,
+        "x-author": encodeURIComponent(me()),
+        "x-filename": encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    status.textContent = "";
+    showToast("已上傳");
+    loadAttachments(id);
+    loadHistory(id);
+  } catch (err) {
+    status.textContent = "上傳失敗：" + err.message;
+  }
+}
+
+async function loadAttachments(id) {
+  const wrap = $("d-attachments");
+  if (!wrap) return;
+  try {
+    const atts = await api(`/attachments?exhibitor_id=${id}`);
+    if (!atts.length) { wrap.innerHTML = ""; return; }
+    wrap.innerHTML = atts.map((a) => {
+      const url = fileUrl(a.key);
+      let preview = `<a href="${url}" target="_blank" rel="noopener" class="directory-link">${esc(a.filename)}</a>`;
+      if ((a.mime || "").startsWith("image/")) {
+        preview = `<a href="${url}" target="_blank" rel="noopener"><img class="att-thumb" src="${url}" alt="${esc(a.filename)}" loading="lazy" /></a>`;
+      } else if ((a.mime || "").startsWith("audio/")) {
+        preview = `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`;
+      } else if ((a.mime || "").startsWith("video/")) {
+        preview = `<video controls preload="none" src="${url}" class="att-video"></video>`;
+      }
+      return `<div class="note" data-id="${a.id}">
+        <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB
+          <span class="note-actions"><a href="#" data-act="del-att">刪除</a></span>
+        </div>
+        ${preview}
+      </div>`;
+    }).join("");
+    wrap.querySelectorAll('a[data-act="del-att"]').forEach((a) => {
+      a.onclick = async (ev) => {
+        ev.preventDefault();
+        const attId = a.closest(".note").dataset.id;
+        if (!confirm("確定刪除這個附件？")) return;
+        try {
+          await api(`/attachments/${attId}?author=${encodeURIComponent(me())}`, { method: "DELETE" });
+          loadAttachments(id); loadHistory(id);
+        } catch (err) { showToast("刪除失敗：" + err.message); }
+      };
+    });
+  } catch {
+    wrap.innerHTML = "";
+  }
 }
 
 async function loadHistory(id) {

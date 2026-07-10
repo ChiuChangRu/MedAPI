@@ -15,4 +15,13 @@
       "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
     }
   ]
+  // 照片/錄音/影片上傳需要 R2：
+  // 1. Dashboard → R2 Object Storage → Create bucket，名稱填 medtec-2026-files
+  // 2. 把下面整段取消註解後 push（bucket 不存在就取消註解會導致部署失敗）
+  // ,"r2_buckets": [
+  //   {
+  //     "binding": "FILES",
+  //     "bucket_name": "medtec-2026-files"
+  //   }
+  // ]
 }

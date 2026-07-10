@@ -50,6 +50,17 @@ const SCHEMA = [
     detail TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    exhibitor_id TEXT NOT NULL,
+    author TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    key TEXT NOT NULL,
+    size INTEGER DEFAULT 0,
+    mime TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_notes_ex ON notes(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
 ];
@@ -110,6 +121,64 @@ async function handleApi(request, env, url) {
   await ensureSchema(db);
   const path = url.pathname.replace(/^\/api/, "");
   const method = request.method;
+
+  // ---- 前端功能開關 ----
+  if (path === "/config" && method === "GET") {
+    return json({ uploads: !!env.FILES });
+  }
+
+  // ---- 附件（照片/錄音/影片，存 R2）----
+  if (path === "/upload" && method === "POST") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存（見 cloudflare/README.md）", 501);
+    const exhibitorId = (request.headers.get("x-exhibitor-id") || "").trim();
+    const author = decodeURIComponent(request.headers.get("x-author") || "").trim() || "匿名";
+    const filename = decodeURIComponent(request.headers.get("x-filename") || "file").trim();
+    const mime = request.headers.get("content-type") || "application/octet-stream";
+    if (!exhibitorId) return bad("缺 x-exhibitor-id");
+    const body = await request.arrayBuffer();
+    if (!body.byteLength) return bad("空檔案");
+    if (body.byteLength > 50 * 1024 * 1024) return bad("檔案過大（上限 50MB），長影片請縮短或改用相簿分享");
+    const key = `${exhibitorId}/${Date.now()}-${filename.replace(/[^\w.\-一-鿿]+/g, "_")}`;
+    await env.FILES.put(key, body, { httpMetadata: { contentType: mime } });
+    const result = await db
+      .prepare("INSERT INTO attachments (exhibitor_id, author, filename, key, size, mime, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(exhibitorId, author, filename, key, body.byteLength, mime, now())
+      .run();
+    await logHistory(db, exhibitorId, author, "上傳附件", `${filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
+    return json({ id: result.meta.last_row_id, key, ok: true });
+  }
+  if (path === "/attachments" && method === "GET") {
+    const exhibitorId = url.searchParams.get("exhibitor_id");
+    if (!exhibitorId) return bad("缺 exhibitor_id");
+    const { results } = await db
+      .prepare("SELECT * FROM attachments WHERE exhibitor_id = ? ORDER BY id DESC")
+      .bind(exhibitorId)
+      .all();
+    return json(results);
+  }
+  const fileMatch = path.match(/^\/file\/(.+)$/);
+  if (fileMatch && method === "GET") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const obj = await env.FILES.get(decodeURIComponent(fileMatch[1]));
+    if (!obj) return bad("找不到檔案", 404);
+    return new Response(obj.body, {
+      headers: {
+        "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
+        "cache-control": "private, max-age=3600",
+      },
+    });
+  }
+  const attDelMatch = path.match(/^\/attachments\/(\d+)$/);
+  if (attDelMatch && method === "DELETE") {
+    const id = Number(attDelMatch[1]);
+    const author = (url.searchParams.get("author") || "").trim() || "匿名";
+    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到附件", 404);
+    if (env.FILES) await env.FILES.delete(old.key);
+    await db.prepare("DELETE FROM attachments WHERE id = ?").bind(id).run();
+    await logHistory(db, old.exhibitor_id, author, "刪除附件", old.filename);
+    return json({ ok: true });
+  }
 
   // ---- members ----
   if (path === "/members" && method === "GET") {
@@ -264,6 +333,102 @@ async function handleApi(request, env, url) {
     }
     const { results } = await stmt.all();
     return json(results);
+  }
+
+  // ---- 個人參訪報告（HTML，可直接列印存 PDF）----
+  if (path === "/report" && method === "GET") {
+    const author = (url.searchParams.get("author") || "").trim();
+    if (!author) return bad("缺 author");
+
+    const assetRes = await env.ASSETS.fetch(new Request(new URL("/data/exhibitors.json", url).toString()));
+    const data = await assetRes.json();
+    const exMap = {};
+    for (const e of data.exhibitors) exMap[e.id] = e;
+    const catMap = {};
+    for (const c of data.categories) catMap[c.id] = c.name_zh;
+
+    const { results: states } = await db.prepare("SELECT * FROM exhibitor_state").all();
+    const { results: myNotes } = await db
+      .prepare("SELECT * FROM notes WHERE deleted = 0 AND author = ? ORDER BY id")
+      .bind(author)
+      .all();
+    const { results: myAtts } = await db
+      .prepare("SELECT * FROM attachments WHERE author = ? ORDER BY id")
+      .bind(author)
+      .all();
+
+    const stateMap = {};
+    for (const s of states) stateMap[s.exhibitor_id] = s;
+    const notesByEx = {};
+    for (const n of myNotes) (notesByEx[n.exhibitor_id] = notesByEx[n.exhibitor_id] || []).push(n);
+    const attsByEx = {};
+    for (const a of myAtts) (attsByEx[a.exhibitor_id] = attsByEx[a.exhibitor_id] || []).push(a);
+
+    // 我的廠商 = 指派給我的 ∪ 我寫過紀錄的 ∪ 我傳過附件的
+    const ids = new Set([
+      ...states.filter((s) => s.assignee === author).map((s) => s.exhibitor_id),
+      ...Object.keys(notesByEx),
+      ...Object.keys(attsByEx),
+    ]);
+    const list = [...ids]
+      .map((id) => ({ id, ex: exMap[id], st: stateMap[id] || {} }))
+      .filter((x) => x.ex)
+      .sort((a, b) => (a.ex.booth_no || "").localeCompare(b.ex.booth_no || ""));
+
+    const QUAL_LABELS = { iso13485: "ISO 13485", fda: "FDA", ce_mdr: "CE/MDR" };
+    const COLLECTED_LABELS = { catalog: "型錄", card: "名片", sample: "樣品", quote: "報價" };
+    const h = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const j = (raw, labels) => JSON.parse(raw || "[]").map((x) => (labels ? labels[x] || x : x)).join("、");
+
+    const visited = list.filter((x) => x.st.status === "已拜訪").length;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const sections = list.map(({ id, ex, st }) => {
+      const notes = (notesByEx[id] || [])
+        .map((n) => `<div class="note"><span class="meta">[${h(n.type)}｜${h(n.created_at)}]</span> ${h(n.content)}</div>`)
+        .join("");
+      const atts = (attsByEx[id] || [])
+        .map((a) => `<li>${h(a.filename)}（${(a.size / 1024 / 1024).toFixed(1)}MB）</li>`)
+        .join("");
+      const facts = [
+        st.status && st.status !== "未排定" ? `狀態：${h(st.status)}` : "",
+        st.post_class ? `展後分類：${h(st.post_class)}` : "",
+        j(st.goal_tags) ? `目標：${h(j(st.goal_tags))}` : "",
+        j(st.quals, QUAL_LABELS) ? `資質：${h(j(st.quals, QUAL_LABELS))}` : "",
+        j(st.collected, COLLECTED_LABELS) ? `已索取：${h(j(st.collected, COLLECTED_LABELS))}` : "",
+      ].filter(Boolean).join("｜");
+      return `<section>
+        <h2>${h(ex.name_zh)} <span class="booth">${h(ex.booth_no)}</span></h2>
+        <p class="sub">${h(ex.name_en || "")}｜${h(catMap[ex.category] || "")}｜${h(ex.country)}</p>
+        ${facts ? `<p class="facts">${facts}</p>` : ""}
+        ${notes || '<p class="none">（無個人紀錄）</p>'}
+        ${atts ? `<p class="facts">附件：</p><ul>${atts}</ul>` : ""}
+      </section>`;
+    }).join("");
+
+    const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>${h(author)} 參訪報告 ${today}</title>
+<style>
+body{font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#1c1c1a;max-width:800px;margin:24px auto;padding:0 16px;line-height:1.7;}
+h1{font-size:22px;border-bottom:3px solid #c8102e;padding-bottom:8px;}
+h1 small{display:block;font-size:12px;color:#6f6f68;font-weight:normal;margin-top:4px;}
+h2{font-size:16px;margin:0 0 2px;}
+.booth{font-family:ui-monospace,monospace;font-size:13px;border:1px solid #1c1c1a;padding:1px 6px;border-radius:4px;margin-left:6px;}
+.sub{color:#6f6f68;font-size:12px;margin:0 0 6px;}
+.facts{font-size:13px;color:#a00d24;margin:4px 0;}
+.note{font-size:13px;background:#f7f7f5;border:1px solid #e4e4e0;border-radius:6px;padding:8px 10px;margin:6px 0;white-space:pre-line;}
+.meta{color:#6f6f68;font-size:11px;}
+.none{color:#9a9a92;font-size:12px;}
+section{border-bottom:1px dashed #e4e4e0;padding:14px 0;page-break-inside:avoid;}
+ul{margin:4px 0;font-size:13px;}
+.print-btn{position:fixed;top:16px;right:16px;padding:10px 18px;background:#c8102e;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;}
+@media print{.print-btn{display:none;}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">列印 / 存 PDF</button>
+<h1>2026 上海 Medtec 參訪報告──${h(author)}<small>產出日期 ${today}｜涉及廠商 ${list.length} 家｜已拜訪 ${visited} 家</small></h1>
+${sections || "<p>尚無任何紀錄或指派。</p>"}
+</body></html>`;
+    return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
   }
 
   // ---- CSV 匯出 ----
