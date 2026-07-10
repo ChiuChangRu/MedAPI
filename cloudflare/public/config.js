@@ -223,7 +223,7 @@ const MEMBER_PROFILES = [
     chips: [{ k: "dept", id: "sales" }],
   },
   {
-    name: "呂宗銘",
+    name: "宗銘",
     duty: "導管開發主管",
     chips: [
       { k: "line", id: "tpu" },
@@ -233,7 +233,7 @@ const MEMBER_PROFILES = [
     ],
   },
   {
-    name: "邱長儒",
+    name: "長儒",
     duty: "塗層",
     chips: [
       { k: "line", id: "hydrophilic" },
@@ -241,7 +241,7 @@ const MEMBER_PROFILES = [
     ],
   },
   {
-    name: "梁振哲",
+    name: "振哲",
     duty: "EO 滅菌・檢驗",
     chips: [
       { k: "dept", id: "eo" },
@@ -249,7 +249,7 @@ const MEMBER_PROFILES = [
     ],
   },
   {
-    name: "宋和凌",
+    name: "和凌",
     duty: "編織管・壓管",
     chips: [
       { k: "line", id: "braided" },
@@ -257,7 +257,7 @@ const MEMBER_PROFILES = [
     ],
   },
   {
-    name: "林昌毅",
+    name: "昌毅",
     duty: "生產主管・化學背景",
     chips: [
       { k: "dept", id: "prod" },
@@ -265,7 +265,7 @@ const MEMBER_PROFILES = [
     ],
   },
   {
-    name: "陳帛辰",
+    name: "帛辰",
     duty: "電子／電路工程・現場主管",
     chips: [
       { k: "cats", label: "電子模組（8.x 全系列）", ids: ["cat-08-1", "cat-08-2", "cat-08-3", "cat-08-4", "cat-08-5", "cat-08-6"] },
@@ -273,7 +273,7 @@ const MEMBER_PROFILES = [
     ],
   },
   {
-    name: "陳柏宏",
+    name: "柏宏",
     duty: "工業工程／生產管理・現場主管・採購",
     chips: [
       { k: "dept", id: "prod" },

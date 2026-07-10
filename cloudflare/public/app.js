@@ -123,7 +123,7 @@ function renderMemberChoices() {
   for (const m of choices) {
     const chip = document.createElement("div");
     chip.className = "chip";
-    chip.textContent = m.dept ? `${m.name}（${m.dept}）` : m.name;
+    chip.textContent = m.name;
     chip.onclick = () => {
       $("login-name").value = m.name;
       const deptSel = $("login-dept");
