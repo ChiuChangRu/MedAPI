@@ -284,6 +284,74 @@ const HOSPITAL_SPECIALTIES = [
   },
 ];
 
+// 參展團隊成員與職掌：登入時一鍵選名字，登入後依職掌顯示推薦視角
+// chips: k = dept（單位入口）| line（產品別）| spec（科別）| cats（直接指定分類組合）
+const MEMBER_PROFILES = [
+  {
+    name: "總經理",
+    duty: "",
+    chips: [{ k: "dept", id: "sales" }],
+  },
+  {
+    name: "呂宗銘",
+    duty: "導管開發主管",
+    chips: [
+      { k: "line", id: "tpu" },
+      { k: "line", id: "vascular" },
+      { k: "line", id: "braided" },
+      { k: "line", id: "balloon" },
+    ],
+  },
+  {
+    name: "邱長儒",
+    duty: "塗層",
+    chips: [
+      { k: "line", id: "hydrophilic" },
+      { k: "cats", label: "表面處理", ids: ["cat-14"] },
+    ],
+  },
+  {
+    name: "梁振哲",
+    duty: "EO 滅菌・檢驗",
+    chips: [
+      { k: "dept", id: "eo" },
+      { k: "dept", id: "qc" },
+    ],
+  },
+  {
+    name: "宋和凌",
+    duty: "編織管・壓管",
+    chips: [
+      { k: "line", id: "braided" },
+      { k: "cats", label: "管件與擠壓", ids: ["cat-05", "cat-12"] },
+    ],
+  },
+  {
+    name: "林昌毅",
+    duty: "生產主管・化學背景",
+    chips: [
+      { k: "dept", id: "prod" },
+      { k: "cats", label: "材料／黏著／化學", ids: ["cat-01", "cat-03", "cat-04"] },
+    ],
+  },
+  {
+    name: "陳帛辰",
+    duty: "電子／電路工程・現場主管",
+    chips: [
+      { k: "cats", label: "電子模組（8.x 全系列）", ids: ["cat-08-1", "cat-08-2", "cat-08-3", "cat-08-4", "cat-08-5", "cat-08-6"] },
+      { k: "dept", id: "prod" },
+    ],
+  },
+  {
+    name: "陳柏宏",
+    duty: "工業工程／生產管理・現場主管・採購",
+    chips: [
+      { k: "dept", id: "prod" },
+      { k: "dept", id: "equip" },
+    ],
+  },
+];
+
 // 依展商分類把「相關廠商」再分成三種關聯，方便判讀
 const CAT_ROLES = {
   "cat-01": "supply", "cat-02": "supply", "cat-03": "supply", "cat-04": "supply",

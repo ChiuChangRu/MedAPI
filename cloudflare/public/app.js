@@ -89,7 +89,7 @@ async function connectBackend() {
     if (!pin() && MEMBERS !== null) {
       // TEAM_PIN 未設定（開發模式）也需要選名字
     }
-    if (!me()) { showLogin(); } else { $("user-chip").textContent = me(); }
+    if (!me()) { showLogin(); } else { $("user-chip").textContent = me(); renderRecommendBar(); }
     STATE = await api("/state");
     render();
   } catch (err) {
@@ -112,13 +112,20 @@ function showLogin() {
 function renderMemberChoices() {
   const wrap = $("member-choices");
   wrap.innerHTML = "";
-  for (const m of MEMBERS) {
+  // 預建團隊名單優先，其後是已登入過但不在名單上的人
+  const extras = MEMBERS.filter((m) => !MEMBER_PROFILES.some((p) => p.name === m.name));
+  const choices = [
+    ...MEMBER_PROFILES.map((p) => ({ name: p.name, dept: p.duty })),
+    ...extras.map((m) => ({ name: m.name, dept: m.dept })),
+  ];
+  for (const m of choices) {
     const chip = document.createElement("div");
     chip.className = "chip";
     chip.textContent = m.dept ? `${m.name}（${m.dept}）` : m.name;
     chip.onclick = () => {
       $("login-name").value = m.name;
-      if (m.dept) $("login-dept").value = m.dept;
+      const deptSel = $("login-dept");
+      deptSel.value = [...deptSel.options].some((o) => o.value === m.dept) ? m.dept : "";
       wrap.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
       chip.classList.add("active");
     };
@@ -129,7 +136,8 @@ function renderMemberChoices() {
 async function doLogin() {
   const pinVal = $("login-pin").value.trim();
   const name = $("login-name").value.trim();
-  const dept = $("login-dept").value;
+  const profile = MEMBER_PROFILES.find((p) => p.name === name);
+  const dept = $("login-dept").value || (profile ? profile.duty : "");
   const errEl = $("login-error");
   errEl.style.display = "none";
   if (!name) { errEl.textContent = "請選擇或輸入你的名字"; errEl.style.display = "block"; return; }
@@ -138,6 +146,7 @@ async function doLogin() {
     MEMBERS = await api("/members", { method: "POST", body: JSON.stringify({ name, dept }) });
     localStorage.setItem("medtec_user", name);
     $("user-chip").textContent = name;
+    renderRecommendBar();
     $("login-overlay").classList.remove("open");
     API_OK = true;
     $("offline-banner").style.display = "none";
@@ -222,6 +231,48 @@ function buildEntrySection() {
     card.onclick = () => applySpecPreset(spec.id);
     specGrid.appendChild(card);
   }
+}
+
+function allMemberNames() {
+  const names = MEMBER_PROFILES.map((p) => p.name);
+  for (const m of MEMBERS) if (!names.includes(m.name)) names.push(m.name);
+  return names;
+}
+
+// ---------- 依職掌推薦視角 ----------
+function renderRecommendBar() {
+  const bar = $("recommend-bar");
+  const profile = MEMBER_PROFILES.find((p) => p.name === me());
+  if (!profile || !profile.chips.length) { bar.style.display = "none"; return; }
+
+  bar.innerHTML = `<span class="recommend-label">依你的職掌推薦：</span>`;
+  for (const chip of profile.chips) {
+    const el = document.createElement("span");
+    el.className = "chip";
+    if (chip.k === "dept") {
+      const d = DEPT_PRESETS.find((x) => x.id === chip.id);
+      el.textContent = d.name;
+      el.onclick = () => applyDeptPreset(chip.id);
+    } else if (chip.k === "line") {
+      const l = PRODUCT_LINES.find((x) => x.id === chip.id);
+      el.textContent = l.name;
+      el.onclick = () => applyLinePreset(chip.id);
+    } else if (chip.k === "spec") {
+      const s = HOSPITAL_SPECIALTIES.find((x) => x.id === chip.id);
+      el.textContent = s.name;
+      el.onclick = () => applySpecPreset(chip.id);
+    } else if (chip.k === "cats") {
+      el.textContent = chip.label;
+      el.onclick = () => {
+        ACTIVE_DEPT = "";
+        ACTIVE_CATS = new Set(chip.ids);
+        refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
+        $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+      };
+    }
+    bar.appendChild(el);
+  }
+  bar.style.display = "block";
 }
 
 function deptMatch(d, e) {
@@ -598,7 +649,7 @@ async function openDetail(id) {
         <label>負責同事</label>
         <select id="d-assignee">
           <option value="">— 未指派 —</option>
-          ${MEMBERS.map((m) => `<option ${m.name === st.assignee ? "selected" : ""}>${esc(m.name)}</option>`).join("")}
+          ${allMemberNames().map((n) => `<option ${n === st.assignee ? "selected" : ""}>${esc(n)}</option>`).join("")}
         </select>
       </div>
       <div>
