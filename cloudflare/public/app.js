@@ -72,6 +72,10 @@ async function init() {
   refreshViewToggle();
   $("btn-clear").onclick = clearAll;
   $("btn-export").onclick = exportCsv;
+  $("assignee-filter").addEventListener("change", render);
+  $("btn-activity").onclick = openActivity;
+  $("activity-close").onclick = () => $("activity-overlay").classList.remove("open");
+  $("activity-overlay").addEventListener("click", (e) => { if (e.target === $("activity-overlay")) $("activity-overlay").classList.remove("open"); });
   $("user-chip").onclick = () => { if (confirm("要切換使用者嗎？")) logout(); };
   $("btn-login").onclick = doLogin;
   $("login-overlay").addEventListener("click", (e) => e.stopPropagation());
@@ -396,6 +400,13 @@ function buildSelectOptions() {
     opt.textContent = s;
     statusSel.appendChild(opt);
   }
+  const assigneeSel = $("assignee-filter");
+  for (const n of allMemberNames()) {
+    const opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = `負責人：${n}`;
+    assigneeSel.appendChild(opt);
+  }
 }
 
 function refreshPocketBtn() {
@@ -418,6 +429,7 @@ function refreshViewToggle() {
 function clearAll() {
   ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; ACTIVE_SPEC = ""; POCKET_ONLY = false; VISIT_ONLY = false;
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
+  $("assignee-filter").value = "";
   $("sort-select").value = "default";
   refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); render();
 }
@@ -446,6 +458,8 @@ function filtered() {
     const st = getState(e.id);
     if (POCKET_ONLY && !st.pocket) return false;
     if (VISIT_ONLY && !KEY_VISIT_MAP[e.id]) return false;
+    const assigneeF = $("assignee-filter").value;
+    if (assigneeF && st.assignee !== assigneeF) return false;
     if (statusF && st.status !== statusF) return false;
     if (keywords.length) {
       const text = exhibitorText(e);
@@ -803,6 +817,39 @@ async function loadHistory(id) {
 function closeDetail() {
   $("detail-overlay").classList.remove("open");
   CURRENT_ID = null;
+}
+
+// ---------- 團隊動態 ----------
+async function openActivity() {
+  if (!API_OK) { showToast("共筆後端未連線"); return; }
+  $("activity-overlay").classList.add("open");
+  const wrap = $("activity-list");
+  wrap.innerHTML = "載入中...";
+  try {
+    const rows = await api("/history");
+    if (!rows.length) {
+      wrap.innerHTML = '<p class="sub">還沒有任何動態，開始標記狀態或寫紀錄吧。</p>';
+      return;
+    }
+    const exMap = {};
+    for (const e of EXHIBITORS) exMap[e.id] = e;
+    wrap.innerHTML = rows.map((h) => {
+      const ex = exMap[h.exhibitor_id];
+      return `<div class="activity-row" data-ex="${esc(h.exhibitor_id)}">
+        <span class="act-time">${esc(h.created_at)}</span>
+        <strong>${esc(h.author)}</strong>｜${esc(h.action)}｜<span class="act-ex">${esc(ex ? ex.name_zh : h.exhibitor_id)}</span>
+        <div class="act-detail">${esc(h.detail)}</div>
+      </div>`;
+    }).join("");
+    wrap.querySelectorAll(".activity-row").forEach((row) => {
+      row.onclick = () => {
+        $("activity-overlay").classList.remove("open");
+        openDetail(row.dataset.ex);
+      };
+    });
+  } catch (err) {
+    wrap.innerHTML = `<p class="sub">載入失敗：${esc(err.message)}</p>`;
+  }
 }
 
 // ---------- 匯出 ----------

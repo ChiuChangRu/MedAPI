@@ -17,6 +17,7 @@
       </div>
       <div class="header-actions">
         <span class="user-chip" id="user-chip" title="點擊切換使用者">未登入</span>
+        <button class="btn small ghost" id="btn-activity">團隊動態</button>
         <button class="btn small ghost" id="btn-export">匯出 CSV</button>
       </div>
     </div>
@@ -57,6 +58,9 @@
     <select id="country-filter"><option value="">全部國家</option></select>
     <select id="status-filter">
       <option value="">全部狀態</option>
+    </select>
+    <select id="assignee-filter">
+      <option value="">全部負責人</option>
     </select>
     <select id="sort-select">
       <option value="default">預設排序</option>
@@ -107,6 +111,18 @@
 <div class="overlay" id="detail-overlay">
   <div class="modal wide" id="detail-modal">
     <!-- 動態填入 -->
+  </div>
+</div>
+
+<!-- 團隊動態 modal -->
+<div class="overlay" id="activity-overlay">
+  <div class="modal wide">
+    <div class="detail-head">
+      <h2>團隊動態</h2>
+      <button class="btn small ghost" id="activity-close">✕</button>
+    </div>
+    <p class="sub">全隊最近的狀態更新與紀錄（最新 200 筆），點任一筆可開啟該展商。</p>
+    <div id="activity-list">載入中...</div>
   </div>
 </div>
 
