@@ -87,100 +87,101 @@ const DEPT_PRESETS = [
   },
 ];
 
-// 產品別視角：每條產品線用關鍵字比對展商的名稱/簡介/產品
-// （展商資料與關鍵字均已轉為繁體，兩邊需一致才能比對得到）
-// match: keywords 命中「展商文字」即列入該產品線的相關廠商
+// 產品／科別視角：合併「自家產品線」與「醫院科別」成一個維度，
+// 每項用關鍵字比對展商的名稱/簡介/產品（展商資料與關鍵字均已轉為繁體）。
+// 為避免選項過多，重疊的品項已合併（例如透析＋腎臟科、血管通路＋
+// 心血管介入），與邦特業務關聯低或家數極少的科別（居家照護、骨科、
+// 牙科、眼科）已移除。
 const PRODUCT_LINES = [
-  {
-    id: "dialysis",
-    name: "透析",
-    icon: "🩸",
-    desc: "血液回路管、血液透析導管組、內廔管翼狀針、氣球導管",
-    keywords: ["透析", "血液迴路", "血液淨化", "內瘻", "穿刺針", "血路"],
-  },
-  {
-    id: "vascular",
-    name: "血管通路",
-    icon: "🫀",
-    desc: "中心靜脈導管、導引器材",
-    keywords: ["中心靜脈", "靜脈導管", "導引", "鞘管", "picc", "cvc", "血管介入", "導管擠出"],
-  },
-  {
-    id: "respiratory",
-    name: "呼吸治療",
-    icon: "🫁",
-    desc: "封閉式抽痰管組、氧氣/麻醉面罩、噴霧器、氣管內管",
-    keywords: ["呼吸", "氧氣", "面罩", "氣管插管", "霧化", "麻醉", "吸痰"],
-  },
-  {
-    id: "drainage",
-    name: "經皮引流",
-    icon: "💧",
-    desc: "引流導管、引流套件",
-    keywords: ["引流"],
-  },
-  {
-    id: "urology",
-    name: "泌尿科",
-    icon: "🧫",
-    desc: "輸尿管導管、Guidewire、推進管、取石網",
-    keywords: ["泌尿", "輸尿管", "導絲", "取石", "碎石", "guidewire"],
-  },
-  {
-    id: "infusion",
-    name: "輸液治療",
-    icon: "💉",
-    desc: "注射器、高壓注射器、輸液延長管、三通",
-    keywords: ["輸液", "注射器", "三通", "魯爾", "luer", "延長管"],
-  },
-  {
-    id: "gi",
-    name: "消化內科",
-    icon: "🍃",
-    desc: "胃腸相關導管及配件",
-    keywords: ["胃腸", "胃管", "腸內營養", "內窺鏡", "內鏡"],
-  },
-  {
-    id: "parts",
-    name: "醫療零件",
-    icon: "🧩",
-    desc: "Luer Connector、射出件、OEM 零件",
-    keywords: ["連接器", "注塑", "接頭", "精密零件", "模具", "luer"],
-  },
-  {
-    id: "homecare",
-    name: "居家照護",
-    icon: "🏠",
-    desc: "居家醫療用品",
-    keywords: ["家用", "居家", "康復"],
-  },
   {
     id: "tpu",
     name: "TPU 導管（核心技術）",
-    icon: "⭐",
     desc: "既有技術重點：TPU 材料、導管押出",
     keywords: ["tpu", "聚氨酯", "擠出", "導管", "pebax", "醫用管"],
   },
   {
     id: "braided",
     name: "編織管（未來重點）",
-    icon: "🚀",
     desc: "未來技術重點：編織增強導管",
     keywords: ["編織", "braid", "增強導管", "編織管"],
   },
   {
     id: "balloon",
     name: "球囊（未來重點）",
-    icon: "🎈",
     desc: "未來技術重點：球囊導管、球囊成型",
     keywords: ["球囊", "balloon", "氣球導管", "球囊成型"],
   },
   {
     id: "hydrophilic",
     name: "親水塗層（未來重點）",
-    icon: "💧",
     desc: "親水/潤滑/功能性塗層材料、塗佈製程與設備",
     keywords: ["親水", "塗層", "coating"],
+  },
+  {
+    id: "cardio_vascular",
+    name: "心血管／血管通路",
+    desc: "心血管介入、中心靜脈導管、導引器材",
+    keywords: ["中心靜脈", "靜脈導管", "導引", "鞘管", "picc", "cvc", "血管介入", "導管擠出", "心血管", "心臟", "介入", "支架", "導絲"],
+  },
+  {
+    id: "dialysis_renal",
+    name: "透析／腎臟",
+    desc: "血液回路管、血液透析導管組、內廔管翼狀針",
+    keywords: ["透析", "血液迴路", "血液淨化", "內瘻", "穿刺針", "血路", "腎"],
+  },
+  {
+    id: "respiratory",
+    name: "呼吸治療",
+    desc: "封閉式抽痰管組、氧氣/麻醉面罩、噴霧器、氣管內管",
+    keywords: ["呼吸", "氧氣", "面罩", "氣管插管", "霧化", "麻醉", "吸痰", "氣管"],
+  },
+  {
+    id: "urology",
+    name: "泌尿科",
+    desc: "輸尿管導管、Guidewire、推進管、取石網",
+    keywords: ["泌尿", "輸尿管", "導絲", "取石", "碎石", "guidewire"],
+  },
+  {
+    id: "gi",
+    name: "消化內科",
+    desc: "胃腸相關導管及配件",
+    keywords: ["胃腸", "胃管", "腸內營養", "內窺鏡", "內鏡", "消化"],
+  },
+  {
+    id: "drainage",
+    name: "經皮引流",
+    desc: "引流導管、引流套件",
+    keywords: ["引流"],
+  },
+  {
+    id: "infusion",
+    name: "輸液治療",
+    desc: "注射器、高壓注射器、輸液延長管、三通",
+    keywords: ["輸液", "注射器", "三通", "魯爾", "luer", "延長管"],
+  },
+  {
+    id: "mis",
+    name: "微創／內視鏡",
+    desc: "微創手術器械、內視鏡相關耗材",
+    keywords: ["微創", "內視鏡", "內窺鏡", "腹腔鏡", "內鏡"],
+  },
+  {
+    id: "neuro",
+    name: "神經科",
+    desc: "神經介入、顱內相關耗材",
+    keywords: ["神經", "顱", "腦"],
+  },
+  {
+    id: "parts",
+    name: "醫療零件",
+    desc: "Luer Connector、射出件、OEM 零件",
+    keywords: ["連接器", "注塑", "接頭", "精密零件", "模具", "luer"],
+  },
+  {
+    id: "lab_ivd",
+    name: "檢驗科／IVD",
+    desc: "體外診斷試劑、檢驗耗材",
+    keywords: ["ivd", "診斷", "試劑", "檢驗"],
   },
 ];
 
@@ -213,77 +214,6 @@ const KEY_VISITS = [
   },
 ];
 
-// 醫院科別視角：獨立的第三個維度，可與單位、產品別交叉組合
-// 同樣用關鍵字比對展商的名稱/簡介/產品（繁體）
-const HOSPITAL_SPECIALTIES = [
-  {
-    id: "cardio",
-    name: "心血管/介入",
-    icon: "🫀",
-    keywords: ["心血管", "心臟", "介入", "支架", "球囊", "導絲"],
-  },
-  {
-    id: "neuro",
-    name: "神經科",
-    icon: "🧠",
-    keywords: ["神經", "顱", "腦"],
-  },
-  {
-    id: "mis",
-    name: "微創/內視鏡",
-    icon: "🔬",
-    keywords: ["微創", "內視鏡", "內窺鏡", "腹腔鏡", "內鏡"],
-  },
-  {
-    id: "nephro",
-    name: "腎臟/透析",
-    icon: "🩸",
-    keywords: ["透析", "血液淨化", "腎"],
-  },
-  {
-    id: "uro",
-    name: "泌尿科",
-    icon: "🧫",
-    keywords: ["泌尿", "輸尿管", "取石", "碎石"],
-  },
-  {
-    id: "gastro",
-    name: "消化內科",
-    icon: "🍃",
-    keywords: ["胃腸", "消化", "腸內營養", "胃管"],
-  },
-  {
-    id: "resp",
-    name: "呼吸/胸腔",
-    icon: "🫁",
-    keywords: ["呼吸", "氧氣", "氣管", "霧化", "麻醉"],
-  },
-  {
-    id: "ortho",
-    name: "骨科",
-    icon: "🦴",
-    keywords: ["骨科", "骨釘", "脊椎", "關節", "植入物"],
-  },
-  {
-    id: "dental",
-    name: "牙科",
-    icon: "🦷",
-    keywords: ["牙科", "齒科", "種植牙"],
-  },
-  {
-    id: "ophthal",
-    name: "眼科",
-    icon: "👁️",
-    keywords: ["眼科", "人工水晶體", "眼內"],
-  },
-  {
-    id: "lab",
-    name: "檢驗科/IVD",
-    icon: "🧪",
-    keywords: ["ivd", "診斷", "試劑", "檢驗"],
-  },
-];
-
 // 參展團隊成員與職掌：登入時一鍵選名字，登入後依職掌顯示推薦視角
 // chips: k = dept（單位入口）| line（產品別）| spec（科別）| cats（直接指定分類組合）
 const MEMBER_PROFILES = [
@@ -297,7 +227,7 @@ const MEMBER_PROFILES = [
     duty: "導管開發主管",
     chips: [
       { k: "line", id: "tpu" },
-      { k: "line", id: "vascular" },
+      { k: "line", id: "cardio_vascular" },
       { k: "line", id: "braided" },
       { k: "line", id: "balloon" },
     ],

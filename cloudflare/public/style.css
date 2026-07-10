@@ -84,8 +84,6 @@ header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 
 @media (max-width: 900px) { .entry-section { grid-template-columns: 1fr; } }
 
-.entry-wide { grid-column: 1 / -1; }
-
 .entry-block {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -104,8 +102,7 @@ header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 .entry-sub { margin: 0 0 12px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 
 .dept-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 6px; }
-.line-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 6px; }
-.spec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px; }
+.line-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px; }
 
 .entry-card {
   border: 1px solid var(--border);

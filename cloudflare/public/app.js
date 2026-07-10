@@ -4,16 +4,14 @@ let EXHIBITORS = [];
 let CATEGORIES = [];
 let CAT_MAP = {};
 let LINE_MATCHES = {};      // lineId -> Set(exhibitorId)
-let SPEC_MATCHES = {};      // specId -> Set(exhibitorId)
 let STATE = {};             // exhibitorId -> 共筆狀態
 let MEMBERS = [];
 let API_OK = false;
 
-// 篩選條件（單位、產品別、科別三個維度可交叉組合）
+// 篩選條件（單位、產品／科別兩個維度可交叉組合）
 let ACTIVE_CATS = new Set();
 let ACTIVE_LINE = "";
 let ACTIVE_DEPT = "";
-let ACTIVE_SPEC = "";
 let POCKET_ONLY = false;
 let VISIT_ONLY = false;
 let KEY_VISIT_MAP = {};     // exhibitorId -> KEY_VISITS 項目
@@ -178,14 +176,6 @@ function computeLineMatches() {
     }
     LINE_MATCHES[line.id] = set;
   }
-  for (const spec of HOSPITAL_SPECIALTIES) {
-    const set = new Set();
-    for (const e of EXHIBITORS) {
-      const text = exhibitorText(e);
-      if (spec.keywords.some((k) => text.includes(k.toLowerCase()))) set.add(e.id);
-    }
-    SPEC_MATCHES[spec.id] = set;
-  }
   for (const v of KEY_VISITS) {
     for (const e of EXHIBITORS) {
       if (e.name_zh.includes(v.match) || (e.name_en || "").includes(v.match)) {
@@ -222,19 +212,6 @@ function buildEntrySection() {
     card.onclick = () => applyLinePreset(line.id);
     lineGrid.appendChild(card);
   }
-
-  const specGrid = $("spec-grid");
-  specGrid.innerHTML = "";
-  for (const spec of HOSPITAL_SPECIALTIES) {
-    const count = SPEC_MATCHES[spec.id].size;
-    const card = document.createElement("div");
-    card.className = "entry-card";
-    card.dataset.spec = spec.id;
-    card.innerHTML = `<div class="entry-name">${spec.name}</div><div class="entry-count">${count} 家</div>`;
-    card.title = `關鍵字：${spec.keywords.join("、")}`;
-    card.onclick = () => applySpecPreset(spec.id);
-    specGrid.appendChild(card);
-  }
 }
 
 function allMemberNames() {
@@ -261,10 +238,6 @@ function renderRecommendBar() {
       const l = PRODUCT_LINES.find((x) => x.id === chip.id);
       el.textContent = l.name;
       el.onclick = () => applyLinePreset(chip.id);
-    } else if (chip.k === "spec") {
-      const s = HOSPITAL_SPECIALTIES.find((x) => x.id === chip.id);
-      el.textContent = s.name;
-      el.onclick = () => applySpecPreset(chip.id);
     } else if (chip.k === "cats") {
       el.textContent = chip.label;
       el.onclick = () => {
@@ -305,18 +278,11 @@ function applyLinePreset(lineId) {
   $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function applySpecPreset(specId) {
-  ACTIVE_SPEC = ACTIVE_SPEC === specId ? "" : specId;
-  refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
-  $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
-}
-
 function refreshEntryCards() {
   document.querySelectorAll(".entry-card").forEach((c) => {
     c.classList.toggle("active", Boolean(
       (c.dataset.dept && c.dataset.dept === ACTIVE_DEPT) ||
-      (c.dataset.line && c.dataset.line === ACTIVE_LINE) ||
-      (c.dataset.spec && c.dataset.spec === ACTIVE_SPEC)));
+      (c.dataset.line && c.dataset.line === ACTIVE_LINE)));
   });
 }
 
@@ -329,11 +295,7 @@ function refreshPresetBar() {
   }
   if (ACTIVE_LINE) {
     const l = PRODUCT_LINES.find((x) => x.id === ACTIVE_LINE);
-    parts.push(`<strong>產品別｜${l.name}</strong>：${l.desc}（關鍵字「${l.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applyLinePreset('${l.id}')">取消</button>`);
-  }
-  if (ACTIVE_SPEC) {
-    const s = HOSPITAL_SPECIALTIES.find((x) => x.id === ACTIVE_SPEC);
-    parts.push(`<strong>科別｜${s.name}</strong>（關鍵字「${s.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applySpecPreset('${s.id}')">取消</button>`);
+    parts.push(`<strong>產品／科別｜${l.name}</strong>：${l.desc}（關鍵字「${l.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applyLinePreset('${l.id}')">取消</button>`);
   }
   if (parts.length) {
     bar.innerHTML = parts.join("<br/>");
@@ -427,7 +389,7 @@ function refreshViewToggle() {
 }
 
 function clearAll() {
-  ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; ACTIVE_SPEC = ""; POCKET_ONLY = false; VISIT_ONLY = false;
+  ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; POCKET_ONLY = false; VISIT_ONLY = false;
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
   $("assignee-filter").value = "";
   $("sort-select").value = "default";
@@ -445,13 +407,11 @@ function filtered() {
   const country = $("country-filter").value;
   const statusF = $("status-filter").value;
   const lineSet = ACTIVE_LINE ? LINE_MATCHES[ACTIVE_LINE] : null;
-  const specSet = ACTIVE_SPEC ? SPEC_MATCHES[ACTIVE_SPEC] : null;
   const dept = ACTIVE_DEPT ? DEPT_PRESETS.find((d) => d.id === ACTIVE_DEPT) : null;
 
   return EXHIBITORS.filter((e) => {
     if (ACTIVE_CATS.size && !ACTIVE_CATS.has(e.category)) return false;
     if (lineSet && !lineSet.has(e.id)) return false;
-    if (specSet && !specSet.has(e.id)) return false;
     if (dept && dept.keywords && !deptMatch(dept, e)) return false;
     if (hall && e.hall !== hall) return false;
     if (country && e.country !== country) return false;
@@ -493,8 +453,8 @@ function render() {
     return;
   }
 
-  // 依關聯分組（產品線或科別視角時）
-  if ((ACTIVE_LINE || ACTIVE_SPEC) && list.length) {
+  // 依關聯分組（產品／科別視角時）
+  if (ACTIVE_LINE && list.length) {
     const groups = {};
     for (const e of list) {
       const role = CAT_ROLES[e.category] || "service";
@@ -630,7 +590,6 @@ async function openDetail(id) {
   const modal = $("detail-modal");
 
   const lineHits = PRODUCT_LINES.filter((l) => LINE_MATCHES[l.id].has(id));
-  const specHits = HOSPITAL_SPECIALTIES.filter((s) => SPEC_MATCHES[s.id].has(id));
   const visit = KEY_VISIT_MAP[id];
 
   modal.innerHTML = `
@@ -644,8 +603,7 @@ async function openDetail(id) {
           ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">官方展商頁</a>` : ""}
         </p>
         ${visit ? `<p class="sub visit-info"><strong>行程重點</strong>：${esc(visit.when)}${visit.contact ? `｜${esc(visit.contact)}` : ""}${visit.note ? `｜${esc(visit.note)}` : ""}</p>` : ""}
-        ${lineHits.length ? `<p class="sub">產品別關聯：${lineHits.map((l) => l.name).join("、")}</p>` : ""}
-        ${specHits.length ? `<p class="sub">科別關聯：${specHits.map((s) => s.name).join("、")}</p>` : ""}
+        ${lineHits.length ? `<p class="sub">產品／科別關聯：${lineHits.map((l) => l.name).join("、")}</p>` : ""}
       </div>
       <button class="btn small ghost" id="d-close">✕</button>
     </div>
