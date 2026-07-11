@@ -293,13 +293,22 @@ function forceOffline() {
 }
 
 function saveSnapshot() {
+  const indicator = $("save-indicator");
   try {
     localStorage.setItem("medtec_snapshot", JSON.stringify({
       state: STATE,
       members: MEMBERS,
       ts: new Date().toISOString().replace("T", " ").slice(0, 16),
     }));
-  } catch { /* 空間不足時放棄快照，不影響主流程 */ }
+    if (indicator) {
+      const hhmm = new Date().toLocaleTimeString("zh-Hant-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+      indicator.textContent = `✓ 已存 ${hhmm}`;
+      indicator.classList.remove("save-fail");
+    }
+  } catch {
+    // 空間不足等寫入失敗：明確告知，不要讓使用者誤以為資料已經存進手機
+    if (indicator) { indicator.textContent = "⚠️ 存檔失敗"; indicator.classList.add("save-fail"); }
+  }
 }
 
 function saveCatalogSnapshot(data) {
@@ -345,6 +354,7 @@ async function init() {
   $("btn-my-list").onclick = openMyList;
   $("btn-my-report").onclick = openMyReport;
   $("btn-clear").onclick = clearAll;
+  document.querySelectorAll(".view-tab").forEach((btn) => { btn.onclick = () => setView(btn.dataset.view); });
   $("btn-export").onclick = exportCsv;
   $("assignee-filter").addEventListener("change", render);
   $("btn-activity").onclick = openActivity;
@@ -370,6 +380,11 @@ async function init() {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
   window.addEventListener("online", () => { syncPending(); if (OFFLINE) connectBackend(); });
+
+  // 保險存檔：切到背景／關閉分頁前最後強制寫一次快照（手機上 visibilitychange／pagehide
+  // 比 beforeunload 可靠，避免「關掉前有沒有存到」全靠猜的）
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveSnapshot(); });
+  window.addEventListener("pagehide", () => saveSnapshot());
   setInterval(syncPending, 45000);
 
   render();
@@ -444,12 +459,7 @@ function showLogin() {
 function renderMemberChoices() {
   const wrap = $("member-choices");
   wrap.innerHTML = "";
-  // 預建團隊名單優先，其後是已登入過但不在名單上的人
-  const extras = MEMBERS.filter((m) => !MEMBER_PROFILES.some((p) => p.name === m.name));
-  const choices = [
-    ...MEMBER_PROFILES.map((p) => ({ name: p.name, dept: p.duty })),
-    ...extras.map((m) => ({ name: m.name, dept: m.dept })),
-  ];
+  const choices = dedupedRoster();
   for (const m of choices) {
     const chip = document.createElement("div");
     chip.className = "chip";
@@ -467,17 +477,19 @@ function renderMemberChoices() {
 
 async function doLogin() {
   const pinVal = $("login-pin").value.trim();
-  const name = $("login-name").value.trim();
-  const profile = MEMBER_PROFILES.find((p) => p.name === name);
-  const dept = $("login-dept").value || (profile ? profile.duty : "");
+  const rawName = $("login-name").value.trim();
   const errEl = $("login-error");
   errEl.style.display = "none";
-  if (!name) { errEl.textContent = "請選擇或輸入你的名字"; errEl.style.display = "block"; return; }
+  if (!rawName) { errEl.textContent = "請選擇或輸入你的名字"; errEl.style.display = "block"; return; }
+  const name = resolveCanonicalName(rawName); // 打全名（邱長儒）自動轉成正式短名（長儒），避免同一人變兩筆
+  const profile = MEMBER_PROFILES.find((p) => p.name === name);
+  const dept = $("login-dept").value || (profile ? profile.duty : "");
   localStorage.setItem("medtec_pin", pinVal);
   try {
     MEMBERS = await api("/members", { method: "POST", body: JSON.stringify({ name, dept }) });
     localStorage.setItem("medtec_user", name);
     $("user-chip").textContent = name;
+    if (name !== rawName) showToast(`已辨識為團隊名單上的「${name}」`);
     renderRecommendBar();
     document.body.classList.remove("locked");
     $("login-overlay").classList.remove("open");
@@ -538,23 +550,40 @@ function buildEntrySection() {
   }
 }
 
-function allMemberNames() {
-  const names = MEMBER_PROFILES.map((p) => p.name);
-  for (const m of MEMBERS) if (!names.includes(m.name)) names.push(m.name);
-  return names;
+// 姓名模糊去重共用邏輯：別名表對應（振哲→政哲）＋ 全名/短名互相包含視為同一人
+// （邱長儒＝長儒）。MEMBER_PROFILES 預建名單優先，決定顯示用的名字與單位。
+// 唯一有風險的情況：兩個不同的人剛好一個名字是另一個的子字串（例如「凌」與「和凌」），
+// 目前 8+1 人名單沒有這種情況，但若未來新增成員撞名，要改用別名表而非單純子字串比對。
+function isSameName(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return (a.length >= 2 && b.length >= 2) && (a.includes(b) || b.includes(a));
 }
 
-// 可指派名單：排除總經理；登入時打了全名（如「邱長儒」）視同預設短名（「長儒」），去重
+function dedupedRoster() {
+  const roster = []; // [{ name, dept }]
+  const tryAdd = (name, dept) => {
+    if (!name) return;
+    const resolved = NAME_ALIASES[name] || name;
+    if (roster.some((r) => isSameName(r.name, resolved))) return;
+    roster.push({ name: resolved, dept: dept || "" });
+  };
+  for (const p of MEMBER_PROFILES) tryAdd(p.name, p.duty);
+  for (const m of MEMBERS) tryAdd(m.name, m.dept);
+  return roster;
+}
+
+// 可指派名單：排除總經理與測試員
 function assignableNames() {
-  const base = MEMBER_PROFILES.map((p) => p.name).filter((n) => n !== "總經理");
-  const extras = [];
-  for (const m of MEMBERS) {
-    const n = m.name;
-    if (!n || n === "總經理" || n === "測試員" || NAME_ALIASES[n]) continue;
-    const dup = [...base, ...extras].some((b) => b.includes(n) || n.includes(b));
-    if (!dup) extras.push(n);
-  }
-  return [...base, ...extras];
+  return dedupedRoster().map((r) => r.name).filter((n) => n !== "總經理" && n !== "測試員");
+}
+
+// 登入輸入的名字轉成團隊正式名單上的名字（別名對應＋全名/短名視同一人），
+// 從源頭避免「邱長儒」與「長儒」被當成兩個人存進資料庫
+function resolveCanonicalName(raw) {
+  const aliased = NAME_ALIASES[raw] || raw;
+  const match = dedupedRoster().find((r) => isSameName(r.name, aliased));
+  return match ? match.name : aliased;
 }
 
 // ---------- 依職掌推薦視角 ----------
@@ -591,8 +620,11 @@ function renderRecommendBar() {
 
 function renderTaskSummary() {
   const wrap = $("task-summary");
+  const tabs = $("view-tabs");
+  const loggedIn = me() && (API_OK || OFFLINE);
+  if (tabs) tabs.style.display = loggedIn ? "flex" : "none";
   if (!wrap) return;
-  if (!me() || (!API_OK && !OFFLINE)) { wrap.style.display = "none"; return; }
+  if (!loggedIn) { wrap.style.display = "none"; return; }
   const myStates = Object.values(STATE).filter((st) => st.assignee === me());
   const visited = myStates.filter((st) => st.status === "已拜訪").length;
   const pocket = Object.values(STATE).filter((st) => st.pocket).length;
@@ -760,14 +792,33 @@ function refreshPocketBtn() {
   $("btn-visit-filter").classList.toggle("primary", VISIT_ONLY);
 }
 
+// 視圖切換：檢索清單／分派給我／我已完成拜訪
+let CURRENT_VIEW = "search";
+function setActiveViewTab(view) {
+  CURRENT_VIEW = view;
+  document.querySelectorAll(".view-tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+}
+
+function setView(view) {
+  clearAll();
+  if (view === "assigned") {
+    $("assignee-filter").value = me();
+    SORT_KEY = "booth"; SORT_DIR = 1;
+    render();
+  } else if (view === "visited") {
+    $("assignee-filter").value = me();
+    $("status-filter").value = "已拜訪";
+    SORT_KEY = "booth"; SORT_DIR = 1;
+    render();
+  }
+  setActiveViewTab(view);
+  $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 // 我的清單：指派給我的廠商，依攤位排路線
 function openMyList() {
   if (!me()) { showLogin(); return; }
-  clearAll();
-  $("assignee-filter").value = me();
-  SORT_KEY = "booth"; SORT_DIR = 1;
-  render();
-  $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+  setView("assigned");
   showToast(`我的清單：指派給 ${me()} 的廠商（依攤位排序）`);
 }
 
@@ -777,11 +828,8 @@ function autoMyList() {
   if (AUTO_LIST_DONE || !me()) return;
   AUTO_LIST_DONE = true;
   const hasMine = Object.values(STATE).some((st) => st.assignee === me());
-  if (!hasMine) return;
-  $("assignee-filter").value = me();
-  SORT_KEY = "booth"; SORT_DIR = 1;
-  render();
-  showToast(`已顯示你的名單（${me()}），按「清除全部條件」看全部廠商`);
+  setView(hasMine ? "assigned" : "search");
+  if (hasMine) showToast(`已顯示你的名單（${me()}），可切上方頁籤看其他清單`);
 }
 
 // 我的報告：開啟個人參訪報告頁（可列印存 PDF）
@@ -795,6 +843,7 @@ function clearAll() {
   ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; POCKET_ONLY = false; VISIT_ONLY = false;
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
   $("assignee-filter").value = "";
+  setActiveViewTab("search");
   refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); refreshTechChips(); render();
 }
 
@@ -1243,6 +1292,7 @@ async function saveState(id, patch) {
       body: JSON.stringify({ ...patch, author: me() }),
     });
     STATE[id] = { ...getState(id), ...updated };
+    saveSnapshot(); // 立刻寫回本機，斷網或關閉頁面都不會遺失剛存的內容
     render();
     renderTaskSummary();
     loadHistory(id);
@@ -1316,6 +1366,7 @@ async function addNote(id) {
     $("d-note-content").value = "";
     const st = getState(id);
     STATE[id] = { ...st, note_count: (st.note_count || 0) + 1 };
+    saveSnapshot();
     loadNotes(id); loadHistory(id); render();
     showToast("已新增紀錄");
   } catch (err) {
@@ -1346,6 +1397,7 @@ async function deleteNote(exhibitorId, noteId) {
     await api(`/notes/${noteId}?author=${encodeURIComponent(me())}`, { method: "DELETE" });
     const st = getState(exhibitorId);
     STATE[exhibitorId] = { ...st, note_count: Math.max(0, (st.note_count || 0) - 1) };
+    saveSnapshot();
     loadNotes(exhibitorId); loadHistory(exhibitorId); render();
   } catch (err) { showToast("刪除失敗：" + err.message); }
 }

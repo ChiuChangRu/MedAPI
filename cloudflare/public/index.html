@@ -23,6 +23,7 @@
       </div>
       <div class="header-actions">
         <span class="mode-light" id="mode-light" title="連線狀態"><span class="light-dot"></span><span id="mode-light-text">連線中…</span></span>
+        <span class="save-indicator" id="save-indicator" title="本機離線備份最後寫入時間"></span>
         <span class="user-chip" id="user-chip" title="點擊切換使用者">未登入</span>
         <button class="btn small ghost" id="btn-my-list">我的清單</button>
         <button class="btn small ghost offline-dim" id="btn-my-report" title="需要連線">我的報告</button>
@@ -44,6 +45,13 @@
 
   <!-- 任務摘要列（登入後顯示個人進度） -->
   <div class="task-summary" id="task-summary" style="display:none;"></div>
+
+  <!-- 視圖切換（登入後顯示：檢索／分派給我／我已完成拜訪） -->
+  <div class="view-tabs" id="view-tabs" style="display:none;">
+    <button class="view-tab" data-view="search">🔍 檢索清單</button>
+    <button class="view-tab" data-view="assigned">📌 分派清單</button>
+    <button class="view-tab" data-view="visited">✅ 完成拜訪清單</button>
+  </div>
 
   <!-- 產品／科別入口 -->
   <section class="entry-section" id="entry-section">

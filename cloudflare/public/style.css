@@ -121,6 +121,22 @@ body.locked header.top .header-actions {
 /* ===== 任務摘要 ===== */
 .task-summary { cursor: pointer; }
 .task-stat.go-list { margin-left: auto; color: var(--red, #c8102e); font-weight: 600; }
+
+.view-tabs { display: flex; gap: 8px; margin-top: 10px; }
+.view-tab {
+  flex: 1; padding: 9px 12px; font-size: 13px; font-weight: 600;
+  border: 1px solid #e4e4e0; border-radius: var(--radius); background: #fff; color: #4a4a44;
+  cursor: pointer;
+}
+.view-tab.active { background: var(--red, #c8102e); border-color: var(--red, #c8102e); color: #fff; }
+
+.save-indicator {
+  font-size: 11px; color: rgba(255,255,255,0.75);
+  padding: 6px 10px; border-radius: var(--radius);
+  background: rgba(255,255,255,0.08); white-space: nowrap;
+}
+.save-indicator.save-fail { color: #fecaca; background: rgba(248,113,113,0.18); font-weight: 700; }
+.save-indicator:empty { display: none; }
 .task-summary {
   background: #fff;
   border: 1px solid var(--border);
