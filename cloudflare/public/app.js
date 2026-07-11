@@ -64,14 +64,43 @@ function addPending(note) {
   setPending(list);
 }
 
+// 離線狀態更新佇列（拜訪成果、狀態、口袋名單等），每家展商合併成一筆 patch
+function getPendingState() {
+  return JSON.parse(localStorage.getItem("medtec_pending_state") || "{}");
+}
+
+function setPendingState(map) {
+  localStorage.setItem("medtec_pending_state", JSON.stringify(map));
+  updateOfflineBanner();
+}
+
+function queueStatePatch(id, patch) {
+  const map = getPendingState();
+  const prev = map[id] ? map[id].patch : {};
+  map[id] = { patch: { ...prev, ...patch }, author: me(), ts: Date.now() };
+  setPendingState(map);
+}
+
 let SYNCING = false;
 async function syncPending() {
   if (SYNCING || !navigator.onLine) return;
-  const list = getPending();
-  if (!list.length) return;
+  if (!getPending().length && !Object.keys(getPendingState()).length) return;
   SYNCING = true;
   let synced = 0;
   try {
+    // 先送狀態更新（拜訪成果等），再送筆記
+    while (Object.keys(getPendingState()).length) {
+      const map = getPendingState();
+      const id = Object.keys(map)[0];
+      await api(`/state/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ ...map[id].patch, author: map[id].author || me() }),
+      });
+      const cur = getPendingState();
+      delete cur[id];
+      setPendingState(cur);
+      synced++;
+    }
     while (getPending().length) {
       const [head, ...rest] = getPending();
       await api("/notes", {
@@ -86,13 +115,14 @@ async function syncPending() {
   }
   SYNCING = false;
   if (synced) {
-    showToast(`已同步 ${synced} 則離線紀錄`);
+    showToast(`已同步 ${synced} 筆離線紀錄`);
     try {
       STATE = await api("/state");
       API_OK = true;
       OFFLINE = false;
       updateOfflineBanner();
       render();
+      renderTaskSummary();
       if (CURRENT_ID) { loadNotes(CURRENT_ID); }
     } catch { /* 稍後由重新整理接手 */ }
   }
@@ -100,7 +130,7 @@ async function syncPending() {
 
 function updateOfflineBanner() {
   const banner = $("offline-banner");
-  const pending = getPending().length;
+  const pending = getPending().length + Object.keys(getPendingState()).length;
   if (OFFLINE) {
     const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
     banner.textContent = `離線模式：顯示 ${snap.ts || "上次"} 同步的資料。可正常瀏覽與寫紀錄` +
@@ -230,8 +260,11 @@ async function showCacheReport() {
   }
 
   // 4) 待同步佇列
-  const pendingCount = getPending().length;
-  if (pendingCount) items.push(`⏳ 待同步離線紀錄：${pendingCount} 則（連上網路自動送出）`);
+  const pendingNotes = getPending().length;
+  const pendingStates = Object.keys(getPendingState()).length;
+  if (pendingNotes || pendingStates) {
+    items.push(`⏳ 待同步：${pendingStates ? `${pendingStates} 家狀態更新` : ""}${pendingStates && pendingNotes ? "、" : ""}${pendingNotes ? `${pendingNotes} 則紀錄` : ""}（連上網路自動送出）`);
+  }
 
   // 5) 整體占用（瀏覽器提供的估計值）
   try {
@@ -552,7 +585,7 @@ function renderRecommendBar() {
 function renderTaskSummary() {
   const wrap = $("task-summary");
   if (!wrap) return;
-  if (!me() || !API_OK) { wrap.style.display = "none"; return; }
+  if (!me() || (!API_OK && !OFFLINE)) { wrap.style.display = "none"; return; }
   const myStates = Object.values(STATE).filter((st) => st.assignee === me());
   const visited = myStates.filter((st) => st.status === "已拜訪").length;
   const pocket = Object.values(STATE).filter((st) => st.pocket).length;
@@ -825,7 +858,7 @@ function render() {
   for (const s of allStates) if (s.status in kpi) kpi[s.status]++;
   $("stats").textContent =
     `共 ${EXHIBITORS.length} 家展商，符合條件 ${list.length} 家` +
-    (API_OK ? `｜已拜訪 ${kpi["已拜訪"]}・已排定 ${kpi["已排定"]}・需追蹤 ${kpi["需追蹤"]}｜口袋名單 ${pocketCount} 家` : "");
+    ((API_OK || OFFLINE) ? `｜已拜訪 ${kpi["已拜訪"]}・已排定 ${kpi["已排定"]}・需追蹤 ${kpi["需追蹤"]}｜口袋名單 ${pocketCount} 家` : "");
 
   const grid = $("grid");
   grid.innerHTML = "";
@@ -843,8 +876,9 @@ function renderTable(list) {
 
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
+  const teamView = API_OK || OFFLINE; // 離線用快照資料照樣顯示團隊欄位
   for (const col of SORT_COLUMNS) {
-    if (col.team && !API_OK) continue;
+    if (col.team && !teamView) continue;
     const th = document.createElement("th");
     th.textContent = col.label;
     if (col.cls) th.className = col.cls;
@@ -872,7 +906,7 @@ function renderTable(list) {
       st.post_class || st.goal_tags.length || st.quals.length || st.collected.length || st.dept_tags.length);
     const tr = document.createElement("tr");
     if (hasData) tr.className = "has-data";
-    const comp = API_OK ? visitCompleteness(st) : -1;
+    const comp = teamView ? visitCompleteness(st) : -1;
     const compBadge = comp >= 0 && (comp > 0 || st.status === "已拜訪")
       ? `<span class="comp-badge comp-${comp}" title="拜訪成果完整度 ${comp}/4">${comp}/4</span>` : "";
     tr.innerHTML = `
@@ -881,7 +915,7 @@ function renderTable(list) {
       <td class="booth-cell">${esc(e.booth_no)}</td>
       <td class="col-cat">${esc(cat ? cat.name_zh : e.category)}</td>
       <td class="col-country">${esc(e.country)}</td>
-      ${API_OK ? `
+      ${teamView ? `
       <td class="status-cell"><span class="status-dot" style="background:${statusColor};"></span>${esc(st.status)}</td>
       <td class="status-cell col-post">${st.post_class ? `<span class="status-dot" style="background:${POST_CLASS_COLORS[st.post_class] || "#8a8a82"};"></span>${esc(st.post_class)}` : "—"}</td>
       <td class="col-goal">${st.goal_tags.length ? st.goal_tags.map((t) => `<span class="goal-tag">${esc(t)}</span>`).join(" ") : "—"}</td>
@@ -909,17 +943,10 @@ function esc(s) {
 }
 
 async function togglePocket(id) {
-  if (!API_OK) { showToast("共筆後端未連線"); return; }
+  if (!API_OK && !OFFLINE) { showToast("共筆後端未連線"); return; }
   const st = getState(id);
-  try {
-    const updated = await api(`/state/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({ pocket: !st.pocket, author: me() }),
-    });
-    STATE[id] = { ...st, ...updated };
-    render();
-    if (CURRENT_ID === id) openDetail(id);
-  } catch (err) { showToast("更新失敗：" + err.message); }
+  await saveState(id, { pocket: !st.pocket });
+  if (CURRENT_ID === id) openDetail(id);
 }
 
 // ---------- 詳情 modal ----------
@@ -951,7 +978,7 @@ async function openDetail(id) {
     <p class="detail-desc">${esc(e.description || "（無簡介）")}</p>
     ${(e.products || []).length ? `<div class="tags">${e.products.map((p) => `<span class="tag">${esc(p)}</span>`).join("")}</div>` : ""}
 
-    ${API_OK ? `
+    ${(API_OK || (OFFLINE && me())) ? `
     <hr/>
     <div class="state-grid" id="d-state-grid">
       <div>
@@ -1028,7 +1055,9 @@ async function openDetail(id) {
         <button class="btn small primary" id="d-vr-save">儲存成果</button>
       </div>
     </div>
+    ` : ""}
 
+    ${API_OK ? `
     <hr/>
     <h3 class="section-title">團隊紀錄（任何人可新增、修改）</h3>
     <div class="note-form">
@@ -1070,8 +1099,37 @@ async function openDetail(id) {
   const star = $("d-star");
   if (star) star.onclick = () => togglePocket(id);
 
+  // 狀態選單與拜訪成果表單：連線、離線都能填（離線先存手機）
+  if (API_OK || (OFFLINE && me())) {
+    bindRadioRow("d-status", (value) => saveState(id, { status: value }));
+    bindRadioRow("d-assignee", (value) => saveState(id, { assignee: value }));
+    bindCheckRow("d-collected", (values) => saveState(id, { collected: values }));
+    bindCheckRow("d-goal-tags", (values) => saveState(id, { goal_tags: values }));
+    bindCheckRow("d-quals", (values) => saveState(id, { quals: values }));
+    bindRadioRow("d-post-class", (value) => saveState(id, { post_class: value }));
+    bindCheckRow("d-vr-obtained", () => {}); // keep chip styling in sync, save on button
+    $("d-vr-save").onclick = () => {
+      const obtained = [...document.querySelectorAll("#d-vr-obtained input:checked")].map((i) => i.value);
+      const vr = {
+        obtained,
+        contact: $("d-vr-contact").value.trim(),
+        moq: $("d-vr-moq").value.trim(),
+        lead_time: $("d-vr-lead").value.trim(),
+        solves: $("d-vr-solves").value.trim(),
+        diff: $("d-vr-diff").value.trim(),
+        next_step: $("d-vr-next").value,
+      };
+      const patch = { visit_record: vr };
+      if (getState(id).status === "未排定" && (vr.solves || vr.diff || vr.obtained.length || vr.next_step || vr.contact)) {
+        patch.status = "已拜訪";
+        setRadioChipValue("d-status", "已拜訪");
+      }
+      saveState(id, patch);
+    };
+  }
+
   if (!API_OK) {
-    // 離線模式：只綁紀錄表單，顯示這家廠商的待同步紀錄
+    // 離線模式：綁紀錄表單，顯示這家廠商的待同步紀錄
     if ($("d-note-add")) {
       $("d-note-add").onclick = () => addNote(id);
       renderPendingNotes(id);
@@ -1079,31 +1137,6 @@ async function openDetail(id) {
     return;
   }
 
-  bindRadioRow("d-status", (value) => saveState(id, { status: value }));
-  bindRadioRow("d-assignee", (value) => saveState(id, { assignee: value }));
-  bindCheckRow("d-collected", (values) => saveState(id, { collected: values }));
-  bindCheckRow("d-goal-tags", (values) => saveState(id, { goal_tags: values }));
-  bindCheckRow("d-quals", (values) => saveState(id, { quals: values }));
-  bindRadioRow("d-post-class", (value) => saveState(id, { post_class: value }));
-  bindCheckRow("d-vr-obtained", () => {}); // keep chip styling in sync, save on button
-  $("d-vr-save").onclick = () => {
-    const obtained = [...document.querySelectorAll("#d-vr-obtained input:checked")].map((i) => i.value);
-    const vr = {
-      obtained,
-      contact: $("d-vr-contact").value.trim(),
-      moq: $("d-vr-moq").value.trim(),
-      lead_time: $("d-vr-lead").value.trim(),
-      solves: $("d-vr-solves").value.trim(),
-      diff: $("d-vr-diff").value.trim(),
-      next_step: $("d-vr-next").value,
-    };
-    const patch = { visit_record: vr };
-    if (getState(id).status === "未排定" && (vr.solves || vr.diff || vr.obtained.length || vr.next_step || vr.contact)) {
-      patch.status = "已拜訪";
-      setRadioChipValue("d-status", "已拜訪");
-    }
-    saveState(id, patch);
-  };
   $("d-note-add").onclick = () => addNote(id);
   const fileInput = $("d-file");
   if (fileInput) fileInput.onchange = () => uploadFile(id, fileInput);
@@ -1146,7 +1179,17 @@ function setRadioChipValue(elId, value) {
   });
 }
 
+function saveStateOffline(id, patch) {
+  queueStatePatch(id, patch);
+  STATE[id] = { ...getState(id), ...patch };
+  saveSnapshot(); // 寫回快照，關掉重開也不會掉
+  render();
+  renderTaskSummary();
+  showToast("沒有網路，已存在手機（連線後自動同步）");
+}
+
 async function saveState(id, patch) {
+  if (!API_OK) { saveStateOffline(id, patch); return; }
   try {
     const updated = await api(`/state/${id}`, {
       method: "PUT",
@@ -1157,7 +1200,10 @@ async function saveState(id, patch) {
     renderTaskSummary();
     loadHistory(id);
     showToast("visit_record" in patch ? "拜訪成果已儲存" : "已儲存");
-  } catch (err) { showToast("儲存失敗：" + err.message); }
+  } catch (err) {
+    if (isNetworkError(err)) { saveStateOffline(id, patch); return; } // 展場網路突然斷掉也不丟資料
+    showToast("儲存失敗：" + err.message);
+  }
 }
 
 function pendingNotesHtml(id) {
