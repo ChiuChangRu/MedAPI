@@ -510,11 +510,13 @@ export default {
 
     if (url.pathname.startsWith("/api/")) {
       // PIN 驗證：一律要求正確 PIN；TEAM_PIN 未設定時全部拒絕（fail-closed）
-      if (!env.TEAM_PIN) {
+      // trim() 兩邊都做，避免 Secret 貼上時尾端夾帶看不見的換行/空白造成誤判
+      const teamPin = (env.TEAM_PIN || "").trim();
+      if (!teamPin) {
         return bad("系統尚未設定團隊 PIN：請至 Worker 的 Settings → Variables and Secrets 新增 Secret「TEAM_PIN」", 401);
       }
-      const pin = request.headers.get("x-team-pin") || url.searchParams.get("pin") || "";
-      if (pin !== env.TEAM_PIN) return bad("PIN 錯誤或未提供", 401);
+      const pin = (request.headers.get("x-team-pin") || url.searchParams.get("pin") || "").trim();
+      if (pin !== teamPin) return bad("PIN 錯誤或未提供", 401);
       try {
         return await handleApi(request, env, url);
       } catch (err) {
