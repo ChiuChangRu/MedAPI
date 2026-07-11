@@ -645,10 +645,11 @@ function getState(id) {
 function visitCompleteness(st) {
   const vr = st.visit_record || {};
   let done = 0;
-  if (vr.note && vr.note.trim()) done++;
+  const hasText = (s) => s && s.trim();
+  if (hasText(vr.solves) || hasText(vr.diff) || hasText(vr.note)) done++; // note=舊版欄位相容
   if (vr.obtained && vr.obtained.length > 0) done++;
   if (vr.next_step) done++;
-  if (vr.contact && vr.contact.trim()) done++;
+  if (hasText(vr.contact)) done++;
   return done; // out of 4
 }
 
@@ -905,8 +906,12 @@ async function openDetail(id) {
         <div><label>交期</label><input class="vr-input" id="d-vr-lead" placeholder="如 4-6 週" value="${esc((st.visit_record||{}).lead_time||"")}" /></div>
       </div>
       <div class="vr-row">
-        <span class="vr-label">與邦特的關聯與發展潛力</span>
-        <textarea id="d-vr-note" class="vr-note" placeholder="這家的技術/產品跟我們現在或未來的業務有什麼接點？合作機會在哪？">${esc((st.visit_record||{}).note||"")}</textarea>
+        <span class="vr-label">① 能為邦特解決什麼問題？</span>
+        <textarea id="d-vr-solves" class="vr-note" placeholder="例：第二供應商、降低成本、補齊親水塗層產能…">${esc((st.visit_record||{}).solves || (st.visit_record||{}).note || "")}</textarea>
+      </div>
+      <div class="vr-row">
+        <span class="vr-label">② 相較現有方案，差異在哪裡？</span>
+        <textarea id="d-vr-diff" class="vr-note" placeholder="例：交期比現有短一半、有 ISO 13485、精度較差但便宜…">${esc((st.visit_record||{}).diff||"")}</textarea>
       </div>
       <div class="vr-next-row">
         <label>下一步</label>
@@ -982,11 +987,12 @@ async function openDetail(id) {
       contact: $("d-vr-contact").value.trim(),
       moq: $("d-vr-moq").value.trim(),
       lead_time: $("d-vr-lead").value.trim(),
-      note: $("d-vr-note").value.trim(),
+      solves: $("d-vr-solves").value.trim(),
+      diff: $("d-vr-diff").value.trim(),
       next_step: $("d-vr-next").value,
     };
     const patch = { visit_record: vr };
-    if (getState(id).status === "未排定" && (vr.note || vr.obtained.length || vr.next_step || vr.contact)) {
+    if (getState(id).status === "未排定" && (vr.solves || vr.diff || vr.obtained.length || vr.next_step || vr.contact)) {
       patch.status = "已拜訪";
       setRadioChipValue("d-status", "已拜訪");
     }

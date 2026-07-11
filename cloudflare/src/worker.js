@@ -423,10 +423,24 @@ async function handleApi(request, env, url) {
         j(st.quals, QUAL_LABELS) ? `資質：${h(j(st.quals, QUAL_LABELS))}` : "",
         j(st.collected, COLLECTED_LABELS) ? `已索取：${h(j(st.collected, COLLECTED_LABELS))}` : "",
       ].filter(Boolean).join("｜");
+      const vr = JSON.parse(st.visit_record || "{}");
+      const vrFacts = [
+        (vr.obtained || []).length ? `取得：${h(vr.obtained.join("、"))}` : "",
+        vr.contact ? `聯絡人：${h(vr.contact)}` : "",
+        vr.moq ? `MOQ：${h(vr.moq)}` : "",
+        vr.lead_time ? `交期：${h(vr.lead_time)}` : "",
+        vr.next_step ? `下一步：${h(vr.next_step)}` : "",
+      ].filter(Boolean).join("｜");
+      const vrText = [
+        (vr.solves || vr.note) ? `<div class="note"><span class="meta">[能為邦特解決什麼問題]</span> ${h(vr.solves || vr.note)}</div>` : "",
+        vr.diff ? `<div class="note"><span class="meta">[相較現有方案的差異]</span> ${h(vr.diff)}</div>` : "",
+      ].join("");
       return `<section>
         <h2>${h(ex.name_zh)} <span class="booth">${h(ex.booth_no)}</span></h2>
         <p class="sub">${h(ex.name_en || "")}｜${h(catMap[ex.category] || "")}｜${h(ex.country)}</p>
         ${facts ? `<p class="facts">${facts}</p>` : ""}
+        ${vrFacts ? `<p class="facts">拜訪成果：${vrFacts}</p>` : ""}
+        ${vrText}
         ${notes || '<p class="none">（無個人紀錄）</p>'}
         ${atts ? `<p class="facts">附件：</p><ul>${atts}</ul>` : ""}
       </section>`;
@@ -476,7 +490,7 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     const COLLECTED_LABELS = { catalog: "型錄", card: "名片", sample: "樣品", quote: "報價" };
     const QUAL_LABELS = { iso13485: "ISO 13485", fda: "FDA", ce_mdr: "CE/MDR" };
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = ["﻿廠商,攤位,館別,拜訪狀態,展後分類,觀展目標,資質確認,負責人,部門標籤,索取資料,口袋名單,紀錄數,所有紀錄"];
+    const lines = ["﻿廠商,攤位,館別,拜訪狀態,展後分類,觀展目標,資質確認,負責人,索取資料,口袋名單,取得資料,聯絡人,MOQ,交期,能解決什麼問題,與現有方案差異,下一步,紀錄數,所有紀錄"];
 
     const allIds = new Set([...states.map((s) => s.exhibitor_id), ...Object.keys(notesByEx)]);
     for (const id of allIds) {
@@ -486,6 +500,7 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
       const noteText = exNotes.map((n) => `[${n.created_at} ${n.author}/${n.type}] ${n.content}`).join("\n");
       const collected = JSON.parse(s.collected || "[]").map((c) => COLLECTED_LABELS[c] || c).join("、");
       const quals = JSON.parse(s.quals || "[]").map((q) => QUAL_LABELS[q] || q).join("、");
+      const vr = JSON.parse(s.visit_record || "{}");
       lines.push(
         [
           esc(ex.name_zh || id),
@@ -496,9 +511,15 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
           esc(JSON.parse(s.goal_tags || "[]").join("、")),
           esc(quals),
           esc(s.assignee || ""),
-          esc(JSON.parse(s.dept_tags || "[]").join("、")),
           esc(collected),
           esc(s.pocket ? "是" : ""),
+          esc((vr.obtained || []).join("、")),
+          esc(vr.contact || ""),
+          esc(vr.moq || ""),
+          esc(vr.lead_time || ""),
+          esc(vr.solves || vr.note || ""),
+          esc(vr.diff || ""),
+          esc(vr.next_step || ""),
           esc(exNotes.length),
           esc(noteText),
         ].join(",")
