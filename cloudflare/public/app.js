@@ -112,6 +112,37 @@ function updateOfflineBanner() {
   } else if (API_OK) {
     banner.style.display = "none";
   }
+  updateOfflineModeUI();
+}
+
+function updateOfflineModeUI() {
+  const btn = $("btn-offline-toggle");
+  if (!btn) return;
+  if (OFFLINE) {
+    document.body.classList.add("is-offline");
+    btn.textContent = "🔄 重新連線";
+    btn.title = "嘗試重新連上後端，恢復完整功能";
+    btn.classList.add("reconnect-btn");
+  } else {
+    document.body.classList.remove("is-offline");
+    btn.textContent = "離線測試";
+    btn.title = "模擬斷網，確認在中國時離線功能是否足夠";
+    btn.classList.remove("reconnect-btn");
+  }
+}
+
+function forceOffline() {
+  if (!me()) { showToast("請先登入再測試離線模式"); return; }
+  const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
+  if (!snap.state) { showToast("請先成功登入一次（建立快照）再測試離線模式"); return; }
+  API_OK = false;
+  OFFLINE = true;
+  STATE = snap.state;
+  MEMBERS = snap.members || [];
+  $("user-chip").textContent = me() + "（離線）";
+  updateOfflineBanner();
+  render();
+  showToast("已切換到離線測試模式，相關功能已顯示為不可用");
 }
 
 function saveSnapshot() {
@@ -158,6 +189,11 @@ async function init() {
   $("btn-login").onclick = doLogin;
   $("login-overlay").addEventListener("click", (e) => e.stopPropagation());
   $("detail-overlay").addEventListener("click", (e) => { if (e.target === $("detail-overlay")) closeDetail(); });
+
+  // 離線測試切換按鈕
+  $("btn-offline-toggle").onclick = () => {
+    if (OFFLINE) { connectBackend(); } else { forceOffline(); }
+  };
 
   // 離線快取與自動同步
   if ("serviceWorker" in navigator) {

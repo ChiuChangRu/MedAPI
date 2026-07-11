@@ -441,6 +441,19 @@ details summary { cursor: pointer; color: var(--text-muted); }
 .btn.ghost { background: transparent; border-color: var(--border); }
 header .btn.ghost { color: #fff; border-color: rgba(255,255,255,0.4); }
 
+/* 離線測試模式：把需要連線的功能變灰不可點 */
+body.is-offline .offline-dim {
+  opacity: 0.38;
+  pointer-events: none;
+  filter: grayscale(30%);
+}
+/* 重新連線按鈕（在 header 紅底上用金色讓它明顯） */
+header #btn-offline-toggle.reconnect-btn {
+  border-color: #fde68a;
+  color: #fde68a;
+  font-weight: 600;
+}
+
 .activity-row {
   padding: 9px 10px;
   border-bottom: 1px solid var(--border);
