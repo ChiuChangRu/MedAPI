@@ -133,7 +133,7 @@ function updateModeLight() {
   light.classList.toggle("green", online);
   light.classList.toggle("red", !online);
   $("mode-light-text").textContent = online ? "連線版" : "離線版";
-  light.title = online ? "已連上共筆後端，所有功能可用" : "離線版：瀏覽與寫紀錄可用，紀錄先存手機、連線後自動同步";
+  light.title = (online ? "已連上共筆後端，所有功能可用" : "離線版：瀏覽與寫紀錄可用，紀錄先存手機、連線後自動同步") + "（點擊檢查離線備妥度）";
 }
 
 function renderTripBanner() {
@@ -175,6 +175,74 @@ function updateOfflineModeUI() {
     btn.title = "模擬斷網，確認在中國時離線功能是否足夠";
     btn.classList.remove("reconnect-btn");
   }
+}
+
+// 離線備妥度檢查：實際清點這台裝置存了哪些離線資料
+async function showCacheReport() {
+  $("cache-overlay").classList.add("open");
+  const wrap = $("cache-report");
+  wrap.innerHTML = '<p class="sub">檢查中…</p>';
+  const items = [];
+  let ok = true;
+
+  // 1) Service Worker 頁面程式快取（斷網後冷啟動靠這個）
+  try {
+    const names = (await caches.keys()).filter((k) => k.startsWith("medtec-shell"));
+    const CORE = ["/", "/app.js", "/config.js", "/style.css", "/data/exhibitors.json"];
+    const found = new Set();
+    let files = 0, bytes = 0;
+    for (const name of names) {
+      const cache = await caches.open(name);
+      const keys = await cache.keys();
+      files += keys.length;
+      for (const req of keys) {
+        const res = await cache.match(req);
+        if (res) { try { bytes += (await res.clone().blob()).size; } catch { /* 部分瀏覽器不給讀 */ } }
+      }
+      for (const p of CORE) {
+        if (!found.has(p) && await cache.match(p)) found.add(p);
+      }
+    }
+    const complete = found.size >= CORE.length;
+    if (!complete) ok = false;
+    items.push(`📦 頁面程式快取：核心檔案 ${found.size}/${CORE.length}，共 ${files} 個檔案（${(bytes / 1048576).toFixed(1)} MB）${complete ? "✅" : "⚠️ 未完整，請連網重新整理一次"}`);
+  } catch {
+    ok = false;
+    items.push("📦 頁面程式快取：無法檢查 ⚠️（可能是無痕模式，離線會失效，請改用一般模式）");
+  }
+
+  // 2) 展商目錄 localStorage 備份（快取失效時的最後防線）
+  const cat = localStorage.getItem("medtec_catalog") || "";
+  if (cat) {
+    items.push(`🗂 展商目錄備份：約 ${(cat.length * 2 / 1048576).toFixed(1)} MB（${EXHIBITORS.length || "全部"} 家可離線瀏覽）✅`);
+  } else {
+    ok = false;
+    items.push("🗂 展商目錄備份：尚未建立 ❌（連網開啟一次本頁即可）");
+  }
+
+  // 3) 團隊共筆快照（離線看指派與紀錄靠這個）
+  const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
+  if (snap.state) {
+    items.push(`👥 團隊紀錄快照：${snap.ts || ""} 同步，${Object.keys(snap.state).length} 家有紀錄 ✅`);
+  } else {
+    ok = false;
+    items.push("👥 團隊紀錄快照：尚未建立 ❌（登入一次即可）");
+  }
+
+  // 4) 待同步佇列
+  const pendingCount = getPending().length;
+  if (pendingCount) items.push(`⏳ 待同步離線紀錄：${pendingCount} 則（連上網路自動送出）`);
+
+  // 5) 整體占用（瀏覽器提供的估計值）
+  try {
+    const est = await navigator.storage.estimate();
+    if (est && est.usage != null) items.push(`💾 本站在此裝置總占用：約 ${(est.usage / 1048576).toFixed(1)} MB`);
+  } catch { /* 舊瀏覽器不支援，略過 */ }
+
+  wrap.innerHTML =
+    (ok ? '<p class="cache-verdict ok">✅ 離線備妥——這台手機斷網也能用</p>'
+        : '<p class="cache-verdict warn">⚠️ 尚未備妥——請在有網路時開啟本頁並登入一次</p>') +
+    items.map((t) => `<p class="cache-item">${t}</p>`).join("");
 }
 
 function forceOffline() {
@@ -258,6 +326,11 @@ async function init() {
   $("btn-offline-toggle").onclick = () => {
     if (OFFLINE) { connectBackend(); } else { forceOffline(); }
   };
+
+  // 點紅綠燈 → 離線備妥度檢查
+  $("mode-light").onclick = showCacheReport;
+  $("cache-close").onclick = () => $("cache-overlay").classList.remove("open");
+  $("cache-overlay").addEventListener("click", (e) => { if (e.target === $("cache-overlay")) $("cache-overlay").classList.remove("open"); });
 
   // 離線快取與自動同步
   if ("serviceWorker" in navigator) {
