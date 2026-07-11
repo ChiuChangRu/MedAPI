@@ -455,6 +455,7 @@ function refreshPresetBar() {
 // ---------- 篩選 UI ----------
 function buildCategoryChips() {
   const wrap = $("category-chips");
+  if (!wrap) return;
   wrap.innerHTML = "";
   const all = document.createElement("div");
   all.className = "chip";
@@ -786,45 +787,41 @@ async function openDetail(id) {
     <div class="state-grid" id="d-state-grid">
       <div>
         <label>拜訪狀態</label>
-        <select id="d-status">${STATUS_OPTIONS.map((s) => `<option ${s === st.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+        <div class="check-row" id="d-status">
+          ${STATUS_OPTIONS.map((s) => `<label class="check-chip ${s === st.status ? "on" : ""}"><input type="radio" name="d-status-${id}" value="${esc(s)}" ${s === st.status ? "checked" : ""}>${esc(s)}</label>`).join("")}
+        </div>
       </div>
       <div>
         <label>負責同事</label>
-        <select id="d-assignee">
-          <option value="">— 未指派 —</option>
-          ${allMemberNames().map((n) => `<option ${n === st.assignee ? "selected" : ""}>${esc(n)}</option>`).join("")}
-        </select>
-      </div>
-      <div>
-        <label>部門標籤（誰想看）</label>
-        <div class="check-row" id="d-dept-tags">
-          ${DEPT_PRESETS.map((d) => `<label class="check-chip ${st.dept_tags.includes(d.name) ? "on" : ""}"><input type="checkbox" value="${d.name}" ${st.dept_tags.includes(d.name) ? "checked" : ""}/>${d.name}</label>`).join("")}
+        <div class="check-row" id="d-assignee">
+          <label class="check-chip ${!st.assignee ? "on" : ""}"><input type="radio" name="d-assignee-${id}" value="" ${!st.assignee ? "checked" : ""}>未指派</label>
+          ${allMemberNames().map((n) => `<label class="check-chip ${n === st.assignee ? "on" : ""}"><input type="radio" name="d-assignee-${id}" value="${esc(n)}" ${n === st.assignee ? "checked" : ""}>${esc(n)}</label>`).join("")}
         </div>
       </div>
       <div>
         <label>已索取資料</label>
         <div class="check-row" id="d-collected">
-          ${COLLECTED_OPTIONS.map((c) => `<label class="check-chip ${st.collected.includes(c.id) ? "on" : ""}"><input type="checkbox" value="${c.id}" ${st.collected.includes(c.id) ? "checked" : ""}/>${c.label}</label>`).join("")}
+          ${COLLECTED_OPTIONS.map((c) => `<label class="check-chip ${st.collected.includes(c.id) ? "on" : ""}"><input type="checkbox" value="${c.id}" ${st.collected.includes(c.id) ? "checked" : ""}>${c.label}</label>`).join("")}
         </div>
       </div>
       <div>
         <label>觀展目標（為什麼看這家）</label>
         <div class="check-row" id="d-goal-tags">
-          ${GOAL_OPTIONS.map((g) => `<label class="check-chip ${st.goal_tags.includes(g) ? "on" : ""}"><input type="checkbox" value="${esc(g)}" ${st.goal_tags.includes(g) ? "checked" : ""}/>${esc(g)}</label>`).join("")}
+          ${GOAL_OPTIONS.map((g) => `<label class="check-chip ${st.goal_tags.includes(g) ? "on" : ""}"><input type="checkbox" value="${esc(g)}" ${st.goal_tags.includes(g) ? "checked" : ""}>${esc(g)}</label>`).join("")}
         </div>
       </div>
       <div>
         <label>資質確認（現場詢問後勾選）</label>
         <div class="check-row" id="d-quals">
-          ${QUAL_OPTIONS.map((q) => `<label class="check-chip ${st.quals.includes(q.id) ? "on" : ""}"><input type="checkbox" value="${q.id}" ${st.quals.includes(q.id) ? "checked" : ""}/>${q.label}</label>`).join("")}
+          ${QUAL_OPTIONS.map((q) => `<label class="check-chip ${st.quals.includes(q.id) ? "on" : ""}"><input type="checkbox" value="${q.id}" ${st.quals.includes(q.id) ? "checked" : ""}>${q.label}</label>`).join("")}
         </div>
       </div>
       <div>
         <label>展後分類（回台彙整用）</label>
-        <select id="d-post-class">
-          <option value="">— 未分類 —</option>
-          ${POST_CLASS_OPTIONS.map((p) => `<option ${p === st.post_class ? "selected" : ""}>${p}</option>`).join("")}
-        </select>
+        <div class="check-row" id="d-post-class">
+          <label class="check-chip ${!st.post_class ? "on" : ""}"><input type="radio" name="d-post-class-${id}" value="" ${!st.post_class ? "checked" : ""}>未分類</label>
+          ${POST_CLASS_OPTIONS.map((p) => `<label class="check-chip ${p === st.post_class ? "on" : ""}"><input type="radio" name="d-post-class-${id}" value="${esc(p)}" ${p === st.post_class ? "checked" : ""}>${esc(p)}</label>`).join("")}
+        </div>
       </div>
     </div>
 
@@ -845,8 +842,8 @@ async function openDetail(id) {
         <div><label>交期</label><input class="vr-input" id="d-vr-lead" placeholder="如 4-6 週" value="${esc((st.visit_record||{}).lead_time||"")}" /></div>
       </div>
       <div class="vr-row">
-        <span class="vr-label">一句話印象</span>
-        <textarea id="d-vr-note" class="vr-note" placeholder="核心發現、特殊亮點或疑慮...">${esc((st.visit_record||{}).note||"")}</textarea>
+        <span class="vr-label">與邦特的關聯與發展潛力</span>
+        <textarea id="d-vr-note" class="vr-note" placeholder="這家的技術/產品跟我們現在或未來的業務有什麼接點？合作機會在哪？">${esc((st.visit_record||{}).note||"")}</textarea>
       </div>
       <div class="vr-next-row">
         <label>下一步</label>
@@ -908,13 +905,12 @@ async function openDetail(id) {
     return;
   }
 
-  $("d-status").onchange = () => saveState(id, { status: $("d-status").value });
-  $("d-assignee").onchange = () => saveState(id, { assignee: $("d-assignee").value });
-  bindCheckRow("d-dept-tags", (values) => saveState(id, { dept_tags: values }));
+  bindRadioRow("d-status", (value) => saveState(id, { status: value }));
+  bindRadioRow("d-assignee", (value) => saveState(id, { assignee: value }));
   bindCheckRow("d-collected", (values) => saveState(id, { collected: values }));
   bindCheckRow("d-goal-tags", (values) => saveState(id, { goal_tags: values }));
   bindCheckRow("d-quals", (values) => saveState(id, { quals: values }));
-  $("d-post-class").onchange = () => saveState(id, { post_class: $("d-post-class").value });
+  bindRadioRow("d-post-class", (value) => saveState(id, { post_class: value }));
   bindCheckRow("d-vr-obtained", () => {}); // keep chip styling in sync, save on button
   $("d-vr-save").onclick = () => {
     const obtained = [...document.querySelectorAll("#d-vr-obtained input:checked")].map((i) => i.value);
@@ -929,7 +925,7 @@ async function openDetail(id) {
     const patch = { visit_record: vr };
     if (getState(id).status === "未排定" && (vr.note || vr.obtained.length || vr.next_step || vr.contact)) {
       patch.status = "已拜訪";
-      $("d-status").value = "已拜訪";
+      setRadioChipValue("d-status", "已拜訪");
     }
     saveState(id, patch);
   };
@@ -950,6 +946,28 @@ function bindCheckRow(elId, onChange) {
       const values = [...wrap.querySelectorAll("input:checked")].map((i) => i.value);
       onChange(values);
     };
+  });
+}
+
+function bindRadioRow(elId, onChange) {
+  const wrap = $(elId);
+  if (!wrap) return;
+  wrap.querySelectorAll("input").forEach((input) => {
+    input.onchange = () => {
+      wrap.querySelectorAll(".check-chip").forEach((c) => c.classList.remove("on"));
+      input.closest(".check-chip").classList.add("on");
+      onChange(input.value);
+    };
+  });
+}
+
+function setRadioChipValue(elId, value) {
+  const wrap = $(elId);
+  if (!wrap) return;
+  wrap.querySelectorAll("input").forEach((input) => {
+    const on = input.value === value;
+    input.checked = on;
+    input.closest(".check-chip").classList.toggle("on", on);
   });
 }
 

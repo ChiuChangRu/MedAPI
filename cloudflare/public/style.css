@@ -409,8 +409,7 @@ td .row-star.on { color: var(--accent); }
 
 hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
-.state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
-@media (max-width: 560px) { .state-grid { grid-template-columns: 1fr; } }
+.state-grid { display: flex; flex-direction: column; gap: 8px; }
 
 .check-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .check-chip {
@@ -561,5 +560,4 @@ header #btn-offline-toggle.reconnect-btn {
 
   .overlay { padding: 6px; }
   .modal { padding: 14px; max-height: 96vh; }
-  .state-grid { grid-template-columns: 1fr; }
 }
