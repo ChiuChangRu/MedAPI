@@ -217,6 +217,7 @@ async function connectBackend() {
     saveSnapshot();
     updateOfflineBanner();
     render();
+    renderTaskSummary();
     syncPending();
   } catch (err) {
     if (String(err.message).includes("PIN")) { showLogin(); return; }
@@ -294,6 +295,7 @@ async function doLogin() {
     saveSnapshot();
     updateOfflineBanner();
     render();
+    renderTaskSummary();
     syncPending();
   } catch (err) {
     errEl.textContent = err.message;
@@ -328,19 +330,6 @@ function computeLineMatches() {
 
 // ---------- 首頁入口 ----------
 function buildEntrySection() {
-  const deptGrid = $("dept-grid");
-  deptGrid.innerHTML = "";
-  for (const d of DEPT_PRESETS) {
-    const count = EXHIBITORS.filter((e) => deptMatch(d, e)).length;
-    const card = document.createElement("div");
-    card.className = "entry-card";
-    card.dataset.dept = d.id;
-    card.innerHTML = `<div class="entry-name">${d.name}</div><div class="entry-count">${count} 家</div>`;
-    card.title = d.hint;
-    card.onclick = () => applyDeptPreset(d.id);
-    deptGrid.appendChild(card);
-  }
-
   const lineGrid = $("line-grid");
   lineGrid.innerHTML = "";
   for (const line of PRODUCT_LINES) {
@@ -391,6 +380,23 @@ function renderRecommendBar() {
     bar.appendChild(el);
   }
   bar.style.display = "block";
+}
+
+function renderTaskSummary() {
+  const wrap = $("task-summary");
+  if (!wrap) return;
+  if (!me() || !API_OK) { wrap.style.display = "none"; return; }
+  const myStates = Object.values(STATE).filter((st) => st.assignee === me());
+  const visited = myStates.filter((st) => st.status === "已拜訪").length;
+  const pocket = Object.values(STATE).filter((st) => st.pocket).length;
+  const myTotal = myStates.length;
+  if (!myTotal && !pocket) { wrap.style.display = "none"; return; }
+  let html = `<span class="recommend-label">📋 ${esc(me())} 的進度</span>`;
+  if (myTotal) html += `<span class="task-stat">負責 <strong>${myTotal}</strong> 家</span>`;
+  if (visited) html += `<span class="task-stat good">已拜訪 <strong>${visited}</strong> 家 ✓</span>`;
+  if (pocket) html += `<span class="task-stat">★ 口袋名單 <strong>${pocket}</strong> 家（全隊）</span>`;
+  wrap.innerHTML = html;
+  wrap.style.display = "flex";
 }
 
 function deptMatch(d, e) {
@@ -570,7 +576,17 @@ function clearAll() {
 
 // ---------- 主列表 ----------
 function getState(id) {
-  return STATE[id] || { status: "未排定", assignee: "", dept_tags: [], collected: [], goal_tags: [], quals: [], post_class: "", pocket: false, note_count: 0 };
+  return STATE[id] || { status: "未排定", assignee: "", dept_tags: [], collected: [], goal_tags: [], quals: [], post_class: "", pocket: false, note_count: 0, visit_record: {} };
+}
+
+function visitCompleteness(st) {
+  const vr = st.visit_record || {};
+  let done = 0;
+  if (vr.note && vr.note.trim()) done++;
+  if (vr.obtained && vr.obtained.length > 0) done++;
+  if (vr.next_step) done++;
+  if (vr.contact && vr.contact.trim()) done++;
+  return done; // out of 4
 }
 
 function filtered() {
@@ -686,9 +702,12 @@ function renderTable(list) {
       st.post_class || st.goal_tags.length || st.quals.length || st.collected.length || st.dept_tags.length);
     const tr = document.createElement("tr");
     if (hasData) tr.className = "has-data";
+    const comp = API_OK ? visitCompleteness(st) : -1;
+    const compBadge = comp >= 0 && (comp > 0 || st.status === "已拜訪")
+      ? `<span class="comp-badge comp-${comp}" title="拜訪成果完整度 ${comp}/4">${comp}/4</span>` : "";
     tr.innerHTML = `
       <td><span class="row-star ${st.pocket ? "on" : ""}" title="口袋名單">${st.pocket ? "★" : "☆"}</span></td>
-      <td class="co"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${esc(e.name_zh)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}</div><div class="en">${esc(e.name_en || "")}</div></td>
+      <td class="co"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${esc(e.name_zh)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}${compBadge}</div><div class="en">${esc(e.name_en || "")}</div></td>
       <td class="booth-cell">${esc(e.booth_no)}</td>
       <td class="col-cat">${esc(cat ? cat.name_zh : e.category)}</td>
       <td class="col-country">${esc(e.country)}</td>
@@ -764,7 +783,7 @@ async function openDetail(id) {
 
     ${API_OK ? `
     <hr/>
-    <div class="state-grid">
+    <div class="state-grid" id="d-state-grid">
       <div>
         <label>拜訪狀態</label>
         <select id="d-status">${STATUS_OPTIONS.map((s) => `<option ${s === st.status ? "selected" : ""}>${s}</option>`).join("")}</select>
@@ -806,6 +825,36 @@ async function openDetail(id) {
           <option value="">— 未分類 —</option>
           ${POST_CLASS_OPTIONS.map((p) => `<option ${p === st.post_class ? "selected" : ""}>${p}</option>`).join("")}
         </select>
+      </div>
+    </div>
+
+    <hr/>
+    <h3 class="section-title">拜訪成果記錄
+      ${(()=>{ const c=visitCompleteness(st); return c>0||st.status==="已拜訪"?`<span class="comp-inline comp-${c}">${c}/4</span>`:""; })()}
+    </h3>
+    <div class="visit-record-form">
+      <div class="vr-row">
+        <span class="vr-label">取得了什麼</span>
+        <div class="check-row" id="d-vr-obtained">
+          ${OBTAINED_OPTIONS.map((o) => `<label class="check-chip ${((st.visit_record||{}).obtained||[]).includes(o) ? "on" : ""}"><input type="checkbox" value="${esc(o)}" ${((st.visit_record||{}).obtained||[]).includes(o) ? "checked" : ""}>${esc(o)}</label>`).join("")}
+        </div>
+      </div>
+      <div class="vr-fields">
+        <div><label>聯絡人</label><input class="vr-input" id="d-vr-contact" placeholder="姓名或職稱" value="${esc((st.visit_record||{}).contact||"")}" /></div>
+        <div><label>MOQ</label><input class="vr-input" id="d-vr-moq" placeholder="如 1000 pcs" value="${esc((st.visit_record||{}).moq||"")}" /></div>
+        <div><label>交期</label><input class="vr-input" id="d-vr-lead" placeholder="如 4-6 週" value="${esc((st.visit_record||{}).lead_time||"")}" /></div>
+      </div>
+      <div class="vr-row">
+        <span class="vr-label">一句話印象</span>
+        <textarea id="d-vr-note" class="vr-note" placeholder="核心發現、特殊亮點或疑慮...">${esc((st.visit_record||{}).note||"")}</textarea>
+      </div>
+      <div class="vr-next-row">
+        <label>下一步</label>
+        <select id="d-vr-next">
+          <option value="">— 未決定 —</option>
+          ${NEXT_STEP_OPTIONS.map((n) => `<option value="${esc(n)}" ${n===((st.visit_record||{}).next_step||"")?"selected":""}>${esc(n)}</option>`).join("")}
+        </select>
+        <button class="btn small primary" id="d-vr-save">儲存成果</button>
       </div>
     </div>
 
@@ -866,6 +915,24 @@ async function openDetail(id) {
   bindCheckRow("d-goal-tags", (values) => saveState(id, { goal_tags: values }));
   bindCheckRow("d-quals", (values) => saveState(id, { quals: values }));
   $("d-post-class").onchange = () => saveState(id, { post_class: $("d-post-class").value });
+  bindCheckRow("d-vr-obtained", () => {}); // keep chip styling in sync, save on button
+  $("d-vr-save").onclick = () => {
+    const obtained = [...document.querySelectorAll("#d-vr-obtained input:checked")].map((i) => i.value);
+    const vr = {
+      obtained,
+      contact: $("d-vr-contact").value.trim(),
+      moq: $("d-vr-moq").value.trim(),
+      lead_time: $("d-vr-lead").value.trim(),
+      note: $("d-vr-note").value.trim(),
+      next_step: $("d-vr-next").value,
+    };
+    const patch = { visit_record: vr };
+    if (getState(id).status === "未排定" && (vr.note || vr.obtained.length || vr.next_step || vr.contact)) {
+      patch.status = "已拜訪";
+      $("d-status").value = "已拜訪";
+    }
+    saveState(id, patch);
+  };
   $("d-note-add").onclick = () => addNote(id);
   const fileInput = $("d-file");
   if (fileInput) fileInput.onchange = () => uploadFile(id, fileInput);
@@ -894,8 +961,9 @@ async function saveState(id, patch) {
     });
     STATE[id] = { ...getState(id), ...updated };
     render();
+    renderTaskSummary();
     loadHistory(id);
-    showToast("已儲存");
+    showToast("visit_record" in patch ? "拜訪成果已儲存" : "已儲存");
   } catch (err) { showToast("儲存失敗：" + err.message); }
 }
 

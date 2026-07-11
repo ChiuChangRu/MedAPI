@@ -72,6 +72,7 @@ const MIGRATIONS = [
   `ALTER TABLE exhibitor_state ADD COLUMN quals TEXT DEFAULT '[]'`,
   `ALTER TABLE exhibitor_state ADD COLUMN post_class TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN caption TEXT DEFAULT ''`,
+  `ALTER TABLE exhibitor_state ADD COLUMN visit_record TEXT DEFAULT '{}'`,
 ];
 
 let schemaReady = false;
@@ -116,6 +117,7 @@ const JSON_FIELDS = ["dept_tags", "collected", "goal_tags", "quals"];
 const STATE_LABELS = {
   status: "拜訪狀態", assignee: "負責人", dept_tags: "部門標籤", collected: "索取資料",
   pocket: "口袋名單", goal_tags: "觀展目標", quals: "資質確認", post_class: "展後分類",
+  visit_record: "拜訪成果",
 };
 
 async function handleApi(request, env, url) {
@@ -235,10 +237,11 @@ async function handleApi(request, env, url) {
         updated_by: s.updated_by,
         updated_at: s.updated_at,
         note_count: countMap[s.exhibitor_id] || 0,
+        visit_record: JSON.parse(s.visit_record || "{}"),
       };
     }
     for (const id of Object.keys(countMap)) {
-      if (!out[id]) out[id] = { status: "未排定", assignee: "", dept_tags: [], collected: [], goal_tags: [], quals: [], post_class: "", pocket: false, note_count: countMap[id] };
+      if (!out[id]) out[id] = { status: "未排定", assignee: "", dept_tags: [], collected: [], goal_tags: [], quals: [], post_class: "", pocket: false, note_count: countMap[id], visit_record: {} };
     }
     return json(out);
   }
@@ -258,6 +261,10 @@ async function handleApi(request, env, url) {
       if (f === "pocket") v = v ? 1 : 0;
       updates[f] = v;
     }
+    if ("visit_record" in body) {
+      const vr = (typeof body.visit_record === "object" && body.visit_record !== null) ? body.visit_record : {};
+      updates.visit_record = JSON.stringify(vr);
+    }
     if (!Object.keys(updates).length) return bad("沒有可更新的欄位");
 
     await db
@@ -271,7 +278,10 @@ async function handleApi(request, env, url) {
       .run();
 
     const detail = Object.entries(updates)
-      .map(([f, v]) => `${STATE_LABELS[f] || f} → ${f === "pocket" ? (v ? "加入" : "移除") : v}`)
+      .map(([f, v]) => {
+        if (f === "visit_record") return "儲存拜訪成果記錄";
+        return `${STATE_LABELS[f] || f} → ${f === "pocket" ? (v ? "加入" : "移除") : v}`;
+      })
       .join("；");
     await logHistory(db, exhibitorId, author, "更新狀態", detail);
 
@@ -287,6 +297,7 @@ async function handleApi(request, env, url) {
       pocket: !!row.pocket,
       updated_by: row.updated_by,
       updated_at: row.updated_at,
+      visit_record: JSON.parse(row.visit_record || "{}"),
     });
   }
 
