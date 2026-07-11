@@ -387,6 +387,8 @@ async function init() {
     renderRecommendBar();
     updateOfflineBanner();
     render();
+    renderTaskSummary();
+    autoMyList();
     showToast("行程期間：已自動切換離線版（按 🔄 重新連線可嘗試連網）");
   } else {
     await connectBackend();
@@ -405,6 +407,7 @@ async function connectBackend() {
     updateOfflineBanner();
     render();
     renderTaskSummary();
+    autoMyList();
     syncPending();
   } catch (err) {
     if (String(err.message).includes("PIN")) { showLogin(); return; }
@@ -419,6 +422,8 @@ async function connectBackend() {
       $("user-chip").textContent = me() + "（離線）";
       renderRecommendBar();
       render();
+      renderTaskSummary();
+      autoMyList();
     }
     updateOfflineBanner();
     if (!me()) $("offline-banner").style.display = "block";
@@ -483,6 +488,8 @@ async function doLogin() {
     updateOfflineBanner();
     render();
     renderTaskSummary();
+    AUTO_LIST_DONE = false; // 剛登入，重新帶一次我的清單
+    autoMyList();
     syncPending();
   } catch (err) {
     errEl.textContent = err.message;
@@ -595,8 +602,11 @@ function renderTaskSummary() {
   if (myTotal) html += `<span class="task-stat">負責 <strong>${myTotal}</strong> 家</span>`;
   if (visited) html += `<span class="task-stat good">已拜訪 <strong>${visited}</strong> 家 ✓</span>`;
   if (pocket) html += `<span class="task-stat">★ 口袋名單 <strong>${pocket}</strong> 家（全隊）</span>`;
+  html += `<span class="task-stat go-list">點我看名單 ▸</span>`;
   wrap.innerHTML = html;
   wrap.style.display = "flex";
+  wrap.onclick = openMyList;
+  wrap.title = "點擊顯示指派給我的廠商（依攤位排序）";
 }
 
 function deptMatch(d, e) {
@@ -759,6 +769,19 @@ function openMyList() {
   render();
   $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
   showToast(`我的清單：指派給 ${me()} 的廠商（依攤位排序）`);
+}
+
+// 登入／開啟後自動帶入我的清單（有指派才套，僅套一次，不蓋掉使用中的篩選）
+let AUTO_LIST_DONE = false;
+function autoMyList() {
+  if (AUTO_LIST_DONE || !me()) return;
+  AUTO_LIST_DONE = true;
+  const hasMine = Object.values(STATE).some((st) => st.assignee === me());
+  if (!hasMine) return;
+  $("assignee-filter").value = me();
+  SORT_KEY = "booth"; SORT_DIR = 1;
+  render();
+  showToast(`已顯示你的名單（${me()}），按「清除全部條件」看全部廠商`);
 }
 
 // 我的報告：開啟個人參訪報告頁（可列印存 PDF）

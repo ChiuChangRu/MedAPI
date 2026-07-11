@@ -113,6 +113,8 @@ body.locked header.top .header-actions {
 }
 
 /* ===== 任務摘要 ===== */
+.task-summary { cursor: pointer; }
+.task-stat.go-list { margin-left: auto; color: var(--red, #c8102e); font-weight: 600; }
 .task-summary {
   background: #fff;
   border: 1px solid var(--border);
