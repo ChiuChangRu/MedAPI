@@ -920,7 +920,22 @@ function renderTable(list) {
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
+  const showGroups = SORT_KEY === "booth" && list.length > 1;
+  const groupCounts = {};
+  if (showGroups) for (const e of list) { const k = boothGroup(e).key; groupCounts[k] = (groupCounts[k] || 0) + 1; }
+  let lastGroupKey = null;
+  const colCount = headRow.children.length;
   for (const e of list) {
+    if (showGroups) {
+      const g = boothGroup(e);
+      if (g.key !== lastGroupKey) {
+        lastGroupKey = g.key;
+        const gTr = document.createElement("tr");
+        gTr.className = "group-header-row";
+        gTr.innerHTML = `<td colspan="${colCount}">📍 ${esc(g.label)}（${groupCounts[g.key]} 家）</td>`;
+        tbody.appendChild(gTr);
+      }
+    }
     const st = getState(e.id);
     const cat = CAT_MAP[e.category];
     const statusColor = STATUS_COLORS[st.status] || "#8a8a82";
@@ -959,6 +974,15 @@ function renderTable(list) {
   table.appendChild(tbody);
   wrap.appendChild(table);
   return wrap;
+}
+
+// 攤位分組（依館別＋走道區域，如 N1-A210 → N1 館・A 區），依攤位排序時用來分段顯示，
+// 同區的公司排在一起走，減少繞路
+function boothGroup(e) {
+  const b = e.booth_no || "";
+  const m = /^([A-Za-z0-9]+)-([A-Za-z]+)\d+/.exec(b);
+  if (m) return { key: `${m[1]}-${m[2]}`, label: `${m[1]} 館・${m[2]} 區` };
+  return { key: e.hall || b || "其他", label: e.hall || b || "其他" };
 }
 
 function esc(s) {

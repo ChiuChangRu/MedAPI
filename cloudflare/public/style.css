@@ -66,6 +66,12 @@ header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 .cache-verdict.ok { color: var(--green, #15803d); }
 .cache-verdict.warn { color: #b45309; }
 .cache-item { font-size: 13px; line-height: 1.7; margin: 6px 0; padding: 8px 10px; background: #f7f7f5; border: 1px solid #e4e4e0; border-radius: 6px; }
+
+/* 攤位分組標題列（依館別・區域，減少展場繞路） */
+tr.group-header-row td {
+  background: #fbeaec; color: #a00d24; font-weight: 700; font-size: 13px;
+  padding: 7px 10px; border-top: 2px solid #c8102e; border-bottom: 1px solid #f0c7cc;
+}
 .light-dot {
   width: 9px; height: 9px; border-radius: 50%;
   background: #d4d4d0; flex: none;
