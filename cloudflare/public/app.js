@@ -431,6 +431,19 @@ function allMemberNames() {
   return names;
 }
 
+// 可指派名單：排除總經理；登入時打了全名（如「邱長儒」）視同預設短名（「長儒」），去重
+function assignableNames() {
+  const base = MEMBER_PROFILES.map((p) => p.name).filter((n) => n !== "總經理");
+  const extras = [];
+  for (const m of MEMBERS) {
+    const n = m.name;
+    if (!n || n === "總經理" || n === "測試員") continue;
+    const dup = [...base, ...extras].some((b) => b.includes(n) || n.includes(b));
+    if (!dup) extras.push(n);
+  }
+  return [...base, ...extras];
+}
+
 // ---------- 依職掌推薦視角 ----------
 function renderRecommendBar() {
   const bar = $("recommend-bar");
@@ -592,7 +605,7 @@ function buildSelectOptions() {
     statusSel.appendChild(opt);
   }
   const assigneeSel = $("assignee-filter");
-  for (const n of allMemberNames()) {
+  for (const n of assignableNames()) {
     const opt = document.createElement("option");
     opt.value = n;
     opt.textContent = `負責人：${n}`;
@@ -878,7 +891,8 @@ async function openDetail(id) {
         <label>負責同事</label>
         <div class="check-row" id="d-assignee">
           <label class="check-chip ${!st.assignee ? "on" : ""}"><input type="radio" name="d-assignee-${id}" value="" ${!st.assignee ? "checked" : ""}>未指派</label>
-          ${allMemberNames().map((n) => `<label class="check-chip ${n === st.assignee ? "on" : ""}"><input type="radio" name="d-assignee-${id}" value="${esc(n)}" ${n === st.assignee ? "checked" : ""}>${esc(n)}</label>`).join("")}
+          ${(() => { const names = assignableNames(); if (st.assignee && !names.includes(st.assignee)) names.push(st.assignee); // 舊資料指派的名字仍要顯示
+            return names.map((n) => `<label class="check-chip ${n === st.assignee ? "on" : ""}"><input type="radio" name="d-assignee-${id}" value="${esc(n)}" ${n === st.assignee ? "checked" : ""}>${esc(n)}</label>`).join(""); })()}
         </div>
       </div>
       <div>
