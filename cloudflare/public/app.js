@@ -200,10 +200,28 @@ function saveSnapshot() {
   } catch { /* 空間不足時放棄快照，不影響主流程 */ }
 }
 
+function saveCatalogSnapshot(data) {
+  try {
+    localStorage.setItem("medtec_catalog", JSON.stringify(data));
+  } catch { /* 空間不足時放棄快照，不影響主流程（展商目錄仍可靠 SW 快取離線開啟）*/ }
+}
+
 // ---------- 初始化 ----------
 async function init() {
-  const res = await fetch("data/exhibitors.json");
-  const data = await res.json();
+  let data;
+  try {
+    const res = await fetch("data/exhibitors.json");
+    data = await res.json();
+    saveCatalogSnapshot(data);
+  } catch {
+    // 完全沒有網路、且 Service Worker 快取沒生效時的最後防線：讀 localStorage 備份的展商目錄
+    data = JSON.parse(localStorage.getItem("medtec_catalog") || "null");
+    if (!data) {
+      document.body.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#6f6f68;">' +
+        '目前沒有網路，且這台裝置還沒有成功載入過展商資料。<br/>請先連上網路開啟一次本頁面（建立離線備份）後再試。</div>';
+      return;
+    }
+  }
   EXHIBITORS = data.exhibitors;
   CATEGORIES = data.categories;
   for (const c of CATEGORIES) CAT_MAP[c.id] = c;
