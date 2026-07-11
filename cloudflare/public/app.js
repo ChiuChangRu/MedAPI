@@ -339,6 +339,13 @@ async function init() {
 
   $("event-sub").textContent = `團隊內部版 · ${data.event.dates} · ${data.event.venue_zh} · 共 ${EXHIBITORS.length} 家展商`;
 
+  // 舊版可能存了全名（邱長儒）當登入名，開機時自動校正成正式短名，
+  // 否則負責人篩選對不上，「分派清單」會靜默失效變成整串 585 家
+  if (me()) {
+    const canonical = resolveCanonicalName(me());
+    if (canonical !== me()) localStorage.setItem("medtec_user", canonical);
+  }
+
   computeLineMatches();
   buildEntrySection();
   buildCategoryChips();
@@ -354,7 +361,8 @@ async function init() {
   $("btn-my-list").onclick = openMyList;
   $("btn-my-report").onclick = openMyReport;
   $("btn-clear").onclick = clearAll;
-  document.querySelectorAll(".view-tab").forEach((btn) => { btn.onclick = () => setView(btn.dataset.view); });
+  document.querySelectorAll(".view-tab[data-view]").forEach((btn) => { btn.onclick = () => setView(btn.dataset.view); });
+  $("btn-mylist-pdf").onclick = printMyList;
   $("btn-export").onclick = exportCsv;
   $("assignee-filter").addEventListener("change", render);
   $("btn-activity").onclick = openActivity;
@@ -419,6 +427,7 @@ async function connectBackend() {
     if (!me()) { showLogin(); } else { document.body.classList.remove("locked"); $("user-chip").textContent = me(); renderRecommendBar(); }
     STATE = await api("/state");
     saveSnapshot();
+    snapshotAllNotes(); // 順便把全隊筆記（含代問）快照到手機，離線看得到
     updateOfflineBanner();
     render();
     renderTaskSummary();
@@ -449,9 +458,6 @@ async function connectBackend() {
 function showLogin() {
   document.body.classList.add("locked");
   $("login-overlay").classList.add("open");
-  const deptSel = $("login-dept");
-  deptSel.innerHTML = '<option value="">— 選擇單位 —</option>' +
-    DEPT_PRESETS.map((d) => `<option value="${d.name}">${d.name}</option>`).join("");
   $("login-pin").value = pin();
   renderMemberChoices();
 }
@@ -464,10 +470,9 @@ function renderMemberChoices() {
     const chip = document.createElement("div");
     chip.className = "chip";
     chip.textContent = m.name;
+    chip.title = m.dept || "";
     chip.onclick = () => {
       $("login-name").value = m.name;
-      const deptSel = $("login-dept");
-      deptSel.value = [...deptSel.options].some((o) => o.value === m.dept) ? m.dept : "";
       wrap.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
       chip.classList.add("active");
     };
@@ -482,8 +487,8 @@ async function doLogin() {
   errEl.style.display = "none";
   if (!rawName) { errEl.textContent = "請選擇或輸入你的名字"; errEl.style.display = "block"; return; }
   const name = resolveCanonicalName(rawName); // 打全名（邱長儒）自動轉成正式短名（長儒），避免同一人變兩筆
-  const profile = MEMBER_PROFILES.find((p) => p.name === name);
-  const dept = $("login-dept").value || (profile ? profile.duty : "");
+  const rec = dedupedRoster().find((r) => isSameName(r.name, name));
+  const dept = rec ? rec.dept : ""; // 單位自動帶入，不用選
   localStorage.setItem("medtec_pin", pinVal);
   try {
     MEMBERS = await api("/members", { method: "POST", body: JSON.stringify({ name, dept }) });
@@ -497,6 +502,7 @@ async function doLogin() {
     OFFLINE = false;
     STATE = await api("/state");
     saveSnapshot();
+    snapshotAllNotes();
     updateOfflineBanner();
     render();
     renderTaskSummary();
@@ -565,6 +571,7 @@ function dedupedRoster() {
   const tryAdd = (name, dept) => {
     if (!name) return;
     const resolved = NAME_ALIASES[name] || name;
+    if (HIDDEN_MEMBERS.some((h) => isSameName(h, resolved))) return;
     if (roster.some((r) => isSameName(r.name, resolved))) return;
     roster.push({ name: resolved, dept: dept || "" });
   };
@@ -573,9 +580,9 @@ function dedupedRoster() {
   return roster;
 }
 
-// 可指派名單：排除總經理與測試員
+// 可指派名單：排除總經理（隱藏名單已在 dedupedRoster 過濾）
 function assignableNames() {
-  return dedupedRoster().map((r) => r.name).filter((n) => n !== "總經理" && n !== "測試員");
+  return dedupedRoster().map((r) => r.name).filter((n) => n !== "總經理");
 }
 
 // 登入輸入的名字轉成團隊正式名單上的名字（別名對應＋全名/短名視同一人），
@@ -625,7 +632,7 @@ function renderTaskSummary() {
   if (tabs) tabs.style.display = loggedIn ? "flex" : "none";
   if (!wrap) return;
   if (!loggedIn) { wrap.style.display = "none"; return; }
-  const myStates = Object.values(STATE).filter((st) => st.assignee === me());
+  const myStates = Object.values(STATE).filter((st) => isSameName(st.assignee, me()));
   const visited = myStates.filter((st) => st.status === "已拜訪").length;
   const pocket = Object.values(STATE).filter((st) => st.pocket).length;
   const myTotal = myStates.length;
@@ -799,14 +806,28 @@ function setActiveViewTab(view) {
   document.querySelectorAll(".view-tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
 }
 
+// 設定負責人篩選值；選單裡沒有這個名字就補一個 option，
+// 絕不允許「設了篩選其實沒生效、整串 585 家照列」的靜默失敗
+function setAssigneeFilter(name) {
+  const sel = $("assignee-filter");
+  sel.value = name;
+  if (sel.value !== name) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = `負責人：${name}`;
+    sel.appendChild(opt);
+    sel.value = name;
+  }
+}
+
 function setView(view) {
   clearAll();
   if (view === "assigned") {
-    $("assignee-filter").value = me();
+    setAssigneeFilter(me());
     SORT_KEY = "booth"; SORT_DIR = 1;
     render();
   } else if (view === "visited") {
-    $("assignee-filter").value = me();
+    setAssigneeFilter(me());
     $("status-filter").value = "已拜訪";
     SORT_KEY = "booth"; SORT_DIR = 1;
     render();
@@ -827,9 +848,65 @@ let AUTO_LIST_DONE = false;
 function autoMyList() {
   if (AUTO_LIST_DONE || !me()) return;
   AUTO_LIST_DONE = true;
-  const hasMine = Object.values(STATE).some((st) => st.assignee === me());
+  const hasMine = Object.values(STATE).some((st) => isSameName(st.assignee, me()));
   setView(hasMine ? "assigned" : "search");
   if (hasMine) showToast(`已顯示你的名單（${me()}），可切上方頁籤看其他清單`);
+}
+
+// 分派清單 PDF：純前端產生可列印頁（離線也能印），當紙本備援——
+// 軟體完全失效時，照這張紙也知道要去哪些攤位、幫誰問什麼
+function printMyList() {
+  if (!me()) { showLogin(); return; }
+  const mine = EXHIBITORS.filter((e) => isSameName(getState(e.id).assignee, me()));
+  if (!mine.length) { showToast("目前沒有指派給你的廠商"); return; }
+  const sorted = [...mine].sort((a, b) => (a.booth_no || "").localeCompare(b.booth_no || ""));
+  const nmap = notesCache();
+  const today = new Date().toLocaleString("zh-Hant-TW", { hour12: false });
+  let lastKey = null;
+  const rows = sorted.map((e) => {
+    const st = getState(e.id);
+    const g = boothGroup(e);
+    const visit = KEY_VISIT_MAP[e.id];
+    const qs = (nmap[e.id] || []).filter((n) => n.type === "想詢問的問題");
+    const header = g.key !== lastKey ? `<tr class="g"><td colspan="4">📍 ${esc(g.label)}</td></tr>` : "";
+    lastKey = g.key;
+    return header + `<tr>
+      <td class="booth">${esc(e.booth_no)}</td>
+      <td><strong>${esc(e.name_zh)}</strong><br/><span class="en">${esc(e.name_en || "")}</span>
+        ${visit ? `<div class="visit">⭐ ${esc(visit.when)}${visit.contact ? "｜" + esc(visit.contact) : ""}</div>` : ""}
+        ${qs.length ? `<div class="qs">${qs.map((q) => `🙋 ${esc(q.author)}：${esc(q.content)}`).join("<br/>")}</div>` : ""}
+      </td>
+      <td class="status">${esc(st.status)}</td>
+      <td class="memo"></td>
+    </tr>`;
+  }).join("");
+  const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>${esc(me())} 分派清單</title>
+<style>
+body{font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#1c1c1a;max-width:800px;margin:20px auto;padding:0 14px;}
+h1{font-size:19px;border-bottom:3px solid #c8102e;padding-bottom:8px;}
+h1 small{display:block;font-size:12px;color:#6f6f68;font-weight:normal;margin-top:4px;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{border:1px solid #d4d4d0;padding:7px 8px;text-align:left;vertical-align:top;}
+th{background:#f4f4f2;}
+tr.g td{background:#fbeaec;color:#a00d24;font-weight:700;border-top:2px solid #c8102e;}
+.booth{font-family:ui-monospace,monospace;white-space:nowrap;font-weight:700;}
+.en{color:#6f6f68;font-size:11px;}
+.visit{color:#a00d24;font-size:12px;margin-top:3px;}
+.qs{background:#fff8e6;border:1px solid #f0dfa8;border-radius:4px;padding:4px 6px;font-size:12px;margin-top:4px;}
+.status{white-space:nowrap;}
+.memo{min-width:120px;}
+.print-btn{position:fixed;top:14px;right:14px;padding:10px 18px;background:#c8102e;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;}
+@media print{.print-btn{display:none;} tr{page-break-inside:avoid;}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">列印 / 存 PDF</button>
+<h1>Medtec 2026 分派清單──${esc(me())}<small>共 ${mine.length} 家｜產出 ${today}｜紙本備援：手機完全失效時照這張跑；「現場筆記」欄可手寫</small></h1>
+<table><thead><tr><th>攤位</th><th>公司／代問事項</th><th>狀態</th><th>現場筆記</th></tr></thead><tbody>${rows}</tbody></table>
+</body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) { showToast("瀏覽器阻擋了新視窗，請允許彈出視窗後再試"); return; }
+  w.document.write(html);
+  w.document.close();
 }
 
 // 我的報告：開啟個人參訪報告頁（可列印存 PDF）
@@ -881,7 +958,7 @@ function filtered() {
     if (POCKET_ONLY && !st.pocket) return false;
     if (VISIT_ONLY && !KEY_VISIT_MAP[e.id]) return false;
     const assigneeF = $("assignee-filter").value;
-    if (assigneeF && st.assignee !== assigneeF) return false;
+    if (assigneeF && !isSameName(st.assignee, assigneeF)) return false; // 全名/短名視同一人，舊資料也對得上
     if (statusF && st.status !== statusF) return false;
     if (keywords.length) {
       const text = exhibitorText(e);
@@ -1118,6 +1195,8 @@ async function openDetail(id) {
       </div>
     </div>
 
+    <div id="d-questions"></div>
+
     <hr/>
     <h3 class="section-title">拜訪成果記錄
       ${(()=>{ const c=visitCompleteness(st); return c>0||st.status==="已拜訪"?`<span class="comp-inline comp-${c}">${c}/4</span>`:""; })()}
@@ -1225,11 +1304,12 @@ async function openDetail(id) {
   }
 
   if (!API_OK) {
-    // 離線模式：綁紀錄表單，顯示這家廠商的待同步紀錄
+    // 離線模式：綁紀錄表單，顯示這家廠商的待同步紀錄與快照裡的代問事項
     if ($("d-note-add")) {
       $("d-note-add").onclick = () => addNote(id);
       renderPendingNotes(id);
     }
+    renderQuestions(id, notesCache()[id] || []);
     return;
   }
 
@@ -1303,6 +1383,49 @@ async function saveState(id, patch) {
   }
 }
 
+// ---------- 筆記快照與代問 ----------
+// 登入時整批快照全隊筆記到手機：離線打開任何一家廠商，都看得到廠內同事的代問事項
+function notesCache() {
+  return JSON.parse(localStorage.getItem("medtec_notes") || "{}");
+}
+
+function setNotesCache(map) {
+  try { localStorage.setItem("medtec_notes", JSON.stringify(map)); } catch { /* 空間不足時略過 */ }
+}
+
+async function snapshotAllNotes() {
+  try {
+    const all = await api("/notes");
+    const map = {};
+    for (const n of all) (map[n.exhibitor_id] = map[n.exhibitor_id] || []).push(n);
+    setNotesCache(map);
+  } catch { /* 離線時略過，用上次的快照 */ }
+}
+
+// 代問區塊：把「想詢問的問題」類型的紀錄放到顯眼位置（含離線待同步的），
+// 並提供快速新增入口——廠內沒去展的同事也能請現場的人幫忙問
+function renderQuestions(id, notes) {
+  const box = $("d-questions");
+  if (!box) return;
+  const pendingQ = getPending().filter((n) => n.exhibitor_id === id && n.type === "想詢問的問題");
+  const qs = [...(notes || []).filter((n) => n.type === "想詢問的問題"), ...pendingQ];
+  let inner = qs.length
+    ? `<div class="q-title">🙋 廠內同事想代問（${qs.length} 則）——現場記得幫問</div>` +
+      qs.map((q) => `<div class="q-item"><strong>${esc(q.author)}</strong>：${esc(q.content)}</div>`).join("")
+    : `<div class="q-title q-empty">🙋 沒去現場但想了解這家？請同事代問</div>`;
+  inner += `<button class="btn small ghost" id="d-add-question">＋新增代問問題</button>`;
+  box.innerHTML = `<div class="question-box">${inner}</div>`;
+  $("d-add-question").onclick = () => {
+    const typeSel = $("d-note-type");
+    if (!typeSel) { showToast("請先登入才能新增代問"); return; }
+    typeSel.value = "想詢問的問題";
+    const content = $("d-note-content");
+    content.placeholder = "想請現場同事幫忙問什麼？（例：報價與 MOQ、有沒有 ISO 13485、能否寄樣）";
+    content.scrollIntoView({ behavior: "smooth", block: "center" });
+    content.focus();
+  };
+}
+
 function pendingNotesHtml(id) {
   return getPending()
     .filter((n) => n.exhibitor_id === id)
@@ -1324,6 +1447,8 @@ async function loadNotes(id) {
   const pendingHtml = pendingNotesHtml(id);
   try {
     const notes = await api(`/notes?exhibitor_id=${id}`);
+    const cache = notesCache(); cache[id] = notes; setNotesCache(cache);
+    renderQuestions(id, notes);
     if (!notes.length && !pendingHtml) { wrap.innerHTML = '<p class="sub">還沒有任何紀錄，寫下第一筆吧。</p>'; return; }
     wrap.innerHTML = pendingHtml + notes.map((n) => `
       <div class="note" data-id="${n.id}">
@@ -1358,6 +1483,7 @@ async function addNote(id) {
     addPending(note);
     $("d-note-content").value = "";
     renderPendingNotes(id);
+    renderQuestions(id, notesCache()[id] || []);
     showToast("沒有網路，已存在手機（連線後自動同步）");
     return;
   }

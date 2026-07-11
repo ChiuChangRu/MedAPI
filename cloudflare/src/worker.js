@@ -304,7 +304,13 @@ async function handleApi(request, env, url) {
   // ---- notes ----
   if (path === "/notes" && method === "GET") {
     const exhibitorId = url.searchParams.get("exhibitor_id");
-    if (!exhibitorId) return bad("缺 exhibitor_id");
+    if (!exhibitorId) {
+      // 不帶 exhibitor_id：回傳全部筆記（登入時整批快照到手機，離線也看得到代問事項）
+      const { results } = await db
+        .prepare("SELECT * FROM notes WHERE deleted = 0 ORDER BY exhibitor_id, id DESC")
+        .all();
+      return json(results);
+    }
     const { results } = await db
       .prepare("SELECT * FROM notes WHERE exhibitor_id = ? AND deleted = 0 ORDER BY id DESC")
       .bind(exhibitorId)

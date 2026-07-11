@@ -51,6 +51,7 @@
     <button class="view-tab" data-view="search">🔍 檢索清單</button>
     <button class="view-tab" data-view="assigned">📌 分派清單</button>
     <button class="view-tab" data-view="visited">✅ 完成拜訪清單</button>
+    <button class="view-tab pdf-tab" id="btn-mylist-pdf" title="產出可列印的分派清單（存成 PDF 當紙本備援，軟體完全失效也知道要去哪）">🖨 PDF</button>
   </div>
 
   <!-- 產品／科別入口 -->
@@ -97,13 +98,9 @@
     <p class="sub">輸入團隊 PIN 碼，並選擇（或輸入）你的名字。所有共筆紀錄都會署名。</p>
     <label>團隊 PIN 碼</label>
     <input type="password" id="login-pin" placeholder="共用 PIN" />
-    <label>你的名字</label>
+    <label>你的名字（單位自動帶入）</label>
     <div id="member-choices" class="member-choices"></div>
     <input type="text" id="login-name" placeholder="輸入名字（第一次使用）" />
-    <label>單位（選填）</label>
-    <select id="login-dept">
-      <option value="">— 選擇單位 —</option>
-    </select>
     <div class="modal-actions">
       <button class="btn primary" id="btn-login">進入</button>
     </div>

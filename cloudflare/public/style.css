@@ -137,6 +137,18 @@ body.locked header.top .header-actions {
 }
 .save-indicator.save-fail { color: #fecaca; background: rgba(248,113,113,0.18); font-weight: 700; }
 .save-indicator:empty { display: none; }
+
+.view-tab.pdf-tab { flex: none; }
+
+/* 代問區塊（廠內同事請現場的人幫忙問） */
+.question-box {
+  background: #fff8e6; border: 1px solid #f0dfa8; border-radius: var(--radius);
+  padding: 10px 12px; margin: 12px 0;
+}
+.q-title { font-size: 13px; font-weight: 700; color: #92600a; margin-bottom: 6px; }
+.q-title.q-empty { font-weight: 500; color: #a8823f; margin-bottom: 8px; }
+.q-item { font-size: 13px; line-height: 1.6; padding: 5px 8px; background: #fff; border: 1px solid #f0dfa8; border-radius: 6px; margin: 4px 0; }
+.question-box .btn { margin-top: 6px; }
 .task-summary {
   background: #fff;
   border: 1px solid var(--border);

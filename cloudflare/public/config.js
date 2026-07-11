@@ -280,15 +280,13 @@ const MEMBER_PROFILES = [
       { k: "dept", id: "equip" },
     ],
   },
-  {
-    name: "龍欽",
-    duty: "中國區支援・交通住宿安排",
-    chips: [],
-  },
 ];
 
 // 舊拼法 → 正名（曾經打錯或改過名字的登入紀錄，指派選單自動歸戶不重複顯示）
 const NAME_ALIASES = { "振哲": "政哲" };
+
+// 不顯示在任何人員選單的名字（測試帳號、非使用系統的支援人員）
+const HIDDEN_MEMBERS = ["測試員", "龍欽", "沈龍欽"];
 
 // 依展商分類把「相關廠商」再分成三種關聯，方便判讀
 const CAT_ROLES = {
