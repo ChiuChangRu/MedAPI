@@ -104,7 +104,8 @@ function updateOfflineBanner() {
   if (OFFLINE) {
     const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
     banner.textContent = `離線模式：顯示 ${snap.ts || "上次"} 同步的資料。可正常瀏覽與寫紀錄` +
-      (pending ? `（${pending} 則待同步，連上網路會自動送出）` : "，紀錄會先存在手機。");
+      (pending ? `（${pending} 則待同步，連上網路會自動送出）` : "，紀錄會先存在手機。") +
+      "📌 請保持此頁面開啟、不要關閉分頁——斷網後重新開啟不一定能載入。";
     banner.style.display = "block";
   } else if (pending) {
     banner.textContent = `有 ${pending} 則離線紀錄待同步，恢復連線後會自動送出。`;
