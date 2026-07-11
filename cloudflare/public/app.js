@@ -543,7 +543,7 @@ function assignableNames() {
   const extras = [];
   for (const m of MEMBERS) {
     const n = m.name;
-    if (!n || n === "總經理" || n === "測試員") continue;
+    if (!n || n === "總經理" || n === "測試員" || NAME_ALIASES[n]) continue;
     const dup = [...base, ...extras].some((b) => b.includes(n) || n.includes(b));
     if (!dup) extras.push(n);
   }
