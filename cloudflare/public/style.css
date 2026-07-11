@@ -51,6 +51,39 @@ header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
   user-select: none;
 }
 
+/* ===== 模式指示燈（綠=連線版，紅=離線版） ===== */
+.mode-light {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: var(--radius);
+  font-size: 12px; user-select: none;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.35);
+}
+.light-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #d4d4d0; flex: none;
+}
+.mode-light.green .light-dot { background: #4ade80; box-shadow: 0 0 7px #4ade80; }
+.mode-light.red .light-dot { background: #f87171; box-shadow: 0 0 7px #f87171; animation: light-pulse 1.6s ease-in-out infinite; }
+.mode-light.red { color: #fecaca; border-color: rgba(248,113,113,0.6); }
+@keyframes light-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ===== 行程橫幅（出發倒數／今日行程） ===== */
+.trip-banner {
+  max-width: 1240px;
+  margin: 12px auto 0;
+  padding: 10px 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: #1e40af;
+  line-height: 1.6;
+}
+
 .offline-banner {
   max-width: 1240px;
   margin: 12px auto 0;

@@ -115,8 +115,53 @@ function updateOfflineBanner() {
   updateOfflineModeUI();
 }
 
+// ---------- 行程模式（出發前=連線版綠燈，行程中=離線版紅燈） ----------
+function tripPhase() {
+  const force = new URLSearchParams(location.search).get("trip");
+  if (force === "before" || force === "during" || force === "after") return force;
+  const now = new Date();
+  if (now < new Date(TRIP.depart)) return "before";
+  if (now <= new Date(TRIP.return)) return "during";
+  return "after";
+}
+
+function updateModeLight() {
+  const light = $("mode-light");
+  if (!light) return;
+  const online = API_OK && !OFFLINE;
+  light.classList.toggle("green", online);
+  light.classList.toggle("red", !online);
+  $("mode-light-text").textContent = online ? "連線版" : "離線版";
+  light.title = online ? "已連上共筆後端，所有功能可用" : "離線版：瀏覽與寫紀錄可用，紀錄先存手機、連線後自動同步";
+}
+
+function renderTripBanner() {
+  const el = $("trip-banner");
+  if (!el) return;
+  const phase = tripPhase();
+  if (phase === "before") {
+    const days = Math.max(0, Math.ceil((new Date(TRIP.depart) - new Date()) / 86400000));
+    const assigned = Object.values(STATE).filter((st) => st.assignee).length;
+    el.innerHTML = `✈️ <strong>8/31（一）12:30 CI201</strong> 出發，還有 <strong>${days}</strong> 天` +
+      (API_OK ? `｜任務分配進度：已指派 <strong>${assigned}</strong> 家（出發前完成分配，落地就能直接跑）` : "");
+    el.style.display = "block";
+  } else if (phase === "during") {
+    const today = new Date().toLocaleDateString("sv"); // YYYY-MM-DD（當地時區，滬台同為 +8）
+    const item = TRIP_PLAN.find((p) => p.date === today);
+    if (item) {
+      el.innerHTML = `📍 <strong>今日行程</strong>｜${esc(item.plan)}`;
+      el.style.display = "block";
+    } else {
+      el.style.display = "none";
+    }
+  } else {
+    el.style.display = "none"; // 回台後不再顯示
+  }
+}
+
 function updateOfflineModeUI() {
   const btn = $("btn-offline-toggle");
+  updateModeLight();
   if (!btn) return;
   if (OFFLINE) {
     document.body.classList.add("is-offline");
@@ -203,7 +248,24 @@ async function init() {
   setInterval(syncPending, 45000);
 
   render();
-  await connectBackend();
+
+  // 行程期間（起飛後、回台前）：自動進離線版，直接用快照，不等連線逾時。
+  // 想試連網（例如飯店 VPN）可按「🔄 重新連線」。
+  const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
+  if (tripPhase() === "during" && me() && snap.state) {
+    API_OK = false;
+    OFFLINE = true;
+    STATE = snap.state;
+    MEMBERS = snap.members || [];
+    document.body.classList.remove("locked");
+    $("user-chip").textContent = me() + "（離線）";
+    renderRecommendBar();
+    updateOfflineBanner();
+    render();
+    showToast("行程期間：已自動切換離線版（按 🔄 重新連線可嘗試連網）");
+  } else {
+    await connectBackend();
+  }
 }
 
 async function connectBackend() {
@@ -663,6 +725,7 @@ function render() {
   grid.innerHTML = "";
   $("empty").style.display = list.length ? "none" : "block";
   if (list.length) grid.appendChild(renderTable(list));
+  renderTripBanner();
 }
 
 // ---------- 列表（唯一檢視，欄位標題可排序）----------

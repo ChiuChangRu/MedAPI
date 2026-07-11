@@ -16,6 +16,7 @@
         <p id="event-sub">載入中...</p>
       </div>
       <div class="header-actions">
+        <span class="mode-light" id="mode-light" title="連線狀態"><span class="light-dot"></span><span id="mode-light-text">連線中…</span></span>
         <span class="user-chip" id="user-chip" title="點擊切換使用者">未登入</span>
         <button class="btn small ghost" id="btn-my-list">我的清單</button>
         <button class="btn small ghost offline-dim" id="btn-my-report" title="需要連線">我的報告</button>
@@ -26,6 +27,8 @@
     </div>
   </div>
 </header>
+
+<div class="trip-banner" id="trip-banner" style="display:none;"></div>
 
 <div class="offline-banner" id="offline-banner" style="display:none;">
   共筆後端未連線：瀏覽與篩選功能正常，但無法讀寫團隊紀錄。
