@@ -7,6 +7,7 @@ let LINE_MATCHES = {};      // lineId -> Set(exhibitorId)
 let STATE = {};             // exhibitorId -> 共筆狀態
 let MEMBERS = [];
 let API_OK = false;
+let OFFLINE = false;        // 離線模式（用手機快取的資料瀏覽＋紀錄排隊待同步）
 let UPLOADS_ENABLED = false;
 
 // 篩選條件（單位、產品／科別兩個維度可交叉組合）
@@ -41,6 +42,86 @@ async function api(path, options = {}) {
 function logout() {
   localStorage.removeItem("medtec_user");
   showLogin();
+}
+
+function isNetworkError(err) {
+  return err instanceof TypeError || /fetch|network|Failed/i.test(String(err && err.message));
+}
+
+// ---------- 離線筆記佇列 ----------
+function getPending() {
+  return JSON.parse(localStorage.getItem("medtec_pending_notes") || "[]");
+}
+
+function setPending(list) {
+  localStorage.setItem("medtec_pending_notes", JSON.stringify(list));
+  updateOfflineBanner();
+}
+
+function addPending(note) {
+  const list = getPending();
+  list.push({ ...note, tmp_id: Date.now(), created_at: new Date().toISOString().replace("T", " ").slice(0, 19) });
+  setPending(list);
+}
+
+let SYNCING = false;
+async function syncPending() {
+  if (SYNCING || !navigator.onLine) return;
+  const list = getPending();
+  if (!list.length) return;
+  SYNCING = true;
+  let synced = 0;
+  try {
+    while (getPending().length) {
+      const [head, ...rest] = getPending();
+      await api("/notes", {
+        method: "POST",
+        body: JSON.stringify({ exhibitor_id: head.exhibitor_id, author: head.author, type: head.type, content: head.content }),
+      });
+      setPending(rest);
+      synced++;
+    }
+  } catch {
+    // 還是沒網路（或 PIN 失效），剩下的留著下次再試
+  }
+  SYNCING = false;
+  if (synced) {
+    showToast(`已同步 ${synced} 則離線紀錄`);
+    try {
+      STATE = await api("/state");
+      API_OK = true;
+      OFFLINE = false;
+      updateOfflineBanner();
+      render();
+      if (CURRENT_ID) { loadNotes(CURRENT_ID); }
+    } catch { /* 稍後由重新整理接手 */ }
+  }
+}
+
+function updateOfflineBanner() {
+  const banner = $("offline-banner");
+  const pending = getPending().length;
+  if (OFFLINE) {
+    const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
+    banner.textContent = `離線模式：顯示 ${snap.ts || "上次"} 同步的資料。可正常瀏覽與寫紀錄` +
+      (pending ? `（${pending} 則待同步，連上網路會自動送出）` : "，紀錄會先存在手機。");
+    banner.style.display = "block";
+  } else if (pending) {
+    banner.textContent = `有 ${pending} 則離線紀錄待同步，恢復連線後會自動送出。`;
+    banner.style.display = "block";
+  } else if (API_OK) {
+    banner.style.display = "none";
+  }
+}
+
+function saveSnapshot() {
+  try {
+    localStorage.setItem("medtec_snapshot", JSON.stringify({
+      state: STATE,
+      members: MEMBERS,
+      ts: new Date().toISOString().replace("T", " ").slice(0, 16),
+    }));
+  } catch { /* 空間不足時放棄快照，不影響主流程 */ }
 }
 
 // ---------- 初始化 ----------
@@ -78,6 +159,13 @@ async function init() {
   $("login-overlay").addEventListener("click", (e) => e.stopPropagation());
   $("detail-overlay").addEventListener("click", (e) => { if (e.target === $("detail-overlay")) closeDetail(); });
 
+  // 離線快取與自動同步
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  window.addEventListener("online", () => { syncPending(); if (OFFLINE) connectBackend(); });
+  setInterval(syncPending, 45000);
+
   render();
   await connectBackend();
 }
@@ -86,18 +174,30 @@ async function connectBackend() {
   try {
     MEMBERS = await api("/members");
     API_OK = true;
-    $("offline-banner").style.display = "none";
+    OFFLINE = false;
     try { UPLOADS_ENABLED = (await api("/config")).uploads; } catch { UPLOADS_ENABLED = false; }
-    if (!pin() && MEMBERS !== null) {
-      // TEAM_PIN 未設定（開發模式）也需要選名字
-    }
     if (!me()) { showLogin(); } else { document.body.classList.remove("locked"); $("user-chip").textContent = me(); renderRecommendBar(); }
     STATE = await api("/state");
+    saveSnapshot();
+    updateOfflineBanner();
     render();
+    syncPending();
   } catch (err) {
     if (String(err.message).includes("PIN")) { showLogin(); return; }
+    // 網路不通：曾登入過就進離線模式（用手機快取的資料）
     API_OK = false;
-    $("offline-banner").style.display = "block";
+    const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
+    if (me() && snap.state) {
+      OFFLINE = true;
+      STATE = snap.state;
+      MEMBERS = snap.members || [];
+      document.body.classList.remove("locked");
+      $("user-chip").textContent = me() + "（離線）";
+      renderRecommendBar();
+      render();
+    }
+    updateOfflineBanner();
+    if (!me()) $("offline-banner").style.display = "block";
   }
 }
 
@@ -153,9 +253,12 @@ async function doLogin() {
     document.body.classList.remove("locked");
     $("login-overlay").classList.remove("open");
     API_OK = true;
-    $("offline-banner").style.display = "none";
+    OFFLINE = false;
     STATE = await api("/state");
+    saveSnapshot();
+    updateOfflineBanner();
     render();
+    syncPending();
   } catch (err) {
     errEl.textContent = err.message;
     errEl.style.display = "block";
@@ -691,6 +794,18 @@ async function openDetail(id) {
     <div id="d-attachments" class="notes-list"></div>
 
     <details id="d-history-wrap"><summary>修改歷程</summary><div id="d-history">載入中...</div></details>
+    ` : (OFFLINE && me()) ? `
+    <hr/>
+    <h3 class="section-title">團隊紀錄（離線模式）</h3>
+    <p class="sub">現在沒有網路：寫的紀錄會先存在手機，連上網路後自動同步到團隊。</p>
+    <div class="note-form">
+      <select id="d-note-type">
+        ${NOTE_TYPES.map((t) => `<option>${t}</option>`).join("")}
+      </select>
+      <textarea id="d-note-content" placeholder="現場聊到什麼？要跟進什麼？"></textarea>
+      <button class="btn primary small" id="d-note-add">存到手機（待同步）</button>
+    </div>
+    <div id="d-notes" class="notes-list"></div>
     ` : `<p class="sub">共筆後端未連線，僅供瀏覽。</p>`}
   `;
 
@@ -699,7 +814,14 @@ async function openDetail(id) {
   const star = $("d-star");
   if (star) star.onclick = () => togglePocket(id);
 
-  if (!API_OK) return;
+  if (!API_OK) {
+    // 離線模式：只綁紀錄表單，顯示這家廠商的待同步紀錄
+    if ($("d-note-add")) {
+      $("d-note-add").onclick = () => addNote(id);
+      renderPendingNotes(id);
+    }
+    return;
+  }
 
   $("d-status").onchange = () => saveState(id, { status: $("d-status").value });
   $("d-assignee").onchange = () => saveState(id, { assignee: $("d-assignee").value });
@@ -741,12 +863,29 @@ async function saveState(id, patch) {
   } catch (err) { showToast("儲存失敗：" + err.message); }
 }
 
+function pendingNotesHtml(id) {
+  return getPending()
+    .filter((n) => n.exhibitor_id === id)
+    .map((n) => `
+      <div class="note pending">
+        <div class="note-meta"><strong>${esc(n.author)}</strong> · ${esc(n.type)} · ${esc(n.created_at)} · <span class="pending-tag">待同步</span></div>
+        <div class="note-content">${esc(n.content)}</div>
+      </div>`).join("");
+}
+
+function renderPendingNotes(id) {
+  const wrap = $("d-notes");
+  if (!wrap) return;
+  wrap.innerHTML = pendingNotesHtml(id) || "";
+}
+
 async function loadNotes(id) {
   const wrap = $("d-notes");
+  const pendingHtml = pendingNotesHtml(id);
   try {
     const notes = await api(`/notes?exhibitor_id=${id}`);
-    if (!notes.length) { wrap.innerHTML = '<p class="sub">還沒有任何紀錄，寫下第一筆吧。</p>'; return; }
-    wrap.innerHTML = notes.map((n) => `
+    if (!notes.length && !pendingHtml) { wrap.innerHTML = '<p class="sub">還沒有任何紀錄，寫下第一筆吧。</p>'; return; }
+    wrap.innerHTML = pendingHtml + notes.map((n) => `
       <div class="note" data-id="${n.id}">
         <div class="note-meta">
           <strong>${esc(n.author)}</strong> · ${esc(n.type)} · ${esc(n.created_at)}${n.updated_at ? "（已編輯）" : ""}
@@ -766,24 +905,39 @@ async function loadNotes(id) {
       };
     });
   } catch (err) {
-    wrap.innerHTML = `<p class="sub">載入失敗：${esc(err.message)}</p>`;
+    wrap.innerHTML = pendingHtml + `<p class="sub">（線上紀錄暫時無法載入）</p>`;
   }
 }
 
 async function addNote(id) {
   const content = $("d-note-content").value.trim();
   if (!content) { showToast("請先輸入內容"); return; }
+  const note = { exhibitor_id: id, author: me(), type: $("d-note-type").value, content };
+  if (!API_OK) {
+    // 離線：直接進佇列
+    addPending(note);
+    $("d-note-content").value = "";
+    renderPendingNotes(id);
+    showToast("沒有網路，已存在手機（連線後自動同步）");
+    return;
+  }
   try {
-    await api("/notes", {
-      method: "POST",
-      body: JSON.stringify({ exhibitor_id: id, author: me(), type: $("d-note-type").value, content }),
-    });
+    await api("/notes", { method: "POST", body: JSON.stringify(note) });
     $("d-note-content").value = "";
     const st = getState(id);
     STATE[id] = { ...st, note_count: (st.note_count || 0) + 1 };
     loadNotes(id); loadHistory(id); render();
     showToast("已新增紀錄");
-  } catch (err) { showToast("新增失敗：" + err.message); }
+  } catch (err) {
+    if (isNetworkError(err)) {
+      addPending(note);
+      $("d-note-content").value = "";
+      loadNotes(id);
+      showToast("網路不穩，已存在手機（連線後自動同步）");
+    } else {
+      showToast("新增失敗：" + err.message);
+    }
+  }
 }
 
 async function editNote(exhibitorId, noteId, oldContent) {

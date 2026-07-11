@@ -469,6 +469,10 @@ header .btn.ghost { color: #fff; border-color: rgba(255,255,255,0.4); }
 .att-video { max-width: 100%; max-height: 240px; border-radius: 4px; }
 .att-caption { font-size: 13px; line-height: 1.6; margin-top: 6px; white-space: pre-line; }
 
+/* 離線待同步紀錄 */
+.note.pending { border-style: dashed; border-color: var(--amber); background: #fffdf5; }
+.pending-tag { color: var(--amber); font-weight: 600; }
+
 /* ===== 手機版面 ===== */
 @media (max-width: 700px) {
   header.top { padding: 14px 14px; }
