@@ -61,6 +61,10 @@ const SCHEMA = [
     caption TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS line_recipients (
+    user_id TEXT PRIMARY KEY,
+    added_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_notes_ex ON notes(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
@@ -99,6 +103,110 @@ function json(data, status = 200) {
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
+}
+
+// ---------- LINE 每日摘要 ----------
+// Webhook 收「加好友／傳訊息」事件記下 userId；排程每天推播當日指派＋拜訪成果摘要。
+async function verifyLineSignature(bodyText, signature, channelSecret) {
+  if (!channelSecret || !signature) return false;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(channelSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, enc.encode(bodyText));
+  const computed = btoa(String.fromCharCode(...new Uint8Array(mac)));
+  return computed === signature;
+}
+
+async function lineApiCall(env, path, body) {
+  const token = (env.LINE_CHANNEL_ACCESS_TOKEN || "").trim();
+  if (!token) throw new Error("LINE_CHANNEL_ACCESS_TOKEN 未設定");
+  const res = await fetch(`https://api.line.me/v2/bot/message/${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`LINE API ${path} 失敗：${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
+}
+
+async function handleLineWebhook(request, env) {
+  const bodyText = await request.text();
+  const signature = request.headers.get("x-line-signature") || "";
+  const ok = await verifyLineSignature(bodyText, signature, (env.LINE_CHANNEL_SECRET || "").trim());
+  if (!ok) return new Response("bad signature", { status: 401 });
+
+  const db = env.DB;
+  await ensureSchema(db);
+  const body = JSON.parse(bodyText || "{}");
+  for (const ev of body.events || []) {
+    const userId = ev.source && ev.source.userId;
+    if (!userId) continue;
+    await db.prepare("INSERT INTO line_recipients (user_id, added_at) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING").bind(userId, now()).run();
+    if (ev.replyToken) {
+      await lineApiCall(env, "reply", {
+        replyToken: ev.replyToken,
+        messages: [{ type: "text", text: "已加入通知名單！之後每天晚上 8 點（台北/上海時間）會收到當日指派與拜訪成果摘要。" }],
+      }).catch(() => {});
+    }
+  }
+  return new Response("ok");
+}
+
+// 台北/上海皆為 UTC+8：算出「當地今天」00:00 對應的 UTC 起訖時間
+function shanghaiDayWindow(refDate) {
+  const shanghai = new Date(refDate.getTime() + 8 * 3600 * 1000);
+  const y = shanghai.getUTCFullYear(), m = shanghai.getUTCMonth(), d = shanghai.getUTCDate();
+  const start = new Date(Date.UTC(y, m, d, 0, 0, 0) - 8 * 3600 * 1000);
+  const fmt = (dt) => dt.toISOString().replace("T", " ").slice(0, 19) + "Z";
+  const label = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return { startStr: fmt(start), endStr: fmt(refDate), label };
+}
+
+async function buildDailyDigest(env) {
+  const db = env.DB;
+  await ensureSchema(db);
+  const { startStr, endStr, label } = shanghaiDayWindow(new Date());
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM history WHERE created_at >= ? AND created_at < ?
+       AND action = '更新狀態' AND (detail LIKE '%負責人 → %' OR detail LIKE '%儲存拜訪成果記錄%')
+       ORDER BY exhibitor_id, id`
+    )
+    .bind(startStr, endStr)
+    .all();
+
+  if (!results.length) return `📋 ${label} 每日摘要\n今天沒有新的指派或拜訪成果紀錄。`;
+
+  let exMap = {};
+  try {
+    const assetRes = await env.ASSETS.fetch(new Request("https://assets.internal/data/exhibitors.json"));
+    const data = await assetRes.json();
+    for (const e of data.exhibitors) exMap[e.id] = e.name_zh;
+  } catch { /* 展商目錄抓不到時退回顯示 ID，不影響摘要送出 */ }
+
+  const assignLines = [];
+  const visitLines = [];
+  for (const h of results) {
+    const name = exMap[h.exhibitor_id] || h.exhibitor_id;
+    const m = /負責人 → ([^；]+)/.exec(h.detail);
+    if (m) assignLines.push(`・${name}　${h.author} → ${m[1]}`);
+    if (h.detail.includes("儲存拜訪成果記錄")) visitLines.push(`・${name}（${h.author}）`);
+  }
+
+  const parts = [`📋 ${label} 每日摘要`];
+  if (assignLines.length) parts.push(``, `【指派異動】共 ${assignLines.length} 筆`, ...assignLines);
+  if (visitLines.length) parts.push(``, `【拜訪成果】共 ${visitLines.length} 筆`, ...visitLines);
+  return parts.join("\n");
+}
+
+async function sendDailyDigest(env) {
+  const db = env.DB;
+  await ensureSchema(db);
+  const { results: recipients } = await db.prepare("SELECT user_id FROM line_recipients").all();
+  if (!recipients.length) return;
+  const text = await buildDailyDigest(env);
+  for (const r of recipients) {
+    await lineApiCall(env, "push", { to: r.user_id, messages: [{ type: "text", text }] })
+      .catch((err) => console.error("LINE push 失敗", r.user_id, err.message));
+  }
 }
 
 function bad(message, status = 400) {
@@ -542,6 +650,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.pathname === "/line/webhook" && request.method === "POST") {
+      try {
+        return await handleLineWebhook(request, env);
+      } catch (err) {
+        return new Response(`error: ${err.message}`, { status: 500 });
+      }
+    }
+
     if (url.pathname.startsWith("/api/")) {
       // PIN 驗證：一律要求正確 PIN；TEAM_PIN 未設定時全部拒絕（fail-closed）
       // trim() 兩邊都做，避免 Secret 貼上時尾端夾帶看不見的換行/空白造成誤判
@@ -559,5 +675,9 @@ export default {
     }
 
     return env.ASSETS.fetch(request);
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(sendDailyDigest(env).catch((err) => console.error("每日摘要發送失敗", err.message)));
   },
 };

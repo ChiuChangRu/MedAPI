@@ -8,6 +8,10 @@
     "directory": "public",
     "binding": "ASSETS"
   },
+  // 每天 UTC 12:00 = 台北/上海（UTC+8）晚上 8 點，推播當日指派＋拜訪成果摘要到 LINE
+  "triggers": {
+    "crons": ["0 12 * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",
