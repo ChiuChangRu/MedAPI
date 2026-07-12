@@ -197,6 +197,38 @@ async function buildDailyDigest(env) {
   return parts.join("\n");
 }
 
+// 即時通知：存檔當下（指派異動／拜訪成果）立刻推播，不等排程
+async function notifyRealtimeSave(env, exhibitorId, author, detail) {
+  const m = /負責人 → ([^；]+)/.exec(detail);
+  const isVisit = detail.includes("儲存拜訪成果記錄");
+  if (!m && !isVisit) return;
+  try {
+    const db = env.DB;
+    const { results: recipients } = await db.prepare("SELECT user_id FROM line_recipients").all();
+    if (!recipients.length) return;
+
+    let name = exhibitorId;
+    try {
+      const assetRes = await env.ASSETS.fetch(new Request("https://assets.internal/data/exhibitors.json"));
+      const data = await assetRes.json();
+      const ex = data.exhibitors.find((e) => e.id === exhibitorId);
+      if (ex) name = ex.name_zh;
+    } catch { /* 展商目錄抓不到時退回顯示 ID，不影響通知送出 */ }
+
+    const parts = [];
+    if (m) parts.push(`📌 指派異動\n${name}　${author} → ${m[1]}`);
+    if (isVisit) parts.push(`✅ 拜訪成果\n${name}（${author}）`);
+    const text = parts.join("\n\n");
+
+    for (const r of recipients) {
+      await lineApiCall(env, "push", { to: r.user_id, messages: [{ type: "text", text }] })
+        .catch((err) => console.error("即時通知失敗", r.user_id, err.message));
+    }
+  } catch (err) {
+    console.error("即時通知處理失敗", err.message);
+  }
+}
+
 async function sendDailyDigest(env) {
   const db = env.DB;
   await ensureSchema(db);
@@ -235,7 +267,7 @@ const STATE_LABELS = {
   visit_record: "拜訪成果",
 };
 
-async function handleApi(request, env, url) {
+async function handleApi(request, env, url, ctx) {
   const db = env.DB;
   await ensureSchema(db);
   const path = url.pathname.replace(/^\/api/, "");
@@ -399,6 +431,7 @@ async function handleApi(request, env, url) {
       })
       .join("；");
     await logHistory(db, exhibitorId, author, "更新狀態", detail);
+    ctx.waitUntil(notifyRealtimeSave(env, exhibitorId, author, detail)); // 背景推播，不拖慢存檔回應
 
     const row = await db.prepare("SELECT * FROM exhibitor_state WHERE exhibitor_id = ?").bind(exhibitorId).first();
     return json({
@@ -660,7 +693,7 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (url.pathname === "/line/webhook" && request.method === "POST") {
@@ -681,7 +714,7 @@ export default {
       const pin = (request.headers.get("x-team-pin") || url.searchParams.get("pin") || "").trim();
       if (pin !== teamPin) return bad("PIN 錯誤或未提供", 401);
       try {
-        return await handleApi(request, env, url);
+        return await handleApi(request, env, url, ctx);
       } catch (err) {
         return bad(`伺服器錯誤：${err.message}`, 500);
       }
