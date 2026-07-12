@@ -433,8 +433,6 @@ async function handleApi(request, env, url) {
       const vrFacts = [
         (vr.obtained || []).length ? `取得：${h(vr.obtained.join("、"))}` : "",
         vr.contact ? `聯絡人：${h(vr.contact)}` : "",
-        vr.moq ? `MOQ：${h(vr.moq)}` : "",
-        vr.lead_time ? `交期：${h(vr.lead_time)}` : "",
         vr.next_step ? `下一步：${h(vr.next_step)}` : "",
       ].filter(Boolean).join("｜");
       const vrText = [
@@ -496,7 +494,7 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     const COLLECTED_LABELS = { catalog: "型錄", card: "名片", sample: "樣品", quote: "報價" };
     const QUAL_LABELS = { iso13485: "ISO 13485", fda: "FDA", ce_mdr: "CE/MDR" };
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const lines = ["﻿廠商,攤位,館別,拜訪狀態,展後分類,觀展目標,資質確認,負責人,索取資料,口袋名單,取得資料,聯絡人,MOQ,交期,能解決什麼問題,與現有方案差異,下一步,紀錄數,所有紀錄"];
+    const lines = ["﻿廠商,攤位,館別,拜訪狀態,展後分類,觀展目標,資質確認,負責人,索取資料,口袋名單,取得資料,聯絡人,能解決什麼問題,與現有方案差異,下一步,紀錄數,所有紀錄"];
 
     const allIds = new Set([...states.map((s) => s.exhibitor_id), ...Object.keys(notesByEx)]);
     for (const id of allIds) {
@@ -521,8 +519,6 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
           esc(s.pocket ? "是" : ""),
           esc((vr.obtained || []).join("、")),
           esc(vr.contact || ""),
-          esc(vr.moq || ""),
-          esc(vr.lead_time || ""),
           esc(vr.solves || vr.note || ""),
           esc(vr.diff || ""),
           esc(vr.next_step || ""),

@@ -1210,8 +1210,6 @@ async function openDetail(id) {
       </div>
       <div class="vr-fields">
         <div><label>聯絡人</label><input class="vr-input" id="d-vr-contact" placeholder="姓名或職稱" value="${esc((st.visit_record||{}).contact||"")}" /></div>
-        <div><label>MOQ</label><input class="vr-input" id="d-vr-moq" placeholder="如 1000 pcs" value="${esc((st.visit_record||{}).moq||"")}" /></div>
-        <div><label>交期</label><input class="vr-input" id="d-vr-lead" placeholder="如 4-6 週" value="${esc((st.visit_record||{}).lead_time||"")}" /></div>
       </div>
       <div class="vr-row">
         <span class="vr-label">① 能為邦特解決什麼問題？</span>
@@ -1227,7 +1225,7 @@ async function openDetail(id) {
           <option value="">— 未決定 —</option>
           ${NEXT_STEP_OPTIONS.map((n) => `<option value="${esc(n)}" ${n===((st.visit_record||{}).next_step||"")?"selected":""}>${esc(n)}</option>`).join("")}
         </select>
-        <button class="btn small primary" id="d-vr-save">儲存成果</button>
+        <button class="btn small primary" id="d-vr-save">儲存</button>
       </div>
     </div>
     ` : ""}
@@ -1288,8 +1286,6 @@ async function openDetail(id) {
       const vr = {
         obtained,
         contact: $("d-vr-contact").value.trim(),
-        moq: $("d-vr-moq").value.trim(),
-        lead_time: $("d-vr-lead").value.trim(),
         solves: $("d-vr-solves").value.trim(),
         diff: $("d-vr-diff").value.trim(),
         next_step: $("d-vr-next").value,
@@ -1376,7 +1372,7 @@ async function saveState(id, patch) {
     render();
     renderTaskSummary();
     loadHistory(id);
-    showToast("visit_record" in patch ? "拜訪成果已儲存" : "已儲存");
+    showToast("已儲存");
   } catch (err) {
     if (isNetworkError(err)) { saveStateOffline(id, patch); return; } // 展場網路突然斷掉也不丟資料
     showToast("儲存失敗：" + err.message);
