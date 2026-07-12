@@ -571,6 +571,7 @@ function dedupedRoster() {
   const tryAdd = (name, dept) => {
     if (!name) return;
     const resolved = NAME_ALIASES[name] || name;
+    if (/^test/i.test(resolved)) return; // test 開頭的一律視為測試帳號，不列入任何名單
     if (HIDDEN_MEMBERS.some((h) => isSameName(h, resolved))) return;
     if (roster.some((r) => isSameName(r.name, resolved))) return;
     roster.push({ name: resolved, dept: dept || "" });
@@ -1174,8 +1175,12 @@ async function openDetail(id) {
         <label>負責同事</label>
         <div class="check-row" id="d-assignee">
           <label class="check-chip ${!st.assignee ? "on" : ""}"><input type="radio" name="d-assignee-${id}" value="" ${!st.assignee ? "checked" : ""}>未指派</label>
-          ${(() => { const names = assignableNames(); if (st.assignee && !names.includes(st.assignee)) names.push(st.assignee); // 舊資料指派的名字仍要顯示
-            return names.map((n) => `<label class="check-chip ${n === st.assignee ? "on" : ""}"><input type="radio" name="d-assignee-${id}" value="${esc(n)}" ${n === st.assignee ? "checked" : ""}>${esc(n)}</label>`).join(""); })()}
+          ${(() => { const names = assignableNames();
+            // 舊資料存全名（邱長儒）時對應到正式短名 chip 點亮，不另外長出一顆全名 chip；
+            // 完全不在名單上的名字才補一顆，避免看起來沒指派
+            const current = st.assignee ? (names.find((n) => isSameName(n, st.assignee)) || st.assignee) : "";
+            if (current && !names.includes(current)) names.push(current);
+            return names.map((n) => `<label class="check-chip ${n === current ? "on" : ""}"><input type="radio" name="d-assignee-${id}" value="${esc(n)}" ${n === current ? "checked" : ""}>${esc(n)}</label>`).join(""); })()}
         </div>
       </div>
       <div>

@@ -150,20 +150,21 @@ async function handleLineWebhook(request, env) {
   return new Response("ok");
 }
 
-// 台北/上海皆為 UTC+8：算出「當地今天」00:00 對應的 UTC 起訖時間
-function shanghaiDayWindow(refDate) {
+// 摘要時間窗：過去 24 小時（滾動窗）。
+// 不用「當地今天 00:00 起算」——那樣晚上 8 點發送後到午夜之間的操作，
+// 會永遠掉在兩天摘要的縫隙裡，哪一天都不會報。label 仍顯示當地日期（UTC+8）。
+function digestWindow(refDate) {
+  const start = new Date(refDate.getTime() - 24 * 3600 * 1000);
   const shanghai = new Date(refDate.getTime() + 8 * 3600 * 1000);
-  const y = shanghai.getUTCFullYear(), m = shanghai.getUTCMonth(), d = shanghai.getUTCDate();
-  const start = new Date(Date.UTC(y, m, d, 0, 0, 0) - 8 * 3600 * 1000);
   const fmt = (dt) => dt.toISOString().replace("T", " ").slice(0, 19) + "Z";
-  const label = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const label = `${shanghai.getUTCFullYear()}-${String(shanghai.getUTCMonth() + 1).padStart(2, "0")}-${String(shanghai.getUTCDate()).padStart(2, "0")}`;
   return { startStr: fmt(start), endStr: fmt(refDate), label };
 }
 
 async function buildDailyDigest(env) {
   const db = env.DB;
   await ensureSchema(db);
-  const { startStr, endStr, label } = shanghaiDayWindow(new Date());
+  const { startStr, endStr, label } = digestWindow(new Date());
   const { results } = await db
     .prepare(
       `SELECT * FROM history WHERE created_at >= ? AND created_at < ?
@@ -182,18 +183,19 @@ async function buildDailyDigest(env) {
     for (const e of data.exhibitors) exMap[e.id] = e.name_zh;
   } catch { /* 展商目錄抓不到時退回顯示 ID，不影響摘要送出 */ }
 
-  const assignLines = [];
-  const visitLines = [];
+  // 同一家被反覆儲存會產生多筆相同紀錄，摘要只列一次
+  const assignLines = new Set();
+  const visitLines = new Set();
   for (const h of results) {
     const name = exMap[h.exhibitor_id] || h.exhibitor_id;
     const m = /負責人 → ([^；]+)/.exec(h.detail);
-    if (m) assignLines.push(`・${name}　${h.author} → ${m[1]}`);
-    if (h.detail.includes("儲存拜訪成果記錄")) visitLines.push(`・${name}（${h.author}）`);
+    if (m) assignLines.add(`・${name}　${h.author} → ${m[1]}`);
+    if (h.detail.includes("儲存拜訪成果記錄")) visitLines.add(`・${name}（${h.author}）`);
   }
 
   const parts = [`📋 ${label} 每日摘要`];
-  if (assignLines.length) parts.push(``, `【指派異動】共 ${assignLines.length} 筆`, ...assignLines);
-  if (visitLines.length) parts.push(``, `【拜訪成果】共 ${visitLines.length} 筆`, ...visitLines);
+  if (assignLines.size) parts.push(``, `【指派異動】共 ${assignLines.size} 筆`, ...assignLines);
+  if (visitLines.size) parts.push(``, `【拜訪成果】共 ${visitLines.size} 筆`, ...visitLines);
   return parts.join("\n");
 }
 
