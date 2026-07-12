@@ -201,12 +201,19 @@ async function sendDailyDigest(env) {
   const db = env.DB;
   await ensureSchema(db);
   const { results: recipients } = await db.prepare("SELECT user_id FROM line_recipients").all();
-  if (!recipients.length) return;
   const text = await buildDailyDigest(env);
+  const sent = [];
+  const failed = [];
   for (const r of recipients) {
-    await lineApiCall(env, "push", { to: r.user_id, messages: [{ type: "text", text }] })
-      .catch((err) => console.error("LINE push 失敗", r.user_id, err.message));
+    try {
+      await lineApiCall(env, "push", { to: r.user_id, messages: [{ type: "text", text }] });
+      sent.push(r.user_id);
+    } catch (err) {
+      failed.push({ user_id: r.user_id, error: err.message });
+      console.error("LINE push 失敗", r.user_id, err.message);
+    }
   }
+  return { text, recipients: recipients.length, sent, failed };
 }
 
 function bad(message, status = 400) {
@@ -641,6 +648,12 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
         "content-disposition": "attachment; filename=medtec_team_records.csv",
       },
     });
+  }
+
+  // ---- LINE 每日摘要：手動立即測試觸發（不用等排程的晚上 8 點）----
+  if (path === "/line/test-digest" && method === "GET") {
+    const result = await sendDailyDigest(env);
+    return json(result);
   }
 
   return bad("不存在的 API 路徑", 404);
