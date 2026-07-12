@@ -630,12 +630,22 @@ function renderTaskSummary() {
   const tabs = $("view-tabs");
   const loggedIn = me() && (API_OK || OFFLINE);
   if (tabs) tabs.style.display = loggedIn ? "flex" : "none";
-  if (!wrap) return;
-  if (!loggedIn) { wrap.style.display = "none"; return; }
+  const assignedBadge = $("tab-count-assigned");
+  const visitedBadge = $("tab-count-visited");
+  if (!loggedIn) {
+    if (assignedBadge) assignedBadge.textContent = "";
+    if (visitedBadge) visitedBadge.textContent = "";
+    if (!wrap) return;
+    wrap.style.display = "none";
+    return;
+  }
   const myStates = Object.values(STATE).filter((st) => isSameName(st.assignee, me()));
   const visited = myStates.filter((st) => st.status === "已拜訪").length;
   const pocket = Object.values(STATE).filter((st) => st.pocket).length;
   const myTotal = myStates.length;
+  if (assignedBadge) assignedBadge.textContent = myTotal ? myTotal : "";
+  if (visitedBadge) visitedBadge.textContent = visited ? visited : "";
+  if (!wrap) return;
   if (!myTotal && !pocket) { wrap.style.display = "none"; return; }
   let html = `<span class="recommend-label">📋 ${esc(me())} 的進度</span>`;
   if (myTotal) html += `<span class="task-stat">負責 <strong>${myTotal}</strong> 家</span>`;

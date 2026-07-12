@@ -130,6 +130,14 @@ body.locked header.top .header-actions {
 }
 .view-tab.active { background: var(--red, #c8102e); border-color: var(--red, #c8102e); color: #fff; }
 
+.tab-count {
+  display: inline-block; min-width: 17px; margin-left: 5px; padding: 1px 6px;
+  border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: #f0f0ec; color: #6f6f68; vertical-align: 1px;
+}
+.tab-count:empty { display: none; }
+.view-tab.active .tab-count { background: rgba(255,255,255,0.28); color: #fff; }
+
 .save-indicator {
   font-size: 11px; color: rgba(255,255,255,0.75);
   padding: 6px 10px; border-radius: var(--radius);
