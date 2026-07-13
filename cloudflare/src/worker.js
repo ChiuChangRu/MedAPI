@@ -694,38 +694,65 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
   return bad("不存在的 API 路徑", 404);
 }
 
+const CLOSED_COOKIE = "medtec_key";
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/line/webhook" && request.method === "POST") {
-      try {
-        return await handleLineWebhook(request, env);
-      } catch (err) {
-        return new Response(`error: ${err.message}`, { status: 500 });
-      }
+    // 系統暫時關閉：只有帶對 key 的人能繼續用，其他人一律看到 404。
+    // 復原方式：刪除下面這段、以及 Worker 的 Secret「ADMIN_BYPASS_KEY」。
+    const bypassKey = (env.ADMIN_BYPASS_KEY || "").trim();
+    const cookieMatch = (request.headers.get("Cookie") || "").match(
+      new RegExp(`(?:^|;\\s*)${CLOSED_COOKIE}=([^;]+)`)
+    );
+    const cookieKey = cookieMatch ? decodeURIComponent(cookieMatch[1]) : "";
+    const queryKey = url.searchParams.get("key") || "";
+    if (!bypassKey || (queryKey !== bypassKey && cookieKey !== bypassKey)) {
+      return new Response("404 Not Found", { status: 404 });
     }
 
-    if (url.pathname.startsWith("/api/")) {
-      // PIN 驗證：一律要求正確 PIN；TEAM_PIN 未設定時全部拒絕（fail-closed）
-      // trim() 兩邊都做，避免 Secret 貼上時尾端夾帶看不見的換行/空白造成誤判
-      const teamPin = (env.TEAM_PIN || "").trim();
-      if (!teamPin) {
-        return bad("系統尚未設定團隊 PIN：請至 Worker 的 Settings → Variables and Secrets 新增 Secret「TEAM_PIN」", 401);
-      }
-      const pin = (request.headers.get("x-team-pin") || url.searchParams.get("pin") || "").trim();
-      if (pin !== teamPin) return bad("PIN 錯誤或未提供", 401);
-      try {
-        return await handleApi(request, env, url, ctx);
-      } catch (err) {
-        return bad(`伺服器錯誤：${err.message}`, 500);
-      }
+    const response = await handleRequest(request, env, ctx, url);
+    if (queryKey === bypassKey && cookieKey !== bypassKey) {
+      const withCookie = new Response(response.body, response);
+      withCookie.headers.append(
+        "Set-Cookie",
+        `${CLOSED_COOKIE}=${encodeURIComponent(bypassKey)}; Path=/; Max-Age=31536000; SameSite=Lax`
+      );
+      return withCookie;
     }
-
-    return env.ASSETS.fetch(request);
+    return response;
   },
 
   async scheduled(event, env, ctx) {
     ctx.waitUntil(sendDailyDigest(env).catch((err) => console.error("每日摘要發送失敗", err.message)));
   },
 };
+
+async function handleRequest(request, env, ctx, url) {
+  if (url.pathname === "/line/webhook" && request.method === "POST") {
+    try {
+      return await handleLineWebhook(request, env);
+    } catch (err) {
+      return new Response(`error: ${err.message}`, { status: 500 });
+    }
+  }
+
+  if (url.pathname.startsWith("/api/")) {
+    // PIN 驗證：一律要求正確 PIN；TEAM_PIN 未設定時全部拒絕（fail-closed）
+    // trim() 兩邊都做，避免 Secret 貼上時尾端夾帶看不見的換行/空白造成誤判
+    const teamPin = (env.TEAM_PIN || "").trim();
+    if (!teamPin) {
+      return bad("系統尚未設定團隊 PIN：請至 Worker 的 Settings → Variables and Secrets 新增 Secret「TEAM_PIN」", 401);
+    }
+    const pin = (request.headers.get("x-team-pin") || url.searchParams.get("pin") || "").trim();
+    if (pin !== teamPin) return bad("PIN 錯誤或未提供", 401);
+    try {
+      return await handleApi(request, env, url, ctx);
+    } catch (err) {
+      return bad(`伺服器錯誤：${err.message}`, 500);
+    }
+  }
+
+  return env.ASSETS.fetch(request);
+}
