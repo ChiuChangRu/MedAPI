@@ -336,6 +336,12 @@ async function handleApi(request, env, url, ctx) {
       await logHistory(db, old.exhibitor_id, author, "附件分類", `${old.filename}：${category || "未分類"}`);
       return json({ ok: true });
     }
+    if (body.transcript !== undefined) {
+      const transcript = (body.transcript || "").trim();
+      await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(transcript, id).run();
+      await logHistory(db, old.exhibitor_id, author, "編輯轉文字稿", `${old.filename}：「${transcript.slice(0, 80)}」`);
+      return json({ ok: true });
+    }
     const caption = (body.caption || "").trim();
     await db.prepare("UPDATE attachments SET caption = ? WHERE id = ?").bind(caption, id).run();
     await logHistory(db, old.exhibitor_id, author, "附件說明", `${old.filename}：「${caption.slice(0, 80)}」`);

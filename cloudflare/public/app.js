@@ -1800,12 +1800,12 @@ async function loadAttachments(id) {
       const isAudio = (a.mime || "").startsWith("audio/");
       const isImage = (a.mime || "").startsWith("image/");
       const transcriptBlock = !isAudio || !TRANSCRIBE_ENABLED ? "" : a.transcript
-        ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>`
+        ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" data-act="edit-transcript" class="att-transcribe-btn">編輯</a></p>`
         : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a>`;
       const catRow = !isImage ? "" : `<div class="att-cat-row">${ATT_CATEGORIES.map((c) =>
         `<span class="cat-chip ${a.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`
       ).join("")}</div>`;
-      return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}">
+      return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}" data-transcript="${esc(a.transcript || "")}">
         <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB
           <span class="note-actions"><a href="#" data-act="cap-att">${a.caption ? "編輯說明" : "加說明"}</a> <a href="#" data-act="del-att">刪除</a></span>
         </div>
@@ -1840,6 +1840,22 @@ async function loadAttachments(id) {
           a.textContent = "轉文字失敗，點一下再試";
           showToast(err.message);
         }
+      };
+    });
+    wrap.querySelectorAll('a[data-act="edit-transcript"]').forEach((a) => {
+      a.onclick = async (ev) => {
+        ev.preventDefault();
+        const noteEl = a.closest(".note");
+        const attId = noteEl.dataset.id;
+        const edited = prompt("修改轉文字稿（AI 轉得不準的地方直接改成正確內容）：", noteEl.dataset.transcript || "");
+        if (edited === null) return;
+        try {
+          await api(`/attachments/${attId}`, {
+            method: "PUT",
+            body: JSON.stringify({ transcript: edited.trim(), author: me() }),
+          });
+          loadAttachments(id); loadHistory(id);
+        } catch (err) { showToast("儲存失敗：" + err.message); }
       };
     });
     wrap.querySelectorAll('a[data-act="del-att"]').forEach((a) => {
