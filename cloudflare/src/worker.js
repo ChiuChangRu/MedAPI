@@ -78,6 +78,7 @@ const MIGRATIONS = [
   `ALTER TABLE attachments ADD COLUMN caption TEXT DEFAULT ''`,
   `ALTER TABLE exhibitor_state ADD COLUMN visit_record TEXT DEFAULT '{}'`,
   `ALTER TABLE attachments ADD COLUMN transcript TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN category TEXT DEFAULT ''`,
 ];
 
 let schemaReady = false;
@@ -327,9 +328,15 @@ async function handleApi(request, env, url, ctx) {
     const id = Number(attCapMatch[1]);
     const body = await request.json().catch(() => ({}));
     const author = (body.author || "").trim() || "匿名";
-    const caption = (body.caption || "").trim();
     const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到附件", 404);
+    if (body.category !== undefined) {
+      const category = (body.category || "").trim();
+      await db.prepare("UPDATE attachments SET category = ? WHERE id = ?").bind(category, id).run();
+      await logHistory(db, old.exhibitor_id, author, "附件分類", `${old.filename}：${category || "未分類"}`);
+      return json({ ok: true });
+    }
+    const caption = (body.caption || "").trim();
     await db.prepare("UPDATE attachments SET caption = ? WHERE id = ?").bind(caption, id).run();
     await logHistory(db, old.exhibitor_id, author, "附件說明", `${old.filename}：「${caption.slice(0, 80)}」`);
     return json({ ok: true });

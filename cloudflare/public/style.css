@@ -575,6 +575,13 @@ header #btn-offline-toggle.reconnect-btn {
 .att-caption { font-size: 13px; line-height: 1.6; margin-top: 6px; white-space: pre-line; }
 .att-transcript { font-size: 13px; line-height: 1.6; margin-top: 6px; white-space: pre-line; color: var(--muted, #6f6f68); }
 .att-transcribe-btn { display: inline-block; margin-top: 6px; font-size: 13px; }
+.att-cat-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.cat-chip {
+  font-size: 12px; padding: 3px 9px; border-radius: var(--radius);
+  border: 1px solid var(--border); cursor: pointer; user-select: none;
+  color: var(--text-muted); background: #fff; display: inline-block;
+}
+.cat-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* 離線待同步紀錄 */
 .note.pending { border-style: dashed; border-color: var(--amber); background: #fffdf5; }

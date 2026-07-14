@@ -1611,18 +1611,36 @@ async function loadAttachments(id) {
         preview = `<video controls preload="none" src="${url}" class="att-video"></video>`;
       }
       const isAudio = (a.mime || "").startsWith("audio/");
+      const isImage = (a.mime || "").startsWith("image/");
       const transcriptBlock = !isAudio || !TRANSCRIBE_ENABLED ? "" : a.transcript
         ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>`
         : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a>`;
+      const catRow = !isImage ? "" : `<div class="att-cat-row">${ATT_CATEGORIES.map((c) =>
+        `<span class="cat-chip ${a.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`
+      ).join("")}</div>`;
       return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}">
         <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB
           <span class="note-actions"><a href="#" data-act="cap-att">${a.caption ? "編輯說明" : "加說明"}</a> <a href="#" data-act="del-att">刪除</a></span>
         </div>
         ${preview}
+        ${catRow}
         ${transcriptBlock}
         ${a.caption ? `<div class="att-caption">${esc(a.caption)}</div>` : ""}
       </div>`;
     }).join("");
+    wrap.querySelectorAll(".cat-chip").forEach((chip) => {
+      chip.onclick = async () => {
+        const attId = chip.closest(".note").dataset.id;
+        const category = chip.classList.contains("on") ? "" : chip.dataset.cat;
+        try {
+          await api(`/attachments/${attId}`, {
+            method: "PUT",
+            body: JSON.stringify({ category, author: me() }),
+          });
+          loadAttachments(id);
+        } catch (err) { showToast("分類失敗：" + err.message); }
+      };
+    });
     wrap.querySelectorAll('a[data-act="transcribe"]').forEach((a) => {
       a.onclick = async (ev) => {
         ev.preventDefault();
