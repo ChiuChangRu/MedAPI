@@ -1271,6 +1271,7 @@ async function openDetail(id) {
     ${UPLOADS_ENABLED ? `
     <div class="upload-row">
       <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
+      <button class="btn small" id="d-record-btn" type="button">🎙 錄音</button>
       <span id="d-upload-status" class="sub"></span>
     </div>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
     <div id="d-attachments" class="notes-list"></div>
@@ -1336,6 +1337,8 @@ async function openDetail(id) {
   $("d-note-add").onclick = () => addNote(id);
   const fileInput = $("d-file");
   if (fileInput) fileInput.onchange = () => uploadFile(id, fileInput);
+  const recordBtn = $("d-record-btn");
+  if (recordBtn) recordBtn.onclick = () => toggleRecording(id, recordBtn);
 
   loadNotes(id);
   loadAttachments(id);
@@ -1553,6 +1556,25 @@ function fileUrl(key) {
   return `/api/file/${encodeURIComponent(key)}?pin=${encodeURIComponent(pin())}`;
 }
 
+async function putFile(id, file, filename) {
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    headers: {
+      "content-type": file.type || "application/octet-stream",
+      "x-team-pin": pin(),
+      "x-exhibitor-id": id,
+      "x-author": encodeURIComponent(me()),
+      "x-filename": encodeURIComponent(filename || file.name || "file"),
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 async function uploadFile(id, input) {
   const files = input.files ? Array.from(input.files) : [];
   if (!files.length) return;
@@ -1570,22 +1592,7 @@ async function uploadFile(id, input) {
     }
     status.textContent = `上傳中…${progress}${(file.size / 1024 / 1024).toFixed(1)}MB`;
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: {
-          "content-type": file.type || "application/octet-stream",
-          "x-team-pin": pin(),
-          "x-exhibitor-id": id,
-          "x-author": encodeURIComponent(me()),
-          "x-filename": encodeURIComponent(file.name),
-        },
-        body: file,
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `HTTP ${res.status}`);
-      }
-      const uploaded = await res.json();
+      const uploaded = await putFile(id, file);
       // 一次只選一個檔案時，順便問說明；多選時略過（之後可個別補說明）
       if (!multi) {
         const caption = prompt("為這個檔案寫一段說明（可留空，之後也能補）：", "");
@@ -1605,6 +1612,60 @@ async function uploadFile(id, input) {
   showToast(multi ? `已上傳 ${files.length - failed}／${files.length} 個檔案` : failed ? "上傳失敗" : "已上傳");
   loadAttachments(id);
   loadHistory(id);
+}
+
+// 瀏覽器內建錄音（手機的檔案選單通常只給拍照／錄影，沒有錄音的即時選項，
+// 所以另外用麥克風權限做一顆錄音按鈕，錄完直接當附件上傳）
+let activeRecording = null; // { recorder, stream, timerId }
+
+async function toggleRecording(id, btn) {
+  if (activeRecording) { activeRecording.recorder.stop(); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    showToast("這個瀏覽器不支援錄音，請改用手機錄音 App 錄好後再上傳檔案");
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    showToast("無法使用麥克風：" + err.message);
+    return;
+  }
+  const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
+    .find((m) => MediaRecorder.isTypeSupported(m)) || "";
+  const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  const chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  const startedAt = Date.now();
+  const updateLabel = () => {
+    const secs = Math.floor((Date.now() - startedAt) / 1000);
+    btn.textContent = `⏹ 停止（${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}）`;
+  };
+  recorder.onstop = async () => {
+    clearInterval(activeRecording.timerId);
+    stream.getTracks().forEach((t) => t.stop());
+    activeRecording = null;
+    btn.textContent = "🎙 錄音";
+    const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "audio/webm" });
+    if (!blob.size) return;
+    btn.disabled = true;
+    const status = $("d-upload-status");
+    status.textContent = "上傳錄音中…";
+    const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
+    try {
+      await putFile(id, blob, `錄音-${Date.now()}.${ext}`);
+      status.textContent = "";
+      showToast("錄音已上傳");
+      loadAttachments(id);
+      loadHistory(id);
+    } catch (err) {
+      status.textContent = "錄音上傳失敗：" + err.message;
+    }
+    btn.disabled = false;
+  };
+  recorder.start();
+  updateLabel();
+  activeRecording = { recorder, stream, timerId: setInterval(updateLabel, 1000) };
 }
 
 async function loadAttachments(id) {
@@ -1711,6 +1772,7 @@ async function loadHistory(id) {
 }
 
 function closeDetail() {
+  if (activeRecording) activeRecording.recorder.stop();
   $("detail-overlay").classList.remove("open");
   CURRENT_ID = null;
 }
