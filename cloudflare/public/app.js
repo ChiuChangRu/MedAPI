@@ -894,14 +894,44 @@ function printMyList() {
   const rows = sorted.map((e) => {
     const st = getState(e.id);
     const g = boothGroup(e);
+    const cat = CAT_MAP[e.category];
     const visit = KEY_VISIT_MAP[e.id];
     const qs = (nmap[e.id] || []).filter((n) => n.type === "想詢問的問題");
     const header = g.key !== lastKey ? `<tr class="g"><td colspan="4">📍 ${esc(g.label)}</td></tr>` : "";
     lastKey = g.key;
+
+    const metaBits = [e.country, cat ? cat.name_zh : "", (e.products || []).join("、")].filter(Boolean);
+    const meta = metaBits.length ? `<div class="meta">${esc(metaBits.join(" · "))}</div>` : "";
+    const desc = e.description ? `<div class="desc">${esc(e.description)}</div>` : "";
+
+    const knownBits = [];
+    if (st.goal_tags.length) knownBits.push(`觀展目標：${st.goal_tags.join("、")}`);
+    if (st.collected.length) {
+      const labels = st.collected.map((id) => (COLLECTED_OPTIONS.find((o) => o.id === id) || {}).label || id);
+      knownBits.push(`已取得：${labels.join("、")}`);
+    }
+    if (st.quals.length) {
+      const labels = st.quals.map((id) => (QUAL_OPTIONS.find((o) => o.id === id) || {}).label || id);
+      knownBits.push(`資質：${labels.join("、")}`);
+    }
+    const known = knownBits.length ? `<div class="known">${knownBits.map(esc).join("｜")}</div>` : "";
+
+    const vr = st.visit_record || {};
+    const prevBits = [];
+    if (vr.contact) prevBits.push(`聯絡人：${vr.contact}`);
+    if (vr.solves) prevBits.push(`可解決：${vr.solves}`);
+    if (vr.diff) prevBits.push(`差異：${vr.diff}`);
+    if (vr.next_step) prevBits.push(`下一步：${vr.next_step}`);
+    const prev = prevBits.length ? `<div class="prev">📝 上次拜訪：${prevBits.map(esc).join("｜")}</div>` : "";
+
     return header + `<tr>
       <td class="booth">${esc(e.booth_no)}</td>
       <td><strong>${esc(e.name_zh)}</strong><br/><span class="en">${esc(e.name_en || "")}</span>
+        ${meta}
+        ${desc}
         ${visit ? `<div class="visit">⭐ ${esc(visit.when)}${visit.contact ? "｜" + esc(visit.contact) : ""}</div>` : ""}
+        ${known}
+        ${prev}
         ${qs.length ? `<div class="qs">${qs.map((q) => `🙋 ${esc(q.author)}：${esc(q.content)}`).join("<br/>")}</div>` : ""}
       </td>
       <td class="status">${esc(st.status)}</td>
@@ -920,7 +950,11 @@ th{background:#f4f4f2;}
 tr.g td{background:#fbeaec;color:#a00d24;font-weight:700;border-top:2px solid #c8102e;}
 .booth{font-family:ui-monospace,monospace;white-space:nowrap;font-weight:700;}
 .en{color:#6f6f68;font-size:11px;}
+.meta{color:#6f6f68;font-size:11px;margin-top:3px;}
+.desc{font-size:12px;margin-top:3px;line-height:1.5;}
 .visit{color:#a00d24;font-size:12px;margin-top:3px;}
+.known{color:#1d4ed8;font-size:12px;margin-top:3px;}
+.prev{background:#eef2ff;border:1px solid #c7d2fe;border-radius:4px;padding:4px 6px;font-size:12px;margin-top:4px;}
 .qs{background:#fff8e6;border:1px solid #f0dfa8;border-radius:4px;padding:4px 6px;font-size:12px;margin-top:4px;}
 .status{white-space:nowrap;}
 .memo{min-width:120px;}
