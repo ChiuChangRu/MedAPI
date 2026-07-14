@@ -1185,7 +1185,7 @@ function renderTable(list) {
       ? `<span class="comp-badge comp-${comp}" title="拜訪成果完整度 ${comp}/4">${comp}/4</span>` : "";
     tr.innerHTML = `
       <td><span class="row-star ${st.pocket ? "on" : ""}" title="口袋名單">${st.pocket ? "★" : "☆"}</span></td>
-      <td class="co"><div class="co-inner">${e.photo ? `<img class="co-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ""}<div class="co-text"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${esc(e.name_zh)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}${compBadge}</div><div class="en">${esc(e.name_en || "")}</div></div></div></td>
+      <td class="co"><div class="co-inner"><div class="co-photo-slot">${e.photo ? `<img class="co-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}</div><div class="co-text"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${esc(e.name_zh)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}${compBadge}</div><div class="en">${esc(e.name_en || "")}</div></div></div></td>
       <td class="booth-cell">${esc(e.booth_no)}</td>
       <td class="col-cat">${esc(cat ? cat.name_zh : e.category)}</td>
       <td class="col-country">${esc(e.country)}</td>

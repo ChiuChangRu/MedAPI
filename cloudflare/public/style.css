@@ -468,9 +468,10 @@ table.listview tbody tr.has-data:hover { background: #fbeef0; }
 td.co .zh { font-weight: 500; }
 td.co .en { font-size: 11px; color: var(--text-muted); }
 .co-inner { display: flex; align-items: center; gap: 8px; }
+.co-photo-slot { width: 48px; height: 48px; flex-shrink: 0; }
 .co-photo {
-  width: 48px; height: 48px; object-fit: cover; border-radius: 6px;
-  border: 1px solid var(--border); background: #fff; flex-shrink: 0;
+  display: block; width: 48px; height: 48px; object-fit: cover; border-radius: 6px;
+  border: 1px solid var(--border); background: #fff;
 }
 .co-text { min-width: 0; }
 td.booth-cell { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-weight: 600; white-space: nowrap; }
