@@ -958,11 +958,15 @@ function filtered() {
   const statusF = $("status-filter").value;
   const lineSet = ACTIVE_LINE ? LINE_MATCHES[ACTIVE_LINE] : null;
   const dept = ACTIVE_DEPT ? DEPT_PRESETS.find((d) => d.id === ACTIVE_DEPT) : null;
+  // 有打字搜尋時，視為要查全部展商，不受目前選的產品線／部門入口限制
+  const searching = keywords.length > 0;
 
   return EXHIBITORS.filter((e) => {
-    if (ACTIVE_CATS.size && !ACTIVE_CATS.has(e.category)) return false;
-    if (lineSet && !lineSet.has(e.id)) return false;
-    if (dept && dept.keywords && !deptMatch(dept, e)) return false;
+    if (!searching) {
+      if (ACTIVE_CATS.size && !ACTIVE_CATS.has(e.category)) return false;
+      if (lineSet && !lineSet.has(e.id)) return false;
+      if (dept && dept.keywords && !deptMatch(dept, e)) return false;
+    }
     if (hall && e.hall !== hall) return false;
     if (country && e.country !== country) return false;
     const st = getState(e.id);
@@ -1261,7 +1265,7 @@ async function openDetail(id) {
     <h3 class="section-title">附件（照片／錄音／影片）</h3>
     ${UPLOADS_ENABLED ? `
     <div class="upload-row">
-      <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*" hidden /></label>
+      <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" hidden /></label>
       <span id="d-upload-status" class="sub"></span>
     </div>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
     <div id="d-attachments" class="notes-list"></div>
