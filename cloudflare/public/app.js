@@ -1365,14 +1365,16 @@ async function openDetail(id) {
     <div id="d-notes" class="notes-list">載入中...</div>
 
     <hr/>
-    <h3 class="section-title">附件（照片／錄音／影片）</h3>
-    ${UPLOADS_ENABLED ? `
-    <div class="upload-row">
-      <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
-      <button class="btn small" id="d-record-btn" type="button">🎙 錄音</button>
-      <span id="d-upload-status" class="sub"></span>
-    </div>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
-    <div id="d-attachments" class="notes-list"></div>
+    <details id="d-att-wrap" open>
+      <summary class="section-title">附件（照片／錄音／影片）<span id="d-att-count" class="att-count"></span></summary>
+      ${UPLOADS_ENABLED ? `
+      <div class="upload-row">
+        <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
+        <button class="btn small" id="d-record-btn" type="button">🎙 錄音</button>
+        <span id="d-upload-status" class="sub"></span>
+      </div>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
+      <div id="d-attachments" class="notes-list"></div>
+    </details>
 
     <details id="d-history-wrap"><summary>修改歷程</summary><div id="d-history">載入中...</div></details>
     ` : (OFFLINE && me()) ? `
@@ -1782,6 +1784,8 @@ async function loadAttachments(id) {
   if (!wrap) return;
   try {
     const atts = await api(`/attachments?exhibitor_id=${id}`);
+    const countEl = $("d-att-count");
+    if (countEl) countEl.textContent = atts.length ? `（${atts.length}）` : "";
     if (!atts.length) { wrap.innerHTML = ""; return; }
     wrap.innerHTML = atts.map((a) => {
       const url = fileUrl(a.key);
