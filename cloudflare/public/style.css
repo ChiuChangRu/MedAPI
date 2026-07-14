@@ -175,6 +175,10 @@ body.locked header.top .header-actions {
 /* ===== 產品／科別入口 ===== */
 .entry-section { margin-bottom: 16px; }
 
+/* 個人代辦（分派清單／完成拜訪清單）：當成獨立頁面，收起逛全部展商的入口 */
+body.todo-view #entry-section,
+body.todo-view #recommend-bar { display: none !important; }
+
 .entry-block {
   background: var(--card-bg);
   border: 1px solid var(--border);

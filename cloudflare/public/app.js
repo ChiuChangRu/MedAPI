@@ -820,6 +820,9 @@ let CURRENT_VIEW = "search";
 function setActiveViewTab(view) {
   CURRENT_VIEW = view;
   document.querySelectorAll(".view-tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  // 分派清單／完成拜訪清單：當成個人代辦頁面，不是在檢索頁上疊一個篩選條件，
+  // 所以把逛全部展商用的入口收起來，畫面上看起來就是「我的清單」這一頁
+  document.body.classList.toggle("todo-view", view === "assigned" || view === "visited");
 }
 
 // 設定負責人篩選值；選單裡沒有這個名字就補一個 option，
