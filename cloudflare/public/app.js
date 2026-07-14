@@ -23,6 +23,15 @@ let CURRENT_ID = null;      // detail modal 顯示中的展商
 
 const $ = (id) => document.getElementById(id);
 
+// 點 overlay 背景關閉，但只看「按下」跟「放開」都在背景上才關——
+// 不然在 textarea 裡選字往右拖、放開時滑到 modal 外面，會被誤判成點背景關閉
+function closeOnBackdropClick(overlayId, onClose) {
+  const el = $(overlayId);
+  let downOnBackdrop = false;
+  el.addEventListener("mousedown", (e) => { downOnBackdrop = e.target === el; });
+  el.addEventListener("click", (e) => { if (e.target === el && downOnBackdrop) onClose(); });
+}
+
 // ---------- API ----------
 function pin() { return localStorage.getItem("medtec_pin") || ""; }
 function me() { return localStorage.getItem("medtec_user") || ""; }
@@ -368,11 +377,11 @@ async function init() {
   $("assignee-filter").addEventListener("change", render);
   $("btn-activity").onclick = openActivity;
   $("activity-close").onclick = () => $("activity-overlay").classList.remove("open");
-  $("activity-overlay").addEventListener("click", (e) => { if (e.target === $("activity-overlay")) $("activity-overlay").classList.remove("open"); });
+  closeOnBackdropClick("activity-overlay", () => $("activity-overlay").classList.remove("open"));
   $("user-chip").onclick = () => { if (confirm("要切換使用者嗎？")) logout(); };
   $("btn-login").onclick = doLogin;
   $("login-overlay").addEventListener("click", (e) => e.stopPropagation());
-  $("detail-overlay").addEventListener("click", (e) => { if (e.target === $("detail-overlay")) closeDetail(); });
+  closeOnBackdropClick("detail-overlay", closeDetail);
 
   // 離線測試切換按鈕
   $("btn-offline-toggle").onclick = () => {
@@ -382,7 +391,7 @@ async function init() {
   // 點紅綠燈 → 離線備妥度檢查
   $("mode-light").onclick = showCacheReport;
   $("cache-close").onclick = () => $("cache-overlay").classList.remove("open");
-  $("cache-overlay").addEventListener("click", (e) => { if (e.target === $("cache-overlay")) $("cache-overlay").classList.remove("open"); });
+  closeOnBackdropClick("cache-overlay", () => $("cache-overlay").classList.remove("open"));
 
   // 離線快取與自動同步
   if ("serviceWorker" in navigator) {

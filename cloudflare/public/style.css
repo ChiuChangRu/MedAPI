@@ -249,13 +249,15 @@ body.todo-view #recommend-bar { display: none !important; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
 
 .controls input[type="text"] {
-  flex: 1;
+  flex: 1 1 100%;
+  order: -1;
   min-width: 240px;
-  padding: 9px 14px;
-  border: 1px solid var(--border);
+  padding: 11px 14px 11px 38px;
+  border: 2px solid var(--accent);
   border-radius: var(--radius);
-  font-size: 14px;
-  background: #fff;
+  font-size: 15px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c8102e' stroke-width='2.5'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 12px center;
+  background-size: 16px;
 }
 
 .controls select {
