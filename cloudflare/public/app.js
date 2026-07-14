@@ -1270,7 +1270,7 @@ async function openDetail(id) {
     <h3 class="section-title">附件（照片／錄音／影片）</h3>
     ${UPLOADS_ENABLED ? `
     <div class="upload-row">
-      <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" hidden /></label>
+      <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
       <span id="d-upload-status" class="sub"></span>
     </div>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
     <div id="d-attachments" class="notes-list"></div>
@@ -1554,44 +1554,57 @@ function fileUrl(key) {
 }
 
 async function uploadFile(id, input) {
-  const file = input.files && input.files[0];
-  if (!file) return;
+  const files = input.files ? Array.from(input.files) : [];
+  if (!files.length) return;
   input.value = "";
   const status = $("d-upload-status");
-  if (file.size > 50 * 1024 * 1024) { status.textContent = "檔案超過 50MB，長影片請縮短"; return; }
-  status.textContent = `上傳中…（${(file.size / 1024 / 1024).toFixed(1)}MB）`;
-  try {
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      headers: {
-        "content-type": file.type || "application/octet-stream",
-        "x-team-pin": pin(),
-        "x-exhibitor-id": id,
-        "x-author": encodeURIComponent(me()),
-        "x-filename": encodeURIComponent(file.name),
-      },
-      body: file,
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `HTTP ${res.status}`);
+  const multi = files.length > 1;
+  let failed = 0;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const progress = multi ? `（${i + 1}/${files.length}）` : "";
+    if (file.size > 50 * 1024 * 1024) {
+      status.textContent = `${file.name} 超過 50MB，已略過${progress}`;
+      failed++;
+      continue;
     }
-    const uploaded = await res.json();
-    status.textContent = "";
-    showToast("已上傳");
-    // 上傳完直接寫說明（可留空跳過，之後也能補）
-    const caption = prompt("為這個檔案寫一段說明（可留空，之後也能補）：", "");
-    if (caption && caption.trim()) {
-      await api(`/attachments/${uploaded.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ caption: caption.trim(), author: me() }),
-      }).catch(() => {});
+    status.textContent = `上傳中…${progress}${(file.size / 1024 / 1024).toFixed(1)}MB`;
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "content-type": file.type || "application/octet-stream",
+          "x-team-pin": pin(),
+          "x-exhibitor-id": id,
+          "x-author": encodeURIComponent(me()),
+          "x-filename": encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const uploaded = await res.json();
+      // 一次只選一個檔案時，順便問說明；多選時略過（之後可個別補說明）
+      if (!multi) {
+        const caption = prompt("為這個檔案寫一段說明（可留空，之後也能補）：", "");
+        if (caption && caption.trim()) {
+          await api(`/attachments/${uploaded.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ caption: caption.trim(), author: me() }),
+          }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      status.textContent = `${file.name} 上傳失敗：${err.message}`;
+      failed++;
     }
-    loadAttachments(id);
-    loadHistory(id);
-  } catch (err) {
-    status.textContent = "上傳失敗：" + err.message;
   }
+  status.textContent = "";
+  showToast(multi ? `已上傳 ${files.length - failed}／${files.length} 個檔案` : failed ? "上傳失敗" : "已上傳");
+  loadAttachments(id);
+  loadHistory(id);
 }
 
 async function loadAttachments(id) {
