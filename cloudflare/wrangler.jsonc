@@ -26,6 +26,5 @@
       "bucket_name": "medtec-2026-files"
     }
   ]
-  // 錄音轉文字要用，Dashboard 開一次 Workers AI 即可（免費額度見 cloudflare/README.md），
-  // 若還沒開通，把下面這段的註解拿掉再 commit + push
+  ,"ai": { "binding": "AI" }
 }
