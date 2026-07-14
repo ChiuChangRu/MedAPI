@@ -134,10 +134,94 @@ function queueStatePatch(id, patch) {
   setPendingState(map);
 }
 
+// ---------- 離線照片／錄音佇列（IndexedDB 存原始檔案，localStorage 存不了二進位內容）----------
+// 斷線時先把檔案本體存在手機（IndexedDB），畫面照樣能從本機檔案顯示；
+// 連上網路後 syncPending() 自動逐一補傳，跟文字紀錄／狀態走同一套邏輯
+const FILE_DB_NAME = "medtec_offline_files";
+const FILE_STORE = "pending";
+
+function openFileDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(FILE_DB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(FILE_STORE, { keyPath: "tmp_id" }); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function addPendingFile(entry) {
+  const db = await openFileDB();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(FILE_STORE, "readwrite");
+    tx.objectStore(FILE_STORE).put(entry);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  await refreshPendingFileCount();
+}
+
+async function getPendingFiles(exhibitorId) {
+  const db = await openFileDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(FILE_STORE, "readonly");
+    const req = tx.objectStore(FILE_STORE).getAll();
+    req.onsuccess = () => resolve(exhibitorId ? req.result.filter((r) => r.exhibitor_id === exhibitorId) : req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function deletePendingFile(tmpId) {
+  const db = await openFileDB();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(FILE_STORE, "readwrite");
+    tx.objectStore(FILE_STORE).delete(tmpId);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  await refreshPendingFileCount();
+}
+
+function pendingFileEntry(exhibitorId, file, filename) {
+  return {
+    tmp_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    exhibitor_id: exhibitorId,
+    author: me(),
+    filename: filename || file.name || "file",
+    mime: file.type || "application/octet-stream",
+    size: file.size,
+    blob: file,
+    created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+  };
+}
+
+// 待同步照片/錄音卡片的本機預覽——直接用 blob 產生的 object URL 顯示，完全不用連網路
+function pendingFileNoteHtml(f) {
+  const url = URL.createObjectURL(f.blob);
+  const isImage = (f.mime || "").startsWith("image/");
+  const isAudio = (f.mime || "").startsWith("audio/");
+  const isVideo = (f.mime || "").startsWith("video/");
+  const preview = isImage ? `<img class="att-thumb" src="${url}" alt="${esc(f.filename)}">`
+    : isAudio ? `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`
+    : isVideo ? `<video controls preload="none" src="${url}" class="att-video"></video>`
+    : `<a href="${url}" target="_blank" rel="noopener">${esc(f.filename)}</a>`;
+  return `<div class="note pending">
+    <div class="note-meta"><strong>${esc(f.author)}</strong> · ${esc(f.created_at)} · ${(f.size / 1024 / 1024).toFixed(1)}MB · <span class="pending-tag">待同步（存在手機）</span></div>
+    ${preview}
+  </div>`;
+}
+
+// updateOfflineBanner() 的待同步計數是同步讀 localStorage，IndexedDB 是非同步的，
+// 所以另外存一個記憶體變數，add/delete 時更新，開機時先讀一次
+let PENDING_FILE_COUNT = 0;
+async function refreshPendingFileCount() {
+  try { PENDING_FILE_COUNT = (await getPendingFiles()).length; } catch { PENDING_FILE_COUNT = 0; }
+  updateOfflineBanner();
+}
+
 let SYNCING = false;
 async function syncPending() {
   if (SYNCING || !navigator.onLine) return;
-  if (!getPending().length && !Object.keys(getPendingState()).length) return;
+  if (!getPending().length && !Object.keys(getPendingState()).length && !PENDING_FILE_COUNT) return;
   SYNCING = true;
   let synced = 0;
   try {
@@ -163,6 +247,15 @@ async function syncPending() {
       setPending(rest);
       synced++;
     }
+    // 最後補傳離線時存在手機的照片／錄音
+    let pendingFiles = await getPendingFiles();
+    while (pendingFiles.length) {
+      const f = pendingFiles[0];
+      await putFile(f.exhibitor_id, f.blob, f.filename);
+      await deletePendingFile(f.tmp_id);
+      synced++;
+      pendingFiles = await getPendingFiles();
+    }
   } catch {
     // 還是沒網路（或 PIN 失效），剩下的留著下次再試
   }
@@ -176,14 +269,14 @@ async function syncPending() {
       updateOfflineBanner();
       render();
       renderTaskSummary();
-      if (CURRENT_ID) { loadNotes(CURRENT_ID); }
+      if (CURRENT_ID) { loadNotes(CURRENT_ID); loadAttachments(CURRENT_ID); }
     } catch { /* 稍後由重新整理接手 */ }
   }
 }
 
 function updateOfflineBanner() {
   const banner = $("offline-banner");
-  const pending = getPending().length + Object.keys(getPendingState()).length;
+  const pending = getPending().length + Object.keys(getPendingState()).length + PENDING_FILE_COUNT;
   if (OFFLINE) {
     const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
     banner.textContent = `離線模式：顯示 ${snap.ts || "上次"} 同步的資料。可正常瀏覽與寫紀錄` +
@@ -448,6 +541,7 @@ async function init() {
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveSnapshot(); });
   window.addEventListener("pagehide", () => saveSnapshot());
   setInterval(syncPending, 45000);
+  refreshPendingFileCount(); // 開機先讀一次 IndexedDB，抓上次沒同步完的照片/錄音數量
 
   render();
 
@@ -1693,12 +1787,19 @@ async function uploadFile(id, input) {
   const status = $("d-upload-status");
   const multi = files.length > 1;
   let failed = 0;
+  let queued = 0;
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const progress = multi ? `（${i + 1}/${files.length}）` : "";
     if (file.size > 50 * 1024 * 1024) {
       status.textContent = `${file.name} 超過 50MB，已略過${progress}`;
       failed++;
+      continue;
+    }
+    if (!API_OK) {
+      // 離線：檔案先存手機（IndexedDB），連上網路後 syncPending() 自動補傳
+      await addPendingFile(pendingFileEntry(id, file));
+      queued++;
       continue;
     }
     status.textContent = `上傳中…${progress}${(file.size / 1024 / 1024).toFixed(1)}MB`;
@@ -1715,12 +1816,22 @@ async function uploadFile(id, input) {
         }
       }
     } catch (err) {
-      status.textContent = `${file.name} 上傳失敗：${err.message}`;
-      failed++;
+      if (isNetworkError(err)) {
+        await addPendingFile(pendingFileEntry(id, file));
+        queued++;
+      } else {
+        status.textContent = `${file.name} 上傳失敗：${err.message}`;
+        failed++;
+      }
     }
   }
   status.textContent = "";
-  showToast(multi ? `已上傳 ${files.length - failed}／${files.length} 個檔案` : failed ? "上傳失敗" : "已上傳");
+  const ok = files.length - failed - queued;
+  const parts = [];
+  if (ok) parts.push(`已上傳 ${ok} 個`);
+  if (queued) parts.push(`${queued} 個沒有網路，已存手機（連線後自動同步）`);
+  if (failed) parts.push(`${failed} 個失敗`);
+  showToast(parts.join("，") || "上傳失敗");
   loadAttachments(id);
   loadHistory(id);
 }
@@ -1763,14 +1874,30 @@ async function toggleRecording(id, btn) {
     const status = $("d-upload-status");
     status.textContent = "上傳錄音中…";
     const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
+    const filename = `錄音-${Date.now()}.${ext}`;
+    if (!API_OK) {
+      await addPendingFile(pendingFileEntry(id, blob, filename));
+      status.textContent = "";
+      showToast("沒有網路，錄音已存手機（連線後自動同步）");
+      loadAttachments(id);
+      btn.disabled = false;
+      return;
+    }
     try {
-      await putFile(id, blob, `錄音-${Date.now()}.${ext}`);
+      await putFile(id, blob, filename);
       status.textContent = "";
       showToast("錄音已上傳");
       loadAttachments(id);
       loadHistory(id);
     } catch (err) {
-      status.textContent = "錄音上傳失敗：" + err.message;
+      if (isNetworkError(err)) {
+        await addPendingFile(pendingFileEntry(id, blob, filename));
+        status.textContent = "";
+        showToast("沒有網路，錄音已存手機（連線後自動同步）");
+        loadAttachments(id);
+      } else {
+        status.textContent = "錄音上傳失敗：" + err.message;
+      }
     }
     btn.disabled = false;
   };
@@ -1782,12 +1909,15 @@ async function toggleRecording(id, btn) {
 async function loadAttachments(id) {
   const wrap = $("d-attachments");
   if (!wrap) return;
+  const pendingFiles = await getPendingFiles(id);
+  const pendingHtml = pendingFiles.map(pendingFileNoteHtml).join("");
   try {
     const atts = await api(`/attachments?exhibitor_id=${id}`);
     const countEl = $("d-att-count");
-    if (countEl) countEl.textContent = atts.length ? `（${atts.length}）` : "";
-    if (!atts.length) { wrap.innerHTML = ""; return; }
-    wrap.innerHTML = atts.map((a) => {
+    const total = atts.length + pendingFiles.length;
+    if (countEl) countEl.textContent = total ? `（${total}）` : "";
+    if (!atts.length) { wrap.innerHTML = pendingHtml; return; }
+    wrap.innerHTML = pendingHtml + atts.map((a) => {
       const url = fileUrl(a.key);
       let preview = `<a href="${url}" target="_blank" rel="noopener" class="directory-link">${esc(a.filename)}</a>`;
       if ((a.mime || "").startsWith("image/")) {
@@ -1885,7 +2015,10 @@ async function loadAttachments(id) {
       };
     });
   } catch {
-    wrap.innerHTML = "";
+    // 沒網路：至少把存在手機的待同步照片/錄音顯示出來，不是空白一片
+    const countEl = $("d-att-count");
+    if (countEl) countEl.textContent = pendingFiles.length ? `（${pendingFiles.length}）` : "";
+    wrap.innerHTML = pendingHtml;
   }
 }
 
