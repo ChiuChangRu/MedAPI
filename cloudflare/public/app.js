@@ -32,6 +32,49 @@ function closeOnBackdropClick(overlayId, onClose) {
   el.addEventListener("click", (e) => { if (e.target === el && downOnBackdrop) onClose(); });
 }
 
+// 詳情頁（第二頁）往右用力滑關閉，回到清單（第一頁）——手機上比找 ✕ 按鈕直覺，
+// 用距離門檻（非單純方向）判斷，避免滑一下手指就誤觸關閉
+function attachSwipeToClose(overlayId, panelSelector, onClose) {
+  const panel = $(overlayId).querySelector(panelSelector);
+  if (!panel) return;
+  const THRESHOLD = 90;
+  let startX = 0, startY = 0, dx = 0, dy = 0, tracking = false;
+
+  panel.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = 0; dy = 0; tracking = true;
+    panel.style.transition = "none";
+  }, { passive: true });
+
+  panel.addEventListener("touchmove", (e) => {
+    if (!tracking) return;
+    dx = e.touches[0].clientX - startX;
+    dy = e.touches[0].clientY - startY;
+    if (dx > 0 && dx > Math.abs(dy)) {
+      panel.style.transform = `translateX(${dx}px)`;
+      panel.style.opacity = String(Math.max(1 - dx / 400, 0.4));
+    }
+  }, { passive: true });
+
+  function reset() {
+    panel.style.transition = "transform .2s ease, opacity .2s ease";
+    panel.style.transform = "";
+    panel.style.opacity = "";
+  }
+
+  panel.addEventListener("touchend", () => {
+    if (!tracking) return;
+    tracking = false;
+    const shouldClose = dx > THRESHOLD && dx > Math.abs(dy);
+    reset();
+    if (shouldClose) onClose();
+  });
+
+  panel.addEventListener("touchcancel", () => { tracking = false; reset(); });
+}
+
 // ---------- API ----------
 function pin() { return localStorage.getItem("medtec_pin") || ""; }
 function me() { return localStorage.getItem("medtec_user") || ""; }
@@ -382,6 +425,7 @@ async function init() {
   $("btn-login").onclick = doLogin;
   $("login-overlay").addEventListener("click", (e) => e.stopPropagation());
   closeOnBackdropClick("detail-overlay", closeDetail);
+  attachSwipeToClose("detail-overlay", "#detail-modal", closeDetail);
 
   // 離線測試切換按鈕
   $("btn-offline-toggle").onclick = () => {
