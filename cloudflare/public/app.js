@@ -183,8 +183,8 @@ function renderTripBanner() {
   if (phase === "before") {
     const days = Math.max(0, Math.ceil((new Date(TRIP.depart) - new Date()) / 86400000));
     const assigned = Object.values(STATE).filter((st) => st.assignee).length;
-    el.innerHTML = `✈️ <strong>8/31（一）12:30 CI201</strong> 出發，還有 <strong>${days}</strong> 天` +
-      (API_OK ? `｜任務分配進度：已指派 <strong>${assigned}</strong> 家（出發前完成分配，落地就能直接跑）` : "");
+    el.innerHTML = `<span class="trip-plane">✈️</span> <strong>8/31（一）12:30 CI201</strong> 出發，還有 <strong>${days}</strong> 天` +
+      (API_OK ? `｜任務分配進度：已指派 <strong>${assigned}</strong> 家` : "");
     el.style.display = "block";
   } else if (phase === "during") {
     const today = new Date().toLocaleDateString("sv"); // YYYY-MM-DD（當地時區，滬台同為 +8）

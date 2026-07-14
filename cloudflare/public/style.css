@@ -97,6 +97,14 @@ tr.group-header-row td {
   line-height: 1.6;
 }
 
+/* 飛機小動畫：大部分時間靜止，每隔幾秒起飛一下，不會太干擾 */
+.trip-plane { display: inline-block; animation: trip-takeoff 3.5s ease-in-out infinite; }
+@keyframes trip-takeoff {
+  0%, 65% { transform: translate(0, 0) rotate(0deg); }
+  82% { transform: translate(5px, -4px) rotate(-12deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
 .offline-banner {
   max-width: 1240px;
   margin: 12px auto 0;
