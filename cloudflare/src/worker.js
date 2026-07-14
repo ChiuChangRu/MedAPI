@@ -723,34 +723,10 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
   return bad("不存在的 API 路徑", 404);
 }
 
-const CLOSED_COOKIE = "medtec_key";
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-
-    // 系統暫時關閉：只有帶對 key 的人能繼續用，其他人一律看到 404。
-    // 復原方式：刪除下面這段、以及 Worker 的 Secret「ADMIN_BYPASS_KEY」。
-    const bypassKey = (env.ADMIN_BYPASS_KEY || "").trim();
-    const cookieMatch = (request.headers.get("Cookie") || "").match(
-      new RegExp(`(?:^|;\\s*)${CLOSED_COOKIE}=([^;]+)`)
-    );
-    const cookieKey = cookieMatch ? decodeURIComponent(cookieMatch[1]) : "";
-    const queryKey = url.searchParams.get("key") || "";
-    if (!bypassKey || (queryKey !== bypassKey && cookieKey !== bypassKey)) {
-      return new Response("404 Not Found", { status: 404 });
-    }
-
-    const response = await handleRequest(request, env, ctx, url);
-    if (queryKey === bypassKey && cookieKey !== bypassKey) {
-      const withCookie = new Response(response.body, response);
-      withCookie.headers.append(
-        "Set-Cookie",
-        `${CLOSED_COOKIE}=${encodeURIComponent(bypassKey)}; Path=/; Max-Age=31536000; SameSite=Lax`
-      );
-      return withCookie;
-    }
-    return response;
+    return handleRequest(request, env, ctx, url);
   },
 
   async scheduled(event, env, ctx) {
