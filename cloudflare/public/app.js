@@ -470,6 +470,10 @@ async function init() {
   } else {
     await connectBackend();
   }
+
+  // 分享連結：網址帶 ?ex=展商id 時，開頁直接跳到那家廠商的詳情頁
+  const sharedId = new URLSearchParams(location.search).get("ex");
+  if (sharedId && EXHIBITORS.some((e) => e.id === sharedId)) openDetail(sharedId);
 }
 
 async function connectBackend() {
@@ -1254,6 +1258,7 @@ async function openDetail(id) {
           ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">公司官網</a>` : ""}
           ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">型錄 PDF${e.pdfs.length > 1 ? " " + (i + 1) : ""}</a>`).join("")}
           ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">官方展商頁</a>` : ""}
+          <a class="directory-link" href="#" id="d-share">🔗 複製分享連結</a>
         </p>
         ${visit ? `<p class="sub visit-info"><strong>行程重點</strong>：${esc(visit.when)}${visit.contact ? `｜${esc(visit.contact)}` : ""}${visit.note ? `｜${esc(visit.note)}` : ""}</p>` : ""}
         ${lineHits.length ? `<p class="sub">產品／科別關聯：${lineHits.map((l) => l.name).join("、")}</p>` : ""}
@@ -1389,6 +1394,17 @@ async function openDetail(id) {
   $("d-close").onclick = closeDetail;
   const star = $("d-star");
   if (star) star.onclick = () => togglePocket(id);
+
+  setShareParam(id);
+  $("d-share").onclick = async (ev) => {
+    ev.preventDefault();
+    try {
+      await navigator.clipboard.writeText(shareUrlFor(id));
+      showToast("連結已複製，貼給同事就能直接打開這家廠商");
+    } catch {
+      showToast("複製失敗，請手動複製網址列");
+    }
+  };
 
   // 狀態選單與拜訪成果表單：連線、離線都能填（離線先存手機）
   if (API_OK || (OFFLINE && me())) {
@@ -1868,6 +1884,26 @@ function closeDetail() {
   if (activeRecording) activeRecording.recorder.stop();
   $("detail-overlay").classList.remove("open");
   CURRENT_ID = null;
+  clearShareParam();
+}
+
+// 分享連結：網址加 ?ex=展商id，同事點開直接跳到那家廠商的詳情頁——
+// 用 replaceState 而非 pushState，避免瀏覽器「上一頁」在詳情間堆一堆歷史紀錄
+function shareUrlFor(id) {
+  const url = new URL(location.href);
+  url.searchParams.set("ex", id);
+  return url.toString();
+}
+function setShareParam(id) {
+  const url = new URL(location.href);
+  url.searchParams.set("ex", id);
+  history.replaceState(null, "", url);
+}
+function clearShareParam() {
+  const url = new URL(location.href);
+  if (!url.searchParams.has("ex")) return;
+  url.searchParams.delete("ex");
+  history.replaceState(null, "", url);
 }
 
 // ---------- 團隊動態 ----------
