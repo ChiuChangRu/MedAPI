@@ -469,7 +469,7 @@ td.co .zh { font-weight: 500; }
 td.co .en { font-size: 11px; color: var(--text-muted); }
 .co-inner { display: flex; align-items: center; gap: 8px; }
 .co-photo {
-  width: 32px; height: 32px; object-fit: cover; border-radius: 6px;
+  width: 48px; height: 48px; object-fit: cover; border-radius: 6px;
   border: 1px solid var(--border); background: #fff; flex-shrink: 0;
 }
 .co-text { min-width: 0; }
@@ -538,7 +538,7 @@ td .row-star.on { color: var(--accent); }
 .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .detail-head-main { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
 .detail-photo {
-  width: 64px; height: 64px; object-fit: cover; border-radius: 8px;
+  width: 100px; height: 100px; object-fit: cover; border-radius: 8px;
   border: 1px solid var(--border); background: #fff; flex-shrink: 0;
 }
 .detail-desc { font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-line; }
