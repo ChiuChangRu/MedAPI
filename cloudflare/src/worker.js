@@ -77,6 +77,7 @@ const MIGRATIONS = [
   `ALTER TABLE exhibitor_state ADD COLUMN post_class TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN caption TEXT DEFAULT ''`,
   `ALTER TABLE exhibitor_state ADD COLUMN visit_record TEXT DEFAULT '{}'`,
+  `ALTER TABLE attachments ADD COLUMN transcript TEXT DEFAULT ''`,
 ];
 
 let schemaReady = false;
@@ -277,7 +278,7 @@ async function handleApi(request, env, url, ctx) {
 
   // ---- 前端功能開關 ----
   if (path === "/config" && method === "GET") {
-    return json({ uploads: !!env.FILES });
+    return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI) });
   }
 
   // ---- 附件（照片/錄音/影片，存 R2）----
@@ -344,6 +345,27 @@ async function handleApi(request, env, url, ctx) {
     await db.prepare("DELETE FROM attachments WHERE id = ?").bind(id).run();
     await logHistory(db, old.exhibitor_id, author, "刪除附件", old.filename);
     return json({ ok: true });
+  }
+
+  const attTranscribeMatch = path.match(/^\/attachments\/(\d+)\/transcribe$/);
+  if (attTranscribeMatch && method === "POST") {
+    if (!env.AI) return bad("尚未啟用語音轉文字（需先在 Cloudflare 開啟 Workers AI，見 cloudflare/README.md）", 501);
+    const id = Number(attTranscribeMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到附件", 404);
+    if (!(old.mime || "").startsWith("audio/")) return bad("只有錄音檔可以轉文字");
+    const obj = await env.FILES.get(old.key);
+    if (!obj) return bad("找不到檔案內容", 404);
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
+    const text = (result?.text || "").trim();
+    await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(text, id).run();
+    await logHistory(db, old.exhibitor_id, author, "錄音轉文字", `${old.filename}：${text.slice(0, 80)}`);
+    return json({ text });
   }
 
   // ---- members ----

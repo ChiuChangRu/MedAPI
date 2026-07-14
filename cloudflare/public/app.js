@@ -9,6 +9,7 @@ let MEMBERS = [];
 let API_OK = false;
 let OFFLINE = false;        // 離線模式（用手機快取的資料瀏覽＋紀錄排隊待同步）
 let UPLOADS_ENABLED = false;
+let TRANSCRIBE_ENABLED = false;
 
 // 篩選條件（單位、產品／科別兩個維度可交叉組合）
 let ACTIVE_CATS = new Set();
@@ -423,7 +424,11 @@ async function connectBackend() {
     MEMBERS = await api("/members");
     API_OK = true;
     OFFLINE = false;
-    try { UPLOADS_ENABLED = (await api("/config")).uploads; } catch { UPLOADS_ENABLED = false; }
+    try {
+      const cfg = await api("/config");
+      UPLOADS_ENABLED = cfg.uploads;
+      TRANSCRIBE_ENABLED = cfg.transcribe;
+    } catch { UPLOADS_ENABLED = false; TRANSCRIBE_ENABLED = false; }
     if (!me()) { showLogin(); } else { document.body.classList.remove("locked"); $("user-chip").textContent = me(); renderRecommendBar(); }
     STATE = await api("/state");
     saveSnapshot();
@@ -1605,14 +1610,33 @@ async function loadAttachments(id) {
       } else if ((a.mime || "").startsWith("video/")) {
         preview = `<video controls preload="none" src="${url}" class="att-video"></video>`;
       }
+      const isAudio = (a.mime || "").startsWith("audio/");
+      const transcriptBlock = !isAudio || !TRANSCRIBE_ENABLED ? "" : a.transcript
+        ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>`
+        : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a>`;
       return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}">
         <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB
           <span class="note-actions"><a href="#" data-act="cap-att">${a.caption ? "編輯說明" : "加說明"}</a> <a href="#" data-act="del-att">刪除</a></span>
         </div>
         ${preview}
+        ${transcriptBlock}
         ${a.caption ? `<div class="att-caption">${esc(a.caption)}</div>` : ""}
       </div>`;
     }).join("");
+    wrap.querySelectorAll('a[data-act="transcribe"]').forEach((a) => {
+      a.onclick = async (ev) => {
+        ev.preventDefault();
+        const attId = a.closest(".note").dataset.id;
+        a.textContent = "轉錄中…";
+        try {
+          await api(`/attachments/${attId}/transcribe`, { method: "POST", body: JSON.stringify({ author: me() }) });
+          loadAttachments(id);
+        } catch (err) {
+          a.textContent = "轉文字失敗，點一下再試";
+          showToast(err.message);
+        }
+      };
+    });
     wrap.querySelectorAll('a[data-act="del-att"]').forEach((a) => {
       a.onclick = async (ev) => {
         ev.preventDefault();
