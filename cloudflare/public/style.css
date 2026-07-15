@@ -15,6 +15,7 @@
 
 body {
   margin: 0;
+  overflow-x: hidden;
   font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
@@ -39,7 +40,7 @@ header.top h1 {
 header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 
 .header-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-.header-actions { display: flex; gap: 8px; align-items: center; }
+.header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 .user-chip {
   background: rgba(255,255,255,0.12);
