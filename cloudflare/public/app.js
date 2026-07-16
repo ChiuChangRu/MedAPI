@@ -533,6 +533,14 @@ async function init() {
   // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
   $("capture-snap").onclick = snapCapture;
   $("capture-stop").onclick = stopCapture;
+  // 採集中切去別的 App／收起瀏覽器：手機網頁沒辦法在「切換前」跳警告，
+  // 所以改成事後保底——自動結束採集並存檔（錄音先寫進手機離線佇列再補傳，不會遺失）
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); }
+  });
+  window.addEventListener("pagehide", () => {
+    if (CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); }
+  });
 
   // 離線快取與自動同步
   if ("serviceWorker" in navigator) {
@@ -1972,14 +1980,21 @@ async function snapCapture() {
   $("capture-count").textContent = `📷 ${CAPTURE.photos}`;
   const { exhibitorId, session } = CAPTURE;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
+  const filename = `採集${session}-${offset.replace(":", "")}.jpg`;
   try {
-    const uploaded = await putFile(exhibitorId, blob, `採集${session}-${offset.replace(":", "")}.jpg`);
+    const uploaded = await putFile(exhibitorId, blob, filename);
     await api(`/attachments/${uploaded.id}`, {
       method: "PUT",
       body: JSON.stringify({ caption: `📸 錄音 ${offset} 時拍攝`, author: me() }),
     }).catch(() => {});
   } catch (err) {
-    showToast("照片上傳失敗：" + err.message);
+    // 網路不穩時照片先進手機離線佇列，連線後 syncPending 自動補傳
+    try {
+      await addPendingFile(pendingFileEntry(exhibitorId, blob, filename));
+      showToast("網路不穩，照片先存手機（待同步）");
+    } catch {
+      showToast("照片上傳失敗：" + err.message);
+    }
   }
 }
 
@@ -1988,7 +2003,7 @@ function stopCapture() {
 }
 
 async function finishCapture() {
-  const { stream, recorder, chunks, photos, exhibitorId, timerId } = CAPTURE;
+  const { stream, recorder, chunks, photos, exhibitorId, timerId, autoStopped } = CAPTURE;
   const dur = captureOffsetLabel();
   clearInterval(timerId);
   stream.getTracks().forEach((t) => t.stop());
@@ -1998,17 +2013,25 @@ async function finishCapture() {
   const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
   if (!blob.size) return;
   const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
-  showToast("採集錄音上傳中…");
+  const filename = `採集錄音-${dur.replace(":", "")}.${ext}`;
+  // 先寫進手機離線佇列（IndexedDB）再嘗試上傳——就算是切 App 觸發的自動結束、
+  // 上傳來不及跑完，錄音也已經安全存在手機，回到頁面後會自動補傳
+  const entry = pendingFileEntry(exhibitorId, blob, filename);
+  let queued = false;
+  try { await addPendingFile(entry); queued = true; } catch { /* IndexedDB 不可用時直接走上傳 */ }
+  showToast(autoStopped ? "偵測到切換 App，已自動結束採集並存檔" : "採集錄音上傳中…");
   try {
-    const uploaded = await putFile(exhibitorId, blob, `採集錄音-${dur.replace(":", "")}.${ext}`);
+    const uploaded = await putFile(exhibitorId, blob, filename);
     await api(`/attachments/${uploaded.id}`, {
       method: "PUT",
       body: JSON.stringify({ caption: `🎙 現場採集 ${dur}，過程拍了 ${photos} 張照片（各照片說明有對應的錄音時間點）`, author: me() }),
     }).catch(() => {});
+    if (queued) await deletePendingFile(entry.tmp_id).catch(() => {});
     showToast(`採集完成：錄音 ${dur}＋照片 ${photos} 張`);
     if (CURRENT_ID === exhibitorId) { loadAttachments(exhibitorId); loadHistory(exhibitorId); }
-  } catch (err) {
-    showToast("採集錄音上傳失敗：" + err.message);
+  } catch {
+    if (!queued) { try { await addPendingFile(entry); queued = true; } catch { /* 佇列也失敗才真的丟 */ } }
+    showToast(queued ? "錄音已先存在手機（待同步），連線後自動補傳" : "錄音上傳失敗，請重試");
   }
 }
 
