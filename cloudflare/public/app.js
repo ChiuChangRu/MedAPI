@@ -530,6 +530,10 @@ async function init() {
   $("cache-close").onclick = () => $("cache-overlay").classList.remove("open");
   closeOnBackdropClick("cache-overlay", () => $("cache-overlay").classList.remove("open"));
 
+  // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
+  $("capture-snap").onclick = snapCapture;
+  $("capture-stop").onclick = stopCapture;
+
   // 離線快取與自動同步
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -1463,10 +1467,12 @@ async function openDetail(id) {
       <summary class="section-title">附件（照片／錄音／影片）<span id="d-att-count" class="att-count"></span></summary>
       ${UPLOADS_ENABLED ? `
       <div class="upload-row">
-        <label class="btn small">拍照／上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
-        <button class="btn small" id="d-record-btn" type="button">🎙 錄音</button>
+        <button class="btn small capture-btn" id="d-capture-btn" type="button">📸 採集模式</button>
+        <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音</button>
+        <label class="btn small upload-btn">📁 拍照／上傳<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
         <span id="d-upload-status" class="sub"></span>
-      </div>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
+      </div>
+      <p class="sub">採集模式＝錄音全程不中斷、隨時拍照，每張照片自動標上「錄音第幾分幾秒拍的」。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
       <div id="d-attachments" class="notes-list"></div>
     </details>
 
@@ -1544,6 +1550,8 @@ async function openDetail(id) {
   if (fileInput) fileInput.onchange = () => uploadFile(id, fileInput);
   const recordBtn = $("d-record-btn");
   if (recordBtn) recordBtn.onclick = () => toggleRecording(id, recordBtn);
+  const captureBtn = $("d-capture-btn");
+  if (captureBtn) captureBtn.onclick = () => startCapture(id);
 
   loadNotes(id);
   loadAttachments(id);
@@ -1904,6 +1912,104 @@ async function toggleRecording(id, btn) {
   recorder.start();
   updateLabel();
   activeRecording = { recorder, stream, timerId: setInterval(updateLabel, 1000) };
+}
+
+// ---------- 現場採集模式 ----------
+// 錄音全程不中斷＋相機即時預覽隨時抓拍。每張照片的說明自動標上
+// 「錄音第幾分幾秒拍的」，之後錄音轉文字就能對出「拍這張時在講什麼」。
+let CAPTURE = null; // { stream, recorder, chunks, startedAt, photos, exhibitorId, session, timerId }
+
+function captureOffsetLabel() {
+  const secs = Math.floor((Date.now() - CAPTURE.startedAt) / 1000);
+  return `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
+}
+
+async function startCapture(id) {
+  if (CAPTURE) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    showToast("這個瀏覽器不支援採集模式，可改用「錄音」＋「拍照／上傳」分開記");
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: true,
+    });
+  } catch (err) {
+    showToast("無法開啟相機或麥克風：" + err.message);
+    return;
+  }
+  $("capture-video").srcObject = stream;
+  const audioOnly = new MediaStream(stream.getAudioTracks());
+  const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
+    .find((m) => MediaRecorder.isTypeSupported(m)) || "";
+  const recorder = mimeType ? new MediaRecorder(audioOnly, { mimeType }) : new MediaRecorder(audioOnly);
+  const chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = finishCapture;
+  CAPTURE = { stream, recorder, chunks, startedAt: Date.now(), photos: 0, exhibitorId: id, session: Date.now(), timerId: 0 };
+  recorder.start();
+  $("capture-count").textContent = "";
+  $("capture-timer").textContent = "00:00";
+  $("capture-overlay").style.display = "flex";
+  CAPTURE.timerId = setInterval(() => { if (CAPTURE) $("capture-timer").textContent = captureOffsetLabel(); }, 1000);
+}
+
+async function snapCapture() {
+  if (!CAPTURE) return;
+  const video = $("capture-video");
+  if (!video.videoWidth) { showToast("相機還沒就緒，再等一下"); return; }
+  const offset = captureOffsetLabel();
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  const flash = $("capture-flash");
+  flash.classList.add("on");
+  setTimeout(() => flash.classList.remove("on"), 160);
+  CAPTURE.photos++;
+  $("capture-count").textContent = `📷 ${CAPTURE.photos}`;
+  const { exhibitorId, session } = CAPTURE;
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
+  try {
+    const uploaded = await putFile(exhibitorId, blob, `採集${session}-${offset.replace(":", "")}.jpg`);
+    await api(`/attachments/${uploaded.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ caption: `📸 錄音 ${offset} 時拍攝`, author: me() }),
+    }).catch(() => {});
+  } catch (err) {
+    showToast("照片上傳失敗：" + err.message);
+  }
+}
+
+function stopCapture() {
+  if (CAPTURE) CAPTURE.recorder.stop();
+}
+
+async function finishCapture() {
+  const { stream, recorder, chunks, photos, exhibitorId, timerId } = CAPTURE;
+  const dur = captureOffsetLabel();
+  clearInterval(timerId);
+  stream.getTracks().forEach((t) => t.stop());
+  $("capture-video").srcObject = null;
+  $("capture-overlay").style.display = "none";
+  CAPTURE = null;
+  const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+  if (!blob.size) return;
+  const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
+  showToast("採集錄音上傳中…");
+  try {
+    const uploaded = await putFile(exhibitorId, blob, `採集錄音-${dur.replace(":", "")}.${ext}`);
+    await api(`/attachments/${uploaded.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ caption: `🎙 現場採集 ${dur}，過程拍了 ${photos} 張照片（各照片說明有對應的錄音時間點）`, author: me() }),
+    }).catch(() => {});
+    showToast(`採集完成：錄音 ${dur}＋照片 ${photos} 張`);
+    if (CURRENT_ID === exhibitorId) { loadAttachments(exhibitorId); loadHistory(exhibitorId); }
+  } catch (err) {
+    showToast("採集錄音上傳失敗：" + err.message);
+  }
 }
 
 async function loadAttachments(id) {

@@ -139,6 +139,21 @@
   </div>
 </div>
 
+<!-- 現場採集模式：錄音全程不中斷，隨時拍照，照片自動標上錄音時間點 -->
+<div class="capture-overlay" id="capture-overlay" style="display:none;">
+  <video id="capture-video" autoplay playsinline muted></video>
+  <div class="capture-top">
+    <span class="capture-rec"><span class="rec-dot"></span><span id="capture-timer">00:00</span></span>
+    <span class="capture-count" id="capture-count"></span>
+  </div>
+  <div class="capture-controls">
+    <button id="capture-stop" class="capture-stop" type="button">⏹ 結束採集</button>
+    <button id="capture-snap" class="capture-snap" type="button" title="拍照（錄音不中斷）"></button>
+    <span class="capture-hint">錄音中<br/>隨時拍照</span>
+  </div>
+  <div class="capture-flash" id="capture-flash"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="config.js"></script>
