@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>隨身記</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎒</text></svg>" />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0f766e" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="隨身記" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <h1>🎒 隨身記</h1>
+    <p>現場採集 → AI 彙整 → Notion。原始資料都在這，先記再說。</p>
+  </div>
+</header>
+
+<div class="container">
+  <!-- 首頁：採集優先 -->
+  <div id="view-home">
+    <button class="big-capture" id="btn-capture-quick">📸🎙 開始採集<span class="sub-label">錄音不中斷、隨時拍照（先進收件匣，之後歸檔）</span></button>
+    <button class="btn quick-note" id="btn-quick-note">✏️ 快速文字備忘</button>
+
+    <section class="panel" id="inbox-panel">
+      <h2>📥 收件匣 <span id="inbox-count" class="count"></span></h2>
+      <div id="inbox-list" class="entry-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>📂 資料夾 <button class="btn small" id="btn-new-folder">＋ 新增</button></h2>
+      <div id="folder-list" class="folder-list"></div>
+    </section>
+  </div>
+
+  <!-- 資料夾內頁 -->
+  <div id="view-folder" style="display:none;">
+    <div class="folder-head">
+      <button class="btn small ghost" id="btn-back">‹ 回首頁</button>
+      <h2 id="folder-title"></h2>
+      <div class="folder-actions">
+        <button class="btn small" id="btn-folder-capture">📸🎙 採集</button>
+        <button class="btn small" id="btn-folder-entry">✏️ 新紀錄</button>
+        <button class="btn small primary" id="btn-folder-export">📄 匯出給 AI</button>
+      </div>
+    </div>
+    <div id="folder-entries" class="entry-list"></div>
+  </div>
+</div>
+
+<!-- 登入 -->
+<div class="overlay" id="login-overlay">
+  <div class="modal narrow">
+    <h2>🎒 隨身記</h2>
+    <p class="sub">輸入 PIN 碼進入。</p>
+    <input type="password" id="login-pin" placeholder="PIN" />
+    <div class="modal-actions"><button class="btn primary" id="btn-login">進入</button></div>
+    <p class="sub" id="login-error" style="color:#b91c1c; display:none;"></p>
+  </div>
+</div>
+
+<!-- 紀錄詳情 -->
+<div class="overlay" id="entry-overlay">
+  <div class="modal wide" id="entry-modal"></div>
+</div>
+
+<!-- 現場採集模式（與 Medtec 同款：錄音分段＋隨時拍照＋時間戳） -->
+<div class="capture-overlay" id="capture-overlay" style="display:none;">
+  <video id="capture-video" autoplay playsinline muted></video>
+  <div class="capture-top">
+    <span class="capture-rec"><span class="rec-dot"></span><span id="capture-timer">00:00</span></span>
+    <span class="capture-count" id="capture-count"></span>
+  </div>
+  <div class="capture-controls">
+    <button id="capture-stop" class="capture-stop" type="button">⏹ 結束採集</button>
+    <button id="capture-snap" class="capture-snap" type="button" title="拍照（錄音不中斷）"></button>
+    <span class="capture-hint">錄音中，隨時拍照<br/>切換 App 自動存檔</span>
+  </div>
+  <div class="capture-flash" id="capture-flash"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

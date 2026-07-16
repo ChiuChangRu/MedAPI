@@ -1,0 +1,181 @@
+:root {
+  --accent: #0f766e;        /* 隨身記主色（跟 Medtec 的展會紅刻意區分） */
+  --accent-dark: #115e59;
+  --bg: #f6f7f6;
+  --border: #e3e5e3;
+  --text: #1b1d1c;
+  --text-muted: #6b706d;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header.top {
+  background: linear-gradient(120deg, #0b4f4a, #0f766e 60%, #14907f);
+  color: #fff;
+  padding: 18px 20px;
+}
+header.top .inner { max-width: 760px; margin: 0 auto; }
+header.top h1 { margin: 0 0 3px; font-size: 20px; }
+header.top p { margin: 0; opacity: 0.85; font-size: 12px; }
+
+.container { max-width: 760px; margin: 16px auto; padding: 0 14px 60px; }
+
+/* ===== 首頁：採集優先 ===== */
+.big-capture {
+  display: block; width: 100%; padding: 22px 16px; margin-bottom: 10px;
+  font-size: 20px; font-weight: 700; color: #fff; cursor: pointer;
+  background: linear-gradient(120deg, var(--accent), #14907f);
+  border: none; border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
+}
+.big-capture:active { transform: translateY(1px); }
+.big-capture .sub-label { display: block; font-size: 12px; font-weight: 400; opacity: 0.85; margin-top: 5px; }
+
+.quick-note { width: 100%; margin-bottom: 18px; }
+
+.panel {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 14px;
+}
+.panel h2 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.panel h2 .count { color: var(--text-muted); font-size: 13px; font-weight: 400; }
+.panel h2 .btn { margin-left: auto; }
+
+/* ===== 資料夾與紀錄清單 ===== */
+.folder-list { display: flex; flex-direction: column; gap: 6px; }
+.folder-card {
+  display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  cursor: pointer; background: #fff;
+  box-shadow: 0 1px 2px rgba(27, 29, 28, 0.05);
+}
+.folder-card:hover { border-color: var(--accent); }
+.folder-card.done { opacity: 0.55; }
+.folder-type {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: #e6f2f0; color: var(--accent-dark); white-space: nowrap;
+}
+.folder-name { font-size: 14px; font-weight: 600; flex: 1; }
+.folder-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+.entry-list { display: flex; flex-direction: column; gap: 4px; }
+.entry-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  cursor: pointer; background: #fff; font-size: 14px;
+}
+.entry-row:hover { border-color: var(--accent); }
+.entry-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+.folder-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.folder-head h2 { margin: 0; font-size: 16px; flex: 1; }
+.folder-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ===== 按鈕 ===== */
+.btn {
+  padding: 9px 16px; border-radius: var(--radius); font-size: 14px; cursor: pointer;
+  border: 1px solid var(--border); background: #fff; color: var(--text);
+  box-shadow: 0 1px 2px rgba(27, 29, 28, 0.07);
+}
+.btn:active { transform: translateY(1px); }
+.btn.small { padding: 6px 11px; font-size: 13px; }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.primary:hover { background: var(--accent-dark); }
+.btn.ghost { background: transparent; box-shadow: none; }
+.capture-btn { background: var(--accent); border-color: var(--accent); color: #fff; }
+.upload-btn { border-color: #1d4ed8; color: #1d4ed8; background: #eff6ff; }
+.upload-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+
+/* ===== Modal ===== */
+.overlay {
+  position: fixed; inset: 0; background: rgba(20, 22, 21, 0.55);
+  display: none; align-items: flex-start; justify-content: center;
+  padding: 30px 14px; z-index: 50; overflow-y: auto;
+}
+.overlay.open { display: flex; }
+.modal {
+  background: #fff; border-radius: 12px; padding: 20px;
+  width: 100%; max-width: 560px;
+}
+.modal.narrow { max-width: 340px; margin-top: 12vh; }
+.modal h2 { margin-top: 0; }
+.modal label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+.modal input, .modal textarea, .modal select {
+  width: 100%; padding: 9px 10px; font-size: 14px; font-family: inherit;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: #fafbfa; box-shadow: inset 0 1px 3px rgba(27, 29, 28, 0.06);
+}
+.modal input:focus, .modal textarea:focus, .modal select:focus {
+  background: #fff; border-color: var(--accent); outline: none;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+}
+.modal textarea { min-height: 90px; resize: vertical; }
+.modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
+.modal .sub { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
+.detail-head { display: flex; gap: 10px; align-items: center; }
+.title-input { font-size: 16px; font-weight: 700; flex: 1; }
+.archive-row { margin: 10px 0; display: flex; align-items: center; gap: 8px; }
+.archive-row label { margin: 0; white-space: nowrap; }
+.section-title { font-size: 14px; margin: 4px 0 8px; }
+hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+/* ===== 附件 ===== */
+.att-list { display: flex; flex-direction: column; gap: 10px; }
+.att-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.att-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.att-offset { color: var(--accent-dark); font-weight: 600; }
+.att-thumb { max-width: 100%; max-height: 220px; border-radius: 6px; display: block; }
+.att-transcript { font-size: 13px; line-height: 1.6; margin: 6px 0 0; white-space: pre-line; color: var(--text-muted); }
+.att-transcribe { display: inline-block; margin-top: 6px; font-size: 13px; }
+
+/* ===== 現場採集模式（同 Medtec 款式）===== */
+.capture-overlay { position: fixed; inset: 0; z-index: 80; background: #000; display: flex; flex-direction: column; }
+#capture-video { flex: 1; width: 100%; min-height: 0; object-fit: cover; }
+.capture-top {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px; color: #fff; font-size: 15px;
+  background: linear-gradient(rgba(0,0,0,0.55), transparent);
+}
+.capture-rec { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: rec-blink 1.2s ease-in-out infinite; }
+@keyframes rec-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.capture-count { font-weight: 700; }
+.capture-controls {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 22px calc(24px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+}
+.capture-snap {
+  width: 76px; height: 76px; border-radius: 50%; cursor: pointer;
+  border: 4px solid #fff; background: rgba(255,255,255,0.25);
+  box-shadow: 0 0 0 6px rgba(255,255,255,0.2);
+  position: absolute; left: 50%; transform: translateX(-50%);
+}
+.capture-snap:active { background: #fff; }
+.capture-stop {
+  padding: 11px 16px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.6); background: rgba(0,0,0,0.4);
+  color: #fff; font-size: 14px;
+}
+.capture-hint { color: rgba(255,255,255,0.85); font-size: 12px; text-align: right; line-height: 1.5; }
+.capture-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.capture-flash.on { opacity: 0.7; }
+
+/* ===== Toast ===== */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--text); color: #fff; padding: 10px 18px;
+  border-radius: var(--radius); font-size: 13px; opacity: 0;
+  pointer-events: none; transition: opacity 0.2s; z-index: 90;
+}
+.toast.show { opacity: 1; }
