@@ -1,0 +1,25 @@
+{
+  // 隨身助理記事本（fieldlog）— 與 medtec-2026 完全獨立的 Worker
+  // 部署前要改的：把下方 database_id 換成新建 D1 資料庫的 UUID（見 README）
+  "name": "fieldlog",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fieldlog",
+      "database_id": "換成你的-D1-database-id"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "fieldlog-files"
+    }
+  ],
+  "ai": { "binding": "AI" }
+}
