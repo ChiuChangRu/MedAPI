@@ -1480,7 +1480,7 @@ async function openDetail(id) {
         <label class="btn small upload-btn">📁 拍照／上傳<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
         <span id="d-upload-status" class="sub"></span>
       </div>
-      <p class="sub">採集模式＝錄音全程不中斷、隨時拍照，每張照片自動標上「錄音第幾分幾秒拍的」。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
+      <p class="sub">採集模式＝錄音全程不中斷、隨時拍照，每張照片自動標上「錄音第幾分幾秒拍的」；錄音每 10 分鐘自動分段上傳，段落即傳即安全。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
       <div id="d-attachments" class="notes-list"></div>
     </details>
 
@@ -1925,11 +1925,32 @@ async function toggleRecording(id, btn) {
 // ---------- 現場採集模式 ----------
 // 錄音全程不中斷＋相機即時預覽隨時抓拍。每張照片的說明自動標上
 // 「錄音第幾分幾秒拍的」，之後錄音轉文字就能對出「拍這張時在講什麼」。
-let CAPTURE = null; // { stream, recorder, chunks, startedAt, photos, exhibitorId, session, timerId }
+// 錄音每 CAPTURE_SEG_MINUTES 分鐘自動分段、即切即傳：檔案不會撐爆 50MB
+// 上限、每段轉文字都跑得動、中途出狀況最多只損失錄到一半的那一段。
+const CAPTURE_SEG_MINUTES = 10;
+
+let CAPTURE = null; // { stream, recorder, startedAt, segIndex, segStartMs, photos, exhibitorId, session, timerId, ending, autoStopped }
+
+function fmtSecs(s) {
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
 
 function captureOffsetLabel() {
-  const secs = Math.floor((Date.now() - CAPTURE.startedAt) / 1000);
-  return `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
+  return fmtSecs(Math.floor((Date.now() - CAPTURE.startedAt) / 1000));
+}
+
+// 開一段新錄音（換段時錄音只斷幾十毫秒，聽感上無縫）
+function startSegmentRecorder() {
+  const audioOnly = new MediaStream(CAPTURE.stream.getAudioTracks());
+  const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
+    .find((m) => MediaRecorder.isTypeSupported(m)) || "";
+  const recorder = mimeType ? new MediaRecorder(audioOnly, { mimeType }) : new MediaRecorder(audioOnly);
+  const chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => onSegmentStop(recorder, chunks);
+  CAPTURE.recorder = recorder;
+  CAPTURE.segStartMs = Date.now();
+  recorder.start();
 }
 
 async function startCapture(id) {
@@ -1949,19 +1970,19 @@ async function startCapture(id) {
     return;
   }
   $("capture-video").srcObject = stream;
-  const audioOnly = new MediaStream(stream.getAudioTracks());
-  const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
-    .find((m) => MediaRecorder.isTypeSupported(m)) || "";
-  const recorder = mimeType ? new MediaRecorder(audioOnly, { mimeType }) : new MediaRecorder(audioOnly);
-  const chunks = [];
-  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-  recorder.onstop = finishCapture;
-  CAPTURE = { stream, recorder, chunks, startedAt: Date.now(), photos: 0, exhibitorId: id, session: Date.now(), timerId: 0 };
-  recorder.start();
+  CAPTURE = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, exhibitorId: id, session: Date.now(), timerId: 0, ending: false, autoStopped: false };
+  startSegmentRecorder();
   $("capture-count").textContent = "";
   $("capture-timer").textContent = "00:00";
   $("capture-overlay").style.display = "flex";
-  CAPTURE.timerId = setInterval(() => { if (CAPTURE) $("capture-timer").textContent = captureOffsetLabel(); }, 1000);
+  CAPTURE.timerId = setInterval(() => {
+    if (!CAPTURE) return;
+    $("capture-timer").textContent = captureOffsetLabel();
+    if (!CAPTURE.ending && CAPTURE.recorder.state === "recording" &&
+        Date.now() - CAPTURE.segStartMs >= CAPTURE_SEG_MINUTES * 60 * 1000) {
+      CAPTURE.recorder.stop(); // 到段落長度自動換段，onSegmentStop 會接著開下一段
+    }
+  }, 1000);
 }
 
 async function snapCapture() {
@@ -1999,39 +2020,59 @@ async function snapCapture() {
 }
 
 function stopCapture() {
-  if (CAPTURE) CAPTURE.recorder.stop();
+  if (!CAPTURE) return;
+  CAPTURE.ending = true;
+  if (CAPTURE.recorder && CAPTURE.recorder.state !== "inactive") CAPTURE.recorder.stop();
 }
 
-async function finishCapture() {
-  const { stream, recorder, chunks, photos, exhibitorId, timerId, autoStopped } = CAPTURE;
-  const dur = captureOffsetLabel();
-  clearInterval(timerId);
-  stream.getTracks().forEach((t) => t.stop());
-  $("capture-video").srcObject = null;
-  $("capture-overlay").style.display = "none";
-  CAPTURE = null;
+// 一段錄音結束——「自動換段」與「使用者/切 App 結束採集」都走到這裡
+async function onSegmentStop(recorder, chunks) {
+  if (!CAPTURE) return;
+  const { stream, exhibitorId, photos, timerId, session, ending, autoStopped, segIndex, segStartMs, startedAt } = CAPTURE;
+  const segStartOffset = Math.floor((segStartMs - startedAt) / 1000);
+  const segDur = Math.floor((Date.now() - segStartMs) / 1000);
   const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+
+  if (ending) {
+    const total = fmtSecs(Math.floor((Date.now() - startedAt) / 1000));
+    clearInterval(timerId);
+    stream.getTracks().forEach((t) => t.stop());
+    $("capture-video").srcObject = null;
+    $("capture-overlay").style.display = "none";
+    CAPTURE = null;
+    showToast(autoStopped ? "偵測到切換 App，已自動結束採集並存檔" : "採集錄音上傳中…");
+    await uploadSegment(exhibitorId, blob, session, segIndex, segStartOffset, segDur,
+      `；全程 ${total}、共 ${photos} 張照片（照片說明有對應時間點）`, photos);
+    if (CURRENT_ID === exhibitorId) { loadAttachments(exhibitorId); loadHistory(exhibitorId); }
+  } else {
+    CAPTURE.segIndex++;
+    startSegmentRecorder(); // 先無縫接上下一段，剛結束的段落在背景上傳
+    uploadSegment(exhibitorId, blob, session, segIndex, segStartOffset, segDur, "", 0);
+  }
+}
+
+// 段落上傳：先寫手機離線佇列（IndexedDB）再上傳，上傳失敗也不會遺失，
+// 回到連線狀態由 syncPending 自動補傳
+async function uploadSegment(exhibitorId, blob, session, segIndex, startOffset, dur, extraCaption, photosForToast) {
   if (!blob.size) return;
   const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
-  const filename = `採集錄音-${dur.replace(":", "")}.${ext}`;
-  // 先寫進手機離線佇列（IndexedDB）再嘗試上傳——就算是切 App 觸發的自動結束、
-  // 上傳來不及跑完，錄音也已經安全存在手機，回到頁面後會自動補傳
+  const filename = `採集錄音${session}-段${segIndex}.${ext}`;
   const entry = pendingFileEntry(exhibitorId, blob, filename);
   let queued = false;
   try { await addPendingFile(entry); queued = true; } catch { /* IndexedDB 不可用時直接走上傳 */ }
-  showToast(autoStopped ? "偵測到切換 App，已自動結束採集並存檔" : "採集錄音上傳中…");
   try {
     const uploaded = await putFile(exhibitorId, blob, filename);
     await api(`/attachments/${uploaded.id}`, {
       method: "PUT",
-      body: JSON.stringify({ caption: `🎙 現場採集 ${dur}，過程拍了 ${photos} 張照片（各照片說明有對應的錄音時間點）`, author: me() }),
+      body: JSON.stringify({ caption: `🎙 採集第 ${segIndex} 段（${fmtSecs(startOffset)}–${fmtSecs(startOffset + dur)}）${extraCaption}`, author: me() }),
     }).catch(() => {});
     if (queued) await deletePendingFile(entry.tmp_id).catch(() => {});
-    showToast(`採集完成：錄音 ${dur}＋照片 ${photos} 張`);
-    if (CURRENT_ID === exhibitorId) { loadAttachments(exhibitorId); loadHistory(exhibitorId); }
+    if (extraCaption) {
+      showToast(`採集完成：錄音 ${segIndex} 段＋照片 ${photosForToast} 張`);
+    }
   } catch {
     if (!queued) { try { await addPendingFile(entry); queued = true; } catch { /* 佇列也失敗才真的丟 */ } }
-    showToast(queued ? "錄音已先存在手機（待同步），連線後自動補傳" : "錄音上傳失敗，請重試");
+    showToast(queued ? "錄音段已先存手機（待同步），連線後自動補傳" : "錄音段上傳失敗");
   }
 }
 
