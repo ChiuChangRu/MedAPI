@@ -823,8 +823,9 @@ function renderRecommendBar() {
   bar.style.display = "block";
 }
 
+// 個人進度摘要文字已移除（版面精簡，跟頁籤列直接相鄰）；
+// 這裡只保留頁籤（分派清單／完成拜訪清單）的顯示與數字徽章，「我的清單」按鈕在頁首常駐。
 function renderTaskSummary() {
-  const wrap = $("task-summary");
   const tabs = $("view-tabs");
   const loggedIn = me() && (API_OK || OFFLINE);
   if (tabs) tabs.style.display = loggedIn ? "flex" : "none";
@@ -833,27 +834,13 @@ function renderTaskSummary() {
   if (!loggedIn) {
     if (assignedBadge) assignedBadge.textContent = "";
     if (visitedBadge) visitedBadge.textContent = "";
-    if (!wrap) return;
-    wrap.style.display = "none";
     return;
   }
   const myStates = Object.values(STATE).filter((st) => isSameName(st.assignee, me()));
   const visited = myStates.filter((st) => st.status === "已拜訪").length;
-  const pocket = Object.values(STATE).filter((st) => st.pocket).length;
   const myTotal = myStates.length;
   if (assignedBadge) assignedBadge.textContent = myTotal ? myTotal : "";
   if (visitedBadge) visitedBadge.textContent = visited ? visited : "";
-  if (!wrap) return;
-  if (!myTotal && !pocket) { wrap.style.display = "none"; return; }
-  let html = `<span class="recommend-label">📋 ${esc(me())} 的進度</span>`;
-  if (myTotal) html += `<span class="task-stat">負責 <strong>${myTotal}</strong> 家</span>`;
-  if (visited) html += `<span class="task-stat good">已拜訪 <strong>${visited}</strong> 家 ✓</span>`;
-  if (pocket) html += `<span class="task-stat">★ 口袋名單 <strong>${pocket}</strong> 家（全隊）</span>`;
-  html += `<span class="task-stat go-list">點我看名單 ▸</span>`;
-  wrap.innerHTML = html;
-  wrap.style.display = "flex";
-  wrap.onclick = openMyList;
-  wrap.title = "點擊顯示指派給我的廠商（依攤位排序）";
 }
 
 function deptMatch(d, e) {

@@ -127,10 +127,6 @@ body.locked header.top .header-actions {
   user-select: none;
 }
 
-/* ===== 任務摘要 ===== */
-.task-summary { cursor: pointer; }
-.task-stat.go-list { margin-left: auto; color: var(--red, #c8102e); font-weight: 600; }
-
 .view-tabs { display: flex; gap: 8px; margin-top: 10px; }
 .view-tab {
   flex: 1; padding: 9px 12px; font-size: 13px; font-weight: 600;
@@ -169,20 +165,6 @@ body.locked header.top .header-actions {
 .q-title.q-empty { font-weight: 500; color: #a8823f; margin-bottom: 8px; }
 .q-item { font-size: 13px; line-height: 1.6; padding: 5px 8px; background: #fff; border: 1px solid #f0dfa8; border-radius: 6px; margin: 4px 0; }
 .question-box .btn { margin-top: 6px; }
-.task-summary {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 9px 14px;
-  font-size: 13px;
-  margin-bottom: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-}
-.task-stat { color: var(--text); }
-.task-stat.good { color: var(--green); font-weight: 600; }
 
 /* ===== 產品／科別入口 ===== */
 .entry-section { margin-bottom: 16px; }
