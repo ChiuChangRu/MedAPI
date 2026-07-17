@@ -616,6 +616,7 @@ async function connectBackend() {
     renderTaskSummary();
     autoMyList();
     syncPending();
+    loadSearchTexts(); // 背景載入照片擷取文字＋錄音逐字稿，搜尋框連照片裡的字都搜得到
   } catch (err) {
     if (String(err.message).includes("PIN")) { showLogin(); return; }
     // 網路不通：曾登入過就進離線模式（用手機快取的資料）
@@ -699,8 +700,16 @@ async function doLogin() {
 }
 
 // ---------- 產品別／科別關鍵字比對 ----------
+// 每家展商「照片擷取文字＋錄音逐字稿」的彙整（後端 /search-texts），
+// 併進搜尋比對範圍——照片裡抄出來的型號、認證、公司資訊都搜得到
+let EXTRA_TEXT = {};
+
+async function loadSearchTexts() {
+  try { EXTRA_TEXT = await api("/search-texts"); } catch { /* 搜尋加值功能，失敗不影響主流程 */ }
+}
+
 function exhibitorText(e) {
-  return [e.name_zh, e.name_en, e.description, ...(e.products || []), ...(e.tags || [])]
+  return [e.name_zh, e.name_en, e.description, ...(e.products || []), ...(e.tags || []), EXTRA_TEXT[e.id] || ""]
     .join(" ")
     .toLowerCase();
 }
@@ -2224,15 +2233,19 @@ async function loadAttachments(id) {
       const transcriptBlock = !isAudio || !TRANSCRIBE_ENABLED ? "" : a.transcript
         ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" data-act="edit-transcript" class="att-transcribe-btn">編輯</a></p>`
         : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a>`;
+      const ocrBlock = !isImage || !TRANSCRIBE_ENABLED ? "" : a.ocr_text
+        ? `<p class="att-transcript">🔍 ${esc(a.ocr_text)} <a href="#" data-act="edit-ocr" class="att-transcribe-btn">編輯</a></p>`
+        : `<a href="#" data-act="ocr" class="att-transcribe-btn">🔍 擷取文字</a>`;
       const catRow = !isImage ? "" : `<div class="att-cat-row">${ATT_CATEGORIES.map((c) =>
         `<span class="cat-chip ${a.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`
       ).join("")}</div>`;
-      return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}" data-transcript="${esc(a.transcript || "")}">
+      return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}" data-transcript="${esc(a.transcript || "")}" data-ocr="${esc(a.ocr_text || "")}">
         <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB
           <span class="note-actions"><a href="#" data-act="cap-att">${a.caption ? "編輯說明" : "加說明"}</a> <a href="#" data-act="del-att">刪除</a></span>
         </div>
         ${preview}
         ${catRow}
+        ${ocrBlock}
         ${transcriptBlock}
         ${a.caption ? `<div class="att-caption">${esc(a.caption)}</div>` : ""}
       </div>`;
@@ -2301,6 +2314,38 @@ async function loadAttachments(id) {
             body: JSON.stringify({ transcript: edited.trim(), author: me() }),
           });
           loadAttachments(id); loadHistory(id);
+        } catch (err) { showToast("儲存失敗：" + err.message); }
+      };
+    });
+    wrap.querySelectorAll('a[data-act="ocr"]').forEach((a) => {
+      a.onclick = async (ev) => {
+        ev.preventDefault();
+        const attId = a.closest(".note").dataset.id;
+        a.textContent = "擷取中…（約 10–20 秒）";
+        try {
+          await api(`/attachments/${attId}/ocr`, { method: "POST", body: JSON.stringify({ author: me() }) });
+          loadAttachments(id); loadHistory(id);
+          loadSearchTexts(); // 新抄出的文字馬上進搜尋範圍
+        } catch (err) {
+          a.textContent = "🔍 擷取失敗，點一下再試";
+          showToast(err.message);
+        }
+      };
+    });
+    wrap.querySelectorAll('a[data-act="edit-ocr"]').forEach((a) => {
+      a.onclick = async (ev) => {
+        ev.preventDefault();
+        const noteEl = a.closest(".note");
+        const attId = noteEl.dataset.id;
+        const edited = prompt("修改擷取文字（AI 抄錯的地方直接改成正確內容，改完的文字一樣可以被搜尋）：", noteEl.dataset.ocr || "");
+        if (edited === null) return;
+        try {
+          await api(`/attachments/${attId}`, {
+            method: "PUT",
+            body: JSON.stringify({ ocr_text: edited.trim(), author: me() }),
+          });
+          loadAttachments(id); loadHistory(id);
+          loadSearchTexts();
         } catch (err) { showToast("儲存失敗：" + err.message); }
       };
     });

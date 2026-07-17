@@ -12,6 +12,8 @@
  * 未設定 TEAM_PIN 時視為開發模式、不驗證（正式部署請務必設定）。
  */
 
+import { extractImageText, judgeRelation } from "./imageSkill.js";
+
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,6 +81,7 @@ const MIGRATIONS = [
   `ALTER TABLE exhibitor_state ADD COLUMN visit_record TEXT DEFAULT '{}'`,
   `ALTER TABLE attachments ADD COLUMN transcript TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN category TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN ocr_text TEXT DEFAULT ''`,
 ];
 
 let schemaReady = false;
@@ -260,17 +263,29 @@ function fmtSecsRange(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// 圖片 OCR 共用 prompt（/test-ocr、/test-ocr-context 都用這份，避免兩處各自維護會漂移）
-const OCR_PROMPT = "你是機械式的文字抄錄員，不是圖片說明員。任務只有一件事：把這張圖片裡「所有看得到的文字」逐字抄出來，依照原本的排版順序（由上到下、由左到右）條列輸出。\n\n嚴格規則：\n- 絕對不要用「圖片顯示了」「這是一張...的照片」「書名為」這類描述句，禁止描述畫面內容\n- 絕對不要摘要、不要翻譯、不要加你自己的分析或總結\n- 不要加「文字抄錄結果」之類的標題或前言，直接輸出抄到的文字本身\n- 如果畫面裡有表格，把每一列的每一欄數值都完整列出來（例如型號、數字、單位），不要用「每欄都有數個項目」這種話帶過，要照抄實際數字\n- 繁體、簡體、英文、數字都原樣照抄\n- 如果看不清楚、不確定的文字，不要用猜的內容代替，用「[看不清]」標示，絕對不可以編造沒看到的內容\n- 如果同一個詞已經抄過，不要無限重複抄同一個詞，抄到重複出現就停下來換下一個內容\n- 如果圖片裡完全沒有任何文字，只回答「（無文字）」，不要多做任何說明\n\n現在開始抄錄：";
+// 圖片 OCR／關聯判斷的實作都在 imageSkill.js（共用模組，隨身記之後也用同一份）
 
-// 偵測模型輸出是否卡進重複迴圈（同一行反覆出現），這種結果直接判定失敗、不採信
-function detectRepetitionLoop(text) {
-  const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 10) return false;
-  const counts = {};
-  for (const l of lines) counts[l] = (counts[l] || 0) + 1;
-  const maxCount = Math.max(...Object.values(counts));
-  return maxCount >= 8 && maxCount / lines.length > 0.4;
+// 採集模式的照片說明帶有「錄音 mm:ss 時拍攝」，錄音段說明帶有時間範圍——
+// 用這兩個標記找出「這張照片拍攝當下，對話講到哪一段」的逐字稿
+const CAPTURE_PHOTO_RE = /📸\s*錄音\s*(\d{2}):(\d{2})\s*時拍攝/;
+const CAPTURE_SEG_RE = /🎙\s*採集第\s*\d+\s*段（(\d{2}):(\d{2})[–-](\d{2}):(\d{2})）/;
+
+function findCaptureContext(allAttachments, photoCaption) {
+  const toSecs = (mm, ss) => Number(mm) * 60 + Number(ss);
+  const m = (photoCaption || "").match(CAPTURE_PHOTO_RE);
+  if (!m) return null;
+  const offsetSec = toSecs(m[1], m[2]);
+  for (const a of allAttachments) {
+    if (!(a.mime || "").startsWith("audio/")) continue;
+    const sm = (a.caption || "").match(CAPTURE_SEG_RE);
+    if (!sm) continue;
+    const start = toSecs(sm[1], sm[2]);
+    const end = toSecs(sm[3], sm[4]);
+    if (offsetSec >= start && offsetSec <= end) {
+      return { offset: `${m[1]}:${m[2]}`, start, end, segment: a, transcript: (a.transcript || "").trim() };
+    }
+  }
+  return { offset: `${m[1]}:${m[2]}`, start: null, end: null, segment: null, transcript: "" };
 }
 
 async function logHistory(db, exhibitorId, author, action, detail) {
@@ -359,6 +374,12 @@ async function handleApi(request, env, url, ctx) {
       await logHistory(db, old.exhibitor_id, author, "編輯轉文字稿", `${old.filename}：「${transcript.slice(0, 80)}」`);
       return json({ ok: true });
     }
+    if (body.ocr_text !== undefined) {
+      const ocrText = (body.ocr_text || "").trim();
+      await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(ocrText, id).run();
+      await logHistory(db, old.exhibitor_id, author, "編輯擷取文字", `${old.filename}：「${ocrText.slice(0, 80)}」`);
+      return json({ ok: true });
+    }
     const caption = (body.caption || "").trim();
     await db.prepare("UPDATE attachments SET caption = ? WHERE id = ?").bind(caption, id).run();
     await logHistory(db, old.exhibitor_id, author, "附件說明", `${old.filename}：「${caption.slice(0, 80)}」`);
@@ -396,6 +417,54 @@ async function handleApi(request, env, url, ctx) {
     await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(text, id).run();
     await logHistory(db, old.exhibitor_id, author, "錄音轉文字", `${old.filename}：${text.slice(0, 80)}`);
     return json({ text });
+  }
+
+  // ---- 照片擷取文字（影像 skill）：抄出照片文字存進 ocr_text，可再人工編輯；
+  // 採集模式拍的照片會另外比對「拍攝當下」的錄音逐字稿，附上一句關聯說明 ----
+  const attOcrMatch = path.match(/^\/attachments\/(\d+)\/ocr$/);
+  if (attOcrMatch && method === "POST") {
+    if (!env.AI || !env.FILES) return bad("尚未啟用圖片擷取文字（需 Workers AI 與 R2）", 501);
+    const id = Number(attOcrMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到附件", 404);
+    if (!(old.mime || "").startsWith("image/")) return bad("只有照片可以擷取文字");
+    const obj = await env.FILES.get(old.key);
+    if (!obj) return bad("找不到檔案內容", 404);
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+    const r = await extractImageText(env.AI, bytes);
+    if (!r.ok) return bad(r.error, 502);
+    let text = r.text;
+    // 採集模式照片：找出拍攝當下的錄音逐字稿，讓照片跟現場對話主題掛勾
+    const ctxInfo = findCaptureContext(
+      (await db.prepare("SELECT * FROM attachments WHERE exhibitor_id = ? ORDER BY id ASC").bind(old.exhibitor_id).all()).results,
+      old.caption
+    );
+    if (ctxInfo && ctxInfo.transcript) {
+      const relation = await judgeRelation(env.AI, ctxInfo.transcript, text);
+      if (relation && !relation.includes("看不出明顯關聯")) {
+        text += `\n\n【對話關聯】${relation}（錄音 ${ctxInfo.offset} 時拍攝）`;
+      }
+    }
+    await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(text, id).run();
+    await logHistory(db, old.exhibitor_id, author, "照片擷取文字", `${old.filename}：${text.slice(0, 80)}`);
+    return json({ ocr_text: text });
+  }
+
+  // ---- 附件文字彙整（給前端搜尋用）：把每家展商的照片擷取文字＋錄音逐字稿
+  // 合併成一包，搜尋框打關鍵字時照片裡的字也搜得到 ----
+  if (path === "/search-texts" && method === "GET") {
+    const { results } = await db
+      .prepare("SELECT exhibitor_id, ocr_text, transcript FROM attachments WHERE ocr_text != '' OR transcript != ''")
+      .all();
+    const map = {};
+    for (const r of results) {
+      const chunk = `${r.ocr_text || ""} ${r.transcript || ""}`.trim();
+      if (!chunk) continue;
+      map[r.exhibitor_id] = ((map[r.exhibitor_id] || "") + " " + chunk).slice(0, 20000);
+    }
+    return json(map);
   }
 
   // ---- members ----
@@ -771,18 +840,10 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
       if (!obj) { out.push({ id: a.id, filename: a.filename, error: "找不到檔案本體" }); continue; }
       const bytes = new Uint8Array(await obj.arrayBuffer());
       try {
-        const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
-          image: Array.from(bytes),
-          prompt: OCR_PROMPT,
-          max_tokens: 1024,
-          temperature: 0,
-        });
-        const text = result?.response ?? result?.description ?? JSON.stringify(result);
-        if (detectRepetitionLoop(text)) {
-          out.push({ id: a.id, filename: a.filename, text: null, error: "模型輸出偵測到異常重複迴圈，已判定為失敗（不採信這次結果）" });
-        } else {
-          out.push({ id: a.id, filename: a.filename, text });
-        }
+        const r = await extractImageText(env.AI, bytes);
+        out.push(r.ok
+          ? { id: a.id, filename: a.filename, text: r.text }
+          : { id: a.id, filename: a.filename, text: null, error: r.error });
       } catch (err) {
         out.push({ id: a.id, filename: a.filename, error: err.message });
       }
@@ -798,85 +859,40 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     if (!env.AI || !env.FILES) return bad("尚未啟用 Workers AI 或 R2", 501);
     const exhibitorId = url.searchParams.get("exhibitor_id");
     if (!exhibitorId) return bad("缺 exhibitor_id 參數");
-    const toSecs = (mm, ss) => Number(mm) * 60 + Number(ss);
     const { results: all } = await db
       .prepare("SELECT * FROM attachments WHERE exhibitor_id = ? ORDER BY id ASC")
       .bind(exhibitorId)
       .all();
-    const photoRe = /📸\s*錄音\s*(\d{2}):(\d{2})\s*時拍攝/;
-    const segRe = /🎙\s*採集第\s*\d+\s*段（(\d{2}):(\d{2})[–-](\d{2}):(\d{2})）/;
-    const segments = all
-      .filter((a) => (a.mime || "").startsWith("audio/") && segRe.test(a.caption || ""))
-      .map((a) => {
-        const m = a.caption.match(segRe);
-        return { att: a, start: toSecs(m[1], m[2]), end: toSecs(m[3], m[4]) };
-      });
-    const photos = all.filter((a) => (a.mime || "").startsWith("image/") && photoRe.test(a.caption || ""));
+    const photos = all.filter((a) => (a.mime || "").startsWith("image/") && CAPTURE_PHOTO_RE.test(a.caption || ""));
     if (!photos.length) return bad("這家展商沒有帶時間點的採集模式照片（要用「📸 採集模式」拍的才有時間戳）", 404);
     const limit = Number(url.searchParams.get("limit") || 3);
     const out = [];
     for (const p of photos.slice(0, limit)) {
-      const m = p.caption.match(photoRe);
-      const offsetSec = toSecs(m[1], m[2]);
-      const seg = segments.find((s) => offsetSec >= s.start && offsetSec <= s.end);
-      const transcript = seg ? (seg.att.transcript || "").trim() : "";
+      const ctxInfo = findCaptureContext(all, p.caption);
       const obj = await env.FILES.get(p.key);
       if (!obj) { out.push({ id: p.id, filename: p.filename, error: "找不到檔案本體" }); continue; }
       const bytes = new Uint8Array(await obj.arrayBuffer());
-
-      // 第一步：純看圖抄字，完全不給逐字稿，模型不可能把逐字稿當成照片內容
-      let ocrText;
       try {
-        const ocrResult = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
-          image: Array.from(bytes),
-          prompt: OCR_PROMPT,
-          max_tokens: 1024,
-          temperature: 0,
-        });
-        ocrText = ocrResult?.response ?? JSON.stringify(ocrResult);
-      } catch (err) {
-        out.push({ id: p.id, filename: p.filename, offset: `${m[1]}:${m[2]}`, error: "OCR 失敗：" + err.message });
-        continue;
-      }
-      if (detectRepetitionLoop(ocrText)) {
-        out.push({
-          id: p.id, filename: p.filename, offset: `${m[1]}:${m[2]}`,
-          text: null, error: "模型輸出偵測到異常重複迴圈，已判定為失敗（不採信這次結果）",
-          raw_preview: ocrText.slice(0, 200) + "…",
-        });
-        continue;
-      }
-
-      // 第二步：只有抄字成功、且有對應逐字稿時，才另外用文字模型判斷關聯——
-      // 純文字比對文字，模型看不到圖片，不會再混淆「抄的」跟「聽的」
-      let relation = null;
-      if (transcript) {
-        try {
-          const relResult = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", {
-            messages: [{
-              role: "user",
-              content: `以下是展會現場一段對話的逐字稿，以及同一時間拍的照片經過文字辨識後抄出來的內容。請用一句話判斷這張照片可能跟對話中提到的什麼東西有關；如果看不出關聯，就直接回答「看不出明顯關聯」，不要編造或過度推測。\n\n【對話逐字稿】\n${transcript.slice(0, 1200)}\n\n【照片辨識出的文字】\n${ocrText.slice(0, 800)}\n\n請只回答那一句判斷，不要加其他說明：`,
-            }],
-            max_tokens: 200,
-            temperature: 0,
-          });
-          relation = relResult?.response?.trim() || null;
-        } catch (err) {
-          relation = "（關聯判斷失敗：" + err.message + "）";
+        const r = await extractImageText(env.AI, bytes);
+        if (!r.ok) {
+          out.push({ id: p.id, filename: p.filename, offset: ctxInfo.offset, text: null, error: r.error, raw_preview: r.raw ? r.raw.slice(0, 200) + "…" : undefined });
+          continue;
         }
+        const relation = await judgeRelation(env.AI, ctxInfo.transcript, r.text);
+        out.push({
+          id: p.id,
+          filename: p.filename,
+          offset: ctxInfo.offset,
+          matched_segment: ctxInfo.segment ? `${ctxInfo.segment.filename}（${fmtSecsRange(ctxInfo.start)}–${fmtSecsRange(ctxInfo.end)}）` : null,
+          transcript_used: ctxInfo.transcript ? ctxInfo.transcript.slice(0, 200) + (ctxInfo.transcript.length > 200 ? "…" : "") : null,
+          text: r.text,
+          relation: relation || null,
+        });
+      } catch (err) {
+        out.push({ id: p.id, filename: p.filename, offset: ctxInfo.offset, error: err.message });
       }
-
-      out.push({
-        id: p.id,
-        filename: p.filename,
-        offset: `${m[1]}:${m[2]}`,
-        matched_segment: seg ? `${seg.att.filename}（${fmtSecsRange(seg.start)}–${fmtSecsRange(seg.end)}）` : null,
-        transcript_used: transcript ? transcript.slice(0, 200) + (transcript.length > 200 ? "…" : "") : null,
-        text: ocrText,
-        relation,
-      });
     }
-    return json({ exhibitor_id: exhibitorId, photo_count: photos.length, segment_count: segments.length, results: out });
+    return json({ exhibitor_id: exhibitorId, photo_count: photos.length, results: out });
   }
 
   return bad("不存在的 API 路徑", 404);
