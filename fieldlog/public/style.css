@@ -138,7 +138,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 /* ===== 附件 ===== */
 .att-list { display: flex; flex-direction: column; gap: 10px; }
 .att-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
-.att-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.att-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; gap: 8px; }
+.att-delete { color: #b91c1c; }
 .att-offset { color: var(--accent-dark); font-weight: 600; }
 .att-thumb { max-width: 100%; max-height: 220px; border-radius: 6px; display: block; }
 .att-transcript { font-size: 13px; line-height: 1.6; margin: 6px 0 0; white-space: pre-line; color: var(--text-muted); }

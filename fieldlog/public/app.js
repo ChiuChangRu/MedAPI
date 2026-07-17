@@ -223,7 +223,9 @@ function attHtml(a) {
     ? (a.transcript ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>` : `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a>`)
     : "";
   return `<div class="att-item">
-    <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}</div>
+    <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
+      <a href="#" class="att-delete" data-id="${a.id}">刪除</a>
+    </div>
     ${preview}${transcribeBit}
   </div>`;
 }
@@ -237,6 +239,16 @@ function bindAttActions(entryId) {
         await api(`/attachments/${el.dataset.id}/transcribe`, { method: "POST", body: "{}" });
         openEntry(entryId);
       } catch (e) { el.textContent = "失敗，點我重試"; showToast(e.message); }
+    };
+  });
+  document.querySelectorAll(".att-delete").forEach((el) => {
+    el.onclick = async (ev) => {
+      ev.preventDefault();
+      if (!confirm("確定刪除這個附件？刪除後無法復原。")) return;
+      try {
+        await api(`/attachments/${el.dataset.id}`, { method: "DELETE" });
+        openEntry(entryId);
+      } catch (e) { showToast("刪除失敗：" + e.message); }
     };
   });
 }
