@@ -14,18 +14,10 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<header class="top">
-  <div class="inner">
-    <h1>🎒 隨身記</h1>
-    <p>現場採集 → AI 彙整 → Notion。原始資料都在這，先記再說。</p>
-  </div>
-</header>
-
 <div class="container">
   <!-- 首頁：採集優先 -->
   <div id="view-home">
-    <button class="big-capture" id="btn-capture-quick">📸🎙 開始採集<span class="sub-label">開鏡頭：錄音不中斷、隨時拍照</span></button>
-    <button class="btn audio-only-btn" id="btn-audio-quick">🎙 低調錄音<span class="sub-label">不出現錄影畫面，背景錄音，可拍照／寫字</span></button>
+    <button class="big-capture" id="btn-capture-quick">📸🎙 開始採集<span class="sub-label">錄音不中斷、隨時拍照、隨時記事</span></button>
     <button class="btn quick-note" id="btn-quick-note">✏️ 快速文字備忘</button>
 
     <section class="panel" id="inbox-panel">
@@ -46,7 +38,6 @@
       <h2 id="folder-title"></h2>
       <div class="folder-actions">
         <button class="btn small" id="btn-folder-capture">📸🎙 採集</button>
-        <button class="btn small audio-btn-small" id="btn-folder-audio">🎙 低調錄音</button>
         <button class="btn small" id="btn-folder-entry">✏️ 新紀錄</button>
         <button class="btn small primary" id="btn-folder-export">📄 匯出給 AI</button>
       </div>
@@ -71,29 +62,23 @@
   <div class="modal wide" id="entry-modal"></div>
 </div>
 
-<!-- 現場採集模式（開鏡頭、看得到畫面：適合刻意取景拍照時用） -->
+<!-- 現場採集：全程開鏡頭看得到畫面（拍照本來就要看得到才能取景）。
+     所有可點的控制都放在畫面下半部，單手拇指構得到；上方只放
+     不用點的計時／資料夾資訊。 -->
 <div class="capture-overlay" id="capture-overlay" style="display:none;">
   <video id="capture-video" autoplay playsinline muted></video>
   <div class="capture-top">
     <span class="capture-rec"><span class="rec-dot"></span><span id="capture-timer">00:00</span></span>
     <span class="capture-count" id="capture-count"></span>
   </div>
+  <button id="capture-folder-chip" class="capture-folder-chip" type="button">📂 …</button>
+  <div id="capture-folder-picker" class="capture-folder-picker" style="display:none;"></div>
   <div class="capture-controls">
-    <button id="capture-stop" class="capture-stop" type="button">⏹ 結束</button>
+    <button id="capture-stop" class="capture-side-btn" type="button">⏹<span>結束</span></button>
     <button id="capture-snap" class="capture-snap" type="button" title="拍照（錄音不中斷）"></button>
-    <span class="capture-hint">錄音中，隨時拍照<br/>切換 App 自動存檔</span>
+    <button id="capture-note" class="capture-side-btn" type="button">✏️<span>記事</span></button>
   </div>
   <div class="capture-flash" id="capture-flash"></div>
-</div>
-
-<!-- 低調錄音：不進全螢幕畫面，用小圓角浮動列取代，可以正常滑手機。
-     隱藏的 video 只是為了讓拍照拿得到影像幀，本身不會顯示在畫面上。 -->
-<video id="bg-video" autoplay playsinline muted class="bg-video-hidden"></video>
-<div class="bg-rec-badge" id="bg-rec-badge" style="display:none;">
-  <span class="bg-rec-dot"></span><span id="bg-rec-timer">00:00</span>
-  <button id="bg-rec-photo" type="button" title="拍照">📷</button>
-  <button id="bg-rec-note" type="button" title="記一句">✏️</button>
-  <button id="bg-rec-stop" type="button" title="結束">⏹</button>
 </div>
 
 <div class="toast" id="toast"></div>
