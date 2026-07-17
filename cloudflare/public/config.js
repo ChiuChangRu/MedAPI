@@ -334,17 +334,16 @@ const QUAL_OPTIONS = [
 const POST_CLASS_OPTIONS = ["立即導入", "追蹤", "備用", "不採用"];
 const POST_CLASS_COLORS = { "立即導入": "#15803d", "追蹤": "#1d4ed8", "備用": "#8a8a82", "不採用": "#b45309" };
 
-// 技術快搜（欲尋找之技術清單，點了自動帶關鍵字搜尋；q 為實際比對字串，
-// 已對應展商資料用語，例如射出成型在資料中多寫作「注塑」）
-const TECH_SEARCHES = [
-  { label: "導管", q: "導管" },
-  { label: "擠出", q: "擠出" },
-  { label: "編織 Braiding", q: "編織" },
-  { label: "Tip Forming", q: "tip" },
-  { label: "射出", q: "注塑" },
-  { label: "矽膠", q: "矽膠" },
-  { label: "包裝", q: "包裝" },
-  { label: "檢測設備", q: "檢測" },
+// 策略地圖廠商檢索：對應公司未來五年技術開發主題（親水／抗結痂／抗菌披膜已合併），
+// 每顆按鈕帶一組關鍵字，展商資料命中任一關鍵字即列出（OR 邏輯）。
+// 關鍵字已對應展商資料用語（大陸展商寫「激光」不寫「雷射」）。覺得哪顆撈太雜，改這裡即可。
+const TECH_MAP = [
+  { id: "laser", label: "雷射加工", keywords: ["雷射", "激光", "打孔", "鑽孔", "印刷", "移印", "油墨", "標線", "laser"] },
+  { id: "coating", label: "披膜三兄弟", keywords: ["親水", "塗層", "塗佈", "潤滑", "hydrophilic", "coating", "抗結痂", "結晶沉積", "生物膜", "抗菌", "抗微生物", "antimicrobial", "藥物塗層"] },
+  { id: "coil", label: "薄壁繞簧管", keywords: ["繞簧", "彈簧管", "線圈", "coil", "薄壁", "鞘管", "sheath"] },
+  { id: "braid", label: "編織管", keywords: ["編織", "braid", "增強導管"] },
+  { id: "extrusion", label: "變徑異型押出", keywords: ["變徑", "異型", "錐形", "taper", "多腔", "押出模具", "擠出模具", "流道"] },
+  { id: "balloon", label: "TPU 球囊導管", keywords: ["球囊", "balloon", "爆壓", "球囊成型", "tpu", "聚氨酯"] },
 ];
 
 // 拜訪成果——取得了什麼（勾選式，展後可統計）

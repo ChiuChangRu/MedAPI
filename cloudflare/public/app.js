@@ -958,29 +958,28 @@ function buildSelectOptions() {
   }
 }
 
+// 策略地圖廠商檢索：一顆按鈕＝一個技術主題（一組關鍵字 OR 比對），為未來五年開發蒐羅供應商
+let ACTIVE_TECH = "";
 function buildTechSearch() {
   const wrap = $("tech-search");
-  wrap.innerHTML = '<span class="recommend-label">技術快搜：</span>';
-  for (const t of TECH_SEARCHES) {
+  wrap.innerHTML = '<span class="recommend-label">策略地圖廠商檢索：</span>';
+  for (const t of TECH_MAP) {
     const chip = document.createElement("span");
-    chip.className = "chip";
+    chip.className = "chip tech-map-chip";
     chip.textContent = t.label;
     chip.onclick = () => {
-      const search = $("search");
-      const active = search.value.trim() === t.q;
-      search.value = active ? "" : t.q;
+      ACTIVE_TECH = ACTIVE_TECH === t.id ? "" : t.id;
       refreshTechChips();
       render();
     };
-    chip.dataset.q = t.q;
+    chip.dataset.tech = t.id;
     wrap.appendChild(chip);
   }
 }
 
 function refreshTechChips() {
-  const current = $("search").value.trim();
   document.querySelectorAll("#tech-search .chip").forEach((c) => {
-    c.classList.toggle("active", c.dataset.q === current);
+    c.classList.toggle("active", !!ACTIVE_TECH && c.dataset.tech === ACTIVE_TECH);
   });
 }
 
@@ -1144,7 +1143,7 @@ function openMyReport() {
 }
 
 function clearAll() {
-  ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; POCKET_ONLY = false; VISIT_ONLY = false;
+  ACTIVE_CATS.clear(); ACTIVE_LINE = ""; ACTIVE_DEPT = ""; POCKET_ONLY = false; VISIT_ONLY = false; ACTIVE_TECH = "";
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
   $("assignee-filter").value = "";
   setActiveViewTab("search");
@@ -1174,8 +1173,9 @@ function filtered() {
   const statusF = $("status-filter").value;
   const lineSet = ACTIVE_LINE ? LINE_MATCHES[ACTIVE_LINE] : null;
   const dept = ACTIVE_DEPT ? DEPT_PRESETS.find((d) => d.id === ACTIVE_DEPT) : null;
-  // 有打字搜尋時，視為要查全部展商，不受目前選的產品線／部門入口限制
-  const searching = keywords.length > 0;
+  const techMap = ACTIVE_TECH ? TECH_MAP.find((t) => t.id === ACTIVE_TECH) : null;
+  // 有打字搜尋或點了策略地圖主題時，視為要查全部展商，不受目前選的產品線／部門入口限制
+  const searching = keywords.length > 0 || !!techMap;
 
   return EXHIBITORS.filter((e) => {
     if (!searching) {
@@ -1191,10 +1191,12 @@ function filtered() {
     const assigneeF = $("assignee-filter").value;
     if (assigneeF && !isSameName(st.assignee, assigneeF)) return false; // 全名/短名視同一人，舊資料也對得上
     if (statusF && st.status !== statusF) return false;
-    if (keywords.length) {
+    if (keywords.length || techMap) {
       const text = exhibitorText(e);
       // 交叉檢索：所有關鍵字都要命中（AND）
-      if (!keywords.every((k) => text.includes(k))) return false;
+      if (keywords.length && !keywords.every((k) => text.includes(k))) return false;
+      // 策略地圖主題：命中該主題任一關鍵字即可（OR）
+      if (techMap && !techMap.keywords.some((k) => text.includes(k.toLowerCase()))) return false;
     }
     return true;
   });

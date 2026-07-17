@@ -408,6 +408,10 @@ body.todo-view #recommend-bar { display: none !important; }
   margin-bottom: 12px; font-size: 13px;
 }
 
+/* 策略地圖廠商檢索：藍色主題按鈕（未來五年技術開發的供應商蒐羅） */
+.tech-map-chip { border-color: #1d4ed8; color: #1d4ed8; background: #eff6ff; font-weight: 600; }
+.tech-map-chip.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; box-shadow: 0 1px 3px rgba(29, 78, 216, 0.35); }
+
 .link-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .directory-link { font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 500; }
 .directory-link:hover { text-decoration: underline; }
