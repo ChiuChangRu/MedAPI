@@ -149,15 +149,6 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .capture-overlay { position: fixed; inset: 0; z-index: 80; background: #000; display: flex; flex-direction: column; }
 #capture-video { flex: 1; width: 100%; min-height: 0; object-fit: cover; }
 
-/* 純錄音模式：不開鏡頭，用純色背景＋大圖示取代影像預覽，快門鈕隱藏 */
-.audio-only-bg {
-  display: none; flex: 1; align-items: center; justify-content: center;
-  font-size: 120px; background: linear-gradient(160deg, #0b4f4a, #0f766e);
-}
-.capture-overlay.audio-only #capture-video { display: none; }
-.capture-overlay.audio-only .audio-only-bg { display: flex; }
-.capture-overlay.audio-only .capture-snap { display: none; }
-.capture-overlay.audio-only .capture-stop { position: absolute; left: 50%; transform: translateX(-50%); }
 .capture-top {
   position: absolute; top: 0; left: 0; right: 0;
   display: flex; justify-content: space-between; align-items: center;
@@ -189,6 +180,29 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .capture-hint { color: rgba(255,255,255,0.85); font-size: 12px; text-align: right; line-height: 1.5; }
 .capture-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
 .capture-flash.on { opacity: 0.7; }
+
+/* ===== 低調錄音：小浮動列取代全螢幕畫面，可以正常滑手機、不引人注意 ===== */
+/* video 元素技術上要「有在畫面上」才會持續產生影格可供拍照抓取，
+   所以不用 display:none（會停止解碼），改用近乎透明＋極小尺寸。 */
+.bg-video-hidden {
+  position: fixed; top: 0; left: 0; width: 2px; height: 2px;
+  opacity: 0.01; pointer-events: none; z-index: -1;
+}
+.bg-rec-badge {
+  position: fixed; right: 14px; bottom: 14px; z-index: 70;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(20, 22, 21, 0.88); color: #fff;
+  padding: 7px 10px; border-radius: 999px; font-size: 12px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+  font-variant-numeric: tabular-nums;
+}
+.bg-rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: rec-blink 1.2s ease-in-out infinite; flex: none; }
+.bg-rec-badge button {
+  border: none; background: rgba(255,255,255,0.15); color: #fff;
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.bg-rec-badge button:active { background: rgba(255,255,255,0.3); }
 
 /* ===== Toast ===== */
 .toast {
