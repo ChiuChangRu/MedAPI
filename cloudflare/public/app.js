@@ -15,6 +15,7 @@ let TRANSCRIBE_ENABLED = false;
 let ACTIVE_CATS = new Set();
 let ACTIVE_LINE = "";
 let ACTIVE_DEPT = "";
+let ACTIVE_TECH = "";       // 策略地圖主題（未來五年開發，藍色入口卡）
 let POCKET_ONLY = false;
 let VISIT_ONLY = false;
 let KEY_VISIT_MAP = {};     // exhibitorId -> KEY_VISITS 項目
@@ -499,9 +500,8 @@ async function init() {
   buildEntrySection();
   buildCategoryChips();
   buildSelectOptions();
-  buildTechSearch();
 
-  $("search").addEventListener("input", () => { refreshTechChips(); render(); });
+  $("search").addEventListener("input", render);
   $("hall-filter").addEventListener("change", render);
   $("country-filter").addEventListener("change", render);
   $("status-filter").addEventListener("change", render);
@@ -733,6 +733,20 @@ function buildEntrySection() {
     card.onclick = () => applyLinePreset(line.id);
     lineGrid.appendChild(card);
   }
+  // 策略地圖廠商檢索（藍色卡）：對應未來五年技術開發主題，混排在同一個入口清單裡
+  for (const t of TECH_MAP) {
+    const count = EXHIBITORS.filter((e) => {
+      const text = exhibitorText(e);
+      return t.keywords.some((k) => text.includes(k.toLowerCase()));
+    }).length;
+    const card = document.createElement("div");
+    card.className = "entry-card tech-card";
+    card.dataset.tech = t.id;
+    card.innerHTML = `<div class="entry-name">${t.label}</div><div class="entry-count">${count} 家</div>`;
+    card.title = `策略地圖主題（未來五年開發）：關鍵字「${t.keywords.join("、")}」命中任一即列出`;
+    card.onclick = () => applyTechPreset(t.id);
+    lineGrid.appendChild(card);
+  }
 }
 
 // 姓名模糊去重共用邏輯：別名表對應（振哲→政哲）＋ 全名/短名互相包含視為同一人
@@ -791,6 +805,10 @@ function renderRecommendBar() {
       const l = PRODUCT_LINES.find((x) => x.id === chip.id);
       el.textContent = l.name;
       el.onclick = () => applyLinePreset(chip.id);
+    } else if (chip.k === "tech") {
+      const t = TECH_MAP.find((x) => x.id === chip.id);
+      el.textContent = t.label;
+      el.onclick = () => applyTechPreset(chip.id);
     } else if (chip.k === "cats") {
       el.textContent = chip.label;
       el.onclick = () => {
@@ -860,6 +878,15 @@ function applyDeptPreset(deptId) {
 
 function applyLinePreset(lineId) {
   ACTIVE_LINE = ACTIVE_LINE === lineId ? "" : lineId;
+  if (ACTIVE_LINE) ACTIVE_TECH = "";
+  refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
+  $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// 策略地圖主題（藍色卡）：跟產品線入口互斥，點了就檢索全部展商（OR 比對該主題關鍵字組）
+function applyTechPreset(techId) {
+  ACTIVE_TECH = ACTIVE_TECH === techId ? "" : techId;
+  if (ACTIVE_TECH) ACTIVE_LINE = "";
   refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
   $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -868,7 +895,8 @@ function refreshEntryCards() {
   document.querySelectorAll(".entry-card").forEach((c) => {
     c.classList.toggle("active", Boolean(
       (c.dataset.dept && c.dataset.dept === ACTIVE_DEPT) ||
-      (c.dataset.line && c.dataset.line === ACTIVE_LINE)));
+      (c.dataset.line && c.dataset.line === ACTIVE_LINE) ||
+      (c.dataset.tech && c.dataset.tech === ACTIVE_TECH)));
   });
 }
 
@@ -882,6 +910,10 @@ function refreshPresetBar() {
   if (ACTIVE_LINE) {
     const l = PRODUCT_LINES.find((x) => x.id === ACTIVE_LINE);
     parts.push(`<strong>產品／科別｜${l.name}</strong>：${l.desc}（關鍵字「${l.keywords.join("、")}」自動比對）<button class="btn small ghost" onclick="applyLinePreset('${l.id}')">取消</button>`);
+  }
+  if (ACTIVE_TECH) {
+    const t = TECH_MAP.find((x) => x.id === ACTIVE_TECH);
+    parts.push(`<strong>策略地圖｜${t.label}</strong>：未來五年開發主題，檢索全部展商（關鍵字「${t.keywords.join("、")}」命中任一即列出）<button class="btn small ghost" onclick="applyTechPreset('${t.id}')">取消</button>`);
   }
   if (parts.length) {
     bar.innerHTML = parts.join("<br/>");
@@ -958,30 +990,6 @@ function buildSelectOptions() {
   }
 }
 
-// 策略地圖廠商檢索：一顆按鈕＝一個技術主題（一組關鍵字 OR 比對），為未來五年開發蒐羅供應商
-let ACTIVE_TECH = "";
-function buildTechSearch() {
-  const wrap = $("tech-search");
-  wrap.innerHTML = '<span class="recommend-label">策略地圖廠商檢索：</span>';
-  for (const t of TECH_MAP) {
-    const chip = document.createElement("span");
-    chip.className = "chip tech-map-chip";
-    chip.textContent = t.label;
-    chip.onclick = () => {
-      ACTIVE_TECH = ACTIVE_TECH === t.id ? "" : t.id;
-      refreshTechChips();
-      render();
-    };
-    chip.dataset.tech = t.id;
-    wrap.appendChild(chip);
-  }
-}
-
-function refreshTechChips() {
-  document.querySelectorAll("#tech-search .chip").forEach((c) => {
-    c.classList.toggle("active", !!ACTIVE_TECH && c.dataset.tech === ACTIVE_TECH);
-  });
-}
 
 function refreshPocketBtn() {
   $("btn-pocket-filter").classList.toggle("primary", POCKET_ONLY);
@@ -1147,7 +1155,7 @@ function clearAll() {
   $("search").value = ""; $("hall-filter").value = ""; $("country-filter").value = ""; $("status-filter").value = "";
   $("assignee-filter").value = "";
   setActiveViewTab("search");
-  refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); refreshTechChips(); render();
+  refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); render();
 }
 
 // ---------- 主列表 ----------

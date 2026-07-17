@@ -100,24 +100,6 @@ const PRODUCT_LINES = [
     keywords: ["tpu", "聚氨酯", "擠出", "導管", "pebax", "醫用管"],
   },
   {
-    id: "braided",
-    name: "編織管（未來重點）",
-    desc: "未來技術重點：編織增強導管",
-    keywords: ["編織", "braid", "增強導管", "編織管"],
-  },
-  {
-    id: "balloon",
-    name: "球囊（未來重點）",
-    desc: "未來技術重點：球囊導管、球囊成型",
-    keywords: ["球囊", "balloon", "氣球導管", "球囊成型"],
-  },
-  {
-    id: "hydrophilic",
-    name: "親水塗層（未來重點）",
-    desc: "親水/潤滑/功能性塗層材料、塗佈製程與設備",
-    keywords: ["親水", "塗層", "coating"],
-  },
-  {
     id: "cardio_vascular",
     name: "心血管／血管通路",
     desc: "心血管介入、中心靜脈導管、導引器材",
@@ -228,15 +210,15 @@ const MEMBER_PROFILES = [
     chips: [
       { k: "line", id: "tpu" },
       { k: "line", id: "cardio_vascular" },
-      { k: "line", id: "braided" },
-      { k: "line", id: "balloon" },
+      { k: "tech", id: "braid" },
+      { k: "tech", id: "balloon" },
     ],
   },
   {
     name: "長儒",
     duty: "塗層",
     chips: [
-      { k: "line", id: "hydrophilic" },
+      { k: "tech", id: "coating" },
       { k: "cats", label: "表面處理", ids: ["cat-14"] },
     ],
   },
@@ -252,7 +234,7 @@ const MEMBER_PROFILES = [
     name: "和凌",
     duty: "編織管・壓管",
     chips: [
-      { k: "line", id: "braided" },
+      { k: "tech", id: "braid" },
       { k: "cats", label: "管件與擠壓", ids: ["cat-05", "cat-12"] },
     ],
   },

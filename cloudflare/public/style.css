@@ -229,6 +229,14 @@ body.todo-view #recommend-bar { display: none !important; }
 .entry-card:hover { border-color: var(--accent); box-shadow: 0 2px 5px rgba(28, 28, 26, 0.1); }
 .entry-card.active { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 6px rgba(200, 16, 46, 0.35); }
 .entry-card.active .entry-count { color: rgba(255,255,255,0.85); }
+
+/* 策略地圖入口卡（藍色）：未來五年技術開發主題，混排在產品／科別清單裡 */
+.entry-card.tech-card { border-color: #1d4ed8; background: #eff6ff; }
+.entry-card.tech-card .entry-name { color: #1d4ed8; font-weight: 600; }
+.entry-card.tech-card:hover { border-color: #1d4ed8; box-shadow: 0 2px 5px rgba(29, 78, 216, 0.2); }
+.entry-card.tech-card.active { background: #1d4ed8; border-color: #1d4ed8; box-shadow: 0 2px 6px rgba(29, 78, 216, 0.35); }
+.entry-card.tech-card.active .entry-name { color: #fff; }
+.entry-card.tech-card.active .entry-count { color: rgba(255,255,255,0.85); }
 .entry-name { font-size: 13px; font-weight: 500; line-height: 1.4; }
 .entry-count { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
@@ -403,14 +411,6 @@ body.todo-view #recommend-bar { display: none !important; }
   white-space: nowrap;
 }
 
-.tech-search {
-  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-  margin-bottom: 12px; font-size: 13px;
-}
-
-/* 策略地圖廠商檢索：藍色主題按鈕（未來五年技術開發的供應商蒐羅） */
-.tech-map-chip { border-color: #1d4ed8; color: #1d4ed8; background: #eff6ff; font-weight: 600; }
-.tech-map-chip.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; box-shadow: 0 1px 3px rgba(29, 78, 216, 0.35); }
 
 .link-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .directory-link { font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 500; }
