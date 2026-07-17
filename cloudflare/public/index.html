@@ -140,17 +140,20 @@
   </div>
 </div>
 
-<!-- 現場採集模式：錄音全程不中斷，隨時拍照，照片自動標上錄音時間點 -->
-<div class="capture-overlay" id="capture-overlay" style="display:none;">
-  <video id="capture-video" autoplay playsinline muted></video>
-  <div class="capture-top">
-    <span class="capture-rec"><span class="rec-dot"></span><span id="capture-timer">00:00</span></span>
-    <span class="capture-count" id="capture-count"></span>
-  </div>
+<!-- 現場採集模式：不開鏡頭，錄音在背景跑，浮動列顯示計時；拍照時才臨時開鏡頭，拍完立刻關閉，錄音不中斷 -->
+<div class="audio-badge" id="capture-badge" style="display:none;">
+  <span class="rec-dot"></span><span id="capture-timer">00:00</span>
+  <span class="capture-count" id="capture-count"></span>
+  <button id="capture-photo-btn" type="button" title="拍照">📷</button>
+  <button id="capture-stop-btn" type="button" title="結束採集">⏹</button>
+</div>
+
+<div class="capture-overlay" id="capture-photo-popup" style="display:none;">
+  <video id="capture-photo-video" autoplay playsinline muted></video>
   <div class="capture-controls">
-    <button id="capture-stop" class="capture-stop" type="button">⏹ 結束採集</button>
-    <button id="capture-snap" class="capture-snap" type="button" title="拍照（錄音不中斷）"></button>
-    <span class="capture-hint">錄音中，隨時拍照<br/>切換 App 自動存檔</span>
+    <button id="capture-photo-cancel" class="capture-stop" type="button">✕ 取消</button>
+    <button id="capture-photo-snap" class="capture-snap" type="button" title="拍照"></button>
+    <span class="capture-hint">看得到畫面再拍<br/>錄音不中斷</span>
   </div>
   <div class="capture-flash" id="capture-flash"></div>
 </div>

@@ -536,8 +536,10 @@ async function init() {
   closeOnBackdropClick("cache-overlay", () => $("cache-overlay").classList.remove("open"));
 
   // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
-  $("capture-snap").onclick = snapCapture;
-  $("capture-stop").onclick = stopCapture;
+  $("capture-photo-btn").onclick = openCapturePhotoPopup;
+  $("capture-photo-snap").onclick = capturePhotoSnap;
+  $("capture-photo-cancel").onclick = closeCapturePhotoPopup;
+  $("capture-stop-btn").onclick = stopCapture;
   $("photo-snap").onclick = photoBurstSnap;
   $("photo-done").onclick = finishPhotoBurst;
   $("photo-save").onclick = saveBurstToAlbum;
@@ -546,10 +548,12 @@ async function init() {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) return;
     if (CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); }
+    if (CAPTURE_PHOTO_STREAM) closeCapturePhotoPopup();
     if (PHOTO_BURST) finishPhotoBurst();
   });
   window.addEventListener("pagehide", () => {
     if (CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); }
+    if (CAPTURE_PHOTO_STREAM) closeCapturePhotoPopup();
     if (PHOTO_BURST) finishPhotoBurst();
   });
 
@@ -1490,7 +1494,7 @@ async function openDetail(id) {
         <button class="btn small ghost" id="d-att-reorganize" type="button" title="剛剛分類的照片還沒歸位時，點這個立刻重新整理">🗂 整理歸檔</button>
         <span id="d-upload-status" class="sub"></span>
       </div>
-      <p class="sub">採集模式＝錄音全程不中斷、隨時拍照，每張照片自動標上「錄音第幾分幾秒拍的」；錄音每 10 分鐘自動分段上傳，段落即傳即安全。連續拍照＝不錄音，鏡頭持續開著，拍完一張直接拍下一張，不用重新點選。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
+      <p class="sub">採集模式＝不開鏡頭，錄音在背景跑，浮動列可隨時拍照（拍照時才臨時開鏡頭，拍完立刻關閉，錄音不中斷），每張照片自動標上「錄音第幾分幾秒拍的」；錄音每 10 分鐘自動分段上傳，段落即傳即安全。連續拍照＝不錄音，鏡頭持續開著，拍完一張直接拍下一張，不用重新點選。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
       <div id="d-attachments" class="notes-list"></div>
     </details>
 
@@ -1975,20 +1979,16 @@ async function startCapture(id) {
   }
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: true,
-    });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
-    showToast("無法開啟相機或麥克風：" + err.message);
+    showToast("無法開啟麥克風：" + err.message);
     return;
   }
-  $("capture-video").srcObject = stream;
   CAPTURE = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, exhibitorId: id, session: Date.now(), timerId: 0, ending: false, autoStopped: false };
   startSegmentRecorder();
   $("capture-count").textContent = "";
   $("capture-timer").textContent = "00:00";
-  $("capture-overlay").style.display = "flex";
+  $("capture-badge").style.display = "flex";
   CAPTURE.timerId = setInterval(() => {
     if (!CAPTURE) return;
     $("capture-timer").textContent = captureOffsetLabel();
@@ -1999,9 +1999,31 @@ async function startCapture(id) {
   }, 1000);
 }
 
-async function snapCapture() {
-  if (!CAPTURE) return;
-  const video = $("capture-video");
+// 採集中臨時拍照：另外開一個鏡頭串流，看得到畫面才拍，拍完立刻關閉鏡頭
+// （錄音走另一條 audio-only stream，鏡頭開關不會中斷錄音）
+let CAPTURE_PHOTO_STREAM = null;
+
+async function openCapturePhotoPopup() {
+  if (!CAPTURE || CAPTURE_PHOTO_STREAM) return;
+  try {
+    CAPTURE_PHOTO_STREAM = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+  } catch (err) { showToast("無法開啟相機：" + err.message); return; }
+  $("capture-photo-video").srcObject = CAPTURE_PHOTO_STREAM;
+  $("capture-photo-popup").style.display = "flex";
+}
+
+function closeCapturePhotoPopup() {
+  if (CAPTURE_PHOTO_STREAM) CAPTURE_PHOTO_STREAM.getTracks().forEach((t) => t.stop());
+  CAPTURE_PHOTO_STREAM = null;
+  $("capture-photo-video").srcObject = null;
+  $("capture-photo-popup").style.display = "none";
+}
+
+async function capturePhotoSnap() {
+  if (!CAPTURE || !CAPTURE_PHOTO_STREAM) return;
+  const video = $("capture-photo-video");
   if (!video.videoWidth) { showToast("相機還沒就緒，再等一下"); return; }
   const offset = captureOffsetLabel();
   const canvas = document.createElement("canvas");
@@ -2016,6 +2038,7 @@ async function snapCapture() {
   const { exhibitorId, session } = CAPTURE;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
   const filename = `採集${session}-${offset.replace(":", "")}.jpg`;
+  closeCapturePhotoPopup();
   try {
     const uploaded = await putFile(exhibitorId, blob, filename);
     await api(`/attachments/${uploaded.id}`, {
@@ -2037,6 +2060,7 @@ function stopCapture() {
   if (!CAPTURE) return;
   CAPTURE.ending = true;
   if (CAPTURE.recorder && CAPTURE.recorder.state !== "inactive") CAPTURE.recorder.stop();
+  if (CAPTURE_PHOTO_STREAM) closeCapturePhotoPopup();
 }
 
 // 一段錄音結束——「自動換段」與「使用者/切 App 結束採集」都走到這裡
@@ -2051,8 +2075,7 @@ async function onSegmentStop(recorder, chunks) {
     const total = fmtSecs(Math.floor((Date.now() - startedAt) / 1000));
     clearInterval(timerId);
     stream.getTracks().forEach((t) => t.stop());
-    $("capture-video").srcObject = null;
-    $("capture-overlay").style.display = "none";
+    $("capture-badge").style.display = "none";
     CAPTURE = null;
     showToast(autoStopped ? "偵測到切換 App，已自動結束採集並存檔" : "採集錄音上傳中…");
     await uploadSegment(exhibitorId, blob, session, segIndex, segStartOffset, segDur,
