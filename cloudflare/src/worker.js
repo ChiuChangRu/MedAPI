@@ -743,7 +743,7 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
       if (!obj) { out.push({ id: a.id, filename: a.filename, error: "找不到檔案本體" }); continue; }
       const bytes = new Uint8Array(await obj.arrayBuffer());
       try {
-        const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+        const result = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
           image: Array.from(bytes),
           prompt: "請把這張圖片裡看得到的所有文字，原封不動抄出來（繁體或簡體都照抄、不要翻譯、不要摘要、不要加自己的說明）。如果圖片裡沒有文字，就回答「（無文字）」。",
           max_tokens: 1024,
