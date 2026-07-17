@@ -535,6 +535,7 @@ async function init() {
   $("capture-stop").onclick = stopCapture;
   $("photo-snap").onclick = photoBurstSnap;
   $("photo-done").onclick = finishPhotoBurst;
+  $("photo-save").onclick = saveBurstToAlbum;
   // 採集中切去別的 App／收起瀏覽器：手機網頁沒辦法在「切換前」跳警告，
   // 所以改成事後保底——自動結束採集並存檔（錄音先寫進手機離線佇列再補傳，不會遺失）
   document.addEventListener("visibilitychange", () => {
@@ -2096,9 +2097,16 @@ async function startPhotoBurst(id) {
     });
   } catch (err) { showToast("無法開啟相機：" + err.message); return; }
   $("photo-video").srcObject = stream;
-  PHOTO_BURST = { stream, exhibitorId: id, photos: 0 };
+  PHOTO_BURST = { stream, exhibitorId: id, photos: 0, localFiles: [] };
   $("photo-count").textContent = "";
+  $("photo-save").style.display = "none";
   $("photo-overlay").style.display = "flex";
+}
+
+// 手機是否支援「分享/存相簿」：iOS Safari 16.4+、多數新版 Android 瀏覽器都有，
+// 舊版沒有的話就不顯示存相簿按鈕，避免點了沒反應
+function canSaveToAlbum() {
+  return !!(navigator.canShare && navigator.share);
 }
 
 async function photoBurstSnap() {
@@ -2117,6 +2125,13 @@ async function photoBurstSnap() {
   const { exhibitorId } = PHOTO_BURST;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
   const filename = `照片-${Date.now()}.jpg`;
+  // 手機本機留一份（存進 File 陣列），拍完按「存相簿」時一次分享出去，
+  // 不管上傳成不成功都留著，這樣就算網路不穩也不會連手機都沒有備份
+  if (canSaveToAlbum()) {
+    PHOTO_BURST.localFiles.push(new File([blob], filename, { type: "image/jpeg" }));
+    $("photo-save").style.display = "inline-block";
+    $("photo-save").textContent = `💾 存 ${PHOTO_BURST.localFiles.length} 張到相簿`;
+  }
   try {
     const uploaded = await putFile(exhibitorId, blob, filename);
     await api(`/attachments/${uploaded.id}`, {
@@ -2130,6 +2145,17 @@ async function photoBurstSnap() {
     } catch {
       showToast("照片上傳失敗");
     }
+  }
+}
+
+async function saveBurstToAlbum() {
+  if (!PHOTO_BURST || !PHOTO_BURST.localFiles.length) return;
+  const files = PHOTO_BURST.localFiles;
+  try {
+    if (!navigator.canShare({ files })) throw new Error("此瀏覽器不支援分享多張照片");
+    await navigator.share({ files, title: "展商照片" });
+  } catch (err) {
+    if (err.name !== "AbortError") showToast("無法開啟分享選單：" + err.message);
   }
 }
 
