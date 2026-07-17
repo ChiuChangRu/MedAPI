@@ -185,6 +185,7 @@ async function openEntry(id) {
     <h3 class="section-title">附件</h3>
     <div class="upload-row">
       <button class="btn small capture-btn" id="e-capture">📸 採集</button>
+      <button class="btn small audio-btn-small" id="e-audio">🎙 純錄音</button>
       <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
       <span id="e-upload-status" class="sub"></span>
     </div>
@@ -203,7 +204,8 @@ async function openEntry(id) {
     closeEntry();
     if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadInbox(); loadFolders(); }
   };
-  $("e-capture").onclick = () => { closeEntry(); startCapture(id); };
+  $("e-capture").onclick = () => { closeEntry(); startCapture(id, false); };
+  $("e-audio").onclick = () => { closeEntry(); startCapture(id, true); };
   const fileInput = $("e-file");
   fileInput.onchange = () => uploadFiles(id, fileInput);
   bindAttActions(id);
@@ -340,19 +342,22 @@ function startSegmentRecorder() {
 }
 
 // entryId 可為 null：自動建一筆收件匣（或目前資料夾）的紀錄再開錄
-async function startCapture(entryId) {
+// audioOnly＝true：不開鏡頭，純錄音（開會／上課這種開鏡頭尷尬或不必要的場合）
+async function startCapture(entryId, audioOnly) {
   if (CAPTURE) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("這個瀏覽器不支援採集模式"); return; }
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: true,
-    });
-  } catch (err) { showToast("無法開啟相機或麥克風：" + err.message); return; }
+    stream = await navigator.mediaDevices.getUserMedia(
+      audioOnly ? { audio: true } : {
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: true,
+      }
+    );
+  } catch (err) { showToast("無法開啟" + (audioOnly ? "麥克風" : "相機或麥克風") + "：" + err.message); return; }
   if (!entryId) {
     const d = new Date();
-    const title = `現場採集 ${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const title = `${audioOnly ? "錄音" : "現場採集"} ${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     try {
       entryId = await createEntry(CURRENT_FOLDER ? CURRENT_FOLDER.id : null, title);
     } catch (err) {
@@ -361,11 +366,13 @@ async function startCapture(entryId) {
       return;
     }
   }
-  $("capture-video").srcObject = stream;
-  CAPTURE = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId, ending: false, autoStopped: false, timerId: 0 };
+  if (!audioOnly) $("capture-video").srcObject = stream;
+  CAPTURE = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId, ending: false, autoStopped: false, timerId: 0, audioOnly };
   startSegmentRecorder();
   $("capture-count").textContent = "";
   $("capture-timer").textContent = "00:00";
+  $("capture-overlay").classList.toggle("audio-only", !!audioOnly);
+  $("capture-hint").innerHTML = audioOnly ? "純錄音中<br/>切換 App 自動存檔" : "錄音中，隨時拍照<br/>切換 App 自動存檔";
   $("capture-overlay").style.display = "flex";
   CAPTURE.timerId = setInterval(() => {
     if (!CAPTURE) return;
@@ -378,7 +385,7 @@ async function startCapture(entryId) {
 }
 
 async function snapCapture() {
-  if (!CAPTURE) return;
+  if (!CAPTURE || CAPTURE.audioOnly) return;
   const video = $("capture-video");
   if (!video.videoWidth) { showToast("相機還沒就緒"); return; }
   const offset = captureOffset();
@@ -406,7 +413,7 @@ function stopCapture() {
 
 async function onSegmentStop(recorder, chunks) {
   if (!CAPTURE) return;
-  const { stream, entryId, photos, timerId, ending, autoStopped, segIndex, segStartMs, startedAt } = CAPTURE;
+  const { stream, entryId, photos, timerId, ending, autoStopped, segIndex, segStartMs, startedAt, audioOnly } = CAPTURE;
   const segStartOffset = Math.floor((segStartMs - startedAt) / 1000);
   const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
   const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
@@ -416,14 +423,15 @@ async function onSegmentStop(recorder, chunks) {
     clearInterval(timerId);
     stream.getTracks().forEach((t) => t.stop());
     $("capture-video").srcObject = null;
+    $("capture-overlay").classList.remove("audio-only");
     $("capture-overlay").style.display = "none";
     CAPTURE = null;
     if (blob.size) {
-      showToast(autoStopped ? "偵測到切換 App，已自動結束並存檔" : "採集錄音上傳中…");
+      showToast(autoStopped ? "偵測到切換 App，已自動結束並存檔" : (audioOnly ? "錄音上傳中…" : "採集錄音上傳中…"));
       try { await putFile(entryId, blob, filename, segStartOffset); }
       catch { await queueFile(entryId, blob, filename, segStartOffset); }
     }
-    showToast(`採集完成：錄音 ${segIndex} 段＋照片 ${photos} 張`);
+    showToast(audioOnly ? `錄音完成：共 ${segIndex} 段` : `採集完成：錄音 ${segIndex} 段＋照片 ${photos} 張`);
     openEntry(entryId);
   } else {
     CAPTURE.segIndex++;
@@ -445,11 +453,13 @@ function exportFolder() {
 function init() {
   $("btn-login").onclick = doLogin;
   $("login-pin").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
-  $("btn-capture-quick").onclick = () => startCapture(null);
+  $("btn-capture-quick").onclick = () => startCapture(null, false);
+  $("btn-audio-quick").onclick = () => startCapture(null, true);
   $("btn-quick-note").onclick = quickNote;
   $("btn-new-folder").onclick = newFolder;
   $("btn-back").onclick = backHome;
-  $("btn-folder-capture").onclick = () => startCapture(null);
+  $("btn-folder-capture").onclick = () => startCapture(null, false);
+  $("btn-folder-audio").onclick = () => startCapture(null, true);
   $("btn-folder-entry").onclick = async () => {
     const id = await createEntry(CURRENT_FOLDER.id, "");
     openFolder(CURRENT_FOLDER.id);
