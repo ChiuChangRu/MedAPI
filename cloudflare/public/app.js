@@ -2235,16 +2235,20 @@ async function loadAttachments(id) {
       ${uncategorized.map(renderAttNote).join("")}`;
     wrap.innerHTML = pendingHtml + othersHtml + groupsHtml + uncatHtml;
     wrap.querySelectorAll(".cat-chip").forEach((chip) => {
-      chip.onclick = async () => {
-        const attId = chip.closest(".note").dataset.id;
-        const category = chip.classList.contains("on") ? "" : chip.dataset.cat;
-        try {
-          await api(`/attachments/${attId}`, {
-            method: "PUT",
-            body: JSON.stringify({ category, author: me() }),
-          });
-          loadAttachments(id);
-        } catch (err) { showToast("分類失敗：" + err.message); }
+      chip.onclick = () => {
+        const note = chip.closest(".note");
+        const attId = note.dataset.id;
+        const wasOn = chip.classList.contains("on");
+        const category = wasOn ? "" : chip.dataset.cat;
+        // 先在畫面上立刻切換，不等網路、不整批重新整理，避免點分類時畫面頓一下、捲動位置跑掉
+        note.querySelectorAll(".cat-chip").forEach((c) => c.classList.toggle("on", c === chip && !wasOn));
+        api(`/attachments/${attId}`, {
+          method: "PUT",
+          body: JSON.stringify({ category, author: me() }),
+        }).catch((err) => {
+          showToast("分類失敗：" + err.message);
+          note.querySelectorAll(".cat-chip").forEach((c) => c.classList.toggle("on", c === chip && wasOn));
+        });
       };
     });
     wrap.querySelectorAll('a[data-act="transcribe"]').forEach((a) => {
