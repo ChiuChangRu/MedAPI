@@ -260,6 +260,19 @@ function fmtSecsRange(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// 圖片 OCR 共用 prompt（/test-ocr、/test-ocr-context 都用這份，避免兩處各自維護會漂移）
+const OCR_PROMPT = "你是機械式的文字抄錄員，不是圖片說明員。任務只有一件事：把這張圖片裡「所有看得到的文字」逐字抄出來，依照原本的排版順序（由上到下、由左到右）條列輸出。\n\n嚴格規則：\n- 絕對不要用「圖片顯示了」「這是一張...的照片」「書名為」這類描述句，禁止描述畫面內容\n- 絕對不要摘要、不要翻譯、不要加你自己的分析或總結\n- 不要加「文字抄錄結果」之類的標題或前言，直接輸出抄到的文字本身\n- 如果畫面裡有表格，把每一列的每一欄數值都完整列出來（例如型號、數字、單位），不要用「每欄都有數個項目」這種話帶過，要照抄實際數字\n- 繁體、簡體、英文、數字都原樣照抄\n- 如果看不清楚、不確定的文字，不要用猜的內容代替，用「[看不清]」標示，絕對不可以編造沒看到的內容\n- 如果同一個詞已經抄過，不要無限重複抄同一個詞，抄到重複出現就停下來換下一個內容\n- 如果圖片裡完全沒有任何文字，只回答「（無文字）」，不要多做任何說明\n\n現在開始抄錄：";
+
+// 偵測模型輸出是否卡進重複迴圈（同一行反覆出現），這種結果直接判定失敗、不採信
+function detectRepetitionLoop(text) {
+  const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 10) return false;
+  const counts = {};
+  for (const l of lines) counts[l] = (counts[l] || 0) + 1;
+  const maxCount = Math.max(...Object.values(counts));
+  return maxCount >= 8 && maxCount / lines.length > 0.4;
+}
+
 async function logHistory(db, exhibitorId, author, action, detail) {
   await db
     .prepare("INSERT INTO history (exhibitor_id, author, action, detail, created_at) VALUES (?, ?, ?, ?, ?)")
@@ -760,11 +773,16 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
       try {
         const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
           image: Array.from(bytes),
-          prompt: "你是機械式的文字抄錄員，不是圖片說明員。任務只有一件事：把這張圖片裡「所有看得到的文字」逐字抄出來，依照原本的排版順序（由上到下、由左到右）條列輸出。\n\n嚴格規則：\n- 絕對不要用「圖片顯示了」「這是一張...的照片」「書名為」這類描述句，禁止描述畫面內容\n- 絕對不要摘要、不要翻譯、不要加你自己的分析或總結\n- 不要加「文字抄錄結果」之類的標題或前言，直接輸出抄到的文字本身\n- 如果畫面裡有表格，把每一列的每一欄數值都完整列出來（例如型號、數字、單位），不要用「每欄都有數個項目」這種話帶過，要照抄實際數字\n- 繁體、簡體、英文、數字都原樣照抄\n- 如果看不清楚、不確定的文字，不要用猜的內容代替，用「[看不清]」標示，絕對不可以編造沒看到的內容\n- 如果圖片裡完全沒有任何文字，只回答「（無文字）」，不要多做任何說明\n\n現在開始抄錄：",
+          prompt: OCR_PROMPT,
           max_tokens: 1024,
           temperature: 0,
         });
-        out.push({ id: a.id, filename: a.filename, text: result?.response ?? result?.description ?? JSON.stringify(result) });
+        const text = result?.response ?? result?.description ?? JSON.stringify(result);
+        if (detectRepetitionLoop(text)) {
+          out.push({ id: a.id, filename: a.filename, text: null, error: "模型輸出偵測到異常重複迴圈，已判定為失敗（不採信這次結果）" });
+        } else {
+          out.push({ id: a.id, filename: a.filename, text });
+        }
       } catch (err) {
         out.push({ id: a.id, filename: a.filename, error: err.message });
       }
@@ -773,7 +791,9 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
   }
 
   // ---- OCR＋對話上下文測試用（暫時端點）：照片時間點比對採集模式錄音逐字稿，
-  // 驗證「照片要跟當下對話掛勾」這個設計，不是只測圖片本身 ----
+  // 驗證「照片要跟當下對話掛勾」這個設計，不是只測圖片本身。
+  // 拆成兩步：先純看圖抄字（不給逐字稿，避免模型把逐字稿當成照片內容抄），
+  // 抄完才另外用文字模型比對逐字稿判斷關聯——兩個任務分開，互不污染 ----
   if (path === "/test-ocr-context" && method === "GET") {
     if (!env.AI || !env.FILES) return bad("尚未啟用 Workers AI 或 R2", 501);
     const exhibitorId = url.searchParams.get("exhibitor_id");
@@ -803,27 +823,58 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
       const obj = await env.FILES.get(p.key);
       if (!obj) { out.push({ id: p.id, filename: p.filename, error: "找不到檔案本體" }); continue; }
       const bytes = new Uint8Array(await obj.arrayBuffer());
-      const contextNote = transcript
-        ? `\n\n【背景資訊】這張照片是在現場對話錄音進行到 ${m[1]}:${m[2]} 時拍的，以下是那段錄音（${fmtSecsRange(seg.start)}–${fmtSecsRange(seg.end)}）的逐字稿，請參考對話內容幫助你判斷這張照片拍的是什麼、跟對話提到的哪個東西有關，並在說明裡指出關聯，但仍然要先把照片裡看得到的文字逐字抄出來：\n「${transcript.slice(0, 1500)}」`
-        : `\n\n【背景資訊】這張照片沒有找到對應時間點的錄音逐字稿（可能還沒轉文字，或超出錄音範圍），純粹分析照片本身即可。`;
+
+      // 第一步：純看圖抄字，完全不給逐字稿，模型不可能把逐字稿當成照片內容
+      let ocrText;
       try {
-        const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+        const ocrResult = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
           image: Array.from(bytes),
-          prompt: "你是機械式的文字抄錄員，不是圖片說明員。任務：把這張圖片裡「所有看得到的文字」逐字抄出來（不要描述畫面、不要摘要、不要編造看不清的內容，看不清用「[看不清]」標示）。抄完文字之後，如果下面有提供背景對話逐字稿，另外用一句話說明這張照片可能跟對話中的什麼內容有關聯（清楚標示「關聯說明：」開頭，沒有背景資訊就不用寫這段）。" + contextNote,
+          prompt: OCR_PROMPT,
           max_tokens: 1024,
           temperature: 0,
         });
-        out.push({
-          id: p.id,
-          filename: p.filename,
-          offset: `${m[1]}:${m[2]}`,
-          matched_segment: seg ? `${seg.att.filename}（${fmtSecsRange(seg.start)}–${fmtSecsRange(seg.end)}）` : null,
-          transcript_used: transcript ? transcript.slice(0, 200) + (transcript.length > 200 ? "…" : "") : null,
-          text: result?.response ?? JSON.stringify(result),
-        });
+        ocrText = ocrResult?.response ?? JSON.stringify(ocrResult);
       } catch (err) {
-        out.push({ id: p.id, filename: p.filename, error: err.message });
+        out.push({ id: p.id, filename: p.filename, offset: `${m[1]}:${m[2]}`, error: "OCR 失敗：" + err.message });
+        continue;
       }
+      if (detectRepetitionLoop(ocrText)) {
+        out.push({
+          id: p.id, filename: p.filename, offset: `${m[1]}:${m[2]}`,
+          text: null, error: "模型輸出偵測到異常重複迴圈，已判定為失敗（不採信這次結果）",
+          raw_preview: ocrText.slice(0, 200) + "…",
+        });
+        continue;
+      }
+
+      // 第二步：只有抄字成功、且有對應逐字稿時，才另外用文字模型判斷關聯——
+      // 純文字比對文字，模型看不到圖片，不會再混淆「抄的」跟「聽的」
+      let relation = null;
+      if (transcript) {
+        try {
+          const relResult = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", {
+            messages: [{
+              role: "user",
+              content: `以下是展會現場一段對話的逐字稿，以及同一時間拍的照片經過文字辨識後抄出來的內容。請用一句話判斷這張照片可能跟對話中提到的什麼東西有關；如果看不出關聯，就直接回答「看不出明顯關聯」，不要編造或過度推測。\n\n【對話逐字稿】\n${transcript.slice(0, 1200)}\n\n【照片辨識出的文字】\n${ocrText.slice(0, 800)}\n\n請只回答那一句判斷，不要加其他說明：`,
+            }],
+            max_tokens: 200,
+            temperature: 0,
+          });
+          relation = relResult?.response?.trim() || null;
+        } catch (err) {
+          relation = "（關聯判斷失敗：" + err.message + "）";
+        }
+      }
+
+      out.push({
+        id: p.id,
+        filename: p.filename,
+        offset: `${m[1]}:${m[2]}`,
+        matched_segment: seg ? `${seg.att.filename}（${fmtSecsRange(seg.start)}–${fmtSecsRange(seg.end)}）` : null,
+        transcript_used: transcript ? transcript.slice(0, 200) + (transcript.length > 200 ? "…" : "") : null,
+        text: ocrText,
+        relation,
+      });
     }
     return json({ exhibitor_id: exhibitorId, photo_count: photos.length, segment_count: segments.length, results: out });
   }
