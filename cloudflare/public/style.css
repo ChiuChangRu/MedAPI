@@ -492,6 +492,14 @@ td .row-star.on { color: var(--accent); }
 }
 .overlay.open { display: flex; }
 
+/* 相片 lightbox：黑底、圖片置中，取代原本開新分頁看大圖的做法 */
+.lightbox-overlay { background: rgba(0, 0, 0, 0.92); z-index: 90; }
+.lightbox-overlay img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.lightbox-close {
+  position: absolute; top: 16px; right: 16px; z-index: 1;
+  background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.4); color: #fff;
+}
+
 .modal {
   background: #fff; border-radius: 8px; padding: 22px 24px;
   max-width: 460px; width: 100%; max-height: 92vh; overflow-y: auto;

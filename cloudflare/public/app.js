@@ -33,8 +33,10 @@ function closeOnBackdropClick(overlayId, onClose) {
 }
 
 // 詳情頁（第二頁）往右用力滑關閉，回到清單（第一頁）——手機上比找 ✕ 按鈕直覺，
-// 用距離門檻（非單純方向）判斷，避免滑一下手指就誤觸關閉
-function attachSwipeToClose(overlayId, panelSelector, onClose) {
+// 用距離門檻（非單純方向）判斷，避免滑一下手指就誤觸關閉。
+// excludeSelector 內的區塊（例如附件/相片區）手指開始觸碰時就不追蹤，
+// 避免在照片上左右滑動、想瀏覽附件時被誤判成「滑動關閉整頁」。
+function attachSwipeToClose(overlayId, panelSelector, onClose, excludeSelector) {
   const panel = $(overlayId).querySelector(panelSelector);
   if (!panel) return;
   const THRESHOLD = 90;
@@ -42,6 +44,7 @@ function attachSwipeToClose(overlayId, panelSelector, onClose) {
 
   panel.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 1) return;
+    if (excludeSelector && e.target.closest(excludeSelector)) { tracking = false; return; }
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     dx = 0; dy = 0; tracking = true;
@@ -200,7 +203,7 @@ function pendingFileNoteHtml(f) {
   const isImage = (f.mime || "").startsWith("image/");
   const isAudio = (f.mime || "").startsWith("audio/");
   const isVideo = (f.mime || "").startsWith("video/");
-  const preview = isImage ? `<img class="att-thumb" src="${url}" alt="${esc(f.filename)}">`
+  const preview = isImage ? `<img class="att-thumb" src="${url}" alt="${esc(f.filename)}" data-lightbox="${url}">`
     : isAudio ? `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`
     : isVideo ? `<video controls preload="none" src="${url}" class="att-video"></video>`
     : `<a href="${url}" target="_blank" rel="noopener">${esc(f.filename)}</a>`;
@@ -518,7 +521,9 @@ async function init() {
   $("btn-login").onclick = doLogin;
   $("login-overlay").addEventListener("click", (e) => e.stopPropagation());
   closeOnBackdropClick("detail-overlay", closeDetail);
-  attachSwipeToClose("detail-overlay", "#detail-modal", closeDetail);
+  attachSwipeToClose("detail-overlay", "#detail-modal", closeDetail, "#d-attachments, .att-thumb, .att-video, audio");
+  $("lightbox-close").onclick = closeLightbox;
+  closeOnBackdropClick("lightbox-overlay", closeLightbox);
 
   // 離線測試切換按鈕
   $("btn-offline-toggle").onclick = () => {
@@ -1484,7 +1489,7 @@ async function openDetail(id) {
         <button class="btn small capture-btn" id="d-capture-btn" type="button">📸 採集模式</button>
         <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音</button>
         <button class="btn small photo-btn" id="d-photo-btn" type="button">📷 連續拍照</button>
-        <label class="btn small upload-btn">📁 拍照／上傳<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
+        <label class="btn small upload-btn">📁 上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
         <span id="d-upload-status" class="sub"></span>
       </div>
       <p class="sub">採集模式＝錄音全程不中斷、隨時拍照，每張照片自動標上「錄音第幾分幾秒拍的」；錄音每 10 分鐘自動分段上傳，段落即傳即安全。連續拍照＝不錄音，鏡頭持續開著，拍完一張直接拍下一張，不用重新點選。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
@@ -2185,7 +2190,7 @@ async function loadAttachments(id) {
       const url = fileUrl(a.key);
       let preview = `<a href="${url}" target="_blank" rel="noopener" class="directory-link">${esc(a.filename)}</a>`;
       if ((a.mime || "").startsWith("image/")) {
-        preview = `<a href="${url}" target="_blank" rel="noopener"><img class="att-thumb" src="${url}" alt="${esc(a.filename)}" loading="lazy" /></a>`;
+        preview = `<img class="att-thumb" src="${url}" alt="${esc(a.filename)}" loading="lazy" data-lightbox="${url}" />`;
       } else if ((a.mime || "").startsWith("audio/")) {
         preview = `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`;
       } else if ((a.mime || "").startsWith("video/")) {
@@ -2278,12 +2283,27 @@ async function loadAttachments(id) {
         } catch (err) { showToast("儲存失敗：" + err.message); }
       };
     });
+    wrap.querySelectorAll("[data-lightbox]").forEach((img) => {
+      img.onclick = () => openLightbox(img.dataset.lightbox);
+    });
   } catch {
     // 沒網路：至少把存在手機的待同步照片/錄音顯示出來，不是空白一片
     const countEl = $("d-att-count");
     if (countEl) countEl.textContent = pendingFiles.length ? `（${pendingFiles.length}）` : "";
     wrap.innerHTML = pendingHtml;
   }
+}
+
+// 相片改在原頁面內開全螢幕看大圖（不再開新分頁）——原本用 target="_blank"
+// 開新分頁在 PWA 獨立視窗模式下等於跳出 App，而且新分頁沒有「返回」可用，
+// 只能手動切分頁，體感上像「回不去」。改成頁內 lightbox，點一下／按 ✕ 就關閉。
+function openLightbox(url) {
+  $("lightbox-img").src = url;
+  $("lightbox-overlay").classList.add("open");
+}
+function closeLightbox() {
+  $("lightbox-overlay").classList.remove("open");
+  $("lightbox-img").src = "";
 }
 
 async function loadHistory(id) {
