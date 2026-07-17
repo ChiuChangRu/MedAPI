@@ -37,7 +37,14 @@ header.top p { margin: 0; opacity: 0.85; font-size: 12px; }
   box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
 }
 .big-capture:active { transform: translateY(1px); }
-.big-capture .sub-label { display: block; font-size: 12px; font-weight: 400; opacity: 0.85; margin-top: 5px; }
+.big-capture .sub-label, .audio-only-btn .sub-label { display: block; font-size: 12px; font-weight: 400; opacity: 0.8; margin-top: 4px; }
+
+.audio-only-btn {
+  display: block; width: 100%; padding: 14px 16px; margin-bottom: 10px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  background: #fff; color: var(--accent-dark);
+  border: 2px solid var(--accent); border-radius: 12px;
+}
 
 .quick-note { width: 100%; margin-bottom: 18px; }
 
@@ -92,6 +99,7 @@ header.top p { margin: 0; opacity: 0.85; font-size: 12px; }
 .btn.ghost { background: transparent; box-shadow: none; }
 .capture-btn { background: var(--accent); border-color: var(--accent); color: #fff; }
 .upload-btn { border-color: #1d4ed8; color: #1d4ed8; background: #eff6ff; }
+.audio-btn-small { border-color: var(--accent); color: var(--accent-dark); background: #e6f2f0; }
 .upload-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 
 /* ===== Modal ===== */
@@ -139,6 +147,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 /* ===== 現場採集模式（同 Medtec 款式）===== */
 .capture-overlay { position: fixed; inset: 0; z-index: 80; background: #000; display: flex; flex-direction: column; }
 #capture-video { flex: 1; width: 100%; min-height: 0; object-fit: cover; }
+
+/* 純錄音模式：不開鏡頭，用純色背景＋大圖示取代影像預覽，快門鈕隱藏 */
+.audio-only-bg {
+  display: none; flex: 1; align-items: center; justify-content: center;
+  font-size: 120px; background: linear-gradient(160deg, #0b4f4a, #0f766e);
+}
+.capture-overlay.audio-only #capture-video { display: none; }
+.capture-overlay.audio-only .audio-only-bg { display: flex; }
+.capture-overlay.audio-only .capture-snap { display: none; }
+.capture-overlay.audio-only .capture-stop { position: absolute; left: 50%; transform: translateX(-50%); }
 .capture-top {
   position: absolute; top: 0; left: 0; right: 0;
   display: flex; justify-content: space-between; align-items: center;
