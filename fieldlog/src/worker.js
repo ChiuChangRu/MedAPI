@@ -55,10 +55,20 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
 ];
 
+// 舊表補欄位用（D1 沒有 ADD COLUMN IF NOT EXISTS，欄位已存在時失敗直接忽略即可）
+const MIGRATIONS = [
+  `ALTER TABLE folders ADD COLUMN notion_page_id TEXT DEFAULT ''`,
+  `ALTER TABLE folders ADD COLUMN notion_last_entry_id INTEGER DEFAULT 0`,
+  `ALTER TABLE folders ADD COLUMN notion_synced_at TEXT DEFAULT ''`,
+];
+
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
+  for (const sql of MIGRATIONS) {
+    await db.prepare(sql).run().catch(() => {});
+  }
   schemaReady = true;
 }
 
@@ -86,6 +96,16 @@ async function logHistory(db, entryId, folderId, action, detail) {
 
 function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// 貼上的 Notion 頁面網址 → 32 碼 page ID（補回標準 UUID 格式的連字號）
+function parseNotionPageId(input) {
+  const raw = (input || "").trim();
+  if (!raw) return "";
+  const hex = raw.replace(/[^a-f0-9]/gi, "");
+  const id32 = hex.slice(-32);
+  if (id32.length !== 32) return "";
+  return `${id32.slice(0, 8)}-${id32.slice(8, 12)}-${id32.slice(12, 16)}-${id32.slice(16, 20)}-${id32.slice(20)}`;
 }
 
 async function handleApi(request, env, url) {
