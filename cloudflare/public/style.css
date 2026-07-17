@@ -713,6 +713,23 @@ header #btn-offline-toggle.reconnect-btn {
 }
 .cat-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(200, 16, 46, 0.3); }
 
+/* 附件分類分組（收合，避免照片無窮捲動） */
+.att-cat-group {
+  border: 1px solid var(--border); border-radius: var(--radius); background: #f5f5f2; overflow: hidden;
+}
+.att-cat-group summary {
+  cursor: pointer; padding: 10px 12px; font-weight: 600; font-size: 13px;
+  list-style: none; user-select: none;
+}
+.att-cat-group summary::-webkit-details-marker { display: none; }
+.att-cat-group summary::before { content: "▸ "; color: var(--text-muted); }
+.att-cat-group[open] summary::before { content: "▾ "; }
+.att-cat-group-items { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; }
+.att-uncat-heading {
+  font-size: 12px; color: var(--text-muted); font-weight: 600; margin-top: 4px;
+  padding-top: 8px; border-top: 1px dashed var(--border);
+}
+
 /* 離線待同步紀錄 */
 .note.pending { border-style: dashed; border-color: var(--amber); background: #fffdf5; }
 .pending-tag { color: var(--amber); font-weight: 600; }

@@ -2186,7 +2186,7 @@ async function loadAttachments(id) {
     const total = atts.length + pendingFiles.length;
     if (countEl) countEl.textContent = total ? `（${total}）` : "";
     if (!atts.length) { wrap.innerHTML = pendingHtml; return; }
-    wrap.innerHTML = pendingHtml + atts.map((a) => {
+    const renderAttNote = (a) => {
       const url = fileUrl(a.key);
       let preview = `<a href="${url}" target="_blank" rel="noopener" class="directory-link">${esc(a.filename)}</a>`;
       if ((a.mime || "").startsWith("image/")) {
@@ -2213,7 +2213,27 @@ async function loadAttachments(id) {
         ${transcriptBlock}
         ${a.caption ? `<div class="att-caption">${esc(a.caption)}</div>` : ""}
       </div>`;
+    };
+    // 照片依分類分組收合，避免無窮捲動；未分類的照片維持攤平在最底下，逼自己去分類
+    const images = atts.filter((a) => (a.mime || "").startsWith("image/"));
+    const others = atts.filter((a) => !(a.mime || "").startsWith("image/"));
+    const byCat = {};
+    ATT_CATEGORIES.forEach((c) => { byCat[c] = []; });
+    const uncategorized = [];
+    images.forEach((a) => {
+      if (a.category && byCat[a.category]) byCat[a.category].push(a);
+      else uncategorized.push(a);
+    });
+    const othersHtml = others.map(renderAttNote).join("");
+    const groupsHtml = ATT_CATEGORIES.map((c) => {
+      const items = byCat[c];
+      if (!items.length) return "";
+      return `<details class="att-cat-group"><summary>${esc(c)}（${items.length}）</summary><div class="att-cat-group-items">${items.map(renderAttNote).join("")}</div></details>`;
     }).join("");
+    const uncatHtml = !uncategorized.length ? "" : `
+      <div class="att-uncat-heading">未分類照片（${uncategorized.length}）－點照片下方標籤整理</div>
+      ${uncategorized.map(renderAttNote).join("")}`;
+    wrap.innerHTML = pendingHtml + othersHtml + groupsHtml + uncatHtml;
     wrap.querySelectorAll(".cat-chip").forEach((chip) => {
       chip.onclick = async () => {
         const attId = chip.closest(".note").dataset.id;
