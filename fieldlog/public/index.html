@@ -15,10 +15,14 @@
 </head>
 <body>
 <div class="container">
-  <!-- 首頁：採集優先 -->
+  <!-- 首頁：採集優先。錄影／拍照／錄音／記事各自獨立，按哪個就只做那件事 -->
   <div id="view-home">
-    <button class="big-capture" id="btn-capture-quick">📸🎙 開始採集<span class="sub-label">錄音不中斷、隨時拍照、隨時記事</span></button>
-    <button class="btn quick-note" id="btn-quick-note">✏️ 快速文字備忘</button>
+    <div class="capture-grid">
+      <button class="cap-tile cap-video" id="btn-video">🎥<span>錄影</span></button>
+      <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
+      <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
+      <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
+    </div>
 
     <section class="panel" id="inbox-panel">
       <h2>📥 收件匣 <span id="inbox-count" class="count"></span></h2>
@@ -37,7 +41,9 @@
       <button class="btn small ghost" id="btn-back">‹ 回首頁</button>
       <h2 id="folder-title"></h2>
       <div class="folder-actions">
-        <button class="btn small" id="btn-folder-capture">📸🎙 採集</button>
+        <button class="btn small" id="btn-video-f">🎥 錄影</button>
+        <button class="btn small" id="btn-photo-f">📷 拍照</button>
+        <button class="btn small" id="btn-audio-f">🎙 錄音</button>
         <button class="btn small" id="btn-folder-entry">✏️ 新紀錄</button>
         <button class="btn small primary" id="btn-folder-export">📄 匯出給 AI</button>
       </div>
@@ -79,6 +85,37 @@
     <button id="capture-note" class="capture-side-btn" type="button">✏️<span>記事</span></button>
   </div>
   <div class="capture-flash" id="capture-flash"></div>
+</div>
+
+<!-- 📷 拍照：獨立鏡頭，不錄音 -->
+<div class="capture-overlay" id="photo-overlay" style="display:none;">
+  <video id="photo-video" autoplay playsinline muted></video>
+  <button id="photo-folder-chip" class="capture-folder-chip" type="button">📂 …</button>
+  <div id="photo-folder-picker" class="capture-folder-picker" style="display:none;"></div>
+  <div class="capture-controls">
+    <button id="photo-done" class="capture-side-btn" type="button">✓<span>完成</span></button>
+    <button id="photo-snap" class="capture-snap" type="button" title="拍照"></button>
+    <span class="capture-count" id="photo-count"></span>
+  </div>
+  <div class="capture-flash" id="photo-flash"></div>
+</div>
+
+<!-- 🎙 錄音：不開鏡頭，浮動控制列，畫面照常滑手機 -->
+<div class="audio-badge" id="audio-badge" style="display:none;">
+  <span class="audio-badge-dot"></span><span id="audio-timer">00:00</span>
+  <button id="audio-photo-btn" type="button" title="拍照">📷</button>
+  <button id="audio-note-btn" type="button" title="記一句">✏️</button>
+  <button id="audio-stop-btn" type="button" title="結束">⏹</button>
+</div>
+
+<!-- 錄音中臨時拍照的小彈窗：看得到畫面才拍，拍完自動關閉鏡頭，錄音不中斷 -->
+<div class="capture-overlay" id="audio-photo-popup" style="display:none;">
+  <video id="audio-photo-video" autoplay playsinline muted></video>
+  <div class="capture-controls">
+    <button id="audio-photo-cancel" class="capture-side-btn" type="button">✕<span>取消</span></button>
+    <button id="audio-photo-snap" class="capture-snap" type="button" title="拍照"></button>
+    <span></span>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
