@@ -154,6 +154,17 @@
   <div class="capture-flash" id="capture-flash"></div>
 </div>
 
+<!-- 連續拍照：不錄音，鏡頭持續開著，拍完一張不用重新點選就能拍下一張 -->
+<div class="capture-overlay" id="photo-overlay" style="display:none;">
+  <video id="photo-video" autoplay playsinline muted></video>
+  <div class="capture-controls">
+    <button id="photo-done" class="capture-stop" type="button">✓ 完成</button>
+    <button id="photo-snap" class="capture-snap" type="button" title="拍照"></button>
+    <span class="capture-count" id="photo-count"></span>
+  </div>
+  <div class="capture-flash" id="photo-flash"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="config.js"></script>

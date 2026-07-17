@@ -649,6 +649,7 @@ header #btn-offline-toggle.reconnect-btn {
 }
 .upload-row .capture-btn:hover { background: var(--accent-dark); }
 .upload-row .record-btn { border-color: var(--accent); color: var(--accent); background: #fdf1f3; }
+.upload-row .photo-btn { border-color: #1d4ed8; color: #1d4ed8; background: #eff6ff; }
 .upload-row .upload-btn { border-color: #1d4ed8; color: #1d4ed8; background: #eff6ff; }
 
 /* ===== 現場採集模式：錄音不中斷＋隨時拍照 ===== */

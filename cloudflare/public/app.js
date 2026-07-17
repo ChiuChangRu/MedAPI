@@ -533,13 +533,18 @@ async function init() {
   // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
   $("capture-snap").onclick = snapCapture;
   $("capture-stop").onclick = stopCapture;
+  $("photo-snap").onclick = photoBurstSnap;
+  $("photo-done").onclick = finishPhotoBurst;
   // 採集中切去別的 App／收起瀏覽器：手機網頁沒辦法在「切換前」跳警告，
   // 所以改成事後保底——自動結束採集並存檔（錄音先寫進手機離線佇列再補傳，不會遺失）
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden && CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); }
+    if (!document.hidden) return;
+    if (CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); }
+    if (PHOTO_BURST) finishPhotoBurst();
   });
   window.addEventListener("pagehide", () => {
     if (CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); }
+    if (PHOTO_BURST) finishPhotoBurst();
   });
 
   // 離線快取與自動同步
@@ -1477,10 +1482,11 @@ async function openDetail(id) {
       <div class="upload-row">
         <button class="btn small capture-btn" id="d-capture-btn" type="button">📸 採集模式</button>
         <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音</button>
+        <button class="btn small photo-btn" id="d-photo-btn" type="button">📷 連續拍照</button>
         <label class="btn small upload-btn">📁 拍照／上傳<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
         <span id="d-upload-status" class="sub"></span>
       </div>
-      <p class="sub">採集模式＝錄音全程不中斷、隨時拍照，每張照片自動標上「錄音第幾分幾秒拍的」；錄音每 10 分鐘自動分段上傳，段落即傳即安全。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
+      <p class="sub">採集模式＝錄音全程不中斷、隨時拍照，每張照片自動標上「錄音第幾分幾秒拍的」；錄音每 10 分鐘自動分段上傳，段落即傳即安全。連續拍照＝不錄音，鏡頭持續開著，拍完一張直接拍下一張，不用重新點選。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
       <div id="d-attachments" class="notes-list"></div>
     </details>
 
@@ -1560,6 +1566,8 @@ async function openDetail(id) {
   if (recordBtn) recordBtn.onclick = () => toggleRecording(id, recordBtn);
   const captureBtn = $("d-capture-btn");
   if (captureBtn) captureBtn.onclick = () => startCapture(id);
+  const photoBtn = $("d-photo-btn");
+  if (photoBtn) photoBtn.onclick = () => startPhotoBurst(id);
 
   loadNotes(id);
   loadAttachments(id);
@@ -2074,6 +2082,66 @@ async function uploadSegment(exhibitorId, blob, session, segIndex, startOffset, 
     if (!queued) { try { await addPendingFile(entry); queued = true; } catch { /* 佇列也失敗才真的丟 */ } }
     showToast(queued ? "錄音段已先存手機（待同步），連線後自動補傳" : "錄音段上傳失敗");
   }
+}
+
+// ---------- 連續拍照：不錄音，鏡頭持續開著，拍一張後不用重新點選就能拍下一張 ----------
+let PHOTO_BURST = null;
+
+async function startPhotoBurst(id) {
+  if (PHOTO_BURST) return;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+  } catch (err) { showToast("無法開啟相機：" + err.message); return; }
+  $("photo-video").srcObject = stream;
+  PHOTO_BURST = { stream, exhibitorId: id, photos: 0 };
+  $("photo-count").textContent = "";
+  $("photo-overlay").style.display = "flex";
+}
+
+async function photoBurstSnap() {
+  if (!PHOTO_BURST) return;
+  const video = $("photo-video");
+  if (!video.videoWidth) { showToast("相機還沒就緒"); return; }
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  const flash = $("photo-flash");
+  flash.classList.add("on");
+  setTimeout(() => flash.classList.remove("on"), 160);
+  PHOTO_BURST.photos++;
+  $("photo-count").textContent = `📷 ${PHOTO_BURST.photos}`;
+  const { exhibitorId } = PHOTO_BURST;
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
+  const filename = `照片-${Date.now()}.jpg`;
+  try {
+    const uploaded = await putFile(exhibitorId, blob, filename);
+    await api(`/attachments/${uploaded.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ caption: "", author: me() }),
+    }).catch(() => {});
+  } catch {
+    try {
+      await addPendingFile(pendingFileEntry(exhibitorId, blob, filename));
+      showToast("網路不穩，照片先存手機（待同步）");
+    } catch {
+      showToast("照片上傳失敗");
+    }
+  }
+}
+
+function finishPhotoBurst() {
+  if (!PHOTO_BURST) return;
+  const { stream, exhibitorId, photos } = PHOTO_BURST;
+  stream.getTracks().forEach((t) => t.stop());
+  $("photo-video").srcObject = null;
+  $("photo-overlay").style.display = "none";
+  PHOTO_BURST = null;
+  if (photos) showToast(`已拍 ${photos} 張`);
+  if (CURRENT_ID === exhibitorId) { loadAttachments(exhibitorId); loadHistory(exhibitorId); }
 }
 
 async function loadAttachments(id) {
