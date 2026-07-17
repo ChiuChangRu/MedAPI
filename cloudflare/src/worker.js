@@ -256,6 +256,10 @@ function bad(message, status = 400) {
   return json({ error: message }, status);
 }
 
+function fmtSecsRange(s) {
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
 async function logHistory(db, exhibitorId, author, action, detail) {
   await db
     .prepare("INSERT INTO history (exhibitor_id, author, action, detail, created_at) VALUES (?, ?, ?, ?, ?)")
@@ -766,6 +770,62 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
       }
     }
     return json({ exhibitor_id: exhibitorId, results: out });
+  }
+
+  // ---- OCR＋對話上下文測試用（暫時端點）：照片時間點比對採集模式錄音逐字稿，
+  // 驗證「照片要跟當下對話掛勾」這個設計，不是只測圖片本身 ----
+  if (path === "/test-ocr-context" && method === "GET") {
+    if (!env.AI || !env.FILES) return bad("尚未啟用 Workers AI 或 R2", 501);
+    const exhibitorId = url.searchParams.get("exhibitor_id");
+    if (!exhibitorId) return bad("缺 exhibitor_id 參數");
+    const toSecs = (mm, ss) => Number(mm) * 60 + Number(ss);
+    const { results: all } = await db
+      .prepare("SELECT * FROM attachments WHERE exhibitor_id = ? ORDER BY id ASC")
+      .bind(exhibitorId)
+      .all();
+    const photoRe = /📸\s*錄音\s*(\d{2}):(\d{2})\s*時拍攝/;
+    const segRe = /🎙\s*採集第\s*\d+\s*段（(\d{2}):(\d{2})[–-](\d{2}):(\d{2})）/;
+    const segments = all
+      .filter((a) => (a.mime || "").startsWith("audio/") && segRe.test(a.caption || ""))
+      .map((a) => {
+        const m = a.caption.match(segRe);
+        return { att: a, start: toSecs(m[1], m[2]), end: toSecs(m[3], m[4]) };
+      });
+    const photos = all.filter((a) => (a.mime || "").startsWith("image/") && photoRe.test(a.caption || ""));
+    if (!photos.length) return bad("這家展商沒有帶時間點的採集模式照片（要用「📸 採集模式」拍的才有時間戳）", 404);
+    const limit = Number(url.searchParams.get("limit") || 3);
+    const out = [];
+    for (const p of photos.slice(0, limit)) {
+      const m = p.caption.match(photoRe);
+      const offsetSec = toSecs(m[1], m[2]);
+      const seg = segments.find((s) => offsetSec >= s.start && offsetSec <= s.end);
+      const transcript = seg ? (seg.att.transcript || "").trim() : "";
+      const obj = await env.FILES.get(p.key);
+      if (!obj) { out.push({ id: p.id, filename: p.filename, error: "找不到檔案本體" }); continue; }
+      const bytes = new Uint8Array(await obj.arrayBuffer());
+      const contextNote = transcript
+        ? `\n\n【背景資訊】這張照片是在現場對話錄音進行到 ${m[1]}:${m[2]} 時拍的，以下是那段錄音（${fmtSecsRange(seg.start)}–${fmtSecsRange(seg.end)}）的逐字稿，請參考對話內容幫助你判斷這張照片拍的是什麼、跟對話提到的哪個東西有關，並在說明裡指出關聯，但仍然要先把照片裡看得到的文字逐字抄出來：\n「${transcript.slice(0, 1500)}」`
+        : `\n\n【背景資訊】這張照片沒有找到對應時間點的錄音逐字稿（可能還沒轉文字，或超出錄音範圍），純粹分析照片本身即可。`;
+      try {
+        const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+          image: Array.from(bytes),
+          prompt: "你是機械式的文字抄錄員，不是圖片說明員。任務：把這張圖片裡「所有看得到的文字」逐字抄出來（不要描述畫面、不要摘要、不要編造看不清的內容，看不清用「[看不清]」標示）。抄完文字之後，如果下面有提供背景對話逐字稿，另外用一句話說明這張照片可能跟對話中的什麼內容有關聯（清楚標示「關聯說明：」開頭，沒有背景資訊就不用寫這段）。" + contextNote,
+          max_tokens: 1024,
+          temperature: 0,
+        });
+        out.push({
+          id: p.id,
+          filename: p.filename,
+          offset: `${m[1]}:${m[2]}`,
+          matched_segment: seg ? `${seg.att.filename}（${fmtSecsRange(seg.start)}–${fmtSecsRange(seg.end)}）` : null,
+          transcript_used: transcript ? transcript.slice(0, 200) + (transcript.length > 200 ? "…" : "") : null,
+          text: result?.response ?? JSON.stringify(result),
+        });
+      } catch (err) {
+        out.push({ id: p.id, filename: p.filename, error: err.message });
+      }
+    }
+    return json({ exhibitor_id: exhibitorId, photo_count: photos.length, segment_count: segments.length, results: out });
   }
 
   return bad("不存在的 API 路徑", 404);
