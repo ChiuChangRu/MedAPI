@@ -184,7 +184,9 @@ async function openEntry(id) {
     <hr/>
     <h3 class="section-title">附件</h3>
     <div class="upload-row">
-      <button class="btn small capture-btn" id="e-capture">📸🎙 採集</button>
+      <button class="btn small capture-btn" id="e-video">🎥 錄影</button>
+      <button class="btn small capture-btn" id="e-photo">📷 拍照</button>
+      <button class="btn small capture-btn" id="e-audio">🎙 錄音</button>
       <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
       <span id="e-upload-status" class="sub"></span>
     </div>
@@ -203,7 +205,9 @@ async function openEntry(id) {
     closeEntry();
     if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadInbox(); loadFolders(); }
   };
-  $("e-capture").onclick = () => { closeEntry(); startCapture(id); };
+  $("e-video").onclick = () => { closeEntry(); startVideo(id); };
+  $("e-photo").onclick = () => { closeEntry(); startPhoto(id); };
+  $("e-audio").onclick = () => { closeEntry(); startAudio(id); };
   const fileInput = $("e-file");
   fileInput.onchange = () => uploadFiles(id, fileInput);
   bindAttActions(id);
@@ -332,32 +336,105 @@ async function syncPendingFiles() {
   if (synced) showToast(`已補傳 ${synced} 個離線檔案`);
 }
 
-// ---------- 現場採集模式：全程開鏡頭看得到畫面＋錄音分段＋隨時拍照/記事 ----------
-// 拍照本來就要看得到取景才有意義，所以不做「隱藏鏡頭」那套——
-// 錄音本身能不能被旁人發現，靠的是控制項收在畫面下緣、不放大大的
-// 「錄影中」字樣，而不是連畫面都藏起來（那樣反而連拍照都做不了）。
-const CAPTURE_SEG_MINUTES = 10;
-let CAPTURE = null;
+// ---------- 現場採集：錄影／拍照／錄音是三個獨立入口，不互相綁定 ----------
+// 各自獨立的理由：按「拍照」不該順便開始錄音；按「錄音」也不該
+// 順便打開鏡頭全螢幕——只有按「錄影」才是真的要錄影。
+// 拍照永遠要看得到即時畫面才拍（不做隱藏鏡頭盲拍那套）。
+const SEG_MINUTES = 10;
 
-function captureOffset() { return Math.floor((Date.now() - CAPTURE.startedAt) / 1000); }
+function segOffset(session) { return Math.floor((Date.now() - session.startedAt) / 1000); }
 
-function startSegmentRecorder() {
-  const audioTrack = new MediaStream(CAPTURE.stream.getAudioTracks());
+async function ensureEntryForCapture(entryId, titlePrefix) {
+  if (entryId) return { entryId, folderId: CURRENT_FOLDER ? CURRENT_FOLDER.id : null };
+  const folderId = CURRENT_FOLDER ? CURRENT_FOLDER.id : null;
+  const d = new Date();
+  const title = `${titlePrefix} ${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const newId = await createEntry(folderId, title);
+  return { entryId: newId, folderId };
+}
+
+async function addTimedNote(session) {
+  if (!session) return;
+  const text = prompt("記一句（會標上目前的時間點）：");
+  if (!text || !text.trim()) return;
+  const offset = fmtSecs(segOffset(session));
+  try {
+    const entry = await api(`/entries/${session.entryId}`);
+    const line = `[${offset}] ${text.trim()}`;
+    const body = entry.body ? `${entry.body}\n${line}` : line;
+    await api(`/entries/${session.entryId}`, { method: "PUT", body: JSON.stringify({ body }) });
+    showToast("已記錄");
+  } catch (err) { showToast("記錄失敗：" + err.message); }
+}
+
+// ---- 資料夾／專案歸屬 chip：video/photo 兩個全螢幕模式共用同一套邏輯 ----
+function folderChipLabel(folderId) {
+  const folder = folderId ? FOLDERS.find((f) => f.id === folderId) : null;
+  return folder ? `📂 ${folder.name}` : "📥 收件匣";
+}
+
+async function createFolderInline() {
+  const name = prompt("資料夾名稱：");
+  if (!name || !name.trim()) return undefined;
+  const types = Object.keys(FOLDER_TEMPLATES);
+  const type = prompt(`類型（${types.join("／")}）：`, "其他");
+  const resolved = types.includes((type || "").trim()) ? type.trim() : "其他";
+  const r = await api("/folders", { method: "POST", body: JSON.stringify({ name: name.trim(), type: resolved }) });
+  FOLDERS = await api("/folders");
+  return r.id;
+}
+
+function setupFolderChip(chipId, pickerId, getSession) {
+  const chip = $(chipId);
+  const picker = $(pickerId);
+  chip.onclick = () => {
+    if (picker.style.display === "block") { picker.style.display = "none"; return; }
+    picker.innerHTML = [
+      `<div class="cfp-item" data-id="">📥 收件匣（不歸檔）</div>`,
+      ...FOLDERS.map((f) => `<div class="cfp-item" data-id="${f.id}">📂 ${esc(f.name)}</div>`),
+      `<div class="cfp-item cfp-new" data-new="1">＋ 新資料夾</div>`,
+    ].join("");
+    picker.querySelectorAll(".cfp-item").forEach((el) => {
+      el.onclick = async () => {
+        picker.style.display = "none";
+        const session = getSession();
+        if (!session) return;
+        let folderId = el.dataset.id ? Number(el.dataset.id) : null;
+        if (el.dataset.new) {
+          const created = await createFolderInline();
+          if (created === undefined) return;
+          folderId = created;
+        }
+        try {
+          await api(`/entries/${session.entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: folderId }) });
+          session.folderId = folderId;
+          chip.textContent = folderChipLabel(folderId);
+        } catch (err) { showToast("歸檔失敗：" + err.message); }
+      };
+    });
+    picker.style.display = "block";
+  };
+}
+
+// ================= 🎥 錄影（開鏡頭，錄音+錄影全螢幕） =================
+let VIDEO = null;
+
+function startVideoSegRecorder() {
+  const audioTrack = new MediaStream(VIDEO.stream.getAudioTracks());
   const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
     .find((m) => MediaRecorder.isTypeSupported(m)) || "";
   const recorder = mimeType ? new MediaRecorder(audioTrack, { mimeType }) : new MediaRecorder(audioTrack);
   const chunks = [];
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-  recorder.onstop = () => onSegmentStop(recorder, chunks);
-  CAPTURE.recorder = recorder;
-  CAPTURE.segStartMs = Date.now();
+  recorder.onstop = () => onVideoSegmentStop(recorder, chunks);
+  VIDEO.recorder = recorder;
+  VIDEO.segStartMs = Date.now();
   recorder.start();
 }
 
-// entryId 可為 null：自動建一筆紀錄再開錄（歸屬資料夾可在畫面上隨時改）
-async function startCapture(entryId) {
-  if (CAPTURE) return;
-  if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("這個瀏覽器不支援採集模式"); return; }
+async function startVideo(entryId) {
+  if (VIDEO) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("這個瀏覽器不支援錄影"); return; }
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -365,40 +442,30 @@ async function startCapture(entryId) {
       audio: true,
     });
   } catch (err) { showToast("無法開啟相機或麥克風：" + err.message); return; }
-  let folderId = CURRENT_FOLDER ? CURRENT_FOLDER.id : null;
-  if (!entryId) {
-    const d = new Date();
-    const title = `現場採集 ${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    try {
-      entryId = await createEntry(folderId, title);
-    } catch (err) {
-      stream.getTracks().forEach((t) => t.stop());
-      showToast("無法建立紀錄：" + err.message);
-      return;
-    }
-  }
+  let ref;
+  try { ref = await ensureEntryForCapture(entryId, "錄影"); }
+  catch (err) { stream.getTracks().forEach((t) => t.stop()); showToast("無法建立紀錄：" + err.message); return; }
   $("capture-video").srcObject = stream;
-  CAPTURE = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId, folderId, ending: false, autoStopped: false, timerId: 0 };
-  startSegmentRecorder();
+  VIDEO = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0 };
+  startVideoSegRecorder();
   $("capture-count").textContent = "";
   $("capture-timer").textContent = "00:00";
-  updateFolderChip();
+  $("capture-folder-chip").textContent = folderChipLabel(VIDEO.folderId);
   $("capture-overlay").style.display = "flex";
-  CAPTURE.timerId = setInterval(() => {
-    if (!CAPTURE) return;
-    $("capture-timer").textContent = fmtSecs(captureOffset());
-    if (!CAPTURE.ending && CAPTURE.recorder.state === "recording" &&
-        Date.now() - CAPTURE.segStartMs >= CAPTURE_SEG_MINUTES * 60 * 1000) {
-      CAPTURE.recorder.stop();
+  VIDEO.timerId = setInterval(() => {
+    if (!VIDEO || VIDEO.ending) return;
+    $("capture-timer").textContent = fmtSecs(segOffset(VIDEO));
+    if (VIDEO.recorder.state === "recording" && Date.now() - VIDEO.segStartMs >= SEG_MINUTES * 60 * 1000) {
+      VIDEO.recorder.stop();
     }
   }, 1000);
 }
 
-async function snapCapture() {
-  if (!CAPTURE) return;
+async function videoSnap() {
+  if (!VIDEO) return;
   const video = $("capture-video");
   if (!video.videoWidth) { showToast("相機還沒就緒"); return; }
-  const offset = captureOffset();
+  const offset = segOffset(VIDEO);
   const canvas = document.createElement("canvas");
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
@@ -406,85 +473,157 @@ async function snapCapture() {
   const flash = $("capture-flash");
   flash.classList.add("on");
   setTimeout(() => flash.classList.remove("on"), 160);
-  CAPTURE.photos++;
-  $("capture-count").textContent = `📷 ${CAPTURE.photos}`;
-  const { entryId } = CAPTURE;
+  VIDEO.photos++;
+  $("capture-count").textContent = `📷 ${VIDEO.photos}`;
+  const { entryId } = VIDEO;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
   const filename = `照片-${fmtSecs(offset).replace(":", "")}.jpg`;
   try { await putFile(entryId, blob, filename, offset); }
   catch { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); }
 }
 
-async function noteDuringCapture() {
-  if (!CAPTURE) return;
-  const text = prompt("記一句（會標上目前的錄音時間點）：");
-  if (!text || !text.trim()) return;
-  const offset = fmtSecs(captureOffset());
-  const { entryId } = CAPTURE;
+function stopVideo() {
+  if (!VIDEO) return;
+  VIDEO.ending = true;
+  if (VIDEO.recorder && VIDEO.recorder.state !== "inactive") VIDEO.recorder.stop();
+}
+
+async function onVideoSegmentStop(recorder, chunks) {
+  if (!VIDEO) return;
+  const { stream, entryId, photos, timerId, ending, autoStopped, segIndex, segStartMs, startedAt, folderId } = VIDEO;
+  const segStartOffset = Math.floor((segStartMs - startedAt) / 1000);
+  const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+  const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
+  const filename = `錄影音軌-段${segIndex}.${ext}`;
+
+  if (ending) {
+    clearInterval(timerId);
+    stream.getTracks().forEach((t) => t.stop());
+    $("capture-video").srcObject = null;
+    $("capture-folder-picker").style.display = "none";
+    $("capture-overlay").style.display = "none";
+    VIDEO = null;
+    if (blob.size) {
+      showToast(autoStopped ? "偵測到切換 App，已自動結束並存檔" : "錄影中的錄音上傳中…");
+      try { await putFile(entryId, blob, filename, segStartOffset); }
+      catch { await queueFile(entryId, blob, filename, segStartOffset); }
+    }
+    showToast(`錄影完成：錄音 ${segIndex} 段＋照片 ${photos} 張`);
+    if (CURRENT_FOLDER && folderId === CURRENT_FOLDER.id) openFolder(CURRENT_FOLDER.id);
+    else { loadInbox(); loadFolders(); }
+    openEntry(entryId);
+  } else {
+    VIDEO.segIndex++;
+    startVideoSegRecorder();
+    if (blob.size) {
+      putFile(entryId, blob, filename, segStartOffset)
+        .catch(() => queueFile(entryId, blob, filename, segStartOffset));
+    }
+  }
+}
+
+// ================= 📷 拍照（單獨鏡頭，不錄音） =================
+let PHOTO = null;
+
+async function startPhoto(entryId) {
+  if (PHOTO) return;
+  if (!navigator.mediaDevices) { showToast("這個瀏覽器不支援拍照"); return; }
+  let stream;
   try {
-    const entry = await api(`/entries/${entryId}`);
-    const line = `[${offset}] ${text.trim()}`;
-    const body = entry.body ? `${entry.body}\n${line}` : line;
-    await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ body }) });
-    showToast("已記錄");
-  } catch (err) { showToast("記錄失敗：" + err.message); }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+  } catch (err) { showToast("無法開啟相機：" + err.message); return; }
+  let ref;
+  try { ref = await ensureEntryForCapture(entryId, "拍照"); }
+  catch (err) { stream.getTracks().forEach((t) => t.stop()); showToast("無法建立紀錄：" + err.message); return; }
+  $("photo-video").srcObject = stream;
+  PHOTO = { stream, startedAt: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId };
+  $("photo-count").textContent = "";
+  $("photo-folder-chip").textContent = folderChipLabel(PHOTO.folderId);
+  $("photo-overlay").style.display = "flex";
 }
 
-// ---- 錄影中歸屬資料夾／專案：chip 顯示目前歸屬，點開小面板可切換或新增 ----
-function updateFolderChip() {
-  const chip = $("capture-folder-chip");
-  if (!CAPTURE) return;
-  const folder = CAPTURE.folderId ? FOLDERS.find((f) => f.id === CAPTURE.folderId) : null;
-  chip.textContent = folder ? `📂 ${folder.name}` : "📥 收件匣";
+async function photoSnap() {
+  if (!PHOTO) return;
+  const video = $("photo-video");
+  if (!video.videoWidth) { showToast("相機還沒就緒"); return; }
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  const flash = $("photo-flash");
+  flash.classList.add("on");
+  setTimeout(() => flash.classList.remove("on"), 160);
+  PHOTO.photos++;
+  $("photo-count").textContent = `📷 ${PHOTO.photos}`;
+  const { entryId } = PHOTO;
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
+  const filename = `照片-${Date.now()}.jpg`;
+  try { await putFile(entryId, blob, filename, null); }
+  catch { await queueFile(entryId, blob, filename, null); showToast("網路不穩，照片先存手機"); }
 }
 
-function toggleFolderPicker() {
-  const panel = $("capture-folder-picker");
-  if (panel.style.display === "block") { panel.style.display = "none"; return; }
-  panel.innerHTML = [
-    `<div class="cfp-item" data-id="">📥 收件匣（不歸檔）</div>`,
-    ...FOLDERS.map((f) => `<div class="cfp-item" data-id="${f.id}">📂 ${esc(f.name)}</div>`),
-    `<div class="cfp-item cfp-new" data-new="1">＋ 新資料夾</div>`,
-  ].join("");
-  panel.querySelectorAll(".cfp-item").forEach((el) => {
-    el.onclick = async () => {
-      panel.style.display = "none";
-      if (el.dataset.new) {
-        const name = prompt("資料夾名稱：");
-        if (!name || !name.trim()) return;
-        const types = Object.keys(FOLDER_TEMPLATES);
-        const type = prompt(`類型（${types.join("／")}）：`, "其他");
-        const resolved = types.includes((type || "").trim()) ? type.trim() : "其他";
-        const r = await api("/folders", { method: "POST", body: JSON.stringify({ name: name.trim(), type: resolved }) });
-        FOLDERS = await api("/folders");
-        await setCaptureFolder(r.id);
-        return;
-      }
-      const id = el.dataset.id ? Number(el.dataset.id) : null;
-      await setCaptureFolder(id);
-    };
-  });
-  panel.style.display = "block";
+function finishPhoto() {
+  if (!PHOTO) return;
+  const { stream, entryId, photos, folderId } = PHOTO;
+  stream.getTracks().forEach((t) => t.stop());
+  $("photo-video").srcObject = null;
+  $("photo-folder-picker").style.display = "none";
+  $("photo-overlay").style.display = "none";
+  PHOTO = null;
+  if (photos) showToast(`已拍 ${photos} 張`);
+  if (CURRENT_FOLDER && folderId === CURRENT_FOLDER.id) openFolder(CURRENT_FOLDER.id);
+  else { loadInbox(); loadFolders(); }
+  if (photos) openEntry(entryId);
 }
 
-async function setCaptureFolder(folderId) {
-  if (!CAPTURE) return;
-  try {
-    await api(`/entries/${CAPTURE.entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: folderId }) });
-    CAPTURE.folderId = folderId;
-    updateFolderChip();
-  } catch (err) { showToast("歸檔失敗：" + err.message); }
+// ================= 🎙 錄音（不開鏡頭；浮動控制列，拍照時才臨時開鏡頭預覽） =================
+let AUDIO = null;
+
+function startAudioSegRecorder() {
+  const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
+    .find((m) => MediaRecorder.isTypeSupported(m)) || "";
+  const recorder = mimeType ? new MediaRecorder(AUDIO.stream, { mimeType }) : new MediaRecorder(AUDIO.stream);
+  const chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => onAudioSegmentStop(recorder, chunks);
+  AUDIO.recorder = recorder;
+  AUDIO.segStartMs = Date.now();
+  recorder.start();
 }
 
-function stopCapture() {
-  if (!CAPTURE) return;
-  CAPTURE.ending = true;
-  if (CAPTURE.recorder && CAPTURE.recorder.state !== "inactive") CAPTURE.recorder.stop();
+async function startAudio(entryId) {
+  if (AUDIO) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("這個瀏覽器不支援錄音"); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (err) { showToast("無法開啟麥克風：" + err.message); return; }
+  let ref;
+  try { ref = await ensureEntryForCapture(entryId, "錄音"); }
+  catch (err) { stream.getTracks().forEach((t) => t.stop()); showToast("無法建立紀錄：" + err.message); return; }
+  AUDIO = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0 };
+  startAudioSegRecorder();
+  $("audio-timer").textContent = "00:00";
+  $("audio-badge").style.display = "flex";
+  AUDIO.timerId = setInterval(() => {
+    if (!AUDIO || AUDIO.ending) return;
+    $("audio-timer").textContent = fmtSecs(segOffset(AUDIO));
+    if (AUDIO.recorder.state === "recording" && Date.now() - AUDIO.segStartMs >= SEG_MINUTES * 60 * 1000) {
+      AUDIO.recorder.stop();
+    }
+  }, 1000);
 }
 
-async function onSegmentStop(recorder, chunks) {
-  if (!CAPTURE) return;
-  const { stream, entryId, photos, timerId, ending, autoStopped, segIndex, segStartMs, startedAt, folderId } = CAPTURE;
+function stopAudio() {
+  if (!AUDIO) return;
+  AUDIO.ending = true;
+  if (AUDIO.recorder && AUDIO.recorder.state !== "inactive") AUDIO.recorder.stop();
+}
+
+async function onAudioSegmentStop(recorder, chunks) {
+  if (!AUDIO) return;
+  const { stream, entryId, timerId, ending, autoStopped, segIndex, segStartMs, startedAt } = AUDIO;
   const segStartOffset = Math.floor((segStartMs - startedAt) / 1000);
   const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
   const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
@@ -493,27 +632,71 @@ async function onSegmentStop(recorder, chunks) {
   if (ending) {
     clearInterval(timerId);
     stream.getTracks().forEach((t) => t.stop());
-    $("capture-video").srcObject = null;
-    $("capture-folder-picker").style.display = "none";
-    $("capture-overlay").style.display = "none";
-    CAPTURE = null;
+    $("audio-badge").style.display = "none";
+    const photos = AUDIO.photos;
+    AUDIO = null;
     if (blob.size) {
-      showToast(autoStopped ? "偵測到切換 App，已自動結束並存檔" : "採集錄音上傳中…");
+      showToast(autoStopped ? "偵測到切換 App，已自動結束並存檔" : "錄音上傳中…");
       try { await putFile(entryId, blob, filename, segStartOffset); }
       catch { await queueFile(entryId, blob, filename, segStartOffset); }
     }
-    showToast(`採集完成：錄音 ${segIndex} 段＋照片 ${photos} 張`);
-    if (CURRENT_FOLDER && folderId === CURRENT_FOLDER.id) openFolder(CURRENT_FOLDER.id);
-    else { loadInbox(); loadFolders(); }
+    showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}`);
     openEntry(entryId);
   } else {
-    CAPTURE.segIndex++;
-    startSegmentRecorder();
+    AUDIO.segIndex++;
+    startAudioSegRecorder();
     if (blob.size) {
       putFile(entryId, blob, filename, segStartOffset)
         .catch(() => queueFile(entryId, blob, filename, segStartOffset));
     }
   }
+}
+
+// 錄音中臨時拍照：另外開一個鏡頭串流，看得到畫面才拍，拍完立刻關閉鏡頭
+// （錄音本身走另一條 stream，鏡頭開關不會中斷錄音）
+let AUDIO_PHOTO_STREAM = null;
+
+async function openAudioPhotoPopup() {
+  if (!AUDIO || AUDIO_PHOTO_STREAM) return;
+  try {
+    AUDIO_PHOTO_STREAM = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+  } catch (err) { showToast("無法開啟相機：" + err.message); return; }
+  $("audio-photo-video").srcObject = AUDIO_PHOTO_STREAM;
+  $("audio-photo-popup").style.display = "flex";
+}
+
+function closeAudioPhotoPopup() {
+  if (AUDIO_PHOTO_STREAM) AUDIO_PHOTO_STREAM.getTracks().forEach((t) => t.stop());
+  AUDIO_PHOTO_STREAM = null;
+  $("audio-photo-video").srcObject = null;
+  $("audio-photo-popup").style.display = "none";
+}
+
+async function audioPhotoSnap() {
+  if (!AUDIO || !AUDIO_PHOTO_STREAM) return;
+  const video = $("audio-photo-video");
+  if (!video.videoWidth) { showToast("相機還沒就緒"); return; }
+  const offset = segOffset(AUDIO);
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  AUDIO.photos++;
+  const { entryId } = AUDIO;
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
+  const filename = `照片-${fmtSecs(offset).replace(":", "")}.jpg`;
+  closeAudioPhotoPopup();
+  showToast(`已拍照（第 ${AUDIO.photos} 張）`);
+  try { await putFile(entryId, blob, filename, offset); }
+  catch { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); }
+}
+
+function stopAnyActiveCapture() {
+  if (VIDEO) { VIDEO.autoStopped = true; stopVideo(); }
+  if (AUDIO) { AUDIO.autoStopped = true; stopAudio(); }
+  if (AUDIO_PHOTO_STREAM) closeAudioPhotoPopup();
 }
 
 // ---------- 匯出 ----------
@@ -526,26 +709,43 @@ function exportFolder() {
 function init() {
   $("btn-login").onclick = doLogin;
   $("login-pin").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
-  $("btn-capture-quick").onclick = () => startCapture(null);
+  $("btn-video").onclick = () => startVideo(null);
+  $("btn-photo").onclick = () => startPhoto(null);
+  $("btn-audio").onclick = () => startAudio(null);
   $("btn-quick-note").onclick = quickNote;
   $("btn-new-folder").onclick = newFolder;
   $("btn-back").onclick = backHome;
-  $("btn-folder-capture").onclick = () => startCapture(null);
+  $("btn-video-f").onclick = () => startVideo(null);
+  $("btn-photo-f").onclick = () => startPhoto(null);
+  $("btn-audio-f").onclick = () => startAudio(null);
   $("btn-folder-entry").onclick = async () => {
     const id = await createEntry(CURRENT_FOLDER.id, "");
     openFolder(CURRENT_FOLDER.id);
     openEntry(id);
   };
   $("btn-folder-export").onclick = exportFolder;
-  $("capture-snap").onclick = snapCapture;
-  $("capture-stop").onclick = stopCapture;
-  $("capture-note").onclick = noteDuringCapture;
-  $("capture-folder-chip").onclick = toggleFolderPicker;
+
+  // 🎥 錄影
+  $("capture-snap").onclick = videoSnap;
+  $("capture-stop").onclick = stopVideo;
+  $("capture-note").onclick = () => addTimedNote(VIDEO);
+  setupFolderChip("capture-folder-chip", "capture-folder-picker", () => VIDEO);
+
+  // 📷 拍照
+  $("photo-snap").onclick = photoSnap;
+  $("photo-done").onclick = finishPhoto;
+  setupFolderChip("photo-folder-chip", "photo-folder-picker", () => PHOTO);
+
+  // 🎙 錄音
+  $("audio-photo-btn").onclick = openAudioPhotoPopup;
+  $("audio-note-btn").onclick = () => addTimedNote(AUDIO);
+  $("audio-stop-btn").onclick = stopAudio;
+  $("audio-photo-cancel").onclick = closeAudioPhotoPopup;
+  $("audio-photo-snap").onclick = audioPhotoSnap;
+
   $("entry-overlay").addEventListener("click", (e) => { if (e.target === $("entry-overlay")) closeEntry(); });
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden && CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); }
-  });
-  window.addEventListener("pagehide", () => { if (CAPTURE) { CAPTURE.autoStopped = true; stopCapture(); } });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stopAnyActiveCapture(); });
+  window.addEventListener("pagehide", stopAnyActiveCapture);
   window.addEventListener("online", syncPendingFiles);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
