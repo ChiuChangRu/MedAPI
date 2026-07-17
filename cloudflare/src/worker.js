@@ -726,6 +726,17 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     return json(result);
   }
 
+  // ---- 一次性：接受 llama-3.2-11b-vision-instruct 的 Meta License（測完可刪）----
+  if (path === "/agree-license" && method === "GET") {
+    if (!env.AI) return bad("尚未啟用 Workers AI", 501);
+    try {
+      const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { prompt: "agree" });
+      return json({ ok: true, result });
+    } catch (err) {
+      return json({ ok: false, error: err.message }, 500);
+    }
+  }
+
   // ---- OCR 測試用（暫時端點，測完準確度再決定要不要做成正式功能）----
   if (path === "/test-ocr" && method === "GET") {
     if (!env.AI || !env.FILES) return bad("尚未啟用 Workers AI 或 R2", 501);
@@ -743,7 +754,7 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
       if (!obj) { out.push({ id: a.id, filename: a.filename, error: "找不到檔案本體" }); continue; }
       const bytes = new Uint8Array(await obj.arrayBuffer());
       try {
-        const result = await env.AI.run("@cf/llava-hf/llava-1.5-7b-hf", {
+        const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
           image: Array.from(bytes),
           prompt: "請把這張圖片裡看得到的所有文字，原封不動抄出來（繁體或簡體都照抄、不要翻譯、不要摘要、不要加自己的說明）。如果圖片裡沒有文字，就回答「（無文字）」。",
           max_tokens: 1024,
