@@ -726,6 +726,36 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     return json(result);
   }
 
+  // ---- OCR 測試用（暫時端點，測完準確度再決定要不要做成正式功能）----
+  if (path === "/test-ocr" && method === "GET") {
+    if (!env.AI || !env.FILES) return bad("尚未啟用 Workers AI 或 R2", 501);
+    const exhibitorId = url.searchParams.get("exhibitor_id");
+    if (!exhibitorId) return bad("缺 exhibitor_id 參數");
+    const limit = Number(url.searchParams.get("limit") || 2);
+    const { results } = await db
+      .prepare("SELECT * FROM attachments WHERE exhibitor_id = ? AND mime LIKE 'image/%' ORDER BY id ASC LIMIT ?")
+      .bind(exhibitorId, limit)
+      .all();
+    if (!results.length) return bad("這家展商沒有照片附件", 404);
+    const out = [];
+    for (const a of results) {
+      const obj = await env.FILES.get(a.key);
+      if (!obj) { out.push({ id: a.id, filename: a.filename, error: "找不到檔案本體" }); continue; }
+      const bytes = new Uint8Array(await obj.arrayBuffer());
+      try {
+        const result = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+          image: Array.from(bytes),
+          prompt: "請把這張圖片裡看得到的所有文字，原封不動抄出來（繁體或簡體都照抄、不要翻譯、不要摘要、不要加自己的說明）。如果圖片裡沒有文字，就回答「（無文字）」。",
+          max_tokens: 1024,
+        });
+        out.push({ id: a.id, filename: a.filename, text: result?.response ?? result?.description ?? JSON.stringify(result) });
+      } catch (err) {
+        out.push({ id: a.id, filename: a.filename, error: err.message });
+      }
+    }
+    return json({ exhibitor_id: exhibitorId, results: out });
+  }
+
   return bad("不存在的 API 路徑", 404);
 }
 
