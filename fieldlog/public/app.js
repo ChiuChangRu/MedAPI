@@ -170,6 +170,7 @@ async function openEntry(id) {
   modal.innerHTML = `
     <div class="detail-head">
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
+      <button class="btn small ghost" id="e-delete" title="刪除整筆紀錄">🗑</button>
       <button class="btn small ghost" id="e-close">✕</button>
     </div>
     <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "📥 收件匣"}</p>
@@ -194,6 +195,15 @@ async function openEntry(id) {
   `;
   $("entry-overlay").classList.add("open");
   $("e-close").onclick = closeEntry;
+  $("e-delete").onclick = async () => {
+    if (!confirm(`確定刪除整筆紀錄「${e.title || "（未命名）"}」？裡面的附件也會一起刪除，無法復原。`)) return;
+    try {
+      await api(`/entries/${id}`, { method: "DELETE" });
+      showToast("已刪除");
+      closeEntry();
+      if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadInbox(); loadFolders(); }
+    } catch (err) { showToast("刪除失敗：" + err.message); }
+  };
   $("e-save").onclick = async () => {
     const newFields = {};
     modal.querySelectorAll(".e-field").forEach((i) => { newFields[i.dataset.key] = i.value.trim(); });
