@@ -1490,6 +1490,7 @@ async function openDetail(id) {
         <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音</button>
         <button class="btn small photo-btn" id="d-photo-btn" type="button">📷 連續拍照</button>
         <label class="btn small upload-btn">📁 上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
+        <button class="btn small ghost" id="d-att-reorganize" type="button" title="剛剛分類的照片還沒歸位時，點這個立刻重新整理">🗂 整理歸檔</button>
         <span id="d-upload-status" class="sub"></span>
       </div>
       <p class="sub">採集模式＝錄音全程不中斷、隨時拍照，每張照片自動標上「錄音第幾分幾秒拍的」；錄音每 10 分鐘自動分段上傳，段落即傳即安全。連續拍照＝不錄音，鏡頭持續開著，拍完一張直接拍下一張，不用重新點選。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
@@ -1574,6 +1575,8 @@ async function openDetail(id) {
   if (captureBtn) captureBtn.onclick = () => startCapture(id);
   const photoBtn = $("d-photo-btn");
   if (photoBtn) photoBtn.onclick = () => startPhotoBurst(id);
+  const reorganizeBtn = $("d-att-reorganize");
+  if (reorganizeBtn) reorganizeBtn.onclick = () => loadAttachments(id);
 
   loadNotes(id);
   loadAttachments(id);
