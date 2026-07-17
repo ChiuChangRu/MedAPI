@@ -637,12 +637,16 @@ header #btn-offline-toggle.reconnect-btn {
 .upload-row .btn {
   padding: 11px 16px; font-size: 14px; font-weight: 600; border-width: 1.5px;
 }
+.upload-row .btn small {
+  display: block; font-size: 10px; font-weight: 600; opacity: 0.8; margin-top: 1px;
+}
 .upload-row .capture-btn {
   background: var(--accent); border-color: var(--accent); color: #fff;
   box-shadow: 0 2px 6px rgba(200, 16, 46, 0.35);
 }
 .upload-row .capture-btn:hover { background: var(--accent-dark); }
-.upload-row .record-btn { border-color: var(--accent); color: var(--accent); background: #fdf1f3; }
+/* 錄音跟採集模式現在操作介面很像（都不強制開鏡頭），故意選跟紅色系無關的顏色避免點錯 */
+.upload-row .record-btn { border-color: var(--amber); color: var(--amber); background: #fffaf0; }
 .upload-row .photo-btn { border-color: #1d4ed8; color: #1d4ed8; background: #eff6ff; }
 .upload-row .upload-btn { border-color: #1d4ed8; color: #1d4ed8; background: #eff6ff; }
 

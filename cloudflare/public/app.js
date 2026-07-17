@@ -1487,8 +1487,8 @@ async function openDetail(id) {
       <summary class="section-title">附件（照片／錄音／影片）<span id="d-att-count" class="att-count"></span></summary>
       ${UPLOADS_ENABLED ? `
       <div class="upload-row">
-        <button class="btn small capture-btn" id="d-capture-btn" type="button">📸 採集模式</button>
-        <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音</button>
+        <button class="btn small capture-btn" id="d-capture-btn" type="button">📸 採集模式<small>可拍照</small></button>
+        <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音<small>純錄音</small></button>
         <button class="btn small photo-btn" id="d-photo-btn" type="button">📷 連續拍照</button>
         <label class="btn small upload-btn">📁 上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
         <button class="btn small ghost" id="d-att-reorganize" type="button" title="剛剛分類的照片還沒歸位時，點這個立刻重新整理">🗂 整理歸檔</button>
