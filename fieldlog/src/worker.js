@@ -186,6 +186,19 @@ async function handleApi(request, env, url) {
     }
     return json({ ok: true });
   }
+  if (entryMatch && method === "DELETE") {
+    const id = Number(entryMatch[1]);
+    const old = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到紀錄", 404);
+    const { results: atts } = await db.prepare("SELECT * FROM attachments WHERE entry_id = ?").bind(id).all();
+    if (env.FILES) {
+      for (const a of atts) await env.FILES.delete(a.key).catch(() => {});
+    }
+    await db.prepare("DELETE FROM attachments WHERE entry_id = ?").bind(id).run();
+    await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
+    await logHistory(db, null, old.folder_id, "刪除紀錄", old.title);
+    return json({ ok: true });
+  }
 
   // ---- 附件上傳（R2）----
   if (path === "/upload" && method === "POST") {
