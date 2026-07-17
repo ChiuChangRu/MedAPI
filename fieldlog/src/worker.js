@@ -230,6 +230,15 @@ async function handleApi(request, env, url) {
     await db.prepare("UPDATE attachments SET category = ? WHERE id = ?").bind(category.trim(), id).run();
     return json({ ok: true });
   }
+  if (attMatch && method === "DELETE") {
+    const id = Number(attMatch[1]);
+    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到附件", 404);
+    if (env.FILES) await env.FILES.delete(old.key);
+    await db.prepare("DELETE FROM attachments WHERE id = ?").bind(id).run();
+    await logHistory(db, old.entry_id, null, "刪除附件", old.filename);
+    return json({ ok: true });
+  }
 
   // ---- 錄音轉文字（Workers AI Whisper）----
   const transcribeMatch = path.match(/^\/attachments\/(\d+)\/transcribe$/);
