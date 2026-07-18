@@ -359,11 +359,12 @@ const TOOLS = [
       const data = await exhibitorsData(env);
       const ex = (data.exhibitors || []).find((x) => x.id === id);
       if (!ex) throw new Error(`找不到展商「${id}」——請先用 search_exhibitors 查編號`);
-      let state = null, notes = [], atts = [];
+      let state = null, notes = [], atts = [], attTotal = 0;
       try {
         state = await env.DB_MEDTEC.prepare("SELECT * FROM exhibitor_state WHERE exhibitor_id = ?").bind(id).first();
         notes = (await env.DB_MEDTEC.prepare("SELECT * FROM notes WHERE exhibitor_id = ? AND deleted = 0 ORDER BY id DESC LIMIT 20").bind(id).all()).results;
-        atts = (await env.DB_MEDTEC.prepare("SELECT filename, caption, author, created_at FROM attachments WHERE exhibitor_id = ? ORDER BY id DESC LIMIT 20").bind(id).all()).results;
+        atts = (await env.DB_MEDTEC.prepare("SELECT filename, caption, author, created_at, transcript, ocr_text FROM attachments WHERE exhibitor_id = ? ORDER BY id DESC LIMIT 20").bind(id).all()).results;
+        attTotal = (await env.DB_MEDTEC.prepare("SELECT COUNT(*) AS c FROM attachments WHERE exhibitor_id = ?").bind(id).first())?.c || 0;
       } catch { /* 共筆表尚未建立時只回主檔 */ }
       const lines = [fmtExhibitor(data, ex, state, notes.length)];
       if (state) {
@@ -380,8 +381,11 @@ const TOOLS = [
         for (const n of notes) lines.push(`- ${n.created_at}｜${n.author}｜${n.type}：${clip(n.content, 300)}`);
       }
       if (atts.length) {
-        lines.push("", "## 附件（檔名清單，內容請在參展系統前台看）");
-        for (const a of atts) lines.push(`- ${a.filename}${a.caption ? `｜${a.caption}` : ""}｜${a.author}｜${a.created_at}`);
+        lines.push("", `## 附件（共 ${attTotal} 個，列最新 20 個，含 AI 擷取內容摘要；全文搜尋用 search_exhibitor_files）`);
+        for (const a of atts) {
+          const content = clip((a.transcript || a.ocr_text || "").trim(), 200);
+          lines.push(`- ${a.filename}${a.caption ? `｜${a.caption}` : ""}｜${a.author}｜${a.created_at}${content ? `\n  ${content}` : ""}`);
+        }
       }
       return lines.join("\n");
     },
@@ -412,6 +416,44 @@ const TOOLS = [
       } catch { /* 展商主檔抓不到時退回顯示 id */ }
       return results
         .map((n) => `- ${n.created_at}｜${nameOf(n.exhibitor_id)}（${n.exhibitor_id}）｜${n.author}｜${n.type}\n  ${snippet(n.content, q)}`)
+        .join("\n");
+    },
+  },
+  {
+    name: "search_exhibitor_files",
+    description: "以關鍵字搜尋參展系統『附件內容』全文：現場錄音逐字稿、照片/PDF 擷取文字、檔名、說明。展商的型錄內容、現場對話都在這裡——問「某家廠商的塗層方案細節」這類問題時用這個。回傳命中片段與所屬展商。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "關鍵字（例：親水塗層、PTFE、肝素）" },
+        limit: { type: "number", description: "最多回傳幾筆（預設 10，上限 30）" },
+      },
+      required: ["query"],
+    },
+    async handler(env, args) {
+      const q = needQuery(args);
+      const limit = capLimit(args);
+      const pat = likePat(q);
+      const { results } = await env.DB_MEDTEC.prepare(
+        `SELECT id, exhibitor_id, filename, caption, author, created_at, transcript, ocr_text
+         FROM attachments
+         WHERE transcript LIKE ?1 ESCAPE '\\' OR ocr_text LIKE ?1 ESCAPE '\\' OR filename LIKE ?1 ESCAPE '\\' OR caption LIKE ?1 ESCAPE '\\'
+         ORDER BY id DESC LIMIT ?2`
+      ).bind(pat, limit).all();
+      if (!results.length) return `附件內容裡沒有「${q}」（提醒：附件要先在前台跑過「Cloudflare AI 整理」才有可搜尋的文字）。`;
+      let nameOf = (id) => id;
+      try {
+        const data = await exhibitorsData(env);
+        const map = new Map((data.exhibitors || []).map((x) => [x.id, x.name_zh || x.name_en]));
+        nameOf = (id) => map.get(id) || id;
+      } catch { /* 展商主檔抓不到時退回顯示 id */ }
+      return results
+        .map((a) => {
+          const src = (a.transcript || "").toLowerCase().includes(q.toLowerCase()) ? a.transcript
+            : (a.ocr_text || "").toLowerCase().includes(q.toLowerCase()) ? a.ocr_text
+            : a.ocr_text || a.transcript || a.caption || a.filename;
+          return `- ${nameOf(a.exhibitor_id)}（${a.exhibitor_id}）｜${a.filename}｜${a.author}｜${a.created_at}\n  ${snippet(src, q)}`;
+        })
         .join("\n");
     },
   },

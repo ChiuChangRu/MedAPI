@@ -7,7 +7,7 @@
 |---|---|---|
 | `list_wiki_pages`／`read_wiki_page`／`search_wiki` | 策略地圖 Wiki 條目 | fieldlog Worker 的 `/wiki/*`（Service Binding＋PIN） |
 | `list_fieldlog_folders`／`search_fieldlog`／`get_fieldlog_entry` | 隨身記紀錄、逐字稿、照片文字 | fieldlog D1（共綁，只下 SELECT） |
-| `search_exhibitors`／`get_exhibitor`／`search_visit_notes` | 展商名單＋團隊拜訪共筆 | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
+| `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR） | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
 
 **鐵律：全部唯讀。** 程式碼裡只有 SELECT 與 fetch——不寫入、不刪除，
 所以三個系統的前台怎麼改版都不受影響；只有**資料表結構**變動時才需要

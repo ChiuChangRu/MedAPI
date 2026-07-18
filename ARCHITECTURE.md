@@ -121,12 +121,11 @@
 
 - [ ] **LitDB 窗口未建置**：需要決定採集介面長什麼樣（獨立系統？還是
   隨身記加一個「文獻」資料夾類型就夠？）
-- [x] **MCP Server 已完成（2026-07-18）**：`mcp/` 目錄，獨立 Worker
-  `medapi-mcp`，9 個唯讀工具跨三來源（wiki 3 個、隨身記 3 個、參展
-  系統 3 個）。共綁兩個既有 D1（只下 SELECT）、wiki 走 fieldlog PIN
-  通道、展商主檔 runtime 抓公開資產。自有 `MCP_PIN` 驗證（fail-closed），
-  claude.ai 用自訂連接器 URL `?pin=` 接上。部署步驟見 `mcp/README.md`
-  ——**還沒部署**，要去 Cloudflare Dashboard 走一次（約 5 分鐘）
+- [x] **MCP Server 已完成並上線（2026-07-18）**：`mcp/` 目錄，獨立 Worker
+  `medapi-mcp`，10 個唯讀工具跨三來源（wiki 3 個、隨身記 3 個、參展
+  系統 4 個——含 `search_exhibitor_files` 搜附件逐字稿/OCR 全文）。
+  共綁兩個既有 D1（只下 SELECT）、wiki 與展商主檔走 Service Binding。
+  自有 `MCP_PIN` 驗證（fail-closed），claude.ai 自訂連接器已接通實測
 - [ ] **隨身記的 Notion 同步是半成品**：`notion_page_id` 等欄位跟
   `parseNotionPageId()` 已經寫好，但沒有任何 API 路徑真的呼叫它，
   現在還是人工把 AI 彙整完的報告貼進 Notion——要嘛補完自動同步，
