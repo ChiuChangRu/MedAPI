@@ -189,6 +189,7 @@ async function openEntry(id) {
       <button class="btn small capture-btn" id="e-photo">📷 拍照</button>
       <button class="btn small capture-btn" id="e-audio">🎙 錄音</button>
       <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
+      <button class="btn small" id="e-process" type="button" title="還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取">🪄 一鍵整理</button>
       <span id="e-upload-status" class="sub"></span>
     </div>
     <div id="e-attachments" class="att-list">${e.attachments.map(attHtml).join("") || `<p class="sub">尚無附件</p>`}</div>
@@ -220,7 +221,43 @@ async function openEntry(id) {
   $("e-audio").onclick = () => { closeEntry(); startAudio(id); };
   const fileInput = $("e-file");
   fileInput.onchange = () => uploadFiles(id, fileInput);
+  const processBtn = $("e-process");
+  if (processBtn) processBtn.onclick = () => processEntryAttachments(id, processBtn);
   bindAttActions(id);
+}
+
+// 🪄 一鍵整理：這筆紀錄還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取。
+// 先錄音後照片——照片的【對話關聯】需要逐字稿先就位。失敗跳過，可個別重試。
+async function processEntryAttachments(id, btn) {
+  if (!TRANSCRIBE_ENABLED) { showToast("尚未啟用 AI 功能"); return; }
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const e = await api(`/entries/${id}`);
+    const audioTodo = (e.attachments || []).filter((a) => a.kind === "audio" && !a.transcript);
+    const photoTodo = (e.attachments || []).filter((a) => a.kind === "photo" && !a.ocr_text);
+    const total = audioTodo.length + photoTodo.length;
+    if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
+    let done = 0;
+    let failed = 0;
+    for (const a of audioTodo) {
+      btn.textContent = `🪄 ${++done}/${total}`;
+      try { await api(`/attachments/${a.id}/transcribe`, { method: "POST", body: "{}" }); }
+      catch { failed++; }
+    }
+    for (const a of photoTodo) {
+      btn.textContent = `🪄 ${++done}/${total}`;
+      try { await api(`/attachments/${a.id}/ocr`, { method: "POST", body: "{}" }); }
+      catch { failed++; }
+    }
+    showToast(failed ? `整理完成，${failed} 筆失敗（可個別重試）` : `整理完成：${total} 筆`);
+    openEntry(id);
+  } catch (err) {
+    showToast("整理失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🪄 一鍵整理";
+  }
 }
 
 function closeEntry() { $("entry-overlay").classList.remove("open"); }
@@ -234,11 +271,16 @@ function attHtml(a) {
   const transcribeBit = a.kind === "audio" && TRANSCRIBE_ENABLED
     ? (a.transcript ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>` : `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a>`)
     : "";
-  return `<div class="att-item">
+  const ocrBit = a.kind === "photo" && TRANSCRIBE_ENABLED
+    ? (a.ocr_text
+      ? `<p class="att-transcript">🔍 ${esc(a.ocr_text)} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a></p>`
+      : `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a>`)
+    : "";
+  return `<div class="att-item" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
       <a href="#" class="att-delete" data-id="${a.id}">刪除</a>
     </div>
-    ${preview}${transcribeBit}
+    ${preview}${ocrBit}${transcribeBit}
   </div>`;
 }
 
@@ -261,6 +303,28 @@ function bindAttActions(entryId) {
         await api(`/attachments/${el.dataset.id}`, { method: "DELETE" });
         openEntry(entryId);
       } catch (e) { showToast("刪除失敗：" + e.message); }
+    };
+  });
+  document.querySelectorAll(".att-ocr").forEach((el) => {
+    el.onclick = async (ev) => {
+      ev.preventDefault();
+      el.textContent = "擷取中…（約 10–20 秒）";
+      try {
+        await api(`/attachments/${el.dataset.id}/ocr`, { method: "POST", body: "{}" });
+        openEntry(entryId);
+      } catch (e) { el.textContent = "🔍 擷取失敗，點我重試"; showToast(e.message); }
+    };
+  });
+  document.querySelectorAll(".att-ocr-edit").forEach((el) => {
+    el.onclick = async (ev) => {
+      ev.preventDefault();
+      const current = el.closest(".att-item").dataset.ocr || "";
+      const edited = prompt("修改擷取文字（AI 抄錯的地方直接改成正確內容）：", current);
+      if (edited === null) return;
+      try {
+        await api(`/attachments/${el.dataset.id}`, { method: "PUT", body: JSON.stringify({ ocr_text: edited.trim() }) });
+        openEntry(entryId);
+      } catch (e) { showToast("儲存失敗：" + e.message); }
     };
   });
 }

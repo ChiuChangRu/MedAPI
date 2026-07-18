@@ -13,6 +13,8 @@
  * FIELD_PIN 未設定時一律拒絕（fail-closed）。raw data 只增不刪。
  */
 
+import { extractImageText, judgeRelation } from "./imageSkill.js";
+
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,10 +57,21 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
 ];
 
+// 舊表補欄位用（D1 沒有 ADD COLUMN IF NOT EXISTS，欄位已存在時失敗直接忽略即可）
+const MIGRATIONS = [
+  `ALTER TABLE folders ADD COLUMN notion_page_id TEXT DEFAULT ''`,
+  `ALTER TABLE folders ADD COLUMN notion_last_entry_id INTEGER DEFAULT 0`,
+  `ALTER TABLE folders ADD COLUMN notion_synced_at TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN ocr_text TEXT DEFAULT ''`,
+];
+
 let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
+  for (const sql of MIGRATIONS) {
+    await db.prepare(sql).run().catch(() => {});
+  }
   schemaReady = true;
 }
 
@@ -86,6 +99,16 @@ async function logHistory(db, entryId, folderId, action, detail) {
 
 function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// 貼上的 Notion 頁面網址 → 32 碼 page ID（補回標準 UUID 格式的連字號）
+function parseNotionPageId(input) {
+  const raw = (input || "").trim();
+  if (!raw) return "";
+  const hex = raw.replace(/[^a-f0-9]/gi, "");
+  const id32 = hex.slice(-32);
+  if (id32.length !== 32) return "";
+  return `${id32.slice(0, 8)}-${id32.slice(8, 12)}-${id32.slice(12, 16)}-${id32.slice(16, 20)}-${id32.slice(20)}`;
 }
 
 async function handleApi(request, env, url) {
@@ -239,6 +262,12 @@ async function handleApi(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到附件", 404);
+    if (body.ocr_text !== undefined) {
+      const ocrText = (body.ocr_text || "").trim();
+      await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(ocrText, id).run();
+      await logHistory(db, old.entry_id, null, "編輯擷取文字", `${old.filename}：「${ocrText.slice(0, 80)}」`);
+      return json({ ok: true });
+    }
     const category = (body.category !== undefined ? body.category : old.category) || "";
     await db.prepare("UPDATE attachments SET category = ? WHERE id = ?").bind(category.trim(), id).run();
     return json({ ok: true });
@@ -271,6 +300,45 @@ async function handleApi(request, env, url) {
     await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(text, id).run();
     await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60)}`);
     return json({ text });
+  }
+
+  // ---- 照片擷取文字（影像 skill，與 Medtec 共用同一份模組）----
+  // 同一筆紀錄（entry）就是一段採集經驗：照片的 offset_secs 落在哪一段錄音
+  // 的範圍，就拿那段的逐字稿判斷「拍這張時在講什麼」，附上關聯句
+  const ocrMatch = path.match(/^\/attachments\/(\d+)\/ocr$/);
+  if (ocrMatch && method === "POST") {
+    if (!env.AI || !env.FILES) return bad("尚未啟用圖片擷取文字（需 Workers AI 與 R2）", 501);
+    const id = Number(ocrMatch[1]);
+    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到附件", 404);
+    if (old.kind !== "photo") return bad("只有照片可以擷取文字");
+    const obj = await env.FILES.get(old.key);
+    if (!obj) return bad("找不到檔案內容", 404);
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+    const r = await extractImageText(env.AI, bytes);
+    if (!r.ok) return bad(r.error, 502);
+    let text = r.text;
+    if (old.offset_secs !== null && old.offset_secs !== undefined) {
+      // 找同一筆紀錄裡「起始秒數 ≤ 照片秒數」最近的那段錄音（分段錄音的起點都記在 offset_secs）
+      const { results: siblings } = await db
+        .prepare("SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND offset_secs IS NOT NULL ORDER BY offset_secs ASC")
+        .bind(old.entry_id)
+        .all();
+      let seg = null;
+      for (const a of siblings) {
+        if (a.offset_secs <= old.offset_secs) seg = a;
+      }
+      const transcript = seg ? (seg.transcript || "").trim() : "";
+      if (transcript) {
+        const relation = await judgeRelation(env.AI, transcript, text);
+        if (relation && !relation.includes("看不出明顯關聯")) {
+          text += `\n\n【對話關聯】${relation}（錄音 ${fmtSecs(old.offset_secs)} 時拍攝）`;
+        }
+      }
+    }
+    await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(text, id).run();
+    await logHistory(db, old.entry_id, null, "照片擷取文字", `${old.filename}：${text.slice(0, 60)}`);
+    return json({ ocr_text: text });
   }
 
   // ---- 匯出：整個資料夾 → Markdown 原料包（給 AI 彙整用）----
@@ -314,6 +382,7 @@ async function handleApi(request, env, url) {
         for (const a of photos) {
           const when = a.offset_secs !== null ? `錄音 ${fmtSecs(a.offset_secs)} 時拍攝` : a.created_at;
           lines.push(`- ${a.filename}｜${when}${a.category ? `｜分類：${a.category}` : ""}`);
+          if (a.ocr_text) lines.push(`  - 照片內文字（AI 擷取）：${a.ocr_text.replace(/\n+/g, " ／ ")}`);
         }
       }
       if (files.length) {
