@@ -185,7 +185,7 @@ async function deletePendingFile(tmpId) {
   await refreshPendingFileCount();
 }
 
-function pendingFileEntry(exhibitorId, file, filename) {
+function pendingFileEntry(exhibitorId, file, filename, meta) {
   return {
     tmp_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     exhibitor_id: exhibitorId,
@@ -194,6 +194,7 @@ function pendingFileEntry(exhibitorId, file, filename) {
     mime: file.type || "application/octet-stream",
     size: file.size,
     blob: file,
+    meta: meta || null, // 採集 session 資訊（sessionId/offsetSecs/durationSecs），補傳時要一併帶上
     created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
   };
 }
@@ -255,7 +256,7 @@ async function syncPending() {
     let pendingFiles = await getPendingFiles();
     while (pendingFiles.length) {
       const f = pendingFiles[0];
-      await putFile(f.exhibitor_id, f.blob, f.filename);
+      await putFile(f.exhibitor_id, f.blob, f.filename, f.meta);
       await deletePendingFile(f.tmp_id);
       synced++;
       pendingFiles = await getPendingFiles();
@@ -1500,6 +1501,7 @@ async function openDetail(id) {
         <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音<small>純錄音</small></button>
         <button class="btn small photo-btn" id="d-photo-btn" type="button">📷 連續拍照</button>
         <label class="btn small upload-btn">📁 上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
+        <button class="btn small ghost" id="d-att-process" type="button" title="一鍵把這家展商還沒處理的錄音全部轉文字、照片全部擷取文字（結果照樣可編輯）">🪄 一鍵整理</button>
         <button class="btn small ghost" id="d-att-reorganize" type="button" title="剛剛分類的照片還沒歸位時，點這個立刻重新整理">🗂 整理歸檔</button>
         <span id="d-upload-status" class="sub"></span>
       </div>
@@ -1587,6 +1589,8 @@ async function openDetail(id) {
   if (photoBtn) photoBtn.onclick = () => startPhotoBurst(id);
   const reorganizeBtn = $("d-att-reorganize");
   if (reorganizeBtn) reorganizeBtn.onclick = () => loadAttachments(id);
+  const processBtn = $("d-att-process");
+  if (processBtn) processBtn.onclick = () => processAllAttachments(id, processBtn);
 
   loadNotes(id);
   loadAttachments(id);
@@ -1804,16 +1808,56 @@ function fileUrl(key) {
   return `/api/file/${encodeURIComponent(key)}?pin=${encodeURIComponent(pin())}`;
 }
 
-async function putFile(id, file, filename) {
+// 🪄 一鍵整理：這家展商還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取。
+// 順序刻意先錄音後照片——照片的【對話關聯】需要逐字稿先就位才判得出來。
+// 逐筆處理、失敗跳過（可事後個別重試），人在迴圈的原則不變：結果照樣可編輯。
+async function processAllAttachments(id, btn) {
+  if (!TRANSCRIBE_ENABLED) { showToast("尚未啟用 AI 功能（需 Workers AI 與 R2）"); return; }
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const atts = await api(`/attachments?exhibitor_id=${id}`);
+    const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript);
+    const imgTodo = atts.filter((a) => (a.mime || "").startsWith("image/") && !a.ocr_text);
+    const total = audioTodo.length + imgTodo.length;
+    if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
+    let done = 0;
+    let failed = 0;
+    for (const a of audioTodo) {
+      btn.textContent = `🪄 整理中 ${++done}/${total}`;
+      try { await api(`/attachments/${a.id}/transcribe`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
+      catch { failed++; }
+    }
+    for (const a of imgTodo) {
+      btn.textContent = `🪄 整理中 ${++done}/${total}`;
+      try { await api(`/attachments/${a.id}/ocr`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
+      catch { failed++; }
+    }
+    showToast(failed ? `整理完成，${failed} 筆失敗（可到個別附件重試）` : `整理完成：${total} 筆`);
+    loadAttachments(id); loadHistory(id); loadSearchTexts();
+  } catch (err) {
+    showToast("整理失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🪄 一鍵整理";
+  }
+}
+
+async function putFile(id, file, filename, meta) {
+  const headers = {
+    "content-type": file.type || "application/octet-stream",
+    "x-team-pin": pin(),
+    "x-exhibitor-id": id,
+    "x-author": encodeURIComponent(me()),
+    "x-filename": encodeURIComponent(filename || file.name || "file"),
+  };
+  // 採集 session 資訊：照片/錄音段掛同一個 session，offset 是釘在錄音時間軸的秒數
+  if (meta && meta.sessionId) headers["x-session-id"] = String(meta.sessionId);
+  if (meta && meta.offsetSecs !== undefined && meta.offsetSecs !== null) headers["x-offset-secs"] = String(meta.offsetSecs);
+  if (meta && meta.durationSecs !== undefined && meta.durationSecs !== null) headers["x-duration-secs"] = String(meta.durationSecs);
   const res = await fetch("/api/upload", {
     method: "POST",
-    headers: {
-      "content-type": file.type || "application/octet-stream",
-      "x-team-pin": pin(),
-      "x-exhibitor-id": id,
-      "x-author": encodeURIComponent(me()),
-      "x-filename": encodeURIComponent(filename || file.name || "file"),
-    },
+    headers,
     body: file,
   });
   if (!res.ok) {
@@ -2034,7 +2078,8 @@ async function capturePhotoSnap() {
   if (!CAPTURE || !CAPTURE_PHOTO_STREAM) return;
   const video = $("capture-photo-video");
   if (!video.videoWidth) { showToast("相機還沒就緒，再等一下"); return; }
-  const offset = captureOffsetLabel();
+  const offsetSecs = Math.floor((Date.now() - CAPTURE.startedAt) / 1000);
+  const offset = fmtSecs(offsetSecs);
   const canvas = document.createElement("canvas");
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
@@ -2045,11 +2090,12 @@ async function capturePhotoSnap() {
   CAPTURE.photos++;
   $("capture-count").textContent = `📷 ${CAPTURE.photos}`;
   const { exhibitorId, session } = CAPTURE;
+  const meta = { sessionId: session, offsetSecs };
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
   const filename = `採集${session}-${offset.replace(":", "")}.jpg`;
   closeCapturePhotoPopup();
   try {
-    const uploaded = await putFile(exhibitorId, blob, filename);
+    const uploaded = await putFile(exhibitorId, blob, filename, meta);
     await api(`/attachments/${uploaded.id}`, {
       method: "PUT",
       body: JSON.stringify({ caption: `📸 錄音 ${offset} 時拍攝`, author: me() }),
@@ -2057,7 +2103,7 @@ async function capturePhotoSnap() {
   } catch (err) {
     // 網路不穩時照片先進手機離線佇列，連線後 syncPending 自動補傳
     try {
-      await addPendingFile(pendingFileEntry(exhibitorId, blob, filename));
+      await addPendingFile(pendingFileEntry(exhibitorId, blob, filename, meta));
       showToast("網路不穩，照片先存手機（待同步）");
     } catch {
       showToast("照片上傳失敗：" + err.message);
@@ -2103,11 +2149,12 @@ async function uploadSegment(exhibitorId, blob, session, segIndex, startOffset, 
   if (!blob.size) return;
   const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
   const filename = `採集錄音${session}-段${segIndex}.${ext}`;
-  const entry = pendingFileEntry(exhibitorId, blob, filename);
+  const meta = { sessionId: session, offsetSecs: startOffset, durationSecs: dur };
+  const entry = pendingFileEntry(exhibitorId, blob, filename, meta);
   let queued = false;
   try { await addPendingFile(entry); queued = true; } catch { /* IndexedDB 不可用時直接走上傳 */ }
   try {
-    const uploaded = await putFile(exhibitorId, blob, filename);
+    const uploaded = await putFile(exhibitorId, blob, filename, meta);
     await api(`/attachments/${uploaded.id}`, {
       method: "PUT",
       body: JSON.stringify({ caption: `🎙 採集第 ${segIndex} 段（${fmtSecs(startOffset)}–${fmtSecs(startOffset + dur)}）${extraCaption}`, author: me() }),

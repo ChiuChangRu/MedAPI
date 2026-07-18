@@ -82,6 +82,12 @@ const MIGRATIONS = [
   `ALTER TABLE attachments ADD COLUMN transcript TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN category TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN ocr_text TEXT DEFAULT ''`,
+  // 採集 session：一次採集＝一段經驗（照片與錄音段掛同一個 session_id，
+  // offset_secs＝釘在錄音時間軸的秒數，duration_secs＝錄音段長度）。
+  // 舊資料這些欄位是空的，比對邏輯會退回解析 caption 文字（相容不遷移）。
+  `ALTER TABLE attachments ADD COLUMN session_id TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN offset_secs INTEGER`,
+  `ALTER TABLE attachments ADD COLUMN duration_secs INTEGER`,
 ];
 
 let schemaReady = false;
@@ -265,18 +271,45 @@ function fmtSecsRange(s) {
 
 // 圖片 OCR／關聯判斷的實作都在 imageSkill.js（共用模組，隨身記之後也用同一份）
 
-// 採集模式的照片說明帶有「錄音 mm:ss 時拍攝」，錄音段說明帶有時間範圍——
-// 用這兩個標記找出「這張照片拍攝當下，對話講到哪一段」的逐字稿
+// 找出「這張照片拍攝當下，對話講到哪一段」的逐字稿。
+// 新資料：照片與錄音段掛同一個 session_id、offset_secs/duration_secs 是結構化欄位，直接比對。
+// 舊資料：時間資訊只寫在 caption 文字裡（「📸 錄音 mm:ss 時拍攝」），退回正規表達式解析。
 const CAPTURE_PHOTO_RE = /📸\s*錄音\s*(\d{2}):(\d{2})\s*時拍攝/;
 const CAPTURE_SEG_RE = /🎙\s*採集第\s*\d+\s*段（(\d{2}):(\d{2})[–-](\d{2}):(\d{2})）/;
 
-function findCaptureContext(allAttachments, photoCaption) {
+function findCaptureContext(allAttachments, photo) {
   const toSecs = (mm, ss) => Number(mm) * 60 + Number(ss);
-  const m = (photoCaption || "").match(CAPTURE_PHOTO_RE);
+  const isAudio = (a) => (a.mime || "").startsWith("audio/");
+
+  // 結構化路徑（新資料）
+  if (photo.session_id && photo.offset_secs !== null && photo.offset_secs !== undefined) {
+    const off = photo.offset_secs;
+    let best = null;
+    for (const a of allAttachments) {
+      if (!isAudio(a) || a.session_id !== photo.session_id) continue;
+      if (a.offset_secs === null || a.offset_secs === undefined || a.offset_secs > off) continue;
+      const end = a.duration_secs != null ? a.offset_secs + a.duration_secs : null;
+      if (end !== null && off > end) continue;
+      if (!best || a.offset_secs > best.offset_secs) best = a;
+    }
+    if (best) {
+      return {
+        offset: fmtSecsRange(off),
+        start: best.offset_secs,
+        end: best.duration_secs != null ? best.offset_secs + best.duration_secs : null,
+        segment: best,
+        transcript: (best.transcript || "").trim(),
+      };
+    }
+    return { offset: fmtSecsRange(off), start: null, end: null, segment: null, transcript: "" };
+  }
+
+  // caption 解析路徑（舊資料相容）
+  const m = (photo.caption || "").match(CAPTURE_PHOTO_RE);
   if (!m) return null;
   const offsetSec = toSecs(m[1], m[2]);
   for (const a of allAttachments) {
-    if (!(a.mime || "").startsWith("audio/")) continue;
+    if (!isAudio(a)) continue;
     const sm = (a.caption || "").match(CAPTURE_SEG_RE);
     if (!sm) continue;
     const start = toSecs(sm[1], sm[2]);
@@ -327,9 +360,14 @@ async function handleApi(request, env, url, ctx) {
     if (body.byteLength > 50 * 1024 * 1024) return bad("檔案過大（上限 50MB），長影片請縮短或改用相簿分享");
     const key = `${exhibitorId}/${Date.now()}-${filename.replace(/[^\w.\-一-鿿]+/g, "_")}`;
     await env.FILES.put(key, body, { httpMetadata: { contentType: mime } });
+    const sessionId = (request.headers.get("x-session-id") || "").trim();
+    const offsetRaw = request.headers.get("x-offset-secs");
+    const durationRaw = request.headers.get("x-duration-secs");
+    const offsetSecs = offsetRaw !== null && offsetRaw !== "" ? Number(offsetRaw) : null;
+    const durationSecs = durationRaw !== null && durationRaw !== "" ? Number(durationRaw) : null;
     const result = await db
-      .prepare("INSERT INTO attachments (exhibitor_id, author, filename, key, size, mime, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(exhibitorId, author, filename, key, body.byteLength, mime, now())
+      .prepare("INSERT INTO attachments (exhibitor_id, author, filename, key, size, mime, session_id, offset_secs, duration_secs, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(exhibitorId, author, filename, key, body.byteLength, mime, sessionId, offsetSecs, durationSecs, now())
       .run();
     await logHistory(db, exhibitorId, author, "上傳附件", `${filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
     return json({ id: result.meta.last_row_id, key, ok: true });
@@ -439,7 +477,7 @@ async function handleApi(request, env, url, ctx) {
     // 採集模式照片：找出拍攝當下的錄音逐字稿，讓照片跟現場對話主題掛勾
     const ctxInfo = findCaptureContext(
       (await db.prepare("SELECT * FROM attachments WHERE exhibitor_id = ? ORDER BY id ASC").bind(old.exhibitor_id).all()).results,
-      old.caption
+      old
     );
     if (ctxInfo && ctxInfo.transcript) {
       const relation = await judgeRelation(env.AI, ctxInfo.transcript, text);
@@ -863,12 +901,13 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
       .prepare("SELECT * FROM attachments WHERE exhibitor_id = ? ORDER BY id ASC")
       .bind(exhibitorId)
       .all();
-    const photos = all.filter((a) => (a.mime || "").startsWith("image/") && CAPTURE_PHOTO_RE.test(a.caption || ""));
+    const photos = all.filter((a) => (a.mime || "").startsWith("image/") &&
+      ((a.session_id && a.offset_secs !== null && a.offset_secs !== undefined) || CAPTURE_PHOTO_RE.test(a.caption || "")));
     if (!photos.length) return bad("這家展商沒有帶時間點的採集模式照片（要用「📸 採集模式」拍的才有時間戳）", 404);
     const limit = Number(url.searchParams.get("limit") || 3);
     const out = [];
     for (const p of photos.slice(0, limit)) {
-      const ctxInfo = findCaptureContext(all, p.caption);
+      const ctxInfo = findCaptureContext(all, p);
       const obj = await env.FILES.get(p.key);
       if (!obj) { out.push({ id: p.id, filename: p.filename, error: "找不到檔案本體" }); continue; }
       const bytes = new Uint8Array(await obj.arrayBuffer());
