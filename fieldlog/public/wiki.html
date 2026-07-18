@@ -65,6 +65,20 @@
 
   .loading { color: var(--text-muted); padding: 30px 0; text-align: center; }
 
+  /* 總攬儀表板 */
+  .dash-search {
+    width: 100%; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: 15px; font-family: inherit; margin: 4px 0 16px;
+  }
+  .dash-search:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .dash-tag {
+    display: inline-block; font-size: 12px; color: var(--accent-dark); background: #e6f4f1;
+    border-radius: 6px; padding: 1px 7px; margin-right: 6px; white-space: nowrap;
+  }
+  .dash-hit { margin: 6px 0; font-size: 14px; }
+  mark { background: #fde68a; border-radius: 3px; padding: 0 1px; }
+  .dash-count { color: var(--text-muted); font-size: 13px; font-weight: 400; }
+
   /* PIN 登入 */
   .overlay {
     position: fixed; inset: 0; background: rgba(20,24,23,.5); display: flex;
@@ -229,26 +243,105 @@
   }
 
   // ---- 導覽與載入 ----
-  function currentFile() {
+  // 總攬儀表板需要全部條目的內文（彙整更新/問題/搜尋），一次抓齊放記憶體
+  const cache = {};
+  async function loadAll() {
+    await Promise.all(pages.map(async (p) => {
+      if (cache[p.file] !== undefined) return;
+      cache[p.file] = await (await fetchWiki("/wiki/" + encodeURIComponent(p.file))).text();
+    }));
+  }
+  const pageTitle = (f) => (pages.find((p) => p.file === f) || { title: f }).title;
+
+  function currentKey() {
     const h = decodeURIComponent(location.hash.slice(1));
-    return pages.some((p) => p.file === h) ? h : "README.md";
+    return pages.some((p) => p.file === h) ? h : "home";
   }
   function renderNav() {
-    const file = currentFile();
-    let html = "", lastGroup = null;
+    const key = currentKey();
+    let html = `<a href="#home" class="${key === "home" ? "active" : ""}">🏠 總攬</a>`;
+    let lastGroup = null;
     for (const p of pages) {
       if (p.group !== lastGroup && p.group) { html += `<div class="group">${p.group}</div>`; lastGroup = p.group; }
-      html += `<a href="#${encodeURIComponent(p.file)}" class="${p.file === file ? "active" : ""}">${p.title}</a>`;
+      html += `<a href="#${encodeURIComponent(p.file)}" class="${p.file === key ? "active" : ""}">${p.title}</a>`;
     }
     $("nav").innerHTML = html;
   }
+
+  // ---- 總攬：最近更新（各條目更新日誌彙整）＋開放問題總表＋全文搜尋 ----
+  function collectUpdates() {
+    const out = [];
+    for (const p of pages) {
+      const tail = (cache[p.file] || "").split(/^##\s*更新日誌\s*$/m)[1];
+      if (!tail) continue;
+      for (const line of tail.split(/\r?\n/)) {
+        const m = line.match(/^\s*[-*]\s+(.*)/);
+        if (!m) continue;
+        const d = m[1].match(/^(\d{4}-\d{2}-\d{2})/);
+        out.push({ date: d ? d[1] : "", text: m[1], file: p.file });
+      }
+    }
+    return out.sort((a, b) => b.date.localeCompare(a.date));
+  }
+  function collectQuestions() {
+    const out = [];
+    for (const p of pages)
+      for (const line of (cache[p.file] || "").split(/\r?\n/)) {
+        const m = line.match(/^\s*[-*]\s+\[ \]\s+(.*)/);
+        if (m) out.push({ text: m[1], file: p.file });
+      }
+    return out;
+  }
+  function pageLink(f) {
+    return `<a class="dash-tag" href="#${encodeURIComponent(f)}">${pageTitle(f)}</a>`;
+  }
+  function renderDashboard() {
+    const qs = collectQuestions();
+    const ups = collectUpdates().slice(0, 10);
+    $("content").innerHTML = `
+      <h1>🗺 策略地圖 總攬</h1>
+      <input class="dash-search" id="dash-search" type="search" placeholder="🔍 搜尋全部條目（例：Parylene、電漿、ISO 10993）" />
+      <div id="dash-results" style="display:none;"></div>
+      <div id="dash-static">
+        <h2>❓ 開放問題總表 <span class="dash-count">（${qs.length} 題——下次逛展/讀文獻/做實驗優先解這些）</span></h2>
+        <ul>${qs.map((q) => `<li class="todo">☐ ${pageLink(q.file)}${inline(q.text)}</li>`).join("") || "<li>（目前沒有未解問題）</li>"}</ul>
+        <h2>🔥 最近更新 <span class="dash-count">（各條目更新日誌彙整）</span></h2>
+        <ul>${ups.map((u) => `<li>${pageLink(u.file)}${inline(u.text)}</li>`).join("") || "<li>（尚無更新紀錄）</li>"}</ul>
+      </div>`;
+    $("dash-search").addEventListener("input", (e) => runSearch(e.target.value.trim()));
+  }
+  function runSearch(q) {
+    const box = $("dash-results"), statics = $("dash-static");
+    if (!q) { box.style.display = "none"; statics.style.display = ""; return; }
+    const ql = q.toLowerCase();
+    const hits = [];
+    for (const p of pages) {
+      for (const line of (cache[p.file] || "").split(/\r?\n/)) {
+        const t = line.trim().replace(/^#+\s*/, "").replace(/^[-*]\s*/, "");
+        if (t && t.toLowerCase().includes(ql)) hits.push({ file: p.file, text: t });
+        if (hits.length >= 40) break;
+      }
+      if (hits.length >= 40) break;
+    }
+    const mark = (s) => inline(s).replace(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), (m) => `<mark>${m}</mark>`);
+    box.innerHTML = `<h2>搜尋「${esc(q)}」 <span class="dash-count">（${hits.length} 筆${hits.length >= 40 ? "，僅列前 40" : ""}）</span></h2>` +
+      (hits.map((h) => `<div class="dash-hit">${pageLink(h.file)}${mark(h.text)}</div>`).join("") || '<div class="loading">沒有結果</div>');
+    box.style.display = ""; statics.style.display = "none";
+  }
+
   async function renderPage() {
-    const file = currentFile();
+    const key = currentKey();
     renderNav();
     $("content").innerHTML = '<div class="loading">載入中…</div>';
     try {
-      const md = await (await fetchWiki("/wiki/" + encodeURIComponent(file))).text();
-      $("content").innerHTML = mdToHtml(md);
+      if (key === "home") {
+        await loadAll();
+        renderDashboard();
+      } else {
+        cache[key] = cache[key] !== undefined ? cache[key]
+          : await (await fetchWiki("/wiki/" + encodeURIComponent(key))).text();
+        $("content").innerHTML = mdToHtml(cache[key]);
+      }
       window.scrollTo(0, 0);
     } catch (e) {
       if (e.message !== "unauthorized")
