@@ -105,12 +105,25 @@ function entryRowHtml(e) {
   return `<div class="entry-row" data-id="${e.id}">
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
     <span class="entry-meta">${esc(e.created_at.slice(5, 16))}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
+    <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄">🗑</button>
   </div>`;
 }
 
 function bindEntryRows(wrap) {
   wrap.querySelectorAll(".entry-row").forEach((el) => {
     el.onclick = () => openEntry(Number(el.dataset.id));
+  });
+  wrap.querySelectorAll(".entry-del").forEach((btn) => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation(); // 不要連帶觸發外層 .entry-row 的開啟
+      const id = Number(btn.dataset.id);
+      if (!confirm("確定刪除這筆紀錄？裡面的附件也會一起刪除，無法復原。")) return;
+      try {
+        await api(`/entries/${id}`, { method: "DELETE" });
+        showToast("已刪除");
+        if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadInbox(); loadFolders(); }
+      } catch (err) { showToast("刪除失敗：" + err.message); }
+    };
   });
 }
 
