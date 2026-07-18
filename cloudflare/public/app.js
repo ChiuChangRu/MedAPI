@@ -341,6 +341,21 @@ function renderTripBanner() {
   }
 }
 
+// 今日 AI 用量提醒：隨身記與本系統共用同一份 Cloudflare Workers AI 免費額度
+// （約 10,000 Neurons/天），這裡只加總兩邊「轉文字／擷取文字」的呼叫次數，
+// 是粗略參考值不是精確 Neurons 用量，純粹讓人有感、避免當天不知不覺按到超額。
+async function renderAiUsageBanner() {
+  const el = $("ai-usage-banner");
+  if (!el || !API_OK || OFFLINE) { if (el) el.style.display = "none"; return; }
+  try {
+    const usage = await api("/ai-usage");
+    el.textContent = `🪄 今日 AI 已處理 ${usage.total} 筆（本系統 ${usage.medtec}・隨身記 ${usage.fieldlog}）｜免費額度約 10,000 Neurons/天，供參考`;
+    el.style.display = "block";
+  } catch {
+    el.style.display = "none"; // 查不到就默默隱藏，不影響其他功能
+  }
+}
+
 function updateOfflineModeUI() {
   const btn = $("btn-offline-toggle");
   updateModeLight();
@@ -592,6 +607,9 @@ async function init() {
   } else {
     await connectBackend();
   }
+
+  renderAiUsageBanner();
+  setInterval(renderAiUsageBanner, 5 * 60 * 1000);
 
   // 分享連結：網址帶 ?ex=展商id 時，開頁直接跳到那家廠商的詳情頁
   const sharedId = new URLSearchParams(location.search).get("ex");
@@ -1503,6 +1521,7 @@ async function openDetail(id) {
         <label class="btn small upload-btn">📁 上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
         <button class="btn small ghost" id="d-att-process" type="button" title="一鍵把這家展商還沒處理的錄音全部轉文字、照片全部擷取文字（結果照樣可編輯）">🪄 一鍵整理</button>
         <button class="btn small ghost" id="d-att-reorganize" type="button" title="剛剛分類的照片還沒歸位時，點這個立刻重新整理">🗂 整理歸檔</button>
+        <span id="d-att-pending" class="sub"></span>
         <span id="d-upload-status" class="sub"></span>
       </div>
       <p class="sub">採集模式＝不開鏡頭，錄音在背景跑，浮動列可隨時拍照（拍照時才臨時開鏡頭，拍完立刻關閉，錄音不中斷），每張照片自動標上「錄音第幾分幾秒拍的」；錄音每 10 分鐘自動分段上傳，段落即傳即安全。連續拍照＝不錄音，鏡頭持續開著，拍完一張直接拍下一張，不用重新點選。</p>` : `<p class="sub">檔案上傳尚未啟用（需先在 Cloudflare 建立 R2 bucket，設定方式見 cloudflare/README.md）。</p>`}
@@ -2254,6 +2273,20 @@ function finishPhotoBurst() {
   if (CURRENT_ID === exhibitorId) { loadAttachments(exhibitorId); loadHistory(exhibitorId); }
 }
 
+// 一鍵整理按下去之前先讓人看得到「還有沒有東西可整理」，不用猜、不用白按一次
+// 去確認（浪費一次 API 來回，也讓人誤以為每次按都會真的重新跑 AI）
+function updatePendingBadge(atts) {
+  const el = $("d-att-pending");
+  if (!el) return;
+  if (!TRANSCRIBE_ENABLED) { el.textContent = ""; return; }
+  const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript).length;
+  const imgTodo = atts.filter((a) => (a.mime || "").startsWith("image/") && !a.ocr_text).length;
+  const pending = audioTodo + imgTodo;
+  el.textContent = pending ? `⏳ ${pending} 筆待整理` : atts.length ? "✓ 已全部整理" : "";
+  const btn = $("d-att-process");
+  if (btn) btn.disabled = !pending;
+}
+
 async function loadAttachments(id) {
   const wrap = $("d-attachments");
   if (!wrap) return;
@@ -2264,6 +2297,7 @@ async function loadAttachments(id) {
     const countEl = $("d-att-count");
     const total = atts.length + pendingFiles.length;
     if (countEl) countEl.textContent = total ? `（${total}）` : "";
+    updatePendingBadge(atts);
     if (!atts.length) { wrap.innerHTML = pendingHtml; return; }
     const renderAttNote = (a) => {
       const url = fileUrl(a.key);
@@ -2429,6 +2463,7 @@ async function loadAttachments(id) {
     // 沒網路：至少把存在手機的待同步照片/錄音顯示出來，不是空白一片
     const countEl = $("d-att-count");
     if (countEl) countEl.textContent = pendingFiles.length ? `（${pendingFiles.length}）` : "";
+    updatePendingBadge([]);
     wrap.innerHTML = pendingHtml;
   }
 }

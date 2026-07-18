@@ -676,6 +676,30 @@ async function handleApi(request, env, url, ctx) {
     return json(results);
   }
 
+  // ---- 今日 AI 用量（供首頁提醒，避免浪費 Workers AI 免費額度）----
+  // fieldlog 與本系統共用同一個 Cloudflare 帳號的 Workers AI 每日額度，
+  // 所以這裡把兩邊「轉文字／擷取文字」的呼叫次數加總，只是次數不是真正的
+  // Neurons 用量（不同模型耗用不同，這裡只求一個粗略、免額外設定的參考值）
+  if (path === "/ai-usage" && method === "GET") {
+    const todayPrefix = now().slice(0, 10); // YYYY-MM-DD（UTC）
+    const AI_ACTIONS = "('錄音轉文字','照片擷取文字')";
+    const { results: mine } = await db
+      .prepare(`SELECT COUNT(*) AS c FROM history WHERE action IN ${AI_ACTIONS} AND created_at LIKE ?`)
+      .bind(`${todayPrefix}%`)
+      .all();
+    let fieldlogCount = 0;
+    if (env.DB_FIELDLOG) {
+      try {
+        const { results: theirs } = await env.DB_FIELDLOG
+          .prepare(`SELECT COUNT(*) AS c FROM history WHERE action IN ${AI_ACTIONS} AND created_at LIKE ?`)
+          .bind(`${todayPrefix}%`)
+          .all();
+        fieldlogCount = theirs[0]?.c || 0;
+      } catch { /* fieldlog 那邊 history 表還沒建立時忽略，不影響本系統自己的數字 */ }
+    }
+    return json({ today: todayPrefix, medtec: mine[0]?.c || 0, fieldlog: fieldlogCount, total: (mine[0]?.c || 0) + fieldlogCount });
+  }
+
   // ---- 個人參訪報告（HTML，可直接列印存 PDF）----
   if (path === "/report" && method === "GET") {
     const author = (url.searchParams.get("author") || "").trim();

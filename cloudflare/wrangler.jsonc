@@ -18,6 +18,12 @@
       "binding": "DB",
       "database_name": "medtec-2026",
       "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
+    },
+    {
+      // 唯讀共綁，只給「今日 AI 用量」加總用（兩邊共用同一份 Workers AI 免費額度）
+      "binding": "DB_FIELDLOG",
+      "database_name": "fieldlog",
+      "database_id": "41483c93-9398-4be6-a670-a3120c880781"
     }
   ]
   ,"r2_buckets": [
