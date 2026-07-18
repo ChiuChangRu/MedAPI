@@ -350,11 +350,12 @@ async function renderAiUsageBanner() {
   try {
     const usage = await api("/ai-usage");
     // 2026-07-18 實測校準：約 200 次轉文字/OCR ≈ 10,000 Neurons（一次平均 ~50），
-    // 所以 150 次（約 75%）當警示線——只是粗估，精確數字看 Cloudflare Dashboard → AI
+    // 150 次（約 75%）起提示「開始進入計費區」——帳號已升級 Workers Paid，
+    // 超過免費額度不會失敗，只是按 $0.011/千 Neurons 計費（先扣月費內含的 $5）
     const nearLimit = usage.total >= 150;
     el.textContent = nearLimit
-      ? `⚠️ 今日 AI 已處理 ${usage.total} 筆（本系統 ${usage.medtec}・隨身記 ${usage.fieldlog}）——接近每日免費額度，超過會開始失敗，額度台北時間早上 8 點重置`
-      : `🪄 今日 AI 已處理 ${usage.total} 筆（本系統 ${usage.medtec}・隨身記 ${usage.fieldlog}）｜免費額度約 10,000 Neurons/天，供參考`;
+      ? `💰 今日 AI 已處理 ${usage.total} 筆（本系統 ${usage.medtec}・隨身記 ${usage.fieldlog}）——已超過每日免費額度，超出部分依用量計費（很便宜，先扣月費內含 $5），免費額度台北早上 8 點重置`
+      : `🪄 今日 AI 已處理 ${usage.total} 筆（本系統 ${usage.medtec}・隨身記 ${usage.fieldlog}）｜每日前 10,000 Neurons 免費，供參考`;
     el.classList.toggle("warn", nearLimit);
     el.style.display = "block";
   } catch {
