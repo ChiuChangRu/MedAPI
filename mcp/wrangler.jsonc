@@ -5,6 +5,13 @@
   // 直接共綁兩個既有 D1（D1 允許多個 Worker 綁同一庫）——
   // database_id 與 fieldlog/wrangler.jsonc、cloudflare/wrangler.jsonc 相同，
   // 若那兩邊換庫，這裡要跟著改。
+  //
+  // wiki／展商主檔改用 Service Binding（services），不再用 fetch() 打
+  // FIELDLOG_URL／MEDTEC_URL 這兩個 *.workers.dev 網址——Cloudflare 不允許
+  // 一個 Worker 用一般 fetch() 打同帳號下另一個 workers.dev Worker（會拿到
+  // 404），Service Binding 是官方的 Worker 對 Worker 呼叫方式，直接呼叫對方
+  // 程式碼、不經對外網路。"service" 要填對方 Worker 的實際名稱
+  // （= 對方 wrangler.jsonc 的 "name"）。
   "name": "medapi-mcp",
   "main": "src/worker.js",
   "compatibility_date": "2026-07-01",
@@ -19,5 +26,9 @@
       "database_name": "medtec-2026",
       "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
     }
+  ],
+  "services": [
+    { "binding": "FIELDLOG", "service": "fieldlog" },
+    { "binding": "MEDTEC", "service": "medtec-2026" }
   ]
 }

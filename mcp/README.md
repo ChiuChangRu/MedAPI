@@ -5,28 +5,37 @@
 
 | 工具 | 查什麼 | 資料來源 |
 |---|---|---|
-| `list_wiki_pages`／`read_wiki_page`／`search_wiki` | 策略地圖 Wiki 條目 | fieldlog Worker 的 `/wiki/*`（PIN 通道，runtime 抓取） |
+| `list_wiki_pages`／`read_wiki_page`／`search_wiki` | 策略地圖 Wiki 條目 | fieldlog Worker 的 `/wiki/*`（Service Binding＋PIN） |
 | `list_fieldlog_folders`／`search_fieldlog`／`get_fieldlog_entry` | 隨身記紀錄、逐字稿、照片文字 | fieldlog D1（共綁，只下 SELECT） |
-| `search_exhibitors`／`get_exhibitor`／`search_visit_notes` | 展商名單＋團隊拜訪共筆 | medtec-2026 D1（共綁）＋公開的 `exhibitors.json` |
+| `search_exhibitors`／`get_exhibitor`／`search_visit_notes` | 展商名單＋團隊拜訪共筆 | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
 
 **鐵律：全部唯讀。** 程式碼裡只有 SELECT 與 fetch——不寫入、不刪除，
 所以三個系統的前台怎麼改版都不受影響；只有**資料表結構**變動時才需要
 回頭同步這裡的查詢。
 
+**為什麼是 Service Binding，不是直接 fetch 網址：** 一開始版本是用
+`FIELDLOG_URL`／`MEDTEC_URL` 兩個環境變數存對方的 `*.workers.dev` 網址，
+runtime 直接 `fetch()`。實測發現 Cloudflare **不允許一個 Worker 用一般
+fetch() 打同帳號下另一個 workers.dev Worker**（會拿到 404，即使那個
+網址從瀏覽器打完全正常）。改用 `wrangler.jsonc` 的 `services` binding
+後，直接呼叫對方 Worker 的程式碼、不經對外網路，這是 Cloudflare 官方
+推薦的 Worker 對 Worker 溝通方式，也因此不再需要 `FIELDLOG_URL`／
+`MEDTEC_URL` 這兩個變數。
+
 ## 部署步驟（約 5 分鐘）
 
 1. **建 Worker**：Cloudflare Dashboard → Workers → Create →
-   Continue with GitHub → 選這個 repo 與分支，**Root directory 填 `mcp`**，
-   Deploy command 用預設 `npx wrangler deploy`
-   （D1 不用另外建：`wrangler.jsonc` 直接共綁 fieldlog 與 medtec-2026
-   既有的兩個資料庫；那兩邊若換庫，記得回來改 `database_id`）
+   Continue with GitHub → 選這個 repo 與分支，這個簡化流程沒有獨立的
+   「Root directory」欄位，把 **Deploy command** 改成
+   `npx wrangler deploy --config mcp/wrangler.jsonc`（Build command 留空）
+   （D1 跟 Service Binding 都不用另外建：`wrangler.jsonc` 直接共綁
+   fieldlog 與 medtec-2026 既有的資料庫與 Worker 服務；那兩邊若改名或
+   換庫，記得回來改這裡的 `database_id`／`service`）
 2. **設變數**：Worker 建好後 Settings → Variables and Secrets 新增：
    | 名稱 | 類型 | 值 |
    |---|---|---|
    | `MCP_PIN` | Secret | 這個端點自己的通行碼（自己取，別跟其他 PIN 共用） |
-   | `FIELDLOG_URL` | Variable | `https://fieldlog.<帳號>.workers.dev` |
    | `FIELD_PIN` | Secret | 與 fieldlog Worker 的 `FIELD_PIN` 同值（讀 wiki 用） |
-   | `MEDTEC_URL` | Variable | `https://medtec-2026.<帳號>.workers.dev` |
 3. **驗證**：瀏覽器開 `https://medapi-mcp.<帳號>.workers.dev/` 看到
    「medapi-mcp OK」即部署成功
 
@@ -61,10 +70,10 @@ claude.ai / Claude Code
         ▼
    medapi-mcp（本 Worker，唯讀）
         │
-        ├── fetch → fieldlog /wiki/*（PIN）      … Wiki 條目
-        ├── D1 共綁 → fieldlog DB（SELECT）      … 隨身記紀錄/逐字稿/OCR
-        ├── D1 共綁 → medtec-2026 DB（SELECT）   … 拜訪狀態/紀錄/附件清單
-        └── fetch → medtec /data/exhibitors.json … 展商主檔（公開資產）
+        ├── Service Binding → fieldlog /wiki/*（PIN）      … Wiki 條目
+        ├── D1 共綁 → fieldlog DB（SELECT）                … 隨身記紀錄/逐字稿/OCR
+        ├── D1 共綁 → medtec-2026 DB（SELECT）             … 拜訪狀態/紀錄/附件清單
+        └── Service Binding → medtec /data/exhibitors.json … 展商主檔
 ```
 
 LitDB 建好之後，在這裡加一組 `search_litdb` 工具就能併入同一個窗口，

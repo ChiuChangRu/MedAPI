@@ -84,33 +84,31 @@ function capLimit(args, dflt = 10, max = 30) {
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : dflt;
 }
 
-// ---------- Wiki（runtime 走 fieldlog 的 PIN 通道）----------
+// ---------- Wiki（Service Binding 呼叫 fieldlog，走它的 PIN 通道）----------
 
 function wikiFetch(env, file) {
-  const base = (env.FIELDLOG_URL || "").trim().replace(/\/+$/, "");
-  if (!base) throw new Error("尚未設定 FIELDLOG_URL（見 mcp/README.md）");
-  const u = new URL(`${base}/wiki/${encodeURIComponent(file)}`);
+  if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+  const u = new URL(`https://fieldlog.internal/wiki/${encodeURIComponent(file)}`);
   u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
-  return fetch(u.toString());
+  return env.FIELDLOG.fetch(u.toString());
 }
 
 async function wikiPages(env) {
   const res = await wikiFetch(env, "pages.json");
-  if (!res.ok) throw new Error(`讀取 wiki 頁面清單失敗（HTTP ${res.status}）——檢查 FIELDLOG_URL 與 FIELD_PIN`);
+  if (!res.ok) throw new Error(`讀取 wiki 頁面清單失敗（HTTP ${res.status}）——檢查 FIELD_PIN 是否與 fieldlog 一致`);
   const data = await res.json();
   return data.pages || [];
 }
 
-// ---------- 展商主檔（runtime 抓公開靜態 JSON，記憶體快取 5 分鐘）----------
+// ---------- 展商主檔（Service Binding 呼叫 medtec，記憶體快取 5 分鐘）----------
 
 let EX_CACHE = { at: 0, data: null };
 
 async function exhibitorsData(env) {
   if (EX_CACHE.data && Date.now() - EX_CACHE.at < 5 * 60 * 1000) return EX_CACHE.data;
-  const base = (env.MEDTEC_URL || "").trim().replace(/\/+$/, "");
-  if (!base) throw new Error("尚未設定 MEDTEC_URL（見 mcp/README.md）");
-  const res = await fetch(`${base}/data/exhibitors.json`);
-  if (!res.ok) throw new Error(`讀取展商名單失敗（HTTP ${res.status}）——檢查 MEDTEC_URL`);
+  if (!env.MEDTEC) throw new Error("尚未設定 MEDTEC Service Binding（見 mcp/README.md）");
+  const res = await env.MEDTEC.fetch("https://medtec.internal/data/exhibitors.json");
+  if (!res.ok) throw new Error(`讀取展商名單失敗（HTTP ${res.status}）`);
   const data = await res.json();
   EX_CACHE = { at: Date.now(), data };
   return data;
