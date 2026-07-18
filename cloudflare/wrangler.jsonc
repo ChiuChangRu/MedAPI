@@ -1,0 +1,30 @@
+{
+  // Medtec China 2026 展商作戰地圖（邦特團隊版）
+  // 部署前唯一要改的：把下方 database_id 換成你自己 D1 資料庫的 UUID
+  "name": "medtec-2026",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  // 每天 UTC 12:00 = 台北/上海（UTC+8）晚上 8 點，推播當日指派＋拜訪成果摘要到 LINE
+  "triggers": {
+    "crons": ["0 12 * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "medtec-2026",
+      "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
+    }
+  ]
+  ,"r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "medtec-2026-files"
+    }
+  ]
+  ,"ai": { "binding": "AI" }
+}

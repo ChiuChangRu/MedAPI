@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+app/data/inquiries.db
+.venv/
+.wrangler/
+node_modules/
+.dev.vars

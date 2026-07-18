@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>2026 上海 Medtec 醫療器材展參展管理系統</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>" />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1d3557" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Medtec 2026" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <div class="header-row">
+      <div>
+        <h1 id="event-title">2026 上海 Medtec 醫療器材展參展管理系統</h1>
+        <p id="event-sub">載入中...</p>
+      </div>
+      <div class="header-actions">
+        <span class="mode-light" id="mode-light" title="連線狀態"><span class="light-dot"></span><span id="mode-light-text">連線中…</span></span>
+        <span class="save-indicator" id="save-indicator" title="本機離線備份最後寫入時間"></span>
+        <span class="user-chip" id="user-chip" title="點擊切換使用者">未登入</span>
+        <button class="btn small ghost" id="btn-my-list">我的清單</button>
+        <button class="btn small ghost offline-dim" id="btn-my-report" title="需要連線">我的報告</button>
+        <button class="btn small ghost offline-dim" id="btn-activity" title="需要連線">團隊動態</button>
+        <button class="btn small ghost offline-dim" id="btn-export" title="需要連線">匯出 CSV</button>
+        <button class="btn small ghost" id="btn-offline-toggle" title="模擬斷網，確認離線功能是否足夠">離線測試</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="trip-banner" id="trip-banner" style="display:none;"></div>
+
+<div class="offline-banner" id="offline-banner" style="display:none;">
+  共筆後端未連線：瀏覽與篩選功能正常，但無法讀寫團隊紀錄。
+</div>
+
+<div class="container">
+
+  <!-- 視圖切換（登入後顯示：檢索／分派給我／我已完成拜訪） -->
+  <div class="view-tabs" id="view-tabs" style="display:none;">
+    <button class="view-tab" data-view="search">🔍 檢索清單</button>
+    <button class="view-tab" data-view="assigned">📌 分派清單<span class="tab-count" id="tab-count-assigned"></span></button>
+    <button class="view-tab" data-view="visited">✅ 完成拜訪清單<span class="tab-count" id="tab-count-visited"></span></button>
+    <button class="view-tab pdf-tab" id="btn-mylist-pdf" title="產出可列印的分派清單（存成 PDF 當紙本備援，軟體完全失效也知道要去哪）">🖨 PDF</button>
+  </div>
+
+  <!-- 產品／科別入口 -->
+  <section class="entry-section" id="entry-section">
+    <div class="entry-block">
+      <h2>產品／科別</h2>
+      <p class="entry-sub">從自家產品線或目標科別出發，看上游供應、製程設備、技術延伸的相關廠商（關鍵字自動比對，可與搜尋交叉篩選）。</p>
+      <div class="line-grid" id="line-grid"></div>
+    </div>
+  </section>
+
+  <div class="recommend-bar" id="recommend-bar" style="display:none;"></div>
+
+  <!-- 篩選列 -->
+  <div class="controls">
+    <input type="text" id="search" placeholder="搜尋公司名稱、產品、關鍵字（交叉檢索：空格分隔多個關鍵字）..." />
+    <select id="hall-filter"><option value="">全部展館</option></select>
+    <select id="country-filter"><option value="">全部國家</option></select>
+    <select id="status-filter">
+      <option value="">全部狀態</option>
+    </select>
+    <select id="assignee-filter">
+      <option value="">全部負責人</option>
+    </select>
+    <button class="btn small" id="btn-visit-filter">行程重點</button>
+    <button class="btn small" id="btn-pocket-filter">★ 口袋名單</button>
+    <button class="btn small ghost" id="btn-clear">清除全部條件</button>
+  </div>
+
+  <div class="active-preset" id="active-preset" style="display:none;"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none;">找不到符合條件的廠商，換個關鍵字或清除條件試試。</div>
+</div>
+
+<!-- 登入 overlay -->
+<div class="overlay" id="login-overlay">
+  <div class="modal narrow">
+    <h2>團隊登入</h2>
+    <p class="sub">輸入團隊 PIN 碼，並選擇（或輸入）你的名字。所有共筆紀錄都會署名。</p>
+    <label>團隊 PIN 碼</label>
+    <input type="password" id="login-pin" placeholder="共用 PIN" />
+    <label>你的名字（單位自動帶入）</label>
+    <div id="member-choices" class="member-choices"></div>
+    <input type="text" id="login-name" placeholder="輸入名字（第一次使用）" />
+    <div class="modal-actions">
+      <button class="btn primary" id="btn-login">進入</button>
+    </div>
+    <p class="sub" id="login-error" style="color:#c8102e; display:none;"></p>
+  </div>
+</div>
+
+<!-- 展商詳情 modal -->
+<div class="overlay" id="detail-overlay">
+  <div class="modal wide" id="detail-modal">
+    <!-- 動態填入 -->
+  </div>
+</div>
+
+<!-- 相片 lightbox：點附件縮圖在頁內看大圖，不開新分頁 -->
+<div class="overlay lightbox-overlay" id="lightbox-overlay">
+  <button class="btn small ghost lightbox-close" id="lightbox-close">✕</button>
+  <img id="lightbox-img" src="" alt="" />
+</div>
+
+<!-- 離線備妥度 modal（點擊紅綠燈開啟） -->
+<div class="overlay" id="cache-overlay">
+  <div class="modal narrow">
+    <div class="detail-head">
+      <h2>離線備妥度檢查</h2>
+      <button class="btn small ghost" id="cache-close">✕</button>
+    </div>
+    <p class="sub">檢查這台手機存了多少離線資料。出發前每個人自己按一次，全部 ✅ 才安心。</p>
+    <div id="cache-report">檢查中…</div>
+  </div>
+</div>
+
+<!-- 團隊動態 modal -->
+<div class="overlay" id="activity-overlay">
+  <div class="modal wide">
+    <div class="detail-head">
+      <h2>團隊動態</h2>
+      <button class="btn small ghost" id="activity-close">✕</button>
+    </div>
+    <p class="sub">全隊最近的狀態更新與紀錄（最新 200 筆），點任一筆可開啟該展商。</p>
+    <div id="activity-list">載入中...</div>
+  </div>
+</div>
+
+<!-- 現場採集模式：不開鏡頭，錄音在背景跑，浮動列顯示計時；拍照時才臨時開鏡頭，拍完立刻關閉，錄音不中斷 -->
+<div class="audio-badge" id="capture-badge" style="display:none;">
+  <span class="rec-dot"></span><span id="capture-timer">00:00</span>
+  <span class="capture-count" id="capture-count"></span>
+  <button id="capture-photo-btn" type="button" title="拍照">📷</button>
+  <button id="capture-stop-btn" type="button" title="結束採集">⏹</button>
+</div>
+
+<div class="capture-overlay" id="capture-photo-popup" style="display:none;">
+  <video id="capture-photo-video" autoplay playsinline muted></video>
+  <div class="capture-controls">
+    <button id="capture-photo-cancel" class="capture-stop" type="button">✕ 取消</button>
+    <button id="capture-photo-snap" class="capture-snap" type="button" title="拍照"></button>
+    <span class="capture-hint">看得到畫面再拍<br/>錄音不中斷</span>
+  </div>
+  <div class="capture-flash" id="capture-flash"></div>
+</div>
+
+<!-- 連續拍照：不錄音，鏡頭持續開著，拍完一張不用重新點選就能拍下一張 -->
+<div class="capture-overlay" id="photo-overlay" style="display:none;">
+  <video id="photo-video" autoplay playsinline muted></video>
+  <div class="capture-controls">
+    <button id="photo-done" class="capture-stop" type="button">✓ 完成</button>
+    <button id="photo-snap" class="capture-snap" type="button" title="拍照"></button>
+    <div class="photo-right-group">
+      <span class="capture-count" id="photo-count"></span>
+      <button id="photo-save" class="capture-stop" type="button" style="display:none;">💾 存相簿</button>
+    </div>
+  </div>
+  <div class="capture-flash" id="photo-flash"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

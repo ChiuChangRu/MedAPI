@@ -1,0 +1,23 @@
+name: 部署到 Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "cloudflare/**"
+  workflow_dispatch: # 可在 GitHub Actions 頁面手動選任一分支手動部署（合併到 main 前想先測試時用）
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare
+          command: deploy
