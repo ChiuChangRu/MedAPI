@@ -1,0 +1,71 @@
+# medapi-mcp（跨系統唯讀問答層）
+
+讓 **claude.ai 當你的窗口**：連上這個 MCP Server 之後，直接用自然語言
+跨三個來源問答——
+
+| 工具 | 查什麼 | 資料來源 |
+|---|---|---|
+| `list_wiki_pages`／`read_wiki_page`／`search_wiki` | 策略地圖 Wiki 條目 | fieldlog Worker 的 `/wiki/*`（PIN 通道，runtime 抓取） |
+| `list_fieldlog_folders`／`search_fieldlog`／`get_fieldlog_entry` | 隨身記紀錄、逐字稿、照片文字 | fieldlog D1（共綁，只下 SELECT） |
+| `search_exhibitors`／`get_exhibitor`／`search_visit_notes` | 展商名單＋團隊拜訪共筆 | medtec-2026 D1（共綁）＋公開的 `exhibitors.json` |
+
+**鐵律：全部唯讀。** 程式碼裡只有 SELECT 與 fetch——不寫入、不刪除，
+所以三個系統的前台怎麼改版都不受影響；只有**資料表結構**變動時才需要
+回頭同步這裡的查詢。
+
+## 部署步驟（約 5 分鐘）
+
+1. **建 Worker**：Cloudflare Dashboard → Workers → Create →
+   Continue with GitHub → 選這個 repo 與分支，**Root directory 填 `mcp`**，
+   Deploy command 用預設 `npx wrangler deploy`
+   （D1 不用另外建：`wrangler.jsonc` 直接共綁 fieldlog 與 medtec-2026
+   既有的兩個資料庫；那兩邊若換庫，記得回來改 `database_id`）
+2. **設變數**：Worker 建好後 Settings → Variables and Secrets 新增：
+   | 名稱 | 類型 | 值 |
+   |---|---|---|
+   | `MCP_PIN` | Secret | 這個端點自己的通行碼（自己取，別跟其他 PIN 共用） |
+   | `FIELDLOG_URL` | Variable | `https://fieldlog.<帳號>.workers.dev` |
+   | `FIELD_PIN` | Secret | 與 fieldlog Worker 的 `FIELD_PIN` 同值（讀 wiki 用） |
+   | `MEDTEC_URL` | Variable | `https://medtec-2026.<帳號>.workers.dev` |
+3. **驗證**：瀏覽器開 `https://medapi-mcp.<帳號>.workers.dev/` 看到
+   「medapi-mcp OK」即部署成功
+
+## 接上 claude.ai（自訂連接器）
+
+1. claude.ai → Settings → Connectors → **Add custom connector**
+2. URL 填：
+   ```
+   https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>
+   ```
+   （claude.ai 的自訂連接器不能自帶 header，所以 PIN 掛在 URL 上；
+   這條 URL 等同鑰匙，**不要分享給別人**）
+3. 之後在對話裡就能直接問：「幫我查展商裡做親水塗層的」「上次實驗
+   紀錄裡提到的固化溫度是多少」「wiki 的抗結痂條目現在寫到哪」
+
+Claude Code 也可以連：`claude mcp add --transport http medapi
+"https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<PIN>"`。
+
+## 安全設計
+
+- **fail-closed**：`MCP_PIN` 未設定時所有請求一律 401
+- PIN 接受三種帶法：`?pin=`／`x-pin` header／`Authorization: Bearer`
+- 對 fieldlog 與 medtec 的 D1 是唯讀存取（程式碼層面約束，只有 SELECT）
+- wiki 內容經 fieldlog 的 PIN 通道取得，不另存副本；展商主檔
+  `exhibitors.json` 本來就是公開靜態資產，runtime 抓取＋記憶體快取 5 分鐘
+
+## 跟其他系統的關係
+
+```
+claude.ai / Claude Code
+        │  自然語言問答
+        ▼
+   medapi-mcp（本 Worker，唯讀）
+        │
+        ├── fetch → fieldlog /wiki/*（PIN）      … Wiki 條目
+        ├── D1 共綁 → fieldlog DB（SELECT）      … 隨身記紀錄/逐字稿/OCR
+        ├── D1 共綁 → medtec-2026 DB（SELECT）   … 拜訪狀態/紀錄/附件清單
+        └── fetch → medtec /data/exhibitors.json … 展商主檔（公開資產）
+```
+
+LitDB 建好之後，在這裡加一組 `search_litdb` 工具就能併入同一個窗口，
+不用重新設計。

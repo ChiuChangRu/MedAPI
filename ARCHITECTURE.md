@@ -107,11 +107,11 @@
    隨身記是單人移動採集，參展系統是多人即時協作，LitDB/專利需要不可變
    證據鏈，硬塞進同一張表只會讓每個場景都變彆扭，且參展系統是同事在用
    的共筆工具，改壞 schema 影響範圍大
-2. **MCP 只當唯讀問答層，尚未動工**。之後若要做，是蓋一個新的、獨立的
-   Cloudflare Worker（不動任何現有生產資料），對外開
-   `search_wiki`／`search_fieldlog`／`search_exhibitors` 這類工具，
+2. **MCP 只當唯讀問答層**（已實作於 `mcp/`）。獨立的 Cloudflare Worker
+   （不動任何現有生產資料），對外開 wiki／隨身記／參展系統的查詢工具，
    讓 claude.ai／Claude Code 可以跨三個來源做自然語言問答。這是「加一層
-   查詢介面」，不是「合併儲存」
+   查詢介面」，不是「合併儲存」——前台 UI 怎麼改版都不影響 MCP，
+   只有 D1 資料表結構變動時要回頭同步 `mcp/src/worker.js` 的查詢
 3. **Wiki 內容單一權威來源＋連結，不重複寫**。判斷標準：這段內容對其他
    產品是否也成立——成立就歸到 B 頁寫一份，不成立（產品特有）才留在
    A 頁，兩邊用連結互通
@@ -121,8 +121,12 @@
 
 - [ ] **LitDB 窗口未建置**：需要決定採集介面長什麼樣（獨立系統？還是
   隨身記加一個「文獻」資料夾類型就夠？）
-- [ ] **MCP Server 尚未動工**：要暴露哪些工具、怎麼認證（PIN 沿用？
-  還是另一套）、部署在哪個 Worker，都還沒設計
+- [x] **MCP Server 已完成（2026-07-18）**：`mcp/` 目錄，獨立 Worker
+  `medapi-mcp`，9 個唯讀工具跨三來源（wiki 3 個、隨身記 3 個、參展
+  系統 3 個）。共綁兩個既有 D1（只下 SELECT）、wiki 走 fieldlog PIN
+  通道、展商主檔 runtime 抓公開資產。自有 `MCP_PIN` 驗證（fail-closed），
+  claude.ai 用自訂連接器 URL `?pin=` 接上。部署步驟見 `mcp/README.md`
+  ——**還沒部署**，要去 Cloudflare Dashboard 走一次（約 5 分鐘）
 - [ ] **隨身記的 Notion 同步是半成品**：`notion_page_id` 等欄位跟
   `parseNotionPageId()` 已經寫好，但沒有任何 API 路徑真的呼叫它，
   現在還是人工把 AI 彙整完的報告貼進 Notion——要嘛補完自動同步，

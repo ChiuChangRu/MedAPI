@@ -1,0 +1,484 @@
+/**
+ * medapi-mcp — 跨系統唯讀問答層（MCP Server，Streamable HTTP）
+ *
+ * 定位：讓 claude.ai／Claude Code 當「窗口」，用自然語言跨三個來源問答：
+ *   - 策略地圖 Wiki（fieldlog Worker 的 /wiki/*，PIN 通道 runtime 抓取）
+ *   - 隨身記 fieldlog（共綁同一個 D1，只下 SELECT）
+ *   - Medtec 參展系統（共綁同一個 D1 ＋ runtime 抓公開的 exhibitors.json）
+ *
+ * 鐵律：這個 Worker 對三個來源一律唯讀——程式碼裡只有 SELECT 與 fetch，
+ * 不寫入、不刪除。要改資料請回各自的前台，wiki 收錄一律走 git 人審。
+ *
+ * 驗證：POST /mcp 需帶 ?pin=（或 x-pin header／Authorization: Bearer），
+ * 與 MCP_PIN（Secret）比對，未設定時一律拒絕（fail-closed）。
+ * claude.ai 自訂連接器不能自帶 header，所以實際上用 ?pin= 掛在 URL 上。
+ *
+ * 需要的 Secrets／Variables（Worker Settings → Variables and Secrets）：
+ *   MCP_PIN      — 這個 MCP 端點自己的通行碼
+ *   FIELDLOG_URL — 隨身記網址（如 https://fieldlog.xxx.workers.dev）
+ *   FIELD_PIN    — 隨身記的 PIN（讀 wiki 內容用，與 fieldlog 的 Secret 同值）
+ *   MEDTEC_URL   — 參展系統網址（如 https://medtec-2026.xxx.workers.dev）
+ */
+
+const PROTOCOL_DEFAULT = "2025-03-26";
+const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
+
+// ---------- 小工具 ----------
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+function rpcResult(id, result) {
+  return json({ jsonrpc: "2.0", id, result });
+}
+
+function rpcError(id, code, message) {
+  return json({ jsonrpc: "2.0", id, error: { code, message } });
+}
+
+function clip(s, n = 200) {
+  s = (s || "").trim();
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+// LIKE 樣式：跳脫 % _ \，配合 SQL 端的 ESCAPE '\'
+function likePat(q) {
+  return "%" + q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
+}
+
+// 從長文抓出關鍵字前後文（單行化，方便塞進回答）
+function snippet(text, query, ctx = 80) {
+  const t = (text || "").replace(/\s+/g, " ");
+  const i = t.toLowerCase().indexOf(query.toLowerCase());
+  if (i < 0) return clip(t, ctx * 2);
+  const start = Math.max(0, i - ctx);
+  const end = Math.min(t.length, i + query.length + ctx);
+  return (start > 0 ? "…" : "") + t.slice(start, end) + (end < t.length ? "…" : "");
+}
+
+function fmtSecs(s) {
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function needQuery(args) {
+  const q = (args.query || "").trim();
+  if (!q) throw new Error("query 為必填");
+  return q;
+}
+
+function capLimit(args, dflt = 10, max = 30) {
+  const n = Number(args.limit);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : dflt;
+}
+
+// ---------- Wiki（runtime 走 fieldlog 的 PIN 通道）----------
+
+function wikiFetch(env, file) {
+  const base = (env.FIELDLOG_URL || "").trim().replace(/\/+$/, "");
+  if (!base) throw new Error("尚未設定 FIELDLOG_URL（見 mcp/README.md）");
+  const u = new URL(`${base}/wiki/${encodeURIComponent(file)}`);
+  u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+  return fetch(u.toString());
+}
+
+async function wikiPages(env) {
+  const res = await wikiFetch(env, "pages.json");
+  if (!res.ok) throw new Error(`讀取 wiki 頁面清單失敗（HTTP ${res.status}）——檢查 FIELDLOG_URL 與 FIELD_PIN`);
+  const data = await res.json();
+  return data.pages || [];
+}
+
+// ---------- 展商主檔（runtime 抓公開靜態 JSON，記憶體快取 5 分鐘）----------
+
+let EX_CACHE = { at: 0, data: null };
+
+async function exhibitorsData(env) {
+  if (EX_CACHE.data && Date.now() - EX_CACHE.at < 5 * 60 * 1000) return EX_CACHE.data;
+  const base = (env.MEDTEC_URL || "").trim().replace(/\/+$/, "");
+  if (!base) throw new Error("尚未設定 MEDTEC_URL（見 mcp/README.md）");
+  const res = await fetch(`${base}/data/exhibitors.json`);
+  if (!res.ok) throw new Error(`讀取展商名單失敗（HTTP ${res.status}）——檢查 MEDTEC_URL`);
+  const data = await res.json();
+  EX_CACHE = { at: Date.now(), data };
+  return data;
+}
+
+function categoryName(data, id) {
+  const c = (data.categories || []).find((c) => c.id === id);
+  return c ? c.name_zh : id || "";
+}
+
+// 團隊共筆的 D1 表由 medtec Worker 首次啟動時建立；還沒建表時查詢會炸，
+// 這裡吞掉錯誤當「尚無資料」——展商主檔照樣可查
+async function medtecStates(env, ids) {
+  if (!ids.length) return { states: new Map(), noteCounts: new Map() };
+  const ph = ids.map(() => "?").join(",");
+  try {
+    const [{ results: states }, { results: counts }] = await Promise.all([
+      env.DB_MEDTEC.prepare(`SELECT * FROM exhibitor_state WHERE exhibitor_id IN (${ph})`).bind(...ids).all(),
+      env.DB_MEDTEC.prepare(`SELECT exhibitor_id, COUNT(*) AS c FROM notes WHERE deleted = 0 AND exhibitor_id IN (${ph}) GROUP BY exhibitor_id`).bind(...ids).all(),
+    ]);
+    return {
+      states: new Map(states.map((s) => [s.exhibitor_id, s])),
+      noteCounts: new Map(counts.map((c) => [c.exhibitor_id, c.c])),
+    };
+  } catch {
+    return { states: new Map(), noteCounts: new Map() };
+  }
+}
+
+function fmtExhibitor(data, ex, state, noteCount) {
+  const lines = [
+    `### ${ex.name_zh || ex.name_en}（${ex.name_en || "—"}）｜攤位 ${ex.booth_no || "—"}｜${ex.country || "—"}`,
+    `- id：${ex.id}｜分類：${categoryName(data, ex.category)}`,
+  ];
+  if ((ex.products || []).length) lines.push(`- 產品：${ex.products.join("、")}`);
+  if (ex.description) lines.push(`- 簡介：${clip(ex.description, 160)}`);
+  if (ex.website) lines.push(`- 官網：${ex.website}`);
+  if (state) {
+    const dept = JSON.parse(state.dept_tags || "[]");
+    lines.push(`- 團隊狀態：${state.status || "未排定"}${state.assignee ? `｜指派：${state.assignee}` : ""}${dept.length ? `｜部門：${dept.join("、")}` : ""}${noteCount ? `｜拜訪紀錄 ${noteCount} 則` : ""}`);
+  } else if (noteCount) {
+    lines.push(`- 拜訪紀錄 ${noteCount} 則`);
+  }
+  return lines.join("\n");
+}
+
+// ---------- 工具定義 ----------
+
+const TOOLS = [
+  {
+    name: "list_wiki_pages",
+    description: "列出策略地圖 Wiki 的所有條目（A 核心技術／B 支撐知識／C 資源網絡），含檔名與分組。回答技術知識類問題前先看這份地圖，再用 read_wiki_page 讀內容。",
+    inputSchema: { type: "object", properties: {} },
+    async handler(env) {
+      const pages = await wikiPages(env);
+      const groups = new Map();
+      for (const p of pages) {
+        const g = p.group || "（總覽）";
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(`- ${p.title}｜檔名：${p.file}`);
+      }
+      return [...groups.entries()].map(([g, items]) => `## ${g}\n${items.join("\n")}`).join("\n\n");
+    },
+  },
+  {
+    name: "read_wiki_page",
+    description: "讀取一個 Wiki 條目的完整 Markdown 內容。file 參數用 list_wiki_pages 回傳的檔名（例：A2-抗結痂披膜.md）。",
+    inputSchema: {
+      type: "object",
+      properties: { file: { type: "string", description: "條目檔名，取自 list_wiki_pages" } },
+      required: ["file"],
+    },
+    async handler(env, args) {
+      const file = (args.file || "").trim();
+      const pages = await wikiPages(env);
+      if (!pages.some((p) => p.file === file)) {
+        throw new Error(`找不到條目「${file}」——請先用 list_wiki_pages 確認檔名`);
+      }
+      const res = await wikiFetch(env, file);
+      if (!res.ok) throw new Error(`讀取條目失敗（HTTP ${res.status}）`);
+      return await res.text();
+    },
+  },
+  {
+    name: "search_wiki",
+    description: "以關鍵字全文搜尋所有 Wiki 條目，回傳每頁的命中行。適合「哪個條目講過 XX」這類跨頁定位。",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "關鍵字" } },
+      required: ["query"],
+    },
+    async handler(env, args) {
+      const q = needQuery(args);
+      const pages = await wikiPages(env);
+      const results = await Promise.all(
+        pages.map(async (p) => {
+          const res = await wikiFetch(env, p.file);
+          if (!res.ok) return null;
+          const text = await res.text();
+          const hits = [];
+          const lines = text.split("\n");
+          for (let i = 0; i < lines.length && hits.length < 4; i++) {
+            if (lines[i].toLowerCase().includes(q.toLowerCase())) {
+              hits.push(`  - L${i + 1}：${clip(lines[i], 160)}`);
+            }
+          }
+          return hits.length ? `## ${p.title}（${p.file}）\n${hits.join("\n")}` : null;
+        })
+      );
+      const found = results.filter(Boolean);
+      return found.length ? found.join("\n\n") : `所有 Wiki 條目都沒有「${q}」。`;
+    },
+  },
+  {
+    name: "list_fieldlog_folders",
+    description: "列出隨身記的所有資料夾（參展／拜訪／實驗／上課等活動）與各自的紀錄數量。",
+    inputSchema: { type: "object", properties: {} },
+    async handler(env) {
+      const { results } = await env.DB_FIELDLOG.prepare(
+        `SELECT f.*, (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id) AS entry_count
+         FROM folders f ORDER BY f.status = '進行中' DESC, f.id DESC`
+      ).all();
+      if (!results.length) return "隨身記目前沒有任何資料夾。";
+      return results
+        .map((f) => `- [${f.id}] ${f.type}｜${f.name}｜${f.status}｜${f.entry_count} 筆紀錄｜建於 ${f.created_at}`)
+        .join("\n");
+    },
+  },
+  {
+    name: "search_fieldlog",
+    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的錄音逐字稿／照片擷取文字。回傳命中片段與 entry id，細節再用 get_fieldlog_entry 拉全文。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "關鍵字" },
+        limit: { type: "number", description: "每類最多回傳幾筆（預設 10，上限 30）" },
+      },
+      required: ["query"],
+    },
+    async handler(env, args) {
+      const q = needQuery(args);
+      const limit = capLimit(args);
+      const pat = likePat(q);
+      const [{ results: entries }, { results: atts }] = await Promise.all([
+        env.DB_FIELDLOG.prepare(
+          `SELECT e.id, e.title, e.body, e.fields_json, e.created_at, f.name AS folder_name, f.type AS folder_type
+           FROM entries e LEFT JOIN folders f ON e.folder_id = f.id
+           WHERE e.title LIKE ?1 ESCAPE '\\' OR e.body LIKE ?1 ESCAPE '\\' OR e.fields_json LIKE ?1 ESCAPE '\\'
+           ORDER BY e.id DESC LIMIT ?2`
+        ).bind(pat, limit).all(),
+        env.DB_FIELDLOG.prepare(
+          `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,
+                  e.id AS entry_id, e.title, f.name AS folder_name
+           FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON e.folder_id = f.id
+           WHERE a.transcript LIKE ?1 ESCAPE '\\' OR a.ocr_text LIKE ?1 ESCAPE '\\' OR a.filename LIKE ?1 ESCAPE '\\'
+           ORDER BY a.id DESC LIMIT ?2`
+        ).bind(pat, limit).all(),
+      ]);
+      const out = [];
+      if (entries.length) {
+        out.push("## 命中的紀錄");
+        for (const e of entries) {
+          const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "收件匣";
+          const hitText = [e.title, e.body, e.fields_json].find((t) => (t || "").toLowerCase().includes(q.toLowerCase())) || e.body;
+          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}\n  ${snippet(hitText, q)}`);
+        }
+      }
+      if (atts.length) {
+        out.push("## 命中的附件（逐字稿／照片文字）");
+        for (const a of atts) {
+          const src = a.transcript && a.transcript.toLowerCase().includes(q.toLowerCase()) ? a.transcript : a.ocr_text || a.filename;
+          const off = a.offset_secs !== null && a.offset_secs !== undefined ? `｜錄音 ${fmtSecs(a.offset_secs)}` : "";
+          out.push(`- [entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${snippet(src, q)}`);
+        }
+      }
+      return out.length ? out.join("\n") : `隨身記裡沒有「${q}」的相關內容。`;
+    },
+  },
+  {
+    name: "get_fieldlog_entry",
+    description: "讀取隨身記單筆紀錄的完整內容：欄位、內文、所有附件的逐字稿與照片擷取文字。",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "number", description: "entry id（search_fieldlog 回傳的編號）" } },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const e = await env.DB_FIELDLOG.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
+      if (!e) throw new Error(`找不到 entry ${id}`);
+      const { results: atts } = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all();
+      const lines = [`# ${e.title || "（未命名紀錄）"}`, `建立：${e.created_at}${e.updated_at ? `｜更新：${e.updated_at}` : ""}`];
+      const fields = Object.entries(JSON.parse(e.fields_json || "{}")).filter(([, v]) => v && String(v).trim());
+      for (const [k, v] of fields) lines.push(`- **${k}**：${v}`);
+      if (e.body) lines.push("", e.body);
+      for (const a of atts) {
+        const off = a.offset_secs !== null && a.offset_secs !== undefined ? `（錄音 ${fmtSecs(a.offset_secs)}）` : "";
+        lines.push("", `## 附件：${a.filename}｜${a.kind}${off}`);
+        if (a.transcript) lines.push(`逐字稿：${clip(a.transcript, 4000)}`);
+        if (a.ocr_text) lines.push(`照片文字：${clip(a.ocr_text, 2000)}`);
+        if (!a.transcript && !a.ocr_text) lines.push("（尚未轉文字／擷取）");
+      }
+      return lines.join("\n");
+    },
+  },
+  {
+    name: "search_exhibitors",
+    description: "以關鍵字搜尋 Medtec China 2026 的 585 家展商（名稱／攤位／國家／產品／簡介／分類），並附上團隊共筆狀態（拜訪狀態、指派、部門標籤、紀錄數）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "關鍵字（例：親水塗層、TPU、擠出）" },
+        limit: { type: "number", description: "最多回傳幾家（預設 10，上限 30）" },
+      },
+      required: ["query"],
+    },
+    async handler(env, args) {
+      const q = needQuery(args).toLowerCase();
+      const limit = capLimit(args);
+      const data = await exhibitorsData(env);
+      const hits = (data.exhibitors || []).filter((ex) => {
+        const hay = [
+          ex.name_zh, ex.name_en, ex.booth_no, ex.country, ex.description,
+          categoryName(data, ex.category), ...(ex.products || []), ...(ex.tags || []),
+        ].join("\n").toLowerCase();
+        return hay.includes(q);
+      });
+      if (!hits.length) return `展商名單裡沒有符合「${args.query}」的廠商。`;
+      const top = hits.slice(0, limit);
+      const { states, noteCounts } = await medtecStates(env, top.map((h) => h.id));
+      const body = top.map((ex) => fmtExhibitor(data, ex, states.get(ex.id), noteCounts.get(ex.id))).join("\n\n");
+      const more = hits.length > top.length ? `\n\n（共 ${hits.length} 家符合，只列前 ${top.length} 家——關鍵字再收斂一點可以更準）` : "";
+      return body + more;
+    },
+  },
+  {
+    name: "get_exhibitor",
+    description: "讀取單一展商的完整資料：主檔＋團隊共筆（拜訪狀態、部門標籤、資質勾選、最近的拜訪紀錄與附件清單）。",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "展商 id（例：ex-0001，search_exhibitors 回傳的編號）" } },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = (args.id || "").trim();
+      if (!id) throw new Error("id 為必填");
+      const data = await exhibitorsData(env);
+      const ex = (data.exhibitors || []).find((x) => x.id === id);
+      if (!ex) throw new Error(`找不到展商「${id}」——請先用 search_exhibitors 查編號`);
+      let state = null, notes = [], atts = [];
+      try {
+        state = await env.DB_MEDTEC.prepare("SELECT * FROM exhibitor_state WHERE exhibitor_id = ?").bind(id).first();
+        notes = (await env.DB_MEDTEC.prepare("SELECT * FROM notes WHERE exhibitor_id = ? AND deleted = 0 ORDER BY id DESC LIMIT 20").bind(id).all()).results;
+        atts = (await env.DB_MEDTEC.prepare("SELECT filename, caption, author, created_at FROM attachments WHERE exhibitor_id = ? ORDER BY id DESC LIMIT 20").bind(id).all()).results;
+      } catch { /* 共筆表尚未建立時只回主檔 */ }
+      const lines = [fmtExhibitor(data, ex, state, notes.length)];
+      if (state) {
+        const quals = JSON.parse(state.quals || "[]");
+        const goals = JSON.parse(state.goal_tags || "[]");
+        const collected = JSON.parse(state.collected || "[]");
+        if (quals.length) lines.push(`- 資質：${quals.join("、")}`);
+        if (goals.length) lines.push(`- 目標標籤：${goals.join("、")}`);
+        if (collected.length) lines.push(`- 已索取資料：${collected.join("、")}`);
+        if (state.post_class) lines.push(`- 會後分級：${state.post_class}`);
+      }
+      if (notes.length) {
+        lines.push("", "## 拜訪紀錄（最新 20 則）");
+        for (const n of notes) lines.push(`- ${n.created_at}｜${n.author}｜${n.type}：${clip(n.content, 300)}`);
+      }
+      if (atts.length) {
+        lines.push("", "## 附件（檔名清單，內容請在參展系統前台看）");
+        for (const a of atts) lines.push(`- ${a.filename}${a.caption ? `｜${a.caption}` : ""}｜${a.author}｜${a.created_at}`);
+      }
+      return lines.join("\n");
+    },
+  },
+  {
+    name: "search_visit_notes",
+    description: "以關鍵字搜尋參展系統的團隊拜訪紀錄全文（誰記了什麼），回傳紀錄內容與所屬展商。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "關鍵字" },
+        limit: { type: "number", description: "最多回傳幾則（預設 10，上限 30）" },
+      },
+      required: ["query"],
+    },
+    async handler(env, args) {
+      const q = needQuery(args);
+      const limit = capLimit(args);
+      const { results } = await env.DB_MEDTEC.prepare(
+        `SELECT * FROM notes WHERE deleted = 0 AND content LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT ?`
+      ).bind(likePat(q), limit).all();
+      if (!results.length) return `拜訪紀錄裡沒有「${q}」。`;
+      let nameOf = (id) => id;
+      try {
+        const data = await exhibitorsData(env);
+        const map = new Map((data.exhibitors || []).map((x) => [x.id, x.name_zh || x.name_en]));
+        nameOf = (id) => map.get(id) || id;
+      } catch { /* 展商主檔抓不到時退回顯示 id */ }
+      return results
+        .map((n) => `- ${n.created_at}｜${nameOf(n.exhibitor_id)}（${n.exhibitor_id}）｜${n.author}｜${n.type}\n  ${snippet(n.content, q)}`)
+        .join("\n");
+    },
+  },
+];
+
+const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+
+// ---------- MCP JSON-RPC（stateless streamable HTTP）----------
+
+async function handleMcp(request, env) {
+  if (request.method === "GET") {
+    // 不提供 SSE 串流；stateless server 回 405 即符合規範
+    return json({ error: "此端點只接受 MCP POST 請求" }, 405);
+  }
+  if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+  let msg;
+  try {
+    msg = await request.json();
+  } catch {
+    return rpcError(null, -32700, "Parse error");
+  }
+  if (Array.isArray(msg)) return rpcError(null, -32600, "不支援 batch 請求");
+  const { id, method, params } = msg || {};
+  if (!method) return rpcError(id ?? null, -32600, "Invalid Request");
+
+  if (method === "initialize") {
+    const want = params?.protocolVersion;
+    return rpcResult(id, {
+      protocolVersion: SUPPORTED_PROTOCOLS.has(want) ? want : PROTOCOL_DEFAULT,
+      capabilities: { tools: {} },
+      serverInfo: { name: "medapi-mcp", version: "1.0.0" },
+      instructions:
+        "長儒的個人知識層唯讀窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字）、Medtec 2026 展商與團隊拜訪紀錄。全部唯讀；要改資料請走各系統前台，wiki 收錄走 git 人審。",
+    });
+  }
+  if (method.startsWith("notifications/")) return new Response(null, { status: 202 });
+  if (method === "ping") return rpcResult(id, {});
+  if (method === "tools/list") {
+    return rpcResult(id, {
+      tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+    });
+  }
+  if (method === "tools/call") {
+    const tool = TOOLS_BY_NAME[params?.name];
+    if (!tool) return rpcError(id, -32602, `未知工具：${params?.name}`);
+    try {
+      const text = await tool.handler(env, params?.arguments || {});
+      return rpcResult(id, { content: [{ type: "text", text }] });
+    } catch (err) {
+      return rpcResult(id, { content: [{ type: "text", text: `查詢失敗：${err.message}` }], isError: true });
+    }
+  }
+  return rpcError(id, -32601, `Method not found: ${method}`);
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === "/mcp") {
+      // fail-closed：MCP_PIN 未設定時全部拒絕
+      const pin = (env.MCP_PIN || "").trim();
+      if (!pin) return json({ error: "尚未設定 MCP_PIN：請至 Worker Settings → Variables and Secrets 新增" }, 401);
+      const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || bearer).trim();
+      if (given !== pin) return json({ error: "PIN 錯誤或未提供" }, 401);
+      try {
+        return await handleMcp(request, env);
+      } catch (err) {
+        return rpcError(null, -32603, `伺服器錯誤：${err.message}`);
+      }
+    }
+    // 部署健康檢查用；不透露任何資料
+    return new Response("medapi-mcp OK — MCP 端點在 POST /mcp（需 ?pin=）\n", {
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  },
+};

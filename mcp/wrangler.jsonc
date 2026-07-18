@@ -1,0 +1,23 @@
+{
+  // medapi-mcp — 跨系統唯讀問答層（MCP Server）
+  // 與 fieldlog／medtec-2026 平行的第三個 Worker：不動任何生產資料，
+  // 只提供查詢工具給 claude.ai / Claude Code 連線問答。
+  // 直接共綁兩個既有 D1（D1 允許多個 Worker 綁同一庫）——
+  // database_id 與 fieldlog/wrangler.jsonc、cloudflare/wrangler.jsonc 相同，
+  // 若那兩邊換庫，這裡要跟著改。
+  "name": "medapi-mcp",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-01",
+  "d1_databases": [
+    {
+      "binding": "DB_FIELDLOG",
+      "database_name": "fieldlog",
+      "database_id": "41483c93-9398-4be6-a670-a3120c880781"
+    },
+    {
+      "binding": "DB_MEDTEC",
+      "database_name": "medtec-2026",
+      "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
+    }
+  ]
+}
