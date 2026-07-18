@@ -349,7 +349,13 @@ async function renderAiUsageBanner() {
   if (!el || !API_OK || OFFLINE) { if (el) el.style.display = "none"; return; }
   try {
     const usage = await api("/ai-usage");
-    el.textContent = `🪄 今日 AI 已處理 ${usage.total} 筆（本系統 ${usage.medtec}・隨身記 ${usage.fieldlog}）｜免費額度約 10,000 Neurons/天，供參考`;
+    // 2026-07-18 實測校準：約 200 次轉文字/OCR ≈ 10,000 Neurons（一次平均 ~50），
+    // 所以 150 次（約 75%）當警示線——只是粗估，精確數字看 Cloudflare Dashboard → AI
+    const nearLimit = usage.total >= 150;
+    el.textContent = nearLimit
+      ? `⚠️ 今日 AI 已處理 ${usage.total} 筆（本系統 ${usage.medtec}・隨身記 ${usage.fieldlog}）——接近每日免費額度，超過會開始失敗，額度台北時間早上 8 點重置`
+      : `🪄 今日 AI 已處理 ${usage.total} 筆（本系統 ${usage.medtec}・隨身記 ${usage.fieldlog}）｜免費額度約 10,000 Neurons/天，供參考`;
+    el.classList.toggle("warn", nearLimit);
     el.style.display = "block";
   } catch {
     el.style.display = "none"; // 查不到就默默隱藏，不影響其他功能

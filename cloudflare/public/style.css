@@ -106,6 +106,7 @@ tr.group-header-row td {
   font-size: 12px;
   color: var(--text-muted, #6f6f68);
 }
+.ai-usage-banner.warn { color: #b91c1c; font-weight: 600; }
 
 /* 飛機小動畫：大部分時間靜止，每隔幾秒起飛一下，不會太干擾 */
 .trip-plane { display: inline-block; animation: trip-takeoff 3.5s ease-in-out infinite; }
