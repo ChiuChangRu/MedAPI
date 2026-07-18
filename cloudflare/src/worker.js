@@ -88,6 +88,10 @@ const MIGRATIONS = [
   `ALTER TABLE attachments ADD COLUMN session_id TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN offset_secs INTEGER`,
   `ALTER TABLE attachments ADD COLUMN duration_secs INTEGER`,
+  // 「處理過但結果是空的」（照片沒文字、錄音無語音）要跟「還沒處理」分開，
+  // 否則空結果的附件永遠被當成待整理，每按一次整理就重跑重扣一次費用
+  `ALTER TABLE attachments ADD COLUMN transcribed_at TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN ocr_at TEXT DEFAULT ''`,
 ];
 
 let schemaReady = false;
@@ -452,8 +456,8 @@ async function handleApi(request, env, url, ctx) {
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
     const text = (result?.text || "").trim();
-    await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(text, id).run();
-    await logHistory(db, old.exhibitor_id, author, "錄音轉文字", `${old.filename}：${text.slice(0, 80)}`);
+    await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), id).run();
+    await logHistory(db, old.exhibitor_id, author, "錄音轉文字", `${old.filename}：${text.slice(0, 80) || "（無語音內容）"}`);
     return json({ text });
   }
 
@@ -485,8 +489,8 @@ async function handleApi(request, env, url, ctx) {
         text += `\n\n【對話關聯】${relation}（錄音 ${ctxInfo.offset} 時拍攝）`;
       }
     }
-    await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(text, id).run();
-    await logHistory(db, old.exhibitor_id, author, "照片擷取文字", `${old.filename}：${text.slice(0, 80)}`);
+    await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
+    await logHistory(db, old.exhibitor_id, author, "照片擷取文字", `${old.filename}：${text.slice(0, 80) || "（照片上沒有文字）"}`);
     return json({ ocr_text: text });
   }
 

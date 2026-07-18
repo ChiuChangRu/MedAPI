@@ -253,8 +253,9 @@ async function processEntryAttachments(id, btn) {
   btn.disabled = true;
   try {
     const e = await api(`/entries/${id}`);
-    const audioTodo = (e.attachments || []).filter((a) => a.kind === "audio" && !a.transcript);
-    const photoTodo = (e.attachments || []).filter((a) => a.kind === "photo" && !a.ocr_text);
+    // 「處理過但結果是空的」（transcribed_at/ocr_at 有時間戳）不算待整理，不重跑
+    const audioTodo = (e.attachments || []).filter((a) => a.kind === "audio" && !a.transcript && !a.transcribed_at);
+    const photoTodo = (e.attachments || []).filter((a) => a.kind === "photo" && !a.ocr_text && !a.ocr_at);
     const total = audioTodo.length + photoTodo.length;
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
@@ -311,12 +312,18 @@ function attHtml(a) {
   if (a.kind === "audio") preview = `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`;
   const offset = a.offset_secs !== null && a.offset_secs !== undefined ? `<span class="att-offset">📸 錄音 ${fmtSecs(a.offset_secs)}</span>` : "";
   const transcribeBit = a.kind === "audio" && TRANSCRIBE_ENABLED
-    ? (a.transcript ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>` : `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a>`)
+    ? (a.transcript
+      ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>`
+      : a.transcribed_at
+        ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" class="att-transcribe" data-id="${a.id}">重新辨識</a></p>`
+        : `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a>`)
     : "";
   const ocrBit = a.kind === "photo" && TRANSCRIBE_ENABLED
     ? (a.ocr_text
       ? `<p class="att-transcript">🔍 ${esc(a.ocr_text)} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a></p>`
-      : `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a>`)
+      : a.ocr_at
+        ? `<p class="att-transcript">🔍（擷取過，照片上沒有文字）<a href="#" class="att-ocr" data-id="${a.id}">重新擷取</a></p>`
+        : `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a>`)
     : "";
   return `<div class="att-item" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}

@@ -1866,8 +1866,9 @@ async function processAllAttachments(id, btn) {
   btn.disabled = true;
   try {
     const atts = await api(`/attachments?exhibitor_id=${id}`);
-    const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript);
-    const imgTodo = atts.filter((a) => (a.mime || "").startsWith("image/") && !a.ocr_text);
+    // 「處理過但結果是空的」（transcribed_at/ocr_at 有時間戳）不算待整理，不重跑
+    const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript && !a.transcribed_at);
+    const imgTodo = atts.filter((a) => (a.mime || "").startsWith("image/") && !a.ocr_text && !a.ocr_at);
     const total = audioTodo.length + imgTodo.length;
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
@@ -2319,8 +2320,8 @@ function updatePendingBadge(atts) {
   const el = $("d-att-pending");
   if (!el) return;
   if (!TRANSCRIBE_ENABLED) { el.textContent = ""; return; }
-  const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript).length;
-  const imgTodo = atts.filter((a) => (a.mime || "").startsWith("image/") && !a.ocr_text).length;
+  const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript && !a.transcribed_at).length;
+  const imgTodo = atts.filter((a) => (a.mime || "").startsWith("image/") && !a.ocr_text && !a.ocr_at).length;
   const pending = audioTodo + imgTodo;
   el.textContent = pending ? `⏳ ${pending} 筆待整理` : atts.length ? "✓ 已全部整理" : "";
   const btn = $("d-att-process");
@@ -2353,10 +2354,14 @@ async function loadAttachments(id) {
       const isImage = (a.mime || "").startsWith("image/");
       const transcriptBlock = !isAudio || !TRANSCRIBE_ENABLED ? "" : a.transcript
         ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" data-act="edit-transcript" class="att-transcribe-btn">編輯</a></p>`
-        : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a>`;
+        : a.transcribed_at
+          ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" data-act="transcribe" class="att-transcribe-btn">重新辨識</a></p>`
+          : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a>`;
       const ocrBlock = !isImage || !TRANSCRIBE_ENABLED ? "" : a.ocr_text
         ? `<p class="att-transcript">🔍 ${esc(a.ocr_text)} <a href="#" data-act="edit-ocr" class="att-transcribe-btn">編輯</a></p>`
-        : `<a href="#" data-act="ocr" class="att-transcribe-btn">🔍 擷取文字</a>`;
+        : a.ocr_at
+          ? `<p class="att-transcript">🔍（擷取過，照片上沒有文字）<a href="#" data-act="ocr" class="att-transcribe-btn">重新擷取</a></p>`
+          : `<a href="#" data-act="ocr" class="att-transcribe-btn">🔍 擷取文字</a>`;
       const catRow = !isImage ? "" : `<div class="att-cat-row">${ATT_CATEGORIES.map((c) =>
         `<span class="cat-chip ${a.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`
       ).join("")}</div>`;
