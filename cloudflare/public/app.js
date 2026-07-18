@@ -2340,6 +2340,11 @@ async function loadAttachments(id) {
     if (countEl) countEl.textContent = total ? `（${total}）` : "";
     updatePendingBadge(atts);
     if (!atts.length) { wrap.innerHTML = pendingHtml; return; }
+    // 同名＋同大小出現超過一次 → 標「疑似重複」，讓重複上傳一眼看得出來
+    const dupCount = {};
+    for (const a of atts) dupCount[`${a.filename}|${a.size}`] = (dupCount[`${a.filename}|${a.size}`] || 0) + 1;
+    const dupTotal = atts.filter((a) => dupCount[`${a.filename}|${a.size}`] > 1).length;
+    if (dupTotal) showToast(`⚠️ 這家展商有 ${dupTotal} 個附件疑似重複上傳（同名同大小），已在清單標示`);
     const renderAttNote = (a) => {
       const url = fileUrl(a.key);
       let preview = `<a href="${url}" target="_blank" rel="noopener" class="directory-link">${esc(a.filename)}</a>`;
@@ -2365,8 +2370,9 @@ async function loadAttachments(id) {
       const catRow = !isImage ? "" : `<div class="att-cat-row">${ATT_CATEGORIES.map((c) =>
         `<span class="cat-chip ${a.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`
       ).join("")}</div>`;
+      const dupBadge = dupCount[`${a.filename}|${a.size}`] > 1 ? `<span class="dup-badge">⚠️ 疑似重複</span>` : "";
       return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}" data-transcript="${esc(a.transcript || "")}" data-ocr="${esc(a.ocr_text || "")}">
-        <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB
+        <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB ${dupBadge}
           <span class="note-actions"><a href="#" data-act="cap-att">${a.caption ? "編輯說明" : "加說明"}</a> <a href="#" data-act="del-att">刪除</a></span>
         </div>
         ${preview}

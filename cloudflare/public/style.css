@@ -108,6 +108,9 @@ tr.group-header-row td {
 }
 .ai-usage-banner.warn { color: #b91c1c; font-weight: 600; }
 
+/* 附件疑似重複標記（同名同大小出現超過一次） */
+.dup-badge { color: #b45309; font-size: 11px; font-weight: 700; white-space: nowrap; }
+
 /* 飛機小動畫：大部分時間靜止，每隔幾秒起飛一下，不會太干擾 */
 .trip-plane { display: inline-block; animation: trip-takeoff 3.5s ease-in-out infinite; }
 @keyframes trip-takeoff {
