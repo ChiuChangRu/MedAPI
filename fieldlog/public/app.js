@@ -70,7 +70,12 @@ async function boot() {
   try {
     const cfg = await api("/config");
     TRANSCRIBE_ENABLED = cfg.transcribe;
-  } catch { TRANSCRIBE_ENABLED = false; }
+    localStorage.setItem("fieldlog_config", JSON.stringify(cfg));
+  } catch {
+    // /config 偶發失敗（手機網路不穩）時退回上次成功的值，
+    // 避免整理/轉文字按鈕憑空消失；就算誤開，後端也會擋
+    TRANSCRIBE_ENABLED = !!JSON.parse(localStorage.getItem("fieldlog_config") || "{}").transcribe;
+  }
   await Promise.all([loadFolders(), loadInbox()]);
   syncPendingFiles();
 }
@@ -181,10 +186,10 @@ async function openEntry(id) {
   const fields = JSON.parse(e.fields_json || "{}");
   const modal = $("entry-modal");
   modal.innerHTML = `
+    <div class="modal-close-float"><button class="btn small ghost" id="e-close">✕</button></div>
     <div class="detail-head">
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
       <button class="btn small ghost" id="e-delete" title="刪除整筆紀錄">🗑</button>
-      <button class="btn small ghost" id="e-close">✕</button>
     </div>
     <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "📥 收件匣"}</p>
     ${!folder ? `<div class="archive-row"><label>歸檔到：</label><select id="e-folder">
@@ -202,12 +207,13 @@ async function openEntry(id) {
       <button class="btn small capture-btn" id="e-photo">📷 拍照</button>
       <button class="btn small capture-btn" id="e-audio">🎙 錄音</button>
       <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
-      <button class="btn small" id="e-process" type="button" title="還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取">🪄 一鍵整理</button>
+      <button class="btn small" id="e-process" type="button" title="用 Cloudflare AI 把還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取（已處理過的不會重跑）">🪄 Cloudflare AI 整理</button>
       <span id="e-upload-status" class="sub"></span>
     </div>
     <div id="e-attachments" class="att-list">${e.attachments.map(attHtml).join("") || `<p class="sub">尚無附件</p>`}</div>
   `;
   $("entry-overlay").classList.add("open");
+  lockBodyScroll();
   $("e-close").onclick = closeEntry;
   $("e-delete").onclick = async () => {
     if (!confirm(`確定刪除整筆紀錄「${e.title || "（未命名）"}」？裡面的附件也會一起刪除，無法復原。`)) return;
@@ -253,28 +259,50 @@ async function processEntryAttachments(id, btn) {
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
     let failed = 0;
-    let firstError = ""; // 只留第一個失敗原因，避免同一種錯誤（例如額度用完）洗版
-    for (const a of audioTodo) {
+    let firstError = ""; // 只留第一個失敗原因，避免同一種錯誤洗版
+    let quotaHit = false; // Cloudflare AI 每日額度用完（4006）就立刻停，不再逐筆撞牆
+    const queue = [
+      ...audioTodo.map((a) => ({ a, ep: "transcribe" })),
+      ...photoTodo.map((a) => ({ a, ep: "ocr" })),
+    ];
+    for (const { a, ep } of queue) {
       btn.textContent = `🪄 ${++done}/${total}`;
-      try { await api(`/attachments/${a.id}/transcribe`, { method: "POST", body: "{}" }); }
-      catch (err) { failed++; firstError ||= err.message; }
+      try { await api(`/attachments/${a.id}/${ep}`, { method: "POST", body: "{}" }); }
+      catch (err) {
+        failed++;
+        firstError ||= err.message;
+        if (/4006|neuron/i.test(err.message)) { quotaHit = true; break; }
+      }
     }
-    for (const a of photoTodo) {
-      btn.textContent = `🪄 ${++done}/${total}`;
-      try { await api(`/attachments/${a.id}/ocr`, { method: "POST", body: "{}" }); }
-      catch (err) { failed++; firstError ||= err.message; }
+    if (quotaHit) {
+      showToast(`⛔ Cloudflare AI 每日免費額度已用完（台北時間早上 8 點重置）。已停止整理，額度恢復後再按一次即可續跑`);
+    } else {
+      showToast(failed ? `整理完成，${failed} 筆失敗：${firstError}（可個別重試）` : `整理完成：${total} 筆`);
     }
-    showToast(failed ? `整理完成，${failed} 筆失敗：${firstError}（可個別重試）` : `整理完成：${total} 筆`);
     openEntry(id);
   } catch (err) {
     showToast("整理失敗：" + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = "🪄 一鍵整理";
+    btn.textContent = "🪄 Cloudflare AI 整理";
   }
 }
 
-function closeEntry() { $("entry-overlay").classList.remove("open"); }
+// 詳情頁開啟時鎖住底層頁面捲動（iOS Safari 光 overflow:hidden 不夠，
+// 要用 position:fixed 才真的鎖得住），關閉時還原原本的捲動位置
+function lockBodyScroll() {
+  if (document.body.classList.contains("modal-open")) return; // 重複開啟（整理後刷新）時別把捲動位置蓋成 0
+  document.body.dataset.scrollY = String(window.scrollY);
+  document.body.style.top = `-${window.scrollY}px`;
+  document.body.classList.add("modal-open");
+}
+function unlockBodyScroll() {
+  document.body.classList.remove("modal-open");
+  document.body.style.top = "";
+  window.scrollTo(0, Number(document.body.dataset.scrollY || 0));
+}
+
+function closeEntry() { $("entry-overlay").classList.remove("open"); unlockBodyScroll(); }
 
 function attHtml(a) {
   const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;

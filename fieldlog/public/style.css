@@ -99,8 +99,16 @@ body {
   position: fixed; inset: 0; background: rgba(20, 22, 21, 0.55);
   display: none; align-items: flex-start; justify-content: center;
   padding: 30px 14px; z-index: 50; overflow-y: auto;
+  overscroll-behavior: contain; /* 捲到底時不要把捲動傳給底層頁面 */
 }
 .overlay.open { display: flex; }
+
+/* 詳情頁打開時鎖住底層頁面（配合 JS 的 lockBodyScroll，iOS 需要 position:fixed 才鎖得住） */
+body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hidden; }
+
+/* 關閉鈕黏在捲動視窗頂端：捲到頁面中段也隨時關得掉，不用捲回最上面 */
+.modal-close-float { position: sticky; top: 4px; z-index: 6; display: flex; justify-content: flex-end; height: 0; }
+.modal-close-float .btn { background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18); }
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
   width: 100%; max-width: 560px;

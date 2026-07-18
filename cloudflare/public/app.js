@@ -631,7 +631,15 @@ async function connectBackend() {
       const cfg = await api("/config");
       UPLOADS_ENABLED = cfg.uploads;
       TRANSCRIBE_ENABLED = cfg.transcribe;
-    } catch { UPLOADS_ENABLED = false; TRANSCRIBE_ENABLED = false; }
+      localStorage.setItem("medtec_config", JSON.stringify(cfg));
+    } catch {
+      // /config 偶發失敗（手機網路不穩最常見）時退回上次成功的值——
+      // 否則採集/錄音/整理整排按鈕會憑空消失，看起來像「沒部署 R2」。
+      // 就算快取過期造成誤開，按下去後端也會擋，不會出事
+      const cached = JSON.parse(localStorage.getItem("medtec_config") || "{}");
+      UPLOADS_ENABLED = !!cached.uploads;
+      TRANSCRIBE_ENABLED = !!cached.transcribe;
+    }
     if (!me()) { showLogin(); } else { document.body.classList.remove("locked"); $("user-chip").textContent = me(); renderRecommendBar(); }
     STATE = await api("/state");
     saveSnapshot();
@@ -1400,6 +1408,7 @@ async function openDetail(id) {
   const visit = KEY_VISIT_MAP[id];
 
   modal.innerHTML = `
+    <div class="modal-close-float"><button class="btn small ghost" id="d-close">✕</button></div>
     <div class="detail-head">
       <div class="detail-head-main">
         ${e.photo ? `<img class="detail-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
@@ -1416,7 +1425,6 @@ async function openDetail(id) {
         ${lineHits.length ? `<p class="sub">產品／科別關聯：${lineHits.map((l) => l.name).join("、")}</p>` : ""}
         </div>
       </div>
-      <button class="btn small ghost" id="d-close">✕</button>
     </div>
     <p class="detail-desc">${esc(e.description || "（無簡介）")}</p>
     ${(e.products || []).length ? `<div class="tags">${e.products.map((p) => `<span class="tag">${esc(p)}</span>`).join("")}</div>` : ""}
@@ -1525,7 +1533,7 @@ async function openDetail(id) {
         <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音<small>純錄音</small></button>
         <button class="btn small photo-btn" id="d-photo-btn" type="button">📷 連續拍照</button>
         <label class="btn small upload-btn">📁 上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
-        <button class="btn small ghost" id="d-att-process" type="button" title="一鍵把這家展商還沒處理的錄音全部轉文字、照片全部擷取文字（結果照樣可編輯）">🪄 一鍵整理</button>
+        <button class="btn small ghost" id="d-att-process" type="button" title="用 Cloudflare AI 把這家展商還沒處理的錄音全部轉文字、照片全部擷取文字（已處理過的不會重跑；結果照樣可編輯）">🪄 Cloudflare AI 整理</button>
         <button class="btn small ghost" id="d-att-reorganize" type="button" title="剛剛分類的照片還沒歸位時，點這個立刻重新整理">🗂 整理歸檔</button>
         <span id="d-att-pending" class="sub"></span>
         <span id="d-upload-status" class="sub"></span>
@@ -1551,6 +1559,7 @@ async function openDetail(id) {
   `;
 
   $("detail-overlay").classList.add("open");
+  lockBodyScroll();
   $("d-close").onclick = closeDetail;
   const star = $("d-star");
   if (star) star.onclick = () => togglePocket(id);
@@ -1828,6 +1837,20 @@ async function deleteNote(exhibitorId, noteId) {
   } catch (err) { showToast("刪除失敗：" + err.message); }
 }
 
+// 詳情頁開啟時鎖住底層頁面捲動（iOS Safari 光 overflow:hidden 不夠，
+// 要用 position:fixed 才真的鎖得住），關閉時還原原本的捲動位置
+function lockBodyScroll() {
+  if (document.body.classList.contains("modal-open")) return; // 重複開啟（詳情間切換/刷新）時別把捲動位置蓋成 0
+  document.body.dataset.scrollY = String(window.scrollY);
+  document.body.style.top = `-${window.scrollY}px`;
+  document.body.classList.add("modal-open");
+}
+function unlockBodyScroll() {
+  document.body.classList.remove("modal-open");
+  document.body.style.top = "";
+  window.scrollTo(0, Number(document.body.dataset.scrollY || 0));
+}
+
 // ---------- 附件 ----------
 function fileUrl(key) {
   return `/api/file/${encodeURIComponent(key)}?pin=${encodeURIComponent(pin())}`;
@@ -1848,24 +1871,33 @@ async function processAllAttachments(id, btn) {
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
     let failed = 0;
-    let firstError = ""; // 只留第一個失敗原因，避免同一種錯誤（例如額度用完）洗版
-    for (const a of audioTodo) {
+    let firstError = ""; // 只留第一個失敗原因，避免同一種錯誤洗版
+    let quotaHit = false; // Cloudflare AI 每日額度用完（錯誤碼 4006）就立刻停，不再逐筆撞牆
+    const queue = [
+      ...audioTodo.map((a) => ({ a, ep: "transcribe" })),
+      ...imgTodo.map((a) => ({ a, ep: "ocr" })),
+    ];
+    for (const { a, ep } of queue) {
       btn.textContent = `🪄 整理中 ${++done}/${total}`;
-      try { await api(`/attachments/${a.id}/transcribe`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
-      catch (err) { failed++; firstError ||= err.message; }
+      try { await api(`/attachments/${a.id}/${ep}`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
+      catch (err) {
+        failed++;
+        firstError ||= err.message;
+        if (/4006|neuron/i.test(err.message)) { quotaHit = true; break; }
+      }
     }
-    for (const a of imgTodo) {
-      btn.textContent = `🪄 整理中 ${++done}/${total}`;
-      try { await api(`/attachments/${a.id}/ocr`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
-      catch (err) { failed++; firstError ||= err.message; }
+    if (quotaHit) {
+      const remaining = total - done;
+      showToast(`⛔ Cloudflare AI 每日免費額度已用完（台北時間早上 8 點重置）。已停止整理，剩 ${remaining + 1} 筆額度恢復後再按一次即可續跑`);
+    } else {
+      showToast(failed ? `整理完成，${failed} 筆失敗：${firstError}（可到個別附件重試）` : `整理完成：${total} 筆`);
     }
-    showToast(failed ? `整理完成，${failed} 筆失敗：${firstError}（可到個別附件重試）` : `整理完成：${total} 筆`);
     loadAttachments(id); loadHistory(id); loadSearchTexts();
   } catch (err) {
     showToast("整理失敗：" + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = "🪄 一鍵整理";
+    btn.textContent = "🪄 Cloudflare AI 整理";
   }
 }
 
@@ -2501,6 +2533,7 @@ async function loadHistory(id) {
 function closeDetail() {
   if (activeRecording) activeRecording.recorder.stop();
   $("detail-overlay").classList.remove("open");
+  unlockBodyScroll();
   CURRENT_ID = null;
   clearShareParam();
 }
