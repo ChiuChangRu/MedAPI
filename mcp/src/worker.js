@@ -25,10 +25,19 @@ const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 
 // ---------- 小工具 ----------
 
+// claude.ai 的自訂連接器是瀏覽器直接呼叫，跨網域一定會先送 CORS 預檢（OPTIONS），
+// 沒有這組 header 瀏覽器會直接擋下真正的 POST，連 initialize 都打不到
+const CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type, authorization, x-pin, mcp-session-id",
+  "access-control-expose-headers": "mcp-session-id",
+};
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: { "content-type": "application/json; charset=utf-8", ...CORS_HEADERS },
   });
 }
 
@@ -440,7 +449,7 @@ async function handleMcp(request, env) {
         "長儒的個人知識層唯讀窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字）、Medtec 2026 展商與團隊拜訪紀錄。全部唯讀；要改資料請走各系統前台，wiki 收錄走 git 人審。",
     });
   }
-  if (method.startsWith("notifications/")) return new Response(null, { status: 202 });
+  if (method.startsWith("notifications/")) return new Response(null, { status: 202, headers: CORS_HEADERS });
   if (method === "ping") return rpcResult(id, {});
   if (method === "tools/list") {
     return rpcResult(id, {
@@ -464,6 +473,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/mcp") {
+      // CORS 預檢不帶認證資訊，瀏覽器也不允許預檢回應是 401——一律放行，
+      // 真正的認證在後面實際的 GET/POST 請求上做
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
       // fail-closed：MCP_PIN 未設定時全部拒絕
       const pin = (env.MCP_PIN || "").trim();
       if (!pin) return json({ error: "尚未設定 MCP_PIN：請至 Worker Settings → Variables and Secrets 新增" }, 401);
@@ -476,9 +488,15 @@ export default {
         return rpcError(null, -32603, `伺服器錯誤：${err.message}`);
       }
     }
-    // 部署健康檢查用；不透露任何資料
-    return new Response("medapi-mcp OK — MCP 端點在 POST /mcp（需 ?pin=）\n", {
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
+    if (url.pathname === "/") {
+      // 部署健康檢查用；不透露任何資料
+      return new Response("medapi-mcp OK — MCP 端點在 POST /mcp（需 ?pin=）\n", {
+        headers: { "content-type": "text/plain; charset=utf-8", ...CORS_HEADERS },
+      });
+    }
+    // 其餘路徑一律 404——尤其是 /.well-known/oauth-*：這個 MCP 只用 PIN，
+    // 不做 OAuth，若這裡誤回 200 會讓 claude.ai 誤判成「這台支援 OAuth」
+    // 進而嘗試動態註冊、失敗跳出「無法向登入服務註冊」的錯誤
+    return new Response("Not found", { status: 404, headers: CORS_HEADERS });
   },
 };
