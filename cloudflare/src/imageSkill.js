@@ -8,8 +8,10 @@
  * 1. 抄字時模型「只看圖片」——逐字稿絕不能餵進 vision prompt，
  *    模型會把逐字稿內容當成照片裡的字抄出來（實測踩過）。
  * 2. 關聯判斷交給另一顆純文字模型另跑一步，兩個任務分開、互不污染。
- * 3. 輸出卡進重複迴圈（同一詞狂刷上百行，實測踩過）就判失敗，
- *    爛結果寧可不要，絕不入庫。
+ * 3. 輸出卡進重複迴圈（同一詞狂刷上百行，實測踩過）的處理：先換參數
+ *    重試一次；仍鬼打牆就截掉重複段、保留有用前段入庫（標註已截斷）。
+ *    ——原本是整筆拒收，實測發現 temperature 0 下同一張圖每次都掉進
+ *    同一個迴圈，等於永遠卡在待整理清單，重跑幾次都白燒額度。
  */
 
 export const OCR_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
@@ -38,19 +40,37 @@ export function detectRepetitionLoop(text) {
   return maxCount >= 8 && maxCount / lines.length > 0.4;
 }
 
-// 抄出照片裡的文字。回傳 { ok:true, text } 或 { ok:false, error, raw? }
+// 鬼打牆輸出的搶救：每一行最多保留前兩次出現，去掉之後的重複，結尾標註已截斷。
+// 實測鬼打牆的輸出前段通常是正常有用的，整筆丟掉太浪費
+export function dedupeRepetition(text) {
+  const seen = {};
+  const kept = [];
+  for (const line of (text || "").split("\n")) {
+    const key = line.trim();
+    if (!key) continue;
+    seen[key] = (seen[key] || 0) + 1;
+    if (seen[key] <= 2) kept.push(line);
+  }
+  return kept.join("\n") + "\n（模型輸出後段陷入重複，已自動截斷）";
+}
+
+// 抄出照片裡的文字。回傳 { ok:true, text } 或 { ok:false, error }
 export async function extractImageText(ai, bytes) {
-  const result = await ai.run(OCR_MODEL, {
+  const run = (temperature) => ai.run(OCR_MODEL, {
     image: Array.from(bytes),
     prompt: OCR_PROMPT,
     max_tokens: 1024,
-    temperature: 0,
+    temperature,
   });
-  const text = (result?.response ?? "").trim();
-  if (!text) return { ok: false, error: "模型沒有回傳文字，請再試一次" };
-  if (detectRepetitionLoop(text)) {
-    return { ok: false, error: "模型輸出卡進重複迴圈，這次結果不採信，請再試一次", raw: text };
+  let text = ((await run(0))?.response ?? "").trim();
+  if (text && detectRepetitionLoop(text)) {
+    // temperature 0 是確定性輸出：同一張圖重跑必掉同一個迴圈，
+    // 重試要拉高隨機性才有機會走出來
+    const retry = ((await run(0.5))?.response ?? "").trim();
+    if (retry && !detectRepetitionLoop(retry)) text = retry;
+    else text = dedupeRepetition(retry || text);
   }
+  if (!text) return { ok: false, error: "模型沒有回傳文字，請再試一次" };
   return { ok: true, text };
 }
 
