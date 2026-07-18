@@ -1879,7 +1879,7 @@ async function processAllAttachments(id, btn) {
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
     let failed = 0;
-    let firstError = ""; // 只留第一個失敗原因，避免同一種錯誤洗版
+    const errCounts = new Map(); // 各種失敗原因各出現幾次，跑完常駐顯示（toast 2.5 秒根本來不及看）
     let quotaHit = false; // Cloudflare AI 每日額度用完（錯誤碼 4006）就立刻停，不再逐筆撞牆
     const queue = [
       ...audioTodo.map((a) => ({ a, ep: "transcribe" })),
@@ -1890,15 +1890,23 @@ async function processAllAttachments(id, btn) {
       try { await api(`/attachments/${a.id}/${ep}`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
       catch (err) {
         failed++;
-        firstError ||= err.message;
+        errCounts.set(err.message, (errCounts.get(err.message) || 0) + 1);
+        console.error(`整理失敗 [${a.filename}]`, err);
         if (/4006|neuron/i.test(err.message)) { quotaHit = true; break; }
       }
     }
+    const errSummary = [...errCounts.entries()].map(([m, c]) => `${m}（×${c}）`).join("；");
+    const statusEl = $("d-upload-status");
     if (quotaHit) {
       const remaining = total - done;
-      showToast(`⛔ Cloudflare AI 每日免費額度已用完（台北時間早上 8 點重置）。已停止整理，剩 ${remaining + 1} 筆額度恢復後再按一次即可續跑`);
+      showToast(`⛔ Cloudflare AI 每日免費額度已用完。已停止整理，剩 ${remaining + 1} 筆`);
+      if (statusEl) statusEl.textContent = `⛔ 額度用完，剩 ${remaining + 1} 筆未跑（台北早上 8 點重置後再按一次續跑）`;
+    } else if (failed) {
+      showToast(`整理完成，${failed} 筆失敗（原因見按鈕旁）`);
+      if (statusEl) statusEl.textContent = `⚠️ ${failed} 筆失敗：${errSummary}`;
     } else {
-      showToast(failed ? `整理完成，${failed} 筆失敗：${firstError}（可到個別附件重試）` : `整理完成：${total} 筆`);
+      showToast(`整理完成：${total} 筆`);
+      if (statusEl) statusEl.textContent = "";
     }
     loadAttachments(id); loadHistory(id); loadSearchTexts();
   } catch (err) {
