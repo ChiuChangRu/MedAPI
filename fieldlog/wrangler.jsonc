@@ -6,7 +6,10 @@
   "compatibility_date": "2026-07-01",
   "assets": {
     "directory": "public",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    // wiki 內容是個人策略筆記，不能像其他靜態檔直接公開——
+    // 這些路徑先進 Worker 驗 PIN，通過才回傳檔案
+    "run_worker_first": ["/wiki/*"]
   },
   "d1_databases": [
     {

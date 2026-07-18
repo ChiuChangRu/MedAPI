@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>策略地圖 Wiki</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺</text></svg>" />
+<meta name="theme-color" content="#0f766e" />
+<style>
+  :root {
+    --accent: #0f766e; --accent-dark: #0d5f58; --bg: #f4f5f4;
+    --text: #1b1d1c; --text-muted: #6b7280; --border: #e2e4e3; --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.75 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; }
+
+  header {
+    background: var(--accent); color: #fff; position: sticky; top: 0; z-index: 10;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header a, header button {
+    color: #fff; text-decoration: none; font-size: 13px; background: rgba(255,255,255,.15);
+    border: none; border-radius: 8px; padding: 5px 10px; cursor: pointer; font-family: inherit;
+  }
+  header .spacer { flex: 1; }
+
+  .layout { max-width: 980px; margin: 0 auto; padding: 14px; display: flex; gap: 14px; align-items: flex-start; }
+  nav {
+    width: 220px; flex-shrink: 0; background: #fff; border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px; position: sticky; top: 64px;
+  }
+  nav .group { font-size: 12px; color: var(--text-muted); margin: 10px 4px 4px; font-weight: 600; }
+  nav a {
+    display: block; padding: 7px 9px; border-radius: 7px; color: var(--text);
+    text-decoration: none; font-size: 14px;
+  }
+  nav a.active { background: var(--accent); color: #fff; }
+  nav a:not(.active):hover { background: #eef2f1; }
+
+  main {
+    flex: 1; min-width: 0; background: #fff; border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 22px 24px 30px;
+  }
+  main h1 { font-size: 22px; margin: 0 0 14px; line-height: 1.4; }
+  main h2 { font-size: 17px; margin: 22px 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+  main h3 { font-size: 15px; margin: 16px 0 6px; color: var(--accent-dark); }
+  main p { margin: 8px 0; }
+  main ul, main ol { margin: 8px 0; padding-left: 22px; }
+  main li { margin: 3px 0; }
+  main blockquote {
+    margin: 10px 0; padding: 8px 14px; background: #f0faf8; border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0; color: #374151; font-size: 14px;
+  }
+  main code { background: #f1f3f2; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+  main hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+  main a { color: var(--accent-dark); }
+  .tablewrap { overflow-x: auto; margin: 10px 0; }
+  main table { border-collapse: collapse; font-size: 14px; min-width: 60%; }
+  main th, main td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+  main th { background: #f6f8f7; }
+  .todo { color: #92400e; }
+  .done { color: var(--text-muted); text-decoration: line-through; }
+
+  .loading { color: var(--text-muted); padding: 30px 0; text-align: center; }
+
+  /* PIN 登入 */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(20,24,23,.5); display: flex;
+    align-items: center; justify-content: center; z-index: 50; padding: 20px;
+  }
+  .modal { background: #fff; border-radius: 14px; padding: 22px; width: 100%; max-width: 320px; }
+  .modal h2 { margin: 0 0 6px; font-size: 18px; }
+  .modal p { color: var(--text-muted); font-size: 13px; margin: 0 0 12px; }
+  .modal input {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 16px; margin-bottom: 12px;
+  }
+  .modal button {
+    width: 100%; padding: 10px; background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; font-size: 15px; cursor: pointer;
+  }
+  .modal .err { color: #b91c1c; display: none; margin-top: 8px; }
+
+  @media (max-width: 720px) {
+    .layout { flex-direction: column; }
+    nav { width: 100%; position: static; display: flex; flex-wrap: wrap; gap: 4px; }
+    nav .group { width: 100%; margin: 6px 2px 0; }
+    nav a { font-size: 13px; padding: 5px 9px; }
+    main { padding: 16px 14px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/">‹ 🎒 隨身記</a>
+  <h1>🗺 策略地圖 Wiki</h1>
+  <span class="spacer"></span>
+  <button id="btn-medtec" title="Medtec 展商作戰地圖">🏭 Medtec</button>
+</header>
+
+<div class="layout">
+  <nav id="nav"><div class="loading">載入中…</div></nav>
+  <main id="content"><div class="loading">載入中…</div></main>
+</div>
+
+<div class="overlay" id="pin-overlay" style="display:none;">
+  <div class="modal">
+    <h2>🗺 策略地圖 Wiki</h2>
+    <p>個人知識庫，輸入 PIN 進入（與隨身記共用）。</p>
+    <input type="password" id="pin-input" placeholder="PIN" />
+    <button id="pin-go">進入</button>
+    <p class="err" id="pin-err"></p>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const pin = () => localStorage.getItem("fieldlog_pin") || "";
+  let pages = [];
+
+  // ---- 取受 PIN 保護的 wiki 檔案 ----
+  async function fetchWiki(path) {
+    const res = await fetch(path, { headers: { "x-pin": pin() } });
+    if (res.status === 401) { showPin(); throw new Error("unauthorized"); }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res;
+  }
+
+  function showPin() {
+    $("pin-overlay").style.display = "flex";
+    $("pin-input").focus();
+  }
+  $("pin-go").onclick = async () => {
+    localStorage.setItem("fieldlog_pin", $("pin-input").value.trim());
+    try {
+      await fetchWiki("/wiki/pages.json");
+      $("pin-overlay").style.display = "none";
+      boot();
+    } catch {
+      const e = $("pin-err"); e.textContent = "PIN 錯誤"; e.style.display = "block";
+    }
+  };
+  $("pin-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("pin-go").click(); });
+
+  // ---- Medtec 連結（網址存在本機，第一次點時設定） ----
+  $("btn-medtec").onclick = () => {
+    let u = localStorage.getItem("medtec_url") || "";
+    if (!u) {
+      u = prompt("貼上 Medtec 展商系統的網址（只需設定一次）：", "https://medtec-2026.");
+      if (!u) return;
+      localStorage.setItem("medtec_url", u.trim());
+      u = u.trim();
+    }
+    window.open(u, "_blank");
+  };
+
+  // ---- 極簡 Markdown 轉 HTML（只支援 wiki 用到的語法） ----
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function inline(s) {
+    return esc(s)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, t, u) =>
+        /\.md$/i.test(u) && !/^https?:/i.test(u)
+          ? `<a href="#${encodeURIComponent(u)}">${t}</a>`
+          : `<a href="${u}" target="_blank" rel="noopener">${t}</a>`);
+  }
+  function mdToHtml(md) {
+    const lines = md.split(/\r?\n/);
+    const out = [];
+    let list = null, quote = false, table = null;
+    const closeAll = () => {
+      if (list) { out.push(`</${list}>`); list = null; }
+      if (quote) { out.push("</blockquote>"); quote = false; }
+      if (table) { out.push("</table></div>"); table = null; }
+    };
+    for (const raw of lines) {
+      const line = raw.replace(/\s+$/, "");
+      let m;
+      if (!line) { closeAll(); continue; }
+      if ((m = line.match(/^(#{1,4})\s+(.*)/))) {
+        closeAll();
+        const lv = m[1].length;
+        out.push(`<h${lv}>${inline(m[2])}</h${lv}>`);
+      } else if (/^(-{3,}|\*{3,})$/.test(line)) {
+        closeAll(); out.push("<hr />");
+      } else if ((m = line.match(/^>\s?(.*)/))) {
+        if (list) { out.push(`</${list}>`); list = null; }
+        if (table) { out.push("</table></div>"); table = null; }
+        if (!quote) { out.push("<blockquote>"); quote = true; }
+        out.push(inline(m[1]) + "<br/>");
+      } else if (/^\|.*\|$/.test(line)) {
+        if (list) { out.push(`</${list}>`); list = null; }
+        if (quote) { out.push("</blockquote>"); quote = false; }
+        const cells = line.slice(1, -1).split("|").map((c) => c.trim());
+        if (cells.every((c) => /^:?-{2,}:?$/.test(c))) continue; // 分隔列
+        if (!table) { out.push('<div class="tablewrap"><table>'); table = "head";
+          out.push("<tr>" + cells.map((c) => `<th>${inline(c)}</th>`).join("") + "</tr>");
+        } else {
+          out.push("<tr>" + cells.map((c) => `<td>${inline(c)}</td>`).join("") + "</tr>");
+        }
+      } else if ((m = line.match(/^\s*[-*]\s+\[( |x|X)\]\s+(.*)/))) {
+        if (quote) { out.push("</blockquote>"); quote = false; }
+        if (table) { out.push("</table></div>"); table = null; }
+        if (list !== "ul") { if (list) out.push(`</${list}>`); out.push("<ul>"); list = "ul"; }
+        const done = m[1].toLowerCase() === "x";
+        out.push(`<li class="${done ? "done" : "todo"}">${done ? "☑" : "☐"} ${inline(m[2])}</li>`);
+      } else if ((m = line.match(/^\s*[-*]\s+(.*)/))) {
+        if (quote) { out.push("</blockquote>"); quote = false; }
+        if (table) { out.push("</table></div>"); table = null; }
+        if (list !== "ul") { if (list) out.push(`</${list}>`); out.push("<ul>"); list = "ul"; }
+        out.push(`<li>${inline(m[1])}</li>`);
+      } else if ((m = line.match(/^\s*\d+\.\s+(.*)/))) {
+        if (quote) { out.push("</blockquote>"); quote = false; }
+        if (table) { out.push("</table></div>"); table = null; }
+        if (list !== "ol") { if (list) out.push(`</${list}>`); out.push("<ol>"); list = "ol"; }
+        out.push(`<li>${inline(m[1])}</li>`);
+      } else {
+        closeAll();
+        out.push(`<p>${inline(line)}</p>`);
+      }
+    }
+    closeAll();
+    return out.join("\n");
+  }
+
+  // ---- 導覽與載入 ----
+  function currentFile() {
+    const h = decodeURIComponent(location.hash.slice(1));
+    return pages.some((p) => p.file === h) ? h : "README.md";
+  }
+  function renderNav() {
+    const file = currentFile();
+    let html = "", lastGroup = null;
+    for (const p of pages) {
+      if (p.group !== lastGroup && p.group) { html += `<div class="group">${p.group}</div>`; lastGroup = p.group; }
+      html += `<a href="#${encodeURIComponent(p.file)}" class="${p.file === file ? "active" : ""}">${p.title}</a>`;
+    }
+    $("nav").innerHTML = html;
+  }
+  async function renderPage() {
+    const file = currentFile();
+    renderNav();
+    $("content").innerHTML = '<div class="loading">載入中…</div>';
+    try {
+      const md = await (await fetchWiki("/wiki/" + encodeURIComponent(file))).text();
+      $("content").innerHTML = mdToHtml(md);
+      window.scrollTo(0, 0);
+    } catch (e) {
+      if (e.message !== "unauthorized")
+        $("content").innerHTML = `<div class="loading">載入失敗：${esc(e.message)}</div>`;
+    }
+  }
+  window.addEventListener("hashchange", renderPage);
+
+  async function boot() {
+    try {
+      pages = (await (await fetchWiki("/wiki/pages.json")).json()).pages;
+      renderPage();
+    } catch (e) {
+      if (e.message !== "unauthorized")
+        $("content").innerHTML = `<div class="loading">載入失敗：${esc(e.message)}</div>`;
+    }
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

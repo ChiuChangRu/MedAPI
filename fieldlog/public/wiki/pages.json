@@ -1,0 +1,14 @@
+{
+  "pages": [
+    { "file": "README.md", "title": "🗺 總覽與更新流程", "group": "" },
+    { "file": "A1-親水披膜.md", "title": "A1 親水披膜", "group": "A. 核心技術主題" },
+    { "file": "A2-抗結痂披膜.md", "title": "A2 抗結痂披膜", "group": "A. 核心技術主題" },
+    { "file": "A3-抗菌披膜.md", "title": "A3 抗菌披膜", "group": "A. 核心技術主題" },
+    { "file": "B1-塗層材料與化學.md", "title": "B1 塗層材料與化學", "group": "B. 支撐知識庫" },
+    { "file": "B2-表面處理與塗佈製程.md", "title": "B2 表面處理與塗佈製程", "group": "B. 支撐知識庫" },
+    { "file": "B3-性能測試與失效分析.md", "title": "B3 性能測試與失效分析", "group": "B. 支撐知識庫" },
+    { "file": "B4-生物安全與法規.md", "title": "B4 生物安全與法規", "group": "B. 支撐知識庫" },
+    { "file": "C1-供應商與設備圖譜.md", "title": "C1 供應商與設備圖譜", "group": "C. 資源網絡" },
+    { "file": "C2-文獻與課程.md", "title": "C2 文獻與課程", "group": "C. 資源網絡" }
+  ]
+}

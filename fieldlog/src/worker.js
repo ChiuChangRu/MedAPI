@@ -405,6 +405,15 @@ async function handleApi(request, env, url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // /wiki/* 是個人知識庫內容（wrangler run_worker_first 導進來的），
+    // 與 API 同一套 PIN 驗證，通過才放行到靜態資產
+    if (url.pathname.startsWith("/wiki/")) {
+      const pin = (env.FIELD_PIN || "").trim();
+      if (!pin) return bad("尚未設定 FIELD_PIN：請至 Worker Settings → Variables and Secrets 新增", 401);
+      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
+      if (given !== pin) return bad("PIN 錯誤或未提供", 401);
+      return env.ASSETS.fetch(new Request(new URL(url.pathname, url.origin), request));
+    }
     if (url.pathname.startsWith("/api/")) {
       // fail-closed：FIELD_PIN 未設定時全部拒絕
       const pin = (env.FIELD_PIN || "").trim();
