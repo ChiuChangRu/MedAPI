@@ -36,6 +36,16 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+function isPdfAtt(a) {
+  return (a.mime || "") === "application/pdf" || (a.filename || "").toLowerCase().endsWith(".pdf");
+}
+
+// 長文（PDF 全文可達數萬字）在清單裡只顯示開頭
+function clipText(s, n) {
+  s = String(s ?? "").trim();
+  return s.length > n ? s.slice(0, n) + `…（共 ${s.length} 字）` : s;
+}
+
 function showToast(text) {
   const t = $("toast");
   t.textContent = text;
@@ -255,7 +265,7 @@ async function processEntryAttachments(id, btn) {
     const e = await api(`/entries/${id}`);
     // 「處理過但結果是空的」（transcribed_at/ocr_at 有時間戳）不算待整理，不重跑
     const audioTodo = (e.attachments || []).filter((a) => a.kind === "audio" && !a.transcript && !a.transcribed_at);
-    const photoTodo = (e.attachments || []).filter((a) => a.kind === "photo" && !a.ocr_text && !a.ocr_at);
+    const photoTodo = (e.attachments || []).filter((a) => (a.kind === "photo" || isPdfAtt(a)) && !a.ocr_text && !a.ocr_at);
     const total = audioTodo.length + photoTodo.length;
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
@@ -318,11 +328,11 @@ function attHtml(a) {
         ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" class="att-transcribe" data-id="${a.id}">重新辨識</a></p>`
         : `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a>`)
     : "";
-  const ocrBit = a.kind === "photo" && TRANSCRIBE_ENABLED
+  const ocrBit = (a.kind === "photo" || isPdfAtt(a)) && TRANSCRIBE_ENABLED
     ? (a.ocr_text
-      ? `<p class="att-transcript">🔍 ${esc(a.ocr_text)} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a></p>`
+      ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a></p>`
       : a.ocr_at
-        ? `<p class="att-transcript">🔍（擷取過，照片上沒有文字）<a href="#" class="att-ocr" data-id="${a.id}">重新擷取</a></p>`
+        ? `<p class="att-transcript">🔍（擷取過，沒有文字內容）<a href="#" class="att-ocr" data-id="${a.id}">重新擷取</a></p>`
         : `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a>`)
     : "";
   return `<div class="att-item" data-ocr="${esc(a.ocr_text || "")}">

@@ -461,8 +461,9 @@ async function handleApi(request, env, url, ctx) {
     return json({ text });
   }
 
-  // ---- 照片擷取文字（影像 skill）：抄出照片文字存進 ocr_text，可再人工編輯；
-  // 採集模式拍的照片會另外比對「拍攝當下」的錄音逐字稿，附上一句關聯說明 ----
+  // ---- 照片／PDF 擷取文字：抄出內容存進 ocr_text，可再人工編輯；
+  // 照片走影像 skill（採集模式照片另外比對「拍攝當下」的錄音逐字稿附關聯），
+  // PDF 走 Workers AI 的 toMarkdown 轉換——型錄/DM 的內容也要進得了搜尋跟 MCP ----
   const attOcrMatch = path.match(/^\/attachments\/(\d+)\/ocr$/);
   if (attOcrMatch && method === "POST") {
     if (!env.AI || !env.FILES) return bad("尚未啟用圖片擷取文字（需 Workers AI 與 R2）", 501);
@@ -471,9 +472,19 @@ async function handleApi(request, env, url, ctx) {
     const author = (body.author || "").trim() || "匿名";
     const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到附件", 404);
-    if (!(old.mime || "").startsWith("image/")) return bad("只有照片可以擷取文字");
+    const isPdf = (old.mime || "") === "application/pdf" || old.filename.toLowerCase().endsWith(".pdf");
+    if (!(old.mime || "").startsWith("image/") && !isPdf) return bad("只有照片與 PDF 可以擷取文字");
     const obj = await env.FILES.get(old.key);
     if (!obj) return bad("找不到檔案內容", 404);
+    if (isPdf) {
+      const converted = await env.AI.toMarkdown([
+        { name: old.filename, blob: new Blob([await obj.arrayBuffer()], { type: "application/pdf" }) },
+      ]).catch((err) => { throw new Error(`PDF 轉文字失敗：${err.message}`); });
+      const pdfText = (converted?.[0]?.data || "").trim().slice(0, 60000); // 超長型錄截斷，D1 單欄位別塞爆
+      await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(pdfText, now(), id).run();
+      await logHistory(db, old.exhibitor_id, author, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 80) || "（沒有擷取到文字）"}`);
+      return json({ ocr_text: pdfText });
+    }
     const bytes = new Uint8Array(await obj.arrayBuffer());
     const r = await extractImageText(env.AI, bytes);
     if (!r.ok) return bad(r.error, 502);

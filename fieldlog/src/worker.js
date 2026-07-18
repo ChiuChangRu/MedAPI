@@ -315,9 +315,20 @@ async function handleApi(request, env, url) {
     const id = Number(ocrMatch[1]);
     const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到附件", 404);
-    if (old.kind !== "photo") return bad("只有照片可以擷取文字");
+    const isPdf = (old.mime || "") === "application/pdf" || old.filename.toLowerCase().endsWith(".pdf");
+    if (old.kind !== "photo" && !isPdf) return bad("只有照片與 PDF 可以擷取文字");
     const obj = await env.FILES.get(old.key);
     if (!obj) return bad("找不到檔案內容", 404);
+    if (isPdf) {
+      // PDF（文獻、型錄、講義）走 Workers AI 的 toMarkdown 轉文字，內容才進得了搜尋跟 MCP
+      const converted = await env.AI.toMarkdown([
+        { name: old.filename, blob: new Blob([await obj.arrayBuffer()], { type: "application/pdf" }) },
+      ]).catch((err) => { throw new Error(`PDF 轉文字失敗：${err.message}`); });
+      const pdfText = (converted?.[0]?.data || "").trim().slice(0, 60000); // 超長文件截斷，D1 單欄位別塞爆
+      await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(pdfText, now(), id).run();
+      await logHistory(db, old.entry_id, null, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 60) || "（沒有擷取到文字）"}`);
+      return json({ ocr_text: pdfText });
+    }
     const bytes = new Uint8Array(await obj.arrayBuffer());
     const r = await extractImageText(env.AI, bytes);
     if (!r.ok) return bad(r.error, 502);
@@ -391,7 +402,10 @@ async function handleApi(request, env, url) {
       }
       if (files.length) {
         lines.push(``, `### 其他檔案`);
-        for (const a of files) lines.push(`- ${a.filename}（${(a.size / 1024 / 1024).toFixed(1)}MB）`);
+        for (const a of files) {
+          lines.push(`- ${a.filename}（${(a.size / 1024 / 1024).toFixed(1)}MB）`);
+          if (a.ocr_text) lines.push(`  - 檔案內容（AI 擷取）：${a.ocr_text.slice(0, 8000).replace(/\n+/g, " ／ ")}`);
+        }
       }
       lines.push(``);
     }

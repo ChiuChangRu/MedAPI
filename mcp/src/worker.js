@@ -375,6 +375,14 @@ const TOOLS = [
         if (goals.length) lines.push(`- 目標標籤：${goals.join("、")}`);
         if (collected.length) lines.push(`- 已索取資料：${collected.join("、")}`);
         if (state.post_class) lines.push(`- 會後分級：${state.post_class}`);
+        const vr = JSON.parse(state.visit_record || "{}");
+        const vrBits = [];
+        if ((vr.obtained || []).length) vrBits.push(`取得：${vr.obtained.join("、")}`);
+        if (vr.contact) vrBits.push(`聯絡人：${vr.contact}`);
+        if (vr.solves || vr.note) vrBits.push(`能解決什麼：${vr.solves || vr.note}`);
+        if (vr.diff) vrBits.push(`差異化：${vr.diff}`);
+        if (vr.next_step) vrBits.push(`下一步：${vr.next_step}`);
+        if (vrBits.length) lines.push(`- 拜訪成果：${vrBits.join("｜")}`);
       }
       if (notes.length) {
         lines.push("", "## 拜訪紀錄（最新 20 則）");

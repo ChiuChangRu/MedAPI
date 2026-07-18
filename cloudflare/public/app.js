@@ -1390,6 +1390,12 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// 長文（PDF 全文可達數萬字）在清單裡只顯示開頭，完整內容按「編輯」看
+function clipText(s, n) {
+  s = String(s ?? "").trim();
+  return s.length > n ? s.slice(0, n) + `…（共 ${s.length} 字，按「編輯」看全文）` : s;
+}
+
 async function togglePocket(id) {
   if (!API_OK && !OFFLINE) { showToast("共筆後端未連線"); return; }
   const st = getState(id);
@@ -1868,7 +1874,7 @@ async function processAllAttachments(id, btn) {
     const atts = await api(`/attachments?exhibitor_id=${id}`);
     // 「處理過但結果是空的」（transcribed_at/ocr_at 有時間戳）不算待整理，不重跑
     const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript && !a.transcribed_at);
-    const imgTodo = atts.filter((a) => (a.mime || "").startsWith("image/") && !a.ocr_text && !a.ocr_at);
+    const imgTodo = atts.filter((a) => ((a.mime || "").startsWith("image/") || isPdfAtt(a)) && !a.ocr_text && !a.ocr_at);
     const total = audioTodo.length + imgTodo.length;
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
@@ -2314,6 +2320,10 @@ function finishPhotoBurst() {
   if (CURRENT_ID === exhibitorId) { loadAttachments(exhibitorId); loadHistory(exhibitorId); }
 }
 
+function isPdfAtt(a) {
+  return (a.mime || "") === "application/pdf" || (a.filename || "").toLowerCase().endsWith(".pdf");
+}
+
 // 一鍵整理按下去之前先讓人看得到「還有沒有東西可整理」，不用猜、不用白按一次
 // 去確認（浪費一次 API 來回，也讓人誤以為每次按都會真的重新跑 AI）
 function updatePendingBadge(atts) {
@@ -2321,7 +2331,7 @@ function updatePendingBadge(atts) {
   if (!el) return;
   if (!TRANSCRIBE_ENABLED) { el.textContent = ""; return; }
   const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript && !a.transcribed_at).length;
-  const imgTodo = atts.filter((a) => (a.mime || "").startsWith("image/") && !a.ocr_text && !a.ocr_at).length;
+  const imgTodo = atts.filter((a) => ((a.mime || "").startsWith("image/") || isPdfAtt(a)) && !a.ocr_text && !a.ocr_at).length;
   const pending = audioTodo + imgTodo;
   el.textContent = pending ? `⏳ ${pending} 筆待整理` : atts.length ? "✓ 已全部整理" : "";
   const btn = $("d-att-process");
@@ -2357,15 +2367,16 @@ async function loadAttachments(id) {
       }
       const isAudio = (a.mime || "").startsWith("audio/");
       const isImage = (a.mime || "").startsWith("image/");
+      const canOcr = isImage || isPdfAtt(a); // PDF 型錄也能擷取文字（後端走 toMarkdown）
       const transcriptBlock = !isAudio || !TRANSCRIBE_ENABLED ? "" : a.transcript
         ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" data-act="edit-transcript" class="att-transcribe-btn">編輯</a></p>`
         : a.transcribed_at
           ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" data-act="transcribe" class="att-transcribe-btn">重新辨識</a></p>`
           : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a>`;
-      const ocrBlock = !isImage || !TRANSCRIBE_ENABLED ? "" : a.ocr_text
-        ? `<p class="att-transcript">🔍 ${esc(a.ocr_text)} <a href="#" data-act="edit-ocr" class="att-transcribe-btn">編輯</a></p>`
+      const ocrBlock = !canOcr || !TRANSCRIBE_ENABLED ? "" : a.ocr_text
+        ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" data-act="edit-ocr" class="att-transcribe-btn">編輯</a></p>`
         : a.ocr_at
-          ? `<p class="att-transcript">🔍（擷取過，照片上沒有文字）<a href="#" data-act="ocr" class="att-transcribe-btn">重新擷取</a></p>`
+          ? `<p class="att-transcript">🔍（擷取過，沒有文字內容）<a href="#" data-act="ocr" class="att-transcribe-btn">重新擷取</a></p>`
           : `<a href="#" data-act="ocr" class="att-transcribe-btn">🔍 擷取文字</a>`;
       const catRow = !isImage ? "" : `<div class="att-cat-row">${ATT_CATEGORIES.map((c) =>
         `<span class="cat-chip ${a.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`
