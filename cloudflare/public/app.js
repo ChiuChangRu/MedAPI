@@ -1842,17 +1842,18 @@ async function processAllAttachments(id, btn) {
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
     let failed = 0;
+    let firstError = ""; // 只留第一個失敗原因，避免同一種錯誤（例如額度用完）洗版
     for (const a of audioTodo) {
       btn.textContent = `🪄 整理中 ${++done}/${total}`;
       try { await api(`/attachments/${a.id}/transcribe`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
-      catch { failed++; }
+      catch (err) { failed++; firstError ||= err.message; }
     }
     for (const a of imgTodo) {
       btn.textContent = `🪄 整理中 ${++done}/${total}`;
       try { await api(`/attachments/${a.id}/ocr`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
-      catch { failed++; }
+      catch (err) { failed++; firstError ||= err.message; }
     }
-    showToast(failed ? `整理完成，${failed} 筆失敗（可到個別附件重試）` : `整理完成：${total} 筆`);
+    showToast(failed ? `整理完成，${failed} 筆失敗：${firstError}（可到個別附件重試）` : `整理完成：${total} 筆`);
     loadAttachments(id); loadHistory(id); loadSearchTexts();
   } catch (err) {
     showToast("整理失敗：" + err.message);
