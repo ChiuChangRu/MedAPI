@@ -116,6 +116,16 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 /* 「略過整理」：連結淡化、已略過的狀態文字淡化 */
 .skip-link { opacity: 0.55; }
 .att-transcript.skipped { color: var(--text-muted); }
+
+/* AI 整理狀態摺疊列：預設收合只露一行狀態，附件多時頁面不會被文字撐爆 */
+.att-ai summary {
+  cursor: pointer; font-size: 12px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 2px 0; user-select: none;
+}
+.att-ai summary:hover { color: var(--text); }
+.att-ai[open] summary { color: var(--text); }
+.att-ai-body { margin: 4px 0 2px; }
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
   width: 100%; max-width: 560px;

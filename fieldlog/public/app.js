@@ -296,9 +296,12 @@ async function processEntryAttachments(id, btn) {
     const errSummary = [...errCounts.entries()].map(([m, c]) => `${m}（×${c}）`).join("；");
     const okSummary = `有內容 ${gotText} 筆・無內容 ${gotEmpty} 筆`;
     await openEntry(id); // 先重新渲染，再把摘要寫進狀態欄（否則會被重繪洗掉）
-    // 這次剛整理的附件標綠邊條，一眼看到新結果
+    // 這次剛整理的附件標綠邊條＋自動展開結果，一眼看到新結果
     for (const pid of processedIds) {
-      document.querySelector(`.att-item[data-id="${pid}"]`)?.classList.add("just-processed");
+      const item = document.querySelector(`.att-item[data-id="${pid}"]`);
+      if (!item) continue;
+      item.classList.add("just-processed");
+      item.querySelectorAll("details.att-ai").forEach((d) => { d.open = true; });
     }
     const statusEl = $("e-upload-status");
     if (quotaHit) {
@@ -341,23 +344,28 @@ function attHtml(a) {
   if (a.kind === "photo") preview = `<a href="${url}" target="_blank" rel="noopener"><img class="att-thumb" src="${url}" loading="lazy" alt="${esc(a.filename)}" /></a>`;
   if (a.kind === "audio") preview = `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`;
   const offset = a.offset_secs !== null && a.offset_secs !== undefined ? `<span class="att-offset">📸 錄音 ${fmtSecs(a.offset_secs)}</span>` : "";
+  // AI 整理區塊預設收合，只露一行狀態（附件一多頁面才不會被文字撐爆），點狀態展開全文與操作
+  const aiFold = (summary, body) =>
+    `<details class="att-ai"><summary>${summary}</summary><div class="att-ai-body">${body}</div></details>`;
   const transcribeBit = a.kind === "audio" && TRANSCRIBE_ENABLED
     ? (a.transcript
-      ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" class="att-transcribe skip-link" data-id="${a.id}" title="重新跑 AI 辨識並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`
+      ? aiFold(`📝 已整理｜${esc(clipText(a.transcript, 40))}`,
+          `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" class="att-transcribe skip-link" data-id="${a.id}" title="重新跑 AI 辨識並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`)
       : a.transcribed_at === "skipped"
-        ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" class="att-transcribe" data-id="${a.id}">還是要辨識</a></p>`
+        ? aiFold(`🚫 不整理`, `<p class="att-transcript skipped">已設為不整理 <a href="#" class="att-transcribe" data-id="${a.id}">還是要辨識</a></p>`)
         : a.transcribed_at
-          ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" class="att-transcribe" data-id="${a.id}">重新辨識</a></p>`
-          : `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_transcribe" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`)
+          ? aiFold(`📝 已整理（無語音內容）`, `<p class="att-transcript">辨識過，沒有語音內容 <a href="#" class="att-transcribe" data-id="${a.id}">重新辨識</a></p>`)
+          : aiFold(`⏳ 未整理`, `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_transcribe" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`))
     : "";
   const ocrBit = (a.kind === "photo" || isPdfAtt(a)) && TRANSCRIBE_ENABLED
     ? (a.ocr_text
-      ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a> <a href="#" class="att-ocr skip-link" data-id="${a.id}" title="重新跑 AI 擷取並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`
+      ? aiFold(`🔍 已整理｜${esc(clipText(a.ocr_text, 40))}`,
+          `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a> <a href="#" class="att-ocr skip-link" data-id="${a.id}" title="重新跑 AI 擷取並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`)
       : a.ocr_at === "skipped"
-        ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" class="att-ocr" data-id="${a.id}">還是要擷取</a></p>`
+        ? aiFold(`🚫 不整理`, `<p class="att-transcript skipped">已設為不整理 <a href="#" class="att-ocr" data-id="${a.id}">還是要擷取</a></p>`)
         : a.ocr_at
-          ? `<p class="att-transcript">🔍（擷取過，沒有文字內容）<a href="#" class="att-ocr" data-id="${a.id}">重新擷取</a></p>`
-          : `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_ocr" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`)
+          ? aiFold(`🔍 已整理（沒有文字內容）`, `<p class="att-transcript">擷取過，沒有文字內容 <a href="#" class="att-ocr" data-id="${a.id}">重新擷取</a></p>`)
+          : aiFold(`⏳ 未整理`, `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_ocr" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`))
     : "";
   return `<div class="att-item" data-id="${a.id}" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
