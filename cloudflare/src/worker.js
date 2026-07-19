@@ -12,7 +12,7 @@
  * 未設定 TEAM_PIN 時視為開發模式、不驗證（正式部署請務必設定）。
  */
 
-import { extractImageText, judgeRelation } from "./imageSkill.js";
+import { extractImageText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS members (
@@ -492,9 +492,12 @@ async function handleApi(request, env, url, ctx) {
       const converted = await env.AI.toMarkdown([
         { name: old.filename, blob: new Blob([await obj.arrayBuffer()], { type: "application/pdf" }) },
       ]).catch((err) => { throw new Error(`PDF 轉文字失敗：${err.message}`); });
-      const pdfText = (converted?.[0]?.data || "").trim().slice(0, 60000); // 超長型錄截斷，D1 單欄位別塞爆
+      // 剝掉 toMarkdown 開頭的檔案 metadata，只留本文；設計型 PDF（文字排成圖形、
+      // 無文字層）剝完可能是空的 → ocr_at 有時間戳但 ocr_text 空 → 前台顯示
+      // 「已整理（沒有文字內容）」，比留著一堆 metadata 假裝有內容誠實
+      const pdfText = stripPdfMetadata(converted?.[0]?.data || "").slice(0, 60000);
       await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(pdfText, now(), id).run();
-      await logHistory(db, old.exhibitor_id, author, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 80) || "（沒有擷取到文字）"}`);
+      await logHistory(db, old.exhibitor_id, author, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 80) || "（沒有擷取到文字，可能是圖形型 PDF）"}`);
       return json({ ocr_text: pdfText });
     }
     const bytes = new Uint8Array(await obj.arrayBuffer());

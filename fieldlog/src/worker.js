@@ -13,7 +13,7 @@
  * FIELD_PIN 未設定時一律拒絕（fail-closed）。raw data 只增不刪。
  */
 
-import { extractImageText, judgeRelation } from "./imageSkill.js";
+import { extractImageText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS folders (
@@ -336,9 +336,11 @@ async function handleApi(request, env, url) {
       const converted = await env.AI.toMarkdown([
         { name: old.filename, blob: new Blob([await obj.arrayBuffer()], { type: "application/pdf" }) },
       ]).catch((err) => { throw new Error(`PDF 轉文字失敗：${err.message}`); });
-      const pdfText = (converted?.[0]?.data || "").trim().slice(0, 60000); // 超長文件截斷，D1 單欄位別塞爆
+      // 剝掉 toMarkdown 開頭的檔案 metadata，只留本文；剝完可能是空（圖形型 PDF、
+      // 無文字層）→ ocr_at 有時間戳但 ocr_text 空 → 顯示「已整理（沒有文字內容）」
+      const pdfText = stripPdfMetadata(converted?.[0]?.data || "").slice(0, 60000);
       await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(pdfText, now(), id).run();
-      await logHistory(db, old.entry_id, null, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 60) || "（沒有擷取到文字）"}`);
+      await logHistory(db, old.entry_id, null, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 60) || "（沒有擷取到文字，可能是圖形型 PDF）"}`);
       return json({ ocr_text: pdfText });
     }
     const bytes = new Uint8Array(await obj.arrayBuffer());
@@ -416,7 +418,8 @@ async function handleApi(request, env, url) {
         lines.push(``, `### 其他檔案`);
         for (const a of files) {
           lines.push(`- ${a.filename}（${(a.size / 1024 / 1024).toFixed(1)}MB）`);
-          if (a.ocr_text) lines.push(`  - 檔案內容（AI 擷取）：${a.ocr_text.slice(0, 8000).replace(/\n+/g, " ／ ")}`);
+          const fileText = stripPdfMetadata(a.ocr_text || ""); // 剝掉 PDF metadata 雜訊再匯出
+          if (fileText) lines.push(`  - 檔案內容（AI 擷取）：${fileText.slice(0, 8000).replace(/\n+/g, " ／ ")}`);
         }
       }
       lines.push(``);

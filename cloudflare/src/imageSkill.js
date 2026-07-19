@@ -46,6 +46,28 @@ export function collapseRepeats(text) {
   return t;
 }
 
+// Cloudflare AI 的 toMarkdown 轉 PDF 時，開頭一定塞一段檔案 metadata
+// （# 檔名 → ## Metadata → 一堆 "- Key=Value"：PDFFormatVersion、Creator、
+// Producer、UUID、日期…）。這些對搜尋是雜訊，還會讓「檔名裡的關鍵字」永遠
+// 命中在最上面、snippet 永遠回傳 metadata。存進庫前剝掉，只留真正的文件本文。
+// 只剝「- key=value」型的 metadata 條列與檔名 H1，不會誤傷本文的項目符號
+// （例：「- 产品介绍」沒有 = 號，保留）。找不到 metadata 區塊就原樣回傳。
+export function stripPdfMetadata(md) {
+  const lines = String(md || "").split("\n");
+  let i = 0;
+  while (i < lines.length && (lines[i].trim() === "" || lines[i].startsWith("# "))) i++;
+  if (i < lines.length && /^##\s*Metadata/i.test(lines[i].trim())) {
+    i++;
+    while (i < lines.length) {
+      const t = lines[i].trim();
+      if (t === "" || /^-\s+[\w.:@-]+=/.test(t)) { i++; continue; }
+      break;
+    }
+    return lines.slice(i).join("\n").trim();
+  }
+  return String(md || "").trim();
+}
+
 // 偵測模型輸出是否卡進重複迴圈：行級（同一行反覆出現）＋
 // 片段級（壓縮重複後文字長度掉一半以上，代表大半內容都是同一段在刷）
 export function detectRepetitionLoop(text) {

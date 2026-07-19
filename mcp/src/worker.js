@@ -20,7 +20,7 @@
  *   MEDTEC_URL   — 參展系統網址（如 https://medtec-2026.xxx.workers.dev）
  */
 
-import { foldText, foldSnippet } from "./textFold.js";
+import { foldText, foldSnippet, stripPdfMetadata } from "./textFold.js";
 
 const PROTOCOL_DEFAULT = "2025-03-26";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
@@ -268,8 +268,9 @@ const TOOLS = [
       const entries = allEntries
         .filter((e) => foldIncludes(`${e.title}\n${e.body}\n${e.fields_json}`, fq))
         .slice(0, limit);
+      for (const a of allAtts) a._ocr = stripPdfMetadata(a.ocr_text || ""); // 即時剝 PDF metadata
       const atts = allAtts
-        .filter((a) => foldIncludes(`${a.transcript}\n${a.ocr_text}\n${a.filename}`, fq))
+        .filter((a) => foldIncludes(`${a.transcript}\n${a._ocr}\n${a.filename}`, fq))
         .slice(0, limit);
       const out = [];
       if (entries.length) {
@@ -283,7 +284,7 @@ const TOOLS = [
       if (atts.length) {
         out.push("## 命中的附件（逐字稿／照片文字）");
         for (const a of atts) {
-          const src = a.transcript && foldIncludes(a.transcript, fq) ? a.transcript : a.ocr_text || a.filename;
+          const src = a.transcript && foldIncludes(a.transcript, fq) ? a.transcript : a._ocr || a.filename;
           const off = a.offset_secs !== null && a.offset_secs !== undefined ? `｜錄音 ${fmtSecs(a.offset_secs)}` : "";
           out.push(`- [entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${foldSnippet(src, fq)}`);
         }
@@ -395,7 +396,7 @@ const TOOLS = [
       if (atts.length) {
         lines.push("", `## 附件（共 ${attTotal} 個，列最新 20 個，含 AI 擷取內容摘要；全文搜尋用 search_exhibitor_files）`);
         for (const a of atts) {
-          const content = clip((a.transcript || a.ocr_text || "").trim(), 200);
+          const content = clip((a.transcript || stripPdfMetadata(a.ocr_text || "")).trim(), 200);
           lines.push(`- ${a.filename}${a.caption ? `｜${a.caption}` : ""}｜${a.author}｜${a.created_at}${content ? `\n  ${content}` : ""}`);
         }
       }
@@ -452,8 +453,10 @@ const TOOLS = [
         `SELECT id, exhibitor_id, filename, caption, author, created_at, transcript, ocr_text
          FROM attachments ORDER BY id DESC LIMIT ${SCAN_CAP}`
       ).all();
+      // 即時剝掉 PDF metadata（現有髒資料不必重跑就乾淨）；檔名保留可搜
+      for (const a of all) a._ocr = stripPdfMetadata(a.ocr_text || "");
       const results = all
-        .filter((a) => foldIncludes(`${a.transcript}\n${a.ocr_text}\n${a.filename}\n${a.caption}`, fq))
+        .filter((a) => foldIncludes(`${a.transcript}\n${a._ocr}\n${a.filename}\n${a.caption}`, fq))
         .slice(0, limit);
       if (!results.length) return `附件內容裡沒有「${q}」（簡繁已互通；提醒：附件要先在前台跑過「Cloudflare AI 整理」才有可搜尋的文字）。`;
       let nameOf = (id) => id;
@@ -465,8 +468,8 @@ const TOOLS = [
       return results
         .map((a) => {
           const src = foldIncludes(a.transcript || "", fq) ? a.transcript
-            : foldIncludes(a.ocr_text || "", fq) ? a.ocr_text
-            : a.ocr_text || a.transcript || a.caption || a.filename;
+            : foldIncludes(a._ocr, fq) ? a._ocr
+            : a._ocr || a.transcript || a.caption || a.filename;
           return `- ${nameOf(a.exhibitor_id)}（${a.exhibitor_id}）｜${a.filename}｜${a.author}｜${a.created_at}\n  ${foldSnippet(src, fq)}`;
         })
         .join("\n");

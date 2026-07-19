@@ -74,6 +74,27 @@ const T2S = {
   "麗":"丽","麵":"面","黨":"党","齡":"龄",
 };
 
+// Cloudflare AI 的 toMarkdown 轉 PDF 時開頭會塞一段檔案 metadata（# 檔名 →
+// ## Metadata → 一堆 "- Key=Value"）。搜尋時這些是雜訊，還會讓「檔名裡的關鍵字」
+// 永遠命中在最上面、snippet 永遠停在 metadata。讀取／比對前剝掉，只留本文。
+// 只剝 "- key=value" 型條列與檔名 H1，不誤傷本文項目符號（「- 产品介绍」保留）。
+// 用於「即時清洗現有已存的髒資料」，不必等使用者重跑整理。找不到就原樣回傳。
+export function stripPdfMetadata(md) {
+  const lines = String(md || "").split("\n");
+  let i = 0;
+  while (i < lines.length && (lines[i].trim() === "" || lines[i].startsWith("# "))) i++;
+  if (i < lines.length && /^##\s*Metadata/i.test(lines[i].trim())) {
+    i++;
+    while (i < lines.length) {
+      const t = lines[i].trim();
+      if (t === "" || /^-\s+[\w.:@-]+=/.test(t)) { i++; continue; }
+      break;
+    }
+    return lines.slice(i).join("\n").trim();
+  }
+  return String(md || "").trim();
+}
+
 // 全形 ASCII（！～ 區段，含全形數字字母標點）→ 半形，全形空格 → 半形空格
 function toHalfWidth(ch) {
   const code = ch.charCodeAt(0);
