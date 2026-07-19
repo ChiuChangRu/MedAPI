@@ -139,6 +139,9 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .skip-link { opacity: 0.55; }
 .att-transcript.skipped { color: var(--text-muted); }
 
+/* Tier 2 深度處理狀態列（PDF 專用，手動觸發） */
+.att-tier2 { font-size: 12px; margin-top: 4px; color: var(--text-muted); }
+
 /* AI 整理狀態摺疊列：預設收合只露一行狀態，附件多時頁面不會被文字撐爆 */
 .att-ai summary {
   cursor: pointer; font-size: 12px; color: var(--text-muted);

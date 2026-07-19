@@ -92,6 +92,11 @@ const MIGRATIONS = [
   // 否則空結果的附件永遠被當成待整理，每按一次整理就重跑重扣一次費用
   `ALTER TABLE attachments ADD COLUMN transcribed_at TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN ocr_at TEXT DEFAULT ''`,
+  // Tier 2 深度處理（手動指定，見 DATA-MODEL.md）：把來源 PDF 逐頁 render 成圖片，
+  // 存成一般照片附件、走既有 OCR 流程。source_pdf_id 指回來源 PDF 的 attachments.id，
+  // page_no 是第幾頁，兩者都空＝不是深度處理產生的附件。
+  `ALTER TABLE attachments ADD COLUMN source_pdf_id INTEGER`,
+  `ALTER TABLE attachments ADD COLUMN page_no INTEGER`,
 ];
 
 let schemaReady = false;
@@ -369,9 +374,14 @@ async function handleApi(request, env, url, ctx) {
     const durationRaw = request.headers.get("x-duration-secs");
     const offsetSecs = offsetRaw !== null && offsetRaw !== "" ? Number(offsetRaw) : null;
     const durationSecs = durationRaw !== null && durationRaw !== "" ? Number(durationRaw) : null;
+    // Tier 2 深度處理：PDF 逐頁 render 成圖片上傳時，帶回來源 PDF 的 id 與頁碼
+    const sourcePdfRaw = request.headers.get("x-source-pdf-id");
+    const pageNoRaw = request.headers.get("x-page-no");
+    const sourcePdfId = sourcePdfRaw !== null && sourcePdfRaw !== "" ? Number(sourcePdfRaw) : null;
+    const pageNo = pageNoRaw !== null && pageNoRaw !== "" ? Number(pageNoRaw) : null;
     const result = await db
-      .prepare("INSERT INTO attachments (exhibitor_id, author, filename, key, size, mime, session_id, offset_secs, duration_secs, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(exhibitorId, author, filename, key, body.byteLength, mime, sessionId, offsetSecs, durationSecs, now())
+      .prepare("INSERT INTO attachments (exhibitor_id, author, filename, key, size, mime, session_id, offset_secs, duration_secs, source_pdf_id, page_no, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(exhibitorId, author, filename, key, body.byteLength, mime, sessionId, offsetSecs, durationSecs, sourcePdfId, pageNo, now())
       .run();
     await logHistory(db, exhibitorId, author, "上傳附件", `${filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
     return json({ id: result.meta.last_row_id, key, ok: true });

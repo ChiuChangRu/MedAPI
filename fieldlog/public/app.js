@@ -250,7 +250,7 @@ async function openEntry(id) {
       <button class="btn small" id="e-process" type="button" title="用 Cloudflare AI 把還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取（已處理過的不會重跑）">🪄 Cloudflare AI 整理</button>
       <span id="e-upload-status" class="sub"></span>
     </div>
-    <div id="e-attachments" class="att-list">${e.attachments.map(attHtml).join("") || `<p class="sub">尚無附件</p>`}</div>
+    <div id="e-attachments" class="att-list">${e.attachments.map((a) => attHtml(a, e.attachments)).join("") || `<p class="sub">尚無附件</p>`}</div>
   `;
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
@@ -352,6 +352,63 @@ async function processEntryAttachments(id, btn) {
   }
 }
 
+// 🔬 Tier 2 深度處理：手動指定單一 PDF 才會跑，絕不背景全庫批次（見 DATA-MODEL.md）。
+// Cloudflare Worker 沒有 PDF 渲染能力，這步只能在瀏覽器端用 pdf.js 把每一頁畫成圖片，
+// 再把每張頁面圖丟進既有的照片 OCR 流程——向量圖表跟排版化的技術參數文字都變成看得見
+// 的像素，Llama Vision 抄得到，也自動進搜尋索引，不用另外蓋一套 Tier 2 儲存/搜尋機制。
+async function deepProcessPdf(entryId, pdfAtt, btn) {
+  if (!window.pdfjsLib) { showToast("PDF 渲染程式庫載入失敗，請檢查網路連線後重新整理頁面再試"); return; }
+  if (btn.disabled) return;
+  btn.disabled = true;
+  const label = btn.textContent;
+  try {
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    }
+    btn.textContent = "下載 PDF…";
+    const fileRes = await fetch(`/api/file/${encodeURIComponent(pdfAtt.key)}?pin=${encodeURIComponent(pin())}`);
+    if (!fileRes.ok) throw new Error(`下載 PDF 失敗（HTTP ${fileRes.status}）`);
+    const pdf = await pdfjsLib.getDocument({ data: await fileRes.arrayBuffer() }).promise;
+    const total = pdf.numPages;
+    if (total > 40 && !confirm(`這份 PDF 有 ${total} 頁，深度處理會產生 ${total} 張截圖並逐一跑 AI 辨識，較耗時間與額度。確定要繼續嗎？`)) {
+      return;
+    }
+    let done = 0, failed = 0;
+    const baseName = pdfAtt.filename.replace(/\.pdf$/i, "");
+    for (let p = 1; p <= total; p++) {
+      try {
+        btn.textContent = `渲染第 ${p}/${total} 頁…`;
+        const page = await pdf.getPage(p);
+        const viewport = page.getViewport({ scale: 2 }); // scale 2：解析度足夠給 OCR 辨識文字
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        if (!blob) throw new Error("畫布輸出失敗");
+        const uploaded = await putFile(entryId, blob, `${baseName}-p${p}.png`, null, { sourcePdfId: pdfAtt.id, pageNo: p });
+        btn.textContent = `辨識第 ${p}/${total} 頁…`;
+        await api(`/attachments/${uploaded.id}/ocr`, { method: "POST", body: "{}" });
+        done++;
+      } catch (err) {
+        failed++;
+        console.error(`Tier 2 第 ${p} 頁失敗`, err);
+        if (/4006|neuron/i.test(err.message || "")) {
+          showToast("⛔ Cloudflare AI 每日免費額度已用完，深度處理中止（已完成的頁面已保留）");
+          break;
+        }
+      }
+    }
+    showToast(failed ? `深度處理完成：${done} 頁成功、${failed} 頁失敗` : `深度處理完成：共 ${total} 頁`);
+    openEntry(entryId);
+  } catch (err) {
+    showToast("深度處理失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 // 詳情頁開啟時鎖住底層頁面捲動（iOS Safari 光 overflow:hidden 不夠，
 // 要用 position:fixed 才真的鎖得住），關閉時還原原本的捲動位置
 function lockBodyScroll() {
@@ -368,7 +425,7 @@ function unlockBodyScroll() {
 
 function closeEntry() { $("entry-overlay").classList.remove("open"); unlockBodyScroll(); }
 
-function attHtml(a) {
+function attHtml(a, siblings) {
   const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
   let preview = `<a href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
   if (a.kind === "photo") preview = `<a href="${url}" target="_blank" rel="noopener"><img class="att-thumb" src="${url}" loading="lazy" alt="${esc(a.filename)}" /></a>`;
@@ -397,11 +454,16 @@ function attHtml(a) {
           ? aiFold(`🔍 已整理（沒有文字內容）`, `<p class="att-transcript">擷取過，沒有文字內容 <a href="#" class="att-ocr" data-id="${a.id}">重新擷取</a></p>`)
           : aiFold(`⏳ 未整理`, `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_ocr" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`))
     : "";
+  // Tier 2 深度處理：只給 PDF，手動觸發，絕不自動全庫跑（見 DATA-MODEL.md）
+  const tier2Count = (siblings || []).filter((x) => x.source_pdf_id === a.id).length;
+  const tier2Bit = !isPdfAtt(a) || !TRANSCRIBE_ENABLED ? "" : tier2Count
+    ? `<p class="att-tier2">🔬 已深度處理（${tier2Count} 頁截圖，在附件清單裡） <a href="#" class="att-tier2-btn skip-link" data-id="${a.id}">重新處理</a></p>`
+    : `<p class="att-tier2"><a href="#" class="att-tier2-btn" data-id="${a.id}" title="把這份 PDF 逐頁轉成圖片並跑 AI 辨識，補齊一般擷取抓不到的圖形化排版/圖表內容。手動觸發、只處理這一份，較耗時間與額度">🔬 深度處理（逐頁轉圖辨識）</a></p>`;
   return `<div class="att-item" data-id="${a.id}" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
       <a href="#" class="att-delete" data-id="${a.id}">刪除</a>
     </div>
-    ${preview}${ocrBit}${transcribeBit}
+    ${preview}${ocrBit}${transcribeBit}${tier2Bit}
   </div>`;
 }
 
@@ -460,10 +522,22 @@ function bindAttActions(entryId) {
       } catch (e) { showToast("設定失敗：" + e.message); }
     };
   });
+  // Tier 2 深度處理：手動觸發，一次只處理使用者點的這一份 PDF
+  document.querySelectorAll(".att-tier2-btn").forEach((el) => {
+    el.onclick = async (ev) => {
+      ev.preventDefault();
+      const e = await api(`/entries/${entryId}`);
+      const pdfAtt = (e.attachments || []).find((x) => String(x.id) === el.dataset.id);
+      if (!pdfAtt) return;
+      const existingCount = (e.attachments || []).filter((x) => x.source_pdf_id === pdfAtt.id).length;
+      if (existingCount && !confirm(`這份 PDF 已經深度處理過（${existingCount} 頁），要重新處理一次嗎？會再產生一組新的頁面截圖。`)) return;
+      deepProcessPdf(entryId, pdfAtt, el);
+    };
+  });
 }
 
 // ---------- 上傳（含離線佇列保底）----------
-async function putFile(entryId, blob, filename, offsetSecs) {
+async function putFile(entryId, blob, filename, offsetSecs, meta) {
   const headers = {
     "content-type": blob.type || "application/octet-stream",
     "x-pin": pin(),
@@ -471,6 +545,9 @@ async function putFile(entryId, blob, filename, offsetSecs) {
     "x-filename": encodeURIComponent(filename),
   };
   if (offsetSecs !== null && offsetSecs !== undefined) headers["x-offset-secs"] = String(offsetSecs);
+  // Tier 2 深度處理：PDF 逐頁 render 成圖片時，帶回來源 PDF id 與頁碼
+  if (meta && meta.sourcePdfId !== undefined && meta.sourcePdfId !== null) headers["x-source-pdf-id"] = String(meta.sourcePdfId);
+  if (meta && meta.pageNo !== undefined && meta.pageNo !== null) headers["x-page-no"] = String(meta.pageNo);
   const res = await fetch("/api/upload", { method: "POST", headers, body: blob });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

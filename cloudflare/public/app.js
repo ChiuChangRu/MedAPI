@@ -1963,6 +1963,64 @@ async function processAllAttachments(id, btn) {
   }
 }
 
+// 🔬 Tier 2 深度處理：手動指定單一 PDF 才會跑，絕不背景全庫批次（見 DATA-MODEL.md）。
+// Cloudflare Worker 沒有 PDF 渲染能力，這步只能在瀏覽器端用 pdf.js 把每一頁畫成圖片，
+// 再把每張頁面圖丟進既有的照片 OCR 流程——這樣向量圖表（整頁截圖天生就含）跟排版化的
+// 技術參數文字都變成看得見的像素，Llama Vision 抄得到，也自動進 search_exhibitor_files
+// 全文索引，不用另外蓋一套 Tier 2 儲存/搜尋機制。
+async function deepProcessPdf(exhibitorId, pdfAtt, btn) {
+  if (!window.pdfjsLib) { showToast("PDF 渲染程式庫載入失敗，請檢查網路連線後重新整理頁面再試"); return; }
+  if (btn.disabled) return;
+  btn.disabled = true;
+  const label = btn.textContent;
+  try {
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    }
+    btn.textContent = "下載 PDF…";
+    const res = await fetch(fileUrl(pdfAtt.key));
+    if (!res.ok) throw new Error(`下載 PDF 失敗（HTTP ${res.status}）`);
+    const pdf = await pdfjsLib.getDocument({ data: await res.arrayBuffer() }).promise;
+    const total = pdf.numPages;
+    if (total > 40 && !confirm(`這份 PDF 有 ${total} 頁，深度處理會產生 ${total} 張截圖並逐一跑 AI 辨識，較耗時間與額度。確定要繼續嗎？`)) {
+      return;
+    }
+    let done = 0, failed = 0;
+    const baseName = pdfAtt.filename.replace(/\.pdf$/i, "");
+    for (let p = 1; p <= total; p++) {
+      try {
+        btn.textContent = `渲染第 ${p}/${total} 頁…`;
+        const page = await pdf.getPage(p);
+        const viewport = page.getViewport({ scale: 2 }); // scale 2：解析度足夠給 OCR 辨識文字
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        if (!blob) throw new Error("畫布輸出失敗");
+        const uploaded = await putFile(exhibitorId, blob, `${baseName}-p${p}.png`, { sourcePdfId: pdfAtt.id, pageNo: p });
+        btn.textContent = `辨識第 ${p}/${total} 頁…`;
+        await api(`/attachments/${uploaded.id}/ocr`, { method: "POST", body: JSON.stringify({ author: me() }) });
+        done++;
+      } catch (err) {
+        failed++;
+        console.error(`Tier 2 第 ${p} 頁失敗`, err);
+        if (/4006|neuron/i.test(err.message || "")) {
+          showToast("⛔ Cloudflare AI 每日免費額度已用完，深度處理中止（已完成的頁面已保留）");
+          break;
+        }
+      }
+    }
+    showToast(failed ? `深度處理完成：${done} 頁成功、${failed} 頁失敗` : `深度處理完成：共 ${total} 頁`);
+    loadAttachments(exhibitorId); loadHistory(exhibitorId); loadSearchTexts();
+  } catch (err) {
+    showToast("深度處理失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 async function putFile(id, file, filename, meta) {
   const headers = {
     "content-type": file.type || "application/octet-stream",
@@ -1975,6 +2033,9 @@ async function putFile(id, file, filename, meta) {
   if (meta && meta.sessionId) headers["x-session-id"] = String(meta.sessionId);
   if (meta && meta.offsetSecs !== undefined && meta.offsetSecs !== null) headers["x-offset-secs"] = String(meta.offsetSecs);
   if (meta && meta.durationSecs !== undefined && meta.durationSecs !== null) headers["x-duration-secs"] = String(meta.durationSecs);
+  // Tier 2 深度處理：PDF 逐頁 render 成圖片時，帶回來源 PDF id 與頁碼
+  if (meta && meta.sourcePdfId !== undefined && meta.sourcePdfId !== null) headers["x-source-pdf-id"] = String(meta.sourcePdfId);
+  if (meta && meta.pageNo !== undefined && meta.pageNo !== null) headers["x-page-no"] = String(meta.pageNo);
   const res = await fetch("/api/upload", {
     method: "POST",
     headers,
@@ -2409,6 +2470,9 @@ async function loadAttachments(id) {
     for (const a of atts) dupCount[`${a.filename}|${a.size}`] = (dupCount[`${a.filename}|${a.size}`] || 0) + 1;
     const dupTotal = atts.filter((a) => dupCount[`${a.filename}|${a.size}`] > 1).length;
     if (dupTotal) showToast(`⚠️ 這家展商有 ${dupTotal} 個附件疑似重複上傳（同名同大小），已在清單標示`);
+    // Tier 2 深度處理過的 PDF：算出每份來源 PDF 已經產生了幾張頁面截圖
+    const tier2CountByPdf = {};
+    for (const a of atts) if (a.source_pdf_id) tier2CountByPdf[a.source_pdf_id] = (tier2CountByPdf[a.source_pdf_id] || 0) + 1;
     const renderAttNote = (a) => {
       const url = fileUrl(a.key);
       let preview = `<a href="${url}" target="_blank" rel="noopener" class="directory-link">${esc(a.filename)}</a>`;
@@ -2445,6 +2509,11 @@ async function loadAttachments(id) {
         `<span class="cat-chip ${a.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`
       ).join("")}</div>`;
       const dupBadge = dupCount[`${a.filename}|${a.size}`] > 1 ? `<span class="dup-badge">⚠️ 疑似重複</span>` : "";
+      // Tier 2 深度處理：只給 PDF，手動觸發，絕不自動全庫跑（見 DATA-MODEL.md）
+      const tier2Count = tier2CountByPdf[a.id] || 0;
+      const tier2Block = !isPdfAtt(a) || !TRANSCRIBE_ENABLED ? "" : tier2Count
+        ? `<p class="att-tier2">🔬 已深度處理（${tier2Count} 頁截圖，在附件清單裡） <a href="#" data-act="tier2" data-id="${a.id}" class="att-transcribe-btn skip-link">重新處理</a></p>`
+        : `<p class="att-tier2"><a href="#" data-act="tier2" data-id="${a.id}" class="att-transcribe-btn" title="把這份 PDF 逐頁轉成圖片並跑 AI 辨識，補齊一般擷取抓不到的圖形化排版/圖表內容。手動觸發、只處理這一份，較耗時間與額度">🔬 深度處理（逐頁轉圖辨識）</a></p>`;
       return `<div class="note" data-id="${a.id}" data-caption="${esc(a.caption || "")}" data-transcript="${esc(a.transcript || "")}" data-ocr="${esc(a.ocr_text || "")}">
         <div class="note-meta"><strong>${esc(a.author)}</strong> · ${esc(a.created_at)} · ${(a.size / 1024 / 1024).toFixed(1)}MB ${dupBadge}
           <span class="note-actions"><a href="#" data-act="cap-att">${a.caption ? "編輯說明" : "加說明"}</a> <a href="#" data-act="del-att">刪除</a></span>
@@ -2453,6 +2522,7 @@ async function loadAttachments(id) {
         ${catRow}
         ${ocrBlock}
         ${transcriptBlock}
+        ${tier2Block}
         ${a.caption ? `<div class="att-caption">${esc(a.caption)}</div>` : ""}
       </div>`;
     };
@@ -2592,6 +2662,16 @@ async function loadAttachments(id) {
     });
     wrap.querySelectorAll("[data-lightbox]").forEach((img) => {
       img.onclick = () => openLightbox(img.dataset.lightbox);
+    });
+    // Tier 2 深度處理：手動觸發，一次只處理使用者點的這一份 PDF
+    wrap.querySelectorAll('a[data-act="tier2"]').forEach((a) => {
+      a.onclick = (ev) => {
+        ev.preventDefault();
+        const pdfAtt = atts.find((x) => String(x.id) === a.dataset.id);
+        if (!pdfAtt) return;
+        if (tier2CountByPdf[pdfAtt.id] && !confirm(`這份 PDF 已經深度處理過（${tier2CountByPdf[pdfAtt.id]} 頁），要重新處理一次嗎？會再產生一組新的頁面截圖。`)) return;
+        deepProcessPdf(id, pdfAtt, a);
+      };
     });
   } catch {
     // 沒網路：至少把存在手機的待同步照片/錄音顯示出來，不是空白一片
