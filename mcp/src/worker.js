@@ -20,8 +20,14 @@
  *   MEDTEC_URL   — 參展系統網址（如 https://medtec-2026.xxx.workers.dev）
  */
 
+import { foldText, foldSnippet } from "./textFold.js";
+
 const PROTOCOL_DEFAULT = "2025-03-26";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
+
+// 全 JS 端摺疊比對可掃描的資料列上限——現階段資料量遠低於此，設個天花板純粹
+// 避免未來資料爆量時把 Worker 記憶體撐爆（超出時只掃最新這麼多列）
+const SCAN_CAP = 5000;
 
 // ---------- 小工具 ----------
 
@@ -54,23 +60,14 @@ function clip(s, n = 200) {
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
-// LIKE 樣式：跳脫 % _ \，配合 SQL 端的 ESCAPE '\'
-function likePat(q) {
-  return "%" + q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
-}
-
-// 從長文抓出關鍵字前後文（單行化，方便塞進回答）
-function snippet(text, query, ctx = 80) {
-  const t = (text || "").replace(/\s+/g, " ");
-  const i = t.toLowerCase().indexOf(query.toLowerCase());
-  if (i < 0) return clip(t, ctx * 2);
-  const start = Math.max(0, i - ctx);
-  const end = Math.min(t.length, i + query.length + ctx);
-  return (start > 0 ? "…" : "") + t.slice(start, end) + (end < t.length ? "…" : "");
-}
-
 function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// 摺疊後比對：庫內文字與查詢字都轉成同一種簡繁/全半形形式再判斷是否包含。
+// 這是簡繁互通的核心——繁體查得到簡體庫、反之亦然。
+function foldIncludes(text, foldedQuery) {
+  return foldText(text).includes(foldedQuery);
 }
 
 function needQuery(args) {
@@ -194,7 +191,7 @@ const TOOLS = [
   },
   {
     name: "search_wiki",
-    description: "以關鍵字全文搜尋所有 Wiki 條目，回傳每頁的命中行。適合「哪個條目講過 XX」這類跨頁定位。",
+    description: "以關鍵字全文搜尋所有 Wiki 條目，回傳每頁的命中行。簡繁通用（繁體查得到簡體、反之亦然）。適合「哪個條目講過 XX」這類跨頁定位。",
     inputSchema: {
       type: "object",
       properties: { query: { type: "string", description: "關鍵字" } },
@@ -202,6 +199,7 @@ const TOOLS = [
     },
     async handler(env, args) {
       const q = needQuery(args);
+      const fq = foldText(q);
       const pages = await wikiPages(env);
       const results = await Promise.all(
         pages.map(async (p) => {
@@ -211,7 +209,7 @@ const TOOLS = [
           const hits = [];
           const lines = text.split("\n");
           for (let i = 0; i < lines.length && hits.length < 4; i++) {
-            if (lines[i].toLowerCase().includes(q.toLowerCase())) {
+            if (foldIncludes(lines[i], fq)) {
               hits.push(`  - L${i + 1}：${clip(lines[i], 160)}`);
             }
           }
@@ -239,7 +237,7 @@ const TOOLS = [
   },
   {
     name: "search_fieldlog",
-    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的錄音逐字稿／照片擷取文字。回傳命中片段與 entry id，細節再用 get_fieldlog_entry 拉全文。",
+    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的錄音逐字稿／照片擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。回傳命中片段與 entry id，細節再用 get_fieldlog_entry 拉全文。",
     inputSchema: {
       type: "object",
       properties: {
@@ -250,41 +248,47 @@ const TOOLS = [
     },
     async handler(env, args) {
       const q = needQuery(args);
+      const fq = foldText(q);
       const limit = capLimit(args);
-      const pat = likePat(q);
-      const [{ results: entries }, { results: atts }] = await Promise.all([
+      // 簡繁摺疊沒辦法交給 SQL LIKE（byte 硬比），改成撈候選列後在 JS 端摺疊比對。
+      // 掃描上限 SCAN_CAP 純為記憶體保險；現階段資料量遠低於此。
+      const [{ results: allEntries }, { results: allAtts }] = await Promise.all([
         env.DB_FIELDLOG.prepare(
           `SELECT e.id, e.title, e.body, e.fields_json, e.created_at, f.name AS folder_name, f.type AS folder_type
            FROM entries e LEFT JOIN folders f ON e.folder_id = f.id
-           WHERE e.title LIKE ?1 ESCAPE '\\' OR e.body LIKE ?1 ESCAPE '\\' OR e.fields_json LIKE ?1 ESCAPE '\\'
-           ORDER BY e.id DESC LIMIT ?2`
-        ).bind(pat, limit).all(),
+           ORDER BY e.id DESC LIMIT ${SCAN_CAP}`
+        ).all(),
         env.DB_FIELDLOG.prepare(
           `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,
                   e.id AS entry_id, e.title, f.name AS folder_name
            FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON e.folder_id = f.id
-           WHERE a.transcript LIKE ?1 ESCAPE '\\' OR a.ocr_text LIKE ?1 ESCAPE '\\' OR a.filename LIKE ?1 ESCAPE '\\'
-           ORDER BY a.id DESC LIMIT ?2`
-        ).bind(pat, limit).all(),
+           ORDER BY a.id DESC LIMIT ${SCAN_CAP}`
+        ).all(),
       ]);
+      const entries = allEntries
+        .filter((e) => foldIncludes(`${e.title}\n${e.body}\n${e.fields_json}`, fq))
+        .slice(0, limit);
+      const atts = allAtts
+        .filter((a) => foldIncludes(`${a.transcript}\n${a.ocr_text}\n${a.filename}`, fq))
+        .slice(0, limit);
       const out = [];
       if (entries.length) {
         out.push("## 命中的紀錄");
         for (const e of entries) {
           const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "收件匣";
-          const hitText = [e.title, e.body, e.fields_json].find((t) => (t || "").toLowerCase().includes(q.toLowerCase())) || e.body;
-          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}\n  ${snippet(hitText, q)}`);
+          const hitText = [e.title, e.body, e.fields_json].find((t) => foldIncludes(t || "", fq)) || e.body;
+          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}\n  ${foldSnippet(hitText, fq)}`);
         }
       }
       if (atts.length) {
         out.push("## 命中的附件（逐字稿／照片文字）");
         for (const a of atts) {
-          const src = a.transcript && a.transcript.toLowerCase().includes(q.toLowerCase()) ? a.transcript : a.ocr_text || a.filename;
+          const src = a.transcript && foldIncludes(a.transcript, fq) ? a.transcript : a.ocr_text || a.filename;
           const off = a.offset_secs !== null && a.offset_secs !== undefined ? `｜錄音 ${fmtSecs(a.offset_secs)}` : "";
-          out.push(`- [entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${snippet(src, q)}`);
+          out.push(`- [entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${foldSnippet(src, fq)}`);
         }
       }
-      return out.length ? out.join("\n") : `隨身記裡沒有「${q}」的相關內容。`;
+      return out.length ? out.join("\n") : `隨身記裡沒有「${q}」的相關內容（簡繁已互通）。`;
     },
   },
   {
@@ -317,25 +321,25 @@ const TOOLS = [
   },
   {
     name: "search_exhibitors",
-    description: "以關鍵字搜尋 Medtec China 2026 的 585 家展商（名稱／攤位／國家／產品／簡介／分類），並附上團隊共筆狀態（拜訪狀態、指派、部門標籤、紀錄數）。",
+    description: "以關鍵字搜尋 Medtec China 2026 的 585 家展商（名稱／攤位／國家／產品／簡介／分類），並附上團隊共筆狀態（拜訪狀態、指派、部門標籤、紀錄數）。簡繁通用（繁體查得到簡體、反之亦然）。",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "關鍵字（例：親水塗層、TPU、擠出）" },
+        query: { type: "string", description: "關鍵字（例：親水塗層、TPU、擠出）。簡繁不拘。" },
         limit: { type: "number", description: "最多回傳幾家（預設 10，上限 30）" },
       },
       required: ["query"],
     },
     async handler(env, args) {
-      const q = needQuery(args).toLowerCase();
+      const fq = foldText(needQuery(args));
       const limit = capLimit(args);
       const data = await exhibitorsData(env);
       const hits = (data.exhibitors || []).filter((ex) => {
         const hay = [
           ex.name_zh, ex.name_en, ex.booth_no, ex.country, ex.description,
           categoryName(data, ex.category), ...(ex.products || []), ...(ex.tags || []),
-        ].join("\n").toLowerCase();
-        return hay.includes(q);
+        ].join("\n");
+        return foldIncludes(hay, fq);
       });
       if (!hits.length) return `展商名單裡沒有符合「${args.query}」的廠商。`;
       const top = hits.slice(0, limit);
@@ -400,7 +404,7 @@ const TOOLS = [
   },
   {
     name: "search_visit_notes",
-    description: "以關鍵字搜尋參展系統的團隊拜訪紀錄全文（誰記了什麼），回傳紀錄內容與所屬展商。",
+    description: "以關鍵字搜尋參展系統的團隊拜訪紀錄全文（誰記了什麼）。簡繁通用（繁體查得到簡體、反之亦然）。回傳紀錄內容與所屬展商。",
     inputSchema: {
       type: "object",
       properties: {
@@ -411,11 +415,13 @@ const TOOLS = [
     },
     async handler(env, args) {
       const q = needQuery(args);
+      const fq = foldText(q);
       const limit = capLimit(args);
-      const { results } = await env.DB_MEDTEC.prepare(
-        `SELECT * FROM notes WHERE deleted = 0 AND content LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT ?`
-      ).bind(likePat(q), limit).all();
-      if (!results.length) return `拜訪紀錄裡沒有「${q}」。`;
+      const { results: all } = await env.DB_MEDTEC.prepare(
+        `SELECT * FROM notes WHERE deleted = 0 ORDER BY id DESC LIMIT ${SCAN_CAP}`
+      ).all();
+      const results = all.filter((n) => foldIncludes(n.content || "", fq)).slice(0, limit);
+      if (!results.length) return `拜訪紀錄裡沒有「${q}」（簡繁已互通）。`;
       let nameOf = (id) => id;
       try {
         const data = await exhibitorsData(env);
@@ -423,32 +429,33 @@ const TOOLS = [
         nameOf = (id) => map.get(id) || id;
       } catch { /* 展商主檔抓不到時退回顯示 id */ }
       return results
-        .map((n) => `- ${n.created_at}｜${nameOf(n.exhibitor_id)}（${n.exhibitor_id}）｜${n.author}｜${n.type}\n  ${snippet(n.content, q)}`)
+        .map((n) => `- ${n.created_at}｜${nameOf(n.exhibitor_id)}（${n.exhibitor_id}）｜${n.author}｜${n.type}\n  ${foldSnippet(n.content, fq)}`)
         .join("\n");
     },
   },
   {
     name: "search_exhibitor_files",
-    description: "以關鍵字搜尋參展系統『附件內容』全文：現場錄音逐字稿、照片/PDF 擷取文字、檔名、說明。展商的型錄內容、現場對話都在這裡——問「某家廠商的塗層方案細節」這類問題時用這個。回傳命中片段與所屬展商。",
+    description: "以關鍵字搜尋參展系統『附件內容』全文：現場錄音逐字稿、照片/PDF 擷取文字、檔名、說明。簡繁通用（繁體查得到簡體、反之亦然——廠商型錄多為簡體）。展商的型錄內容、現場對話都在這裡——問「某家廠商的塗層方案細節」這類問題時用這個。回傳命中片段與所屬展商。",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "關鍵字（例：親水塗層、PTFE、肝素）" },
+        query: { type: "string", description: "關鍵字（例：親水塗層、PTFE、肝素）。簡繁不拘。" },
         limit: { type: "number", description: "最多回傳幾筆（預設 10，上限 30）" },
       },
       required: ["query"],
     },
     async handler(env, args) {
       const q = needQuery(args);
+      const fq = foldText(q);
       const limit = capLimit(args);
-      const pat = likePat(q);
-      const { results } = await env.DB_MEDTEC.prepare(
+      const { results: all } = await env.DB_MEDTEC.prepare(
         `SELECT id, exhibitor_id, filename, caption, author, created_at, transcript, ocr_text
-         FROM attachments
-         WHERE transcript LIKE ?1 ESCAPE '\\' OR ocr_text LIKE ?1 ESCAPE '\\' OR filename LIKE ?1 ESCAPE '\\' OR caption LIKE ?1 ESCAPE '\\'
-         ORDER BY id DESC LIMIT ?2`
-      ).bind(pat, limit).all();
-      if (!results.length) return `附件內容裡沒有「${q}」（提醒：附件要先在前台跑過「Cloudflare AI 整理」才有可搜尋的文字）。`;
+         FROM attachments ORDER BY id DESC LIMIT ${SCAN_CAP}`
+      ).all();
+      const results = all
+        .filter((a) => foldIncludes(`${a.transcript}\n${a.ocr_text}\n${a.filename}\n${a.caption}`, fq))
+        .slice(0, limit);
+      if (!results.length) return `附件內容裡沒有「${q}」（簡繁已互通；提醒：附件要先在前台跑過「Cloudflare AI 整理」才有可搜尋的文字）。`;
       let nameOf = (id) => id;
       try {
         const data = await exhibitorsData(env);
@@ -457,10 +464,10 @@ const TOOLS = [
       } catch { /* 展商主檔抓不到時退回顯示 id */ }
       return results
         .map((a) => {
-          const src = (a.transcript || "").toLowerCase().includes(q.toLowerCase()) ? a.transcript
-            : (a.ocr_text || "").toLowerCase().includes(q.toLowerCase()) ? a.ocr_text
+          const src = foldIncludes(a.transcript || "", fq) ? a.transcript
+            : foldIncludes(a.ocr_text || "", fq) ? a.ocr_text
             : a.ocr_text || a.transcript || a.caption || a.filename;
-          return `- ${nameOf(a.exhibitor_id)}（${a.exhibitor_id}）｜${a.filename}｜${a.author}｜${a.created_at}\n  ${snippet(src, q)}`;
+          return `- ${nameOf(a.exhibitor_id)}（${a.exhibitor_id}）｜${a.filename}｜${a.author}｜${a.created_at}\n  ${foldSnippet(src, fq)}`;
         })
         .join("\n");
     },
