@@ -63,9 +63,14 @@ export function stripPdfMetadata(md) {
       if (t === "" || /^-\s+[\w.:@-]+=/.test(t)) { i++; continue; }
       break;
     }
-    return lines.slice(i).join("\n").trim();
   }
-  return String(md || "").trim();
+  const body = lines.slice(i).join("\n").trim();
+  // 圖形型 PDF（無文字層，例：Affinity Designer 做的宣傳冊）：toMarkdown 只吐得出
+  // 頁面骨架（## Contents / ### Page N），每頁底下沒有真正的文字段落。這種「只有
+  // 標題、沒有內文」的結果對搜尋無意義（還會被「Page 3」誤命中），視為無內容回傳
+  // 空字串——前台會誠實顯示「已整理（沒有文字內容）」，使用者就知道要靠照片或重拍。
+  const hasProse = body.split("\n").some((l) => l.trim() && !l.trimStart().startsWith("#"));
+  return hasProse ? body : "";
 }
 
 // 偵測模型輸出是否卡進重複迴圈：行級（同一行反覆出現）＋

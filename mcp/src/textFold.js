@@ -90,9 +90,12 @@ export function stripPdfMetadata(md) {
       if (t === "" || /^-\s+[\w.:@-]+=/.test(t)) { i++; continue; }
       break;
     }
-    return lines.slice(i).join("\n").trim();
   }
-  return String(md || "").trim();
+  const body = lines.slice(i).join("\n").trim();
+  // 圖形型 PDF（無文字層）：toMarkdown 只吐得出頁面骨架（## Contents / ### Page N），
+  // 沒有真正的內文段落。這種「只有標題、沒有內文」的結果對搜尋無意義，視為無內容。
+  const hasProse = body.split("\n").some((l) => l.trim() && !l.trimStart().startsWith("#"));
+  return hasProse ? body : "";
 }
 
 // 全形 ASCII（！～ 區段，含全形數字字母標點）→ 半形，全形空格 → 半形空格
