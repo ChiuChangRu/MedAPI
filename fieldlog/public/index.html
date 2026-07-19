@@ -73,6 +73,22 @@
   <div class="modal wide" id="entry-modal"></div>
 </div>
 
+<!-- 全螢幕編輯框：轉文字稿／擷取文字內容偏長，prompt() 太小編不動，改用這個 -->
+<div class="overlay edit-overlay" id="edit-overlay">
+  <div class="edit-modal">
+    <div class="detail-head">
+      <h2 id="edit-modal-title" style="flex:1; margin:0;">編輯內容</h2>
+      <button class="btn small ghost" id="edit-modal-close">✕</button>
+    </div>
+    <textarea id="edit-modal-textarea"></textarea>
+    <div class="modal-actions">
+      <span class="sub" id="edit-modal-count"></span>
+      <button class="btn small ghost" id="edit-modal-cancel">取消</button>
+      <button class="btn primary" id="edit-modal-save">儲存</button>
+    </div>
+  </div>
+</div>
+
 <!-- 現場採集：全程開鏡頭看得到畫面（拍照本來就要看得到才能取景）。
      所有可點的控制都放在畫面下半部，單手拇指構得到；上方只放
      不用點的計時／資料夾資訊。 -->

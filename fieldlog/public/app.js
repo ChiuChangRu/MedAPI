@@ -54,6 +54,36 @@ function showToast(text) {
   showToast._timer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
+// 全螢幕編輯框：轉文字稿／擷取文字（PDF 全文可達數萬字）用瀏覽器原生 prompt()
+// 編輯區太小根本編不動，改用這個大文字框＋明確的儲存/取消按鈕
+function openEditModal({ title, value, onSave }) {
+  $("edit-modal-title").textContent = title;
+  const ta = $("edit-modal-textarea");
+  ta.value = value || "";
+  const countEl = $("edit-modal-count");
+  const updateCount = () => { countEl.textContent = `${ta.value.length} 字`; };
+  updateCount();
+  ta.oninput = updateCount;
+  const overlay = $("edit-overlay");
+  overlay.classList.add("open");
+  ta.focus();
+  const close = () => { overlay.classList.remove("open"); ta.oninput = null; };
+  $("edit-modal-close").onclick = close;
+  $("edit-modal-cancel").onclick = close;
+  $("edit-modal-save").onclick = async () => {
+    const saveBtn = $("edit-modal-save");
+    saveBtn.disabled = true;
+    try {
+      await onSave(ta.value.trim());
+      close();
+    } catch (err) {
+      showToast("儲存失敗：" + err.message);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  };
+}
+
 function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
@@ -407,15 +437,17 @@ function bindAttActions(entryId) {
     };
   });
   document.querySelectorAll(".att-ocr-edit").forEach((el) => {
-    el.onclick = async (ev) => {
+    el.onclick = (ev) => {
       ev.preventDefault();
       const current = el.closest(".att-item").dataset.ocr || "";
-      const edited = prompt("修改擷取文字（AI 抄錯的地方直接改成正確內容）：", current);
-      if (edited === null) return;
-      try {
-        await api(`/attachments/${el.dataset.id}`, { method: "PUT", body: JSON.stringify({ ocr_text: edited.trim() }) });
-        openEntry(entryId);
-      } catch (e) { showToast("儲存失敗：" + e.message); }
+      openEditModal({
+        title: "修改擷取文字（AI 抄錯的地方直接改成正確內容）",
+        value: current,
+        onSave: async (text) => {
+          await api(`/attachments/${el.dataset.id}`, { method: "PUT", body: JSON.stringify({ ocr_text: text }) });
+          openEntry(entryId);
+        },
+      });
     };
   });
   // 「略過」＝標成不整理（不呼叫 AI），待整理數與批次都會跳過；可從「還是要辨識/擷取」反悔

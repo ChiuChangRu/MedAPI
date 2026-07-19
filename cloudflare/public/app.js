@@ -33,6 +33,36 @@ function closeOnBackdropClick(overlayId, onClose) {
   el.addEventListener("click", (e) => { if (e.target === el && downOnBackdrop) onClose(); });
 }
 
+// 全螢幕編輯框：轉文字稿／擷取文字（PDF 全文可達數萬字）用瀏覽器原生 prompt()
+// 編輯區太小根本編不動，改用這個大文字框＋明確的儲存/取消按鈕
+function openEditModal({ title, value, onSave }) {
+  $("edit-modal-title").textContent = title;
+  const ta = $("edit-modal-textarea");
+  ta.value = value || "";
+  const countEl = $("edit-modal-count");
+  const updateCount = () => { countEl.textContent = `${ta.value.length} 字`; };
+  updateCount();
+  ta.oninput = updateCount;
+  const overlay = $("edit-overlay");
+  overlay.classList.add("open");
+  ta.focus();
+  const close = () => { overlay.classList.remove("open"); ta.oninput = null; };
+  $("edit-modal-close").onclick = close;
+  $("edit-modal-cancel").onclick = close;
+  $("edit-modal-save").onclick = async () => {
+    const saveBtn = $("edit-modal-save");
+    saveBtn.disabled = true;
+    try {
+      await onSave(ta.value.trim());
+      close();
+    } catch (err) {
+      showToast("儲存失敗：" + err.message);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  };
+}
+
 // 詳情頁（第二頁）往右用力滑關閉，回到清單（第一頁）——手機上比找 ✕ 按鈕直覺，
 // 用距離門檻（非單純方向）判斷，避免滑一下手指就誤觸關閉。
 // excludeSelector 內的區塊（例如附件/相片區）手指開始觸碰時就不追蹤，
@@ -2490,19 +2520,18 @@ async function loadAttachments(id) {
       };
     });
     wrap.querySelectorAll('a[data-act="edit-transcript"]').forEach((a) => {
-      a.onclick = async (ev) => {
+      a.onclick = (ev) => {
         ev.preventDefault();
         const noteEl = a.closest(".note");
         const attId = noteEl.dataset.id;
-        const edited = prompt("修改轉文字稿（AI 轉得不準的地方直接改成正確內容）：", noteEl.dataset.transcript || "");
-        if (edited === null) return;
-        try {
-          await api(`/attachments/${attId}`, {
-            method: "PUT",
-            body: JSON.stringify({ transcript: edited.trim(), author: me() }),
-          });
-          loadAttachments(id); loadHistory(id);
-        } catch (err) { showToast("儲存失敗：" + err.message); }
+        openEditModal({
+          title: "修改轉文字稿（AI 轉得不準的地方直接改成正確內容）",
+          value: noteEl.dataset.transcript || "",
+          onSave: async (text) => {
+            await api(`/attachments/${attId}`, { method: "PUT", body: JSON.stringify({ transcript: text, author: me() }) });
+            loadAttachments(id); loadHistory(id);
+          },
+        });
       };
     });
     wrap.querySelectorAll('a[data-act="ocr"]').forEach((a) => {
@@ -2521,20 +2550,18 @@ async function loadAttachments(id) {
       };
     });
     wrap.querySelectorAll('a[data-act="edit-ocr"]').forEach((a) => {
-      a.onclick = async (ev) => {
+      a.onclick = (ev) => {
         ev.preventDefault();
         const noteEl = a.closest(".note");
         const attId = noteEl.dataset.id;
-        const edited = prompt("修改擷取文字（AI 抄錯的地方直接改成正確內容，改完的文字一樣可以被搜尋）：", noteEl.dataset.ocr || "");
-        if (edited === null) return;
-        try {
-          await api(`/attachments/${attId}`, {
-            method: "PUT",
-            body: JSON.stringify({ ocr_text: edited.trim(), author: me() }),
-          });
-          loadAttachments(id); loadHistory(id);
-          loadSearchTexts();
-        } catch (err) { showToast("儲存失敗：" + err.message); }
+        openEditModal({
+          title: "修改擷取文字（AI 抄錯的地方直接改成正確內容，改完的文字一樣可以被搜尋）",
+          value: noteEl.dataset.ocr || "",
+          onSave: async (text) => {
+            await api(`/attachments/${attId}`, { method: "PUT", body: JSON.stringify({ ocr_text: text, author: me() }) });
+            loadAttachments(id); loadHistory(id); loadSearchTexts();
+          },
+        });
       };
     });
     wrap.querySelectorAll('a[data-act="del-att"]').forEach((a) => {

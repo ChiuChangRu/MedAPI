@@ -106,6 +106,28 @@ body {
 /* 詳情頁打開時鎖住底層頁面（配合 JS 的 lockBodyScroll，iOS 需要 position:fixed 才鎖得住） */
 body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hidden; }
 
+/* 全螢幕編輯框：轉文字稿／擷取文字（PDF 全文可達數萬字）要大面積才編得動 */
+.edit-overlay { z-index: 95; padding: 0; align-items: stretch; }
+.edit-modal {
+  background: #fff; width: 100%; max-width: none;
+  display: flex; flex-direction: column; padding: 16px 20px;
+}
+#edit-modal-textarea {
+  flex: 1; width: 100%; min-height: 0; resize: none;
+  font-size: 15px; line-height: 1.6; padding: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: inherit; background: #fafbfa;
+}
+.edit-modal .modal-actions { flex-shrink: 0; align-items: center; }
+.edit-modal .modal-actions .sub { margin-right: auto; }
+@media (min-width: 720px) {
+  .edit-overlay { padding: 30px; align-items: center; }
+  .edit-modal { max-width: 900px; height: 90vh; border-radius: 10px; border: 1px solid var(--border); }
+}
+@media (max-width: 719px) {
+  .edit-modal { height: 100vh; }
+}
+
 /* 關閉鈕黏在捲動視窗頂端：捲到頁面中段也隨時關得掉，不用捲回最上面 */
 .modal-close-float { position: sticky; top: 4px; z-index: 6; display: flex; justify-content: flex-end; height: 0; }
 .modal-close-float .btn { background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18); }
