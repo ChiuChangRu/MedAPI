@@ -343,7 +343,7 @@ function attHtml(a) {
   const offset = a.offset_secs !== null && a.offset_secs !== undefined ? `<span class="att-offset">📸 錄音 ${fmtSecs(a.offset_secs)}</span>` : "";
   const transcribeBit = a.kind === "audio" && TRANSCRIBE_ENABLED
     ? (a.transcript
-      ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>`
+      ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" class="att-transcribe skip-link" data-id="${a.id}" title="重新跑 AI 辨識並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`
       : a.transcribed_at === "skipped"
         ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" class="att-transcribe" data-id="${a.id}">還是要辨識</a></p>`
         : a.transcribed_at
@@ -352,7 +352,7 @@ function attHtml(a) {
     : "";
   const ocrBit = (a.kind === "photo" || isPdfAtt(a)) && TRANSCRIBE_ENABLED
     ? (a.ocr_text
-      ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a></p>`
+      ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a> <a href="#" class="att-ocr skip-link" data-id="${a.id}" title="重新跑 AI 擷取並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`
       : a.ocr_at === "skipped"
         ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" class="att-ocr" data-id="${a.id}">還是要擷取</a></p>`
         : a.ocr_at

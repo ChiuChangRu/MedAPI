@@ -30,28 +30,48 @@ export const OCR_PROMPT =
   "- 如果圖片裡完全沒有任何文字，只回答「（無文字）」，不要多做任何說明\n\n" +
   "現在開始抄錄：";
 
-// 偵測模型輸出是否卡進重複迴圈（同一行反覆出現），這種結果直接判定失敗、不採信
-export function detectRepetitionLoop(text) {
-  const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 10) return false;
-  const counts = {};
-  for (const l of lines) counts[l] = (counts[l] || 0) + 1;
-  const maxCount = Math.max(...Object.values(counts));
-  return maxCount >= 8 && maxCount / lines.length > 0.4;
+// 把「同一小段文字連續重複」壓縮掉——鬼打牆有兩種型態都要對付：
+// A. 跨行型（同一行反覆出現幾十行）  B. 單行型（「加入X管柱中，」在同一行連刷幾十次）
+// 另外「[看不清]」連刷幾十個沒有任何資訊量，一律壓成一個
+export function collapseRepeats(text) {
+  let t = String(text || "");
+  t = t.replace(/(\[看不清\][\s，,、;；.。]*){2,}/g, "[看不清] ");
+  // 一般性重複：4–60 字為一個單位、緊接著自己重複 2 次以上 → 壓成 2 次。
+  // 跑兩輪處理巢狀重複（壓完一層又露出下一層的情況）
+  for (let i = 0; i < 2; i++) {
+    const before = t;
+    t = t.replace(/(.{4,60}?)\1{2,}/gs, "$1$1");
+    if (t === before) break;
+  }
+  return t;
 }
 
-// 鬼打牆輸出的搶救：每一行最多保留前兩次出現，去掉之後的重複，結尾標註已截斷。
-// 實測鬼打牆的輸出前段通常是正常有用的，整筆丟掉太浪費
+// 偵測模型輸出是否卡進重複迴圈：行級（同一行反覆出現）＋
+// 片段級（壓縮重複後文字長度掉一半以上，代表大半內容都是同一段在刷）
+export function detectRepetitionLoop(text) {
+  const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length >= 10) {
+    const counts = {};
+    for (const l of lines) counts[l] = (counts[l] || 0) + 1;
+    const maxCount = Math.max(...Object.values(counts));
+    if (maxCount >= 8 && maxCount / lines.length > 0.4) return true;
+  }
+  const t = String(text || "");
+  return t.length > 200 && collapseRepeats(t).length < t.length * 0.5;
+}
+
+// 鬼打牆輸出的搶救：先壓掉片段級重複（單行型），再做行級去重（跨行型），
+// 結尾標註已截斷。實測鬼打牆的輸出前段通常是正常有用的，整筆丟掉太浪費
 export function dedupeRepetition(text) {
   const seen = {};
   const kept = [];
-  for (const line of (text || "").split("\n")) {
+  for (const line of collapseRepeats(text).split("\n")) {
     const key = line.trim();
     if (!key) continue;
     seen[key] = (seen[key] || 0) + 1;
     if (seen[key] <= 2) kept.push(line);
   }
-  return kept.join("\n") + "\n（模型輸出後段陷入重複，已自動截斷）";
+  return kept.join("\n") + "\n（模型輸出陷入重複，已自動截斷）";
 }
 
 // 抄出照片裡的文字。回傳 { ok:true, text } 或 { ok:false, error }
@@ -71,6 +91,8 @@ export async function extractImageText(ai, bytes) {
     else text = dedupeRepetition(retry || text);
   }
   if (!text) return { ok: false, error: "模型沒有回傳文字，請再試一次" };
+  // 正常輸出也做輕量清理：連續的 [看不清] 壓成一個（幾十個 [看不清] 沒有資訊量）
+  text = text.replace(/(\[看不清\][\s，,、;；.。]*){2,}/g, "[看不清] ").trim();
   return { ok: true, text };
 }
 

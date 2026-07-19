@@ -2390,14 +2390,14 @@ async function loadAttachments(id) {
       const isImage = (a.mime || "").startsWith("image/");
       const canOcr = isImage || isPdfAtt(a); // PDF 型錄也能擷取文字（後端走 toMarkdown）
       const transcriptBlock = !isAudio || !TRANSCRIBE_ENABLED ? "" : a.transcript
-        ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" data-act="edit-transcript" class="att-transcribe-btn">編輯</a></p>`
+        ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" data-act="edit-transcript" class="att-transcribe-btn">編輯</a> <a href="#" data-act="transcribe" class="att-transcribe-btn skip-link" title="重新跑 AI 辨識並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`
         : a.transcribed_at === "skipped"
           ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" data-act="transcribe" class="att-transcribe-btn">還是要辨識</a></p>`
           : a.transcribed_at
             ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" data-act="transcribe" class="att-transcribe-btn">重新辨識</a></p>`
             : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a> <a href="#" data-act="skip-transcribe" class="att-transcribe-btn skip-link" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`;
       const ocrBlock = !canOcr || !TRANSCRIBE_ENABLED ? "" : a.ocr_text
-        ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" data-act="edit-ocr" class="att-transcribe-btn">編輯</a></p>`
+        ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" data-act="edit-ocr" class="att-transcribe-btn">編輯</a> <a href="#" data-act="ocr" class="att-transcribe-btn skip-link" title="重新跑 AI 擷取並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`
         : a.ocr_at === "skipped"
           ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" data-act="ocr" class="att-transcribe-btn">還是要擷取</a></p>`
           : a.ocr_at
