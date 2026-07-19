@@ -276,10 +276,17 @@ async function processEntryAttachments(id, btn) {
       ...audioTodo.map((a) => ({ a, ep: "transcribe" })),
       ...photoTodo.map((a) => ({ a, ep: "ocr" })),
     ];
+    let gotText = 0;
+    let gotEmpty = 0;
+    const processedIds = [];
     for (const { a, ep } of queue) {
       btn.textContent = `🪄 ${++done}/${total}`;
-      try { await api(`/attachments/${a.id}/${ep}`, { method: "POST", body: "{}" }); }
-      catch (err) {
+      try {
+        const res = await api(`/attachments/${a.id}/${ep}`, { method: "POST", body: "{}" });
+        const resultText = (res.text ?? res.ocr_text ?? "").trim();
+        if (resultText) gotText++; else gotEmpty++;
+        processedIds.push(String(a.id));
+      } catch (err) {
         failed++;
         errCounts.set(err.message, (errCounts.get(err.message) || 0) + 1);
         console.error(`整理失敗 [${a.filename}]`, err);
@@ -287,16 +294,22 @@ async function processEntryAttachments(id, btn) {
       }
     }
     const errSummary = [...errCounts.entries()].map(([m, c]) => `${m}（×${c}）`).join("；");
-    await openEntry(id); // 先重新渲染，再把失敗摘要寫進狀態欄（否則會被重繪洗掉）
+    const okSummary = `有內容 ${gotText} 筆・無內容 ${gotEmpty} 筆`;
+    await openEntry(id); // 先重新渲染，再把摘要寫進狀態欄（否則會被重繪洗掉）
+    // 這次剛整理的附件標綠邊條，一眼看到新結果
+    for (const pid of processedIds) {
+      document.querySelector(`.att-item[data-id="${pid}"]`)?.classList.add("just-processed");
+    }
     const statusEl = $("e-upload-status");
     if (quotaHit) {
       showToast(`⛔ Cloudflare AI 每日免費額度已用完，已停止整理`);
       if (statusEl) statusEl.textContent = `⛔ 額度用完（台北早上 8 點重置後再按一次續跑）`;
     } else if (failed) {
       showToast(`整理完成，${failed} 筆失敗（原因見按鈕旁）`);
-      if (statusEl) statusEl.textContent = `⚠️ ${failed} 筆失敗：${errSummary}`;
+      if (statusEl) statusEl.textContent = `⚠️ ${failed} 筆失敗：${errSummary}${processedIds.length ? `｜成功 ${processedIds.length} 筆（${okSummary}），結果標綠在下方 ↓` : ""}`;
     } else {
       showToast(`整理完成：${total} 筆`);
+      if (statusEl) statusEl.textContent = `✓ 本次整理 ${total} 筆：${okSummary}，結果標綠在下方 ↓`;
     }
   } catch (err) {
     showToast("整理失敗：" + err.message);
@@ -331,18 +344,22 @@ function attHtml(a) {
   const transcribeBit = a.kind === "audio" && TRANSCRIBE_ENABLED
     ? (a.transcript
       ? `<p class="att-transcript">📝 ${esc(a.transcript)}</p>`
-      : a.transcribed_at
-        ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" class="att-transcribe" data-id="${a.id}">重新辨識</a></p>`
-        : `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a>`)
+      : a.transcribed_at === "skipped"
+        ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" class="att-transcribe" data-id="${a.id}">還是要辨識</a></p>`
+        : a.transcribed_at
+          ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" class="att-transcribe" data-id="${a.id}">重新辨識</a></p>`
+          : `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_transcribe" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`)
     : "";
   const ocrBit = (a.kind === "photo" || isPdfAtt(a)) && TRANSCRIBE_ENABLED
     ? (a.ocr_text
       ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a></p>`
-      : a.ocr_at
-        ? `<p class="att-transcript">🔍（擷取過，沒有文字內容）<a href="#" class="att-ocr" data-id="${a.id}">重新擷取</a></p>`
-        : `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a>`)
+      : a.ocr_at === "skipped"
+        ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" class="att-ocr" data-id="${a.id}">還是要擷取</a></p>`
+        : a.ocr_at
+          ? `<p class="att-transcript">🔍（擷取過，沒有文字內容）<a href="#" class="att-ocr" data-id="${a.id}">重新擷取</a></p>`
+          : `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_ocr" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`)
     : "";
-  return `<div class="att-item" data-ocr="${esc(a.ocr_text || "")}">
+  return `<div class="att-item" data-id="${a.id}" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
       <a href="#" class="att-delete" data-id="${a.id}">刪除</a>
     </div>
@@ -391,6 +408,16 @@ function bindAttActions(entryId) {
         await api(`/attachments/${el.dataset.id}`, { method: "PUT", body: JSON.stringify({ ocr_text: edited.trim() }) });
         openEntry(entryId);
       } catch (e) { showToast("儲存失敗：" + e.message); }
+    };
+  });
+  // 「略過」＝標成不整理（不呼叫 AI），待整理數與批次都會跳過；可從「還是要辨識/擷取」反悔
+  document.querySelectorAll(".att-skip").forEach((el) => {
+    el.onclick = async (ev) => {
+      ev.preventDefault();
+      try {
+        await api(`/attachments/${el.dataset.id}`, { method: "PUT", body: JSON.stringify({ [el.dataset.field]: true }) });
+        openEntry(entryId);
+      } catch (e) { showToast("設定失敗：" + e.message); }
     };
   });
 }

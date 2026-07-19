@@ -1885,10 +1885,17 @@ async function processAllAttachments(id, btn) {
       ...audioTodo.map((a) => ({ a, ep: "transcribe" })),
       ...imgTodo.map((a) => ({ a, ep: "ocr" })),
     ];
+    let gotText = 0;
+    let gotEmpty = 0;
+    const processedIds = [];
     for (const { a, ep } of queue) {
       btn.textContent = `🪄 整理中 ${++done}/${total}`;
-      try { await api(`/attachments/${a.id}/${ep}`, { method: "POST", body: JSON.stringify({ author: me() }) }); }
-      catch (err) {
+      try {
+        const res = await api(`/attachments/${a.id}/${ep}`, { method: "POST", body: JSON.stringify({ author: me() }) });
+        const resultText = (res.text ?? res.ocr_text ?? "").trim();
+        if (resultText) gotText++; else gotEmpty++;
+        processedIds.push(String(a.id));
+      } catch (err) {
         failed++;
         errCounts.set(err.message, (errCounts.get(err.message) || 0) + 1);
         console.error(`整理失敗 [${a.filename}]`, err);
@@ -1896,6 +1903,7 @@ async function processAllAttachments(id, btn) {
       }
     }
     const errSummary = [...errCounts.entries()].map(([m, c]) => `${m}（×${c}）`).join("；");
+    const okSummary = `有內容 ${gotText} 筆・無內容 ${gotEmpty} 筆`;
     const statusEl = $("d-upload-status");
     if (quotaHit) {
       const remaining = total - done;
@@ -1903,12 +1911,17 @@ async function processAllAttachments(id, btn) {
       if (statusEl) statusEl.textContent = `⛔ 額度用完，剩 ${remaining + 1} 筆未跑（台北早上 8 點重置後再按一次續跑）`;
     } else if (failed) {
       showToast(`整理完成，${failed} 筆失敗（原因見按鈕旁）`);
-      if (statusEl) statusEl.textContent = `⚠️ ${failed} 筆失敗：${errSummary}`;
+      if (statusEl) statusEl.textContent = `⚠️ ${failed} 筆失敗：${errSummary}${processedIds.length ? `｜成功 ${processedIds.length} 筆（${okSummary}），結果標綠在下方 ↓` : ""}`;
     } else {
       showToast(`整理完成：${total} 筆`);
-      if (statusEl) statusEl.textContent = "";
+      if (statusEl) statusEl.textContent = `✓ 本次整理 ${total} 筆：${okSummary}，結果標綠在下方 ↓`;
     }
-    loadAttachments(id); loadHistory(id); loadSearchTexts();
+    await loadAttachments(id);
+    // 這次剛整理的附件標綠邊條，捲下去一眼就知道哪些是新結果
+    for (const pid of processedIds) {
+      $("d-attachments")?.querySelector(`.note[data-id="${pid}"]`)?.classList.add("just-processed");
+    }
+    loadHistory(id); loadSearchTexts();
   } catch (err) {
     showToast("整理失敗：" + err.message);
   } finally {
@@ -2378,14 +2391,18 @@ async function loadAttachments(id) {
       const canOcr = isImage || isPdfAtt(a); // PDF 型錄也能擷取文字（後端走 toMarkdown）
       const transcriptBlock = !isAudio || !TRANSCRIBE_ENABLED ? "" : a.transcript
         ? `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" data-act="edit-transcript" class="att-transcribe-btn">編輯</a></p>`
-        : a.transcribed_at
-          ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" data-act="transcribe" class="att-transcribe-btn">重新辨識</a></p>`
-          : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a>`;
+        : a.transcribed_at === "skipped"
+          ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" data-act="transcribe" class="att-transcribe-btn">還是要辨識</a></p>`
+          : a.transcribed_at
+            ? `<p class="att-transcript">📝（辨識過，無語音內容）<a href="#" data-act="transcribe" class="att-transcribe-btn">重新辨識</a></p>`
+            : `<a href="#" data-act="transcribe" class="att-transcribe-btn">轉文字</a> <a href="#" data-act="skip-transcribe" class="att-transcribe-btn skip-link" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`;
       const ocrBlock = !canOcr || !TRANSCRIBE_ENABLED ? "" : a.ocr_text
         ? `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" data-act="edit-ocr" class="att-transcribe-btn">編輯</a></p>`
-        : a.ocr_at
-          ? `<p class="att-transcript">🔍（擷取過，沒有文字內容）<a href="#" data-act="ocr" class="att-transcribe-btn">重新擷取</a></p>`
-          : `<a href="#" data-act="ocr" class="att-transcribe-btn">🔍 擷取文字</a>`;
+        : a.ocr_at === "skipped"
+          ? `<p class="att-transcript skipped">🚫 已設為不整理 <a href="#" data-act="ocr" class="att-transcribe-btn">還是要擷取</a></p>`
+          : a.ocr_at
+            ? `<p class="att-transcript">🔍（擷取過，沒有文字內容）<a href="#" data-act="ocr" class="att-transcribe-btn">重新擷取</a></p>`
+            : `<a href="#" data-act="ocr" class="att-transcribe-btn">🔍 擷取文字</a> <a href="#" data-act="skip-ocr" class="att-transcribe-btn skip-link" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`;
       const catRow = !isImage ? "" : `<div class="att-cat-row">${ATT_CATEGORIES.map((c) =>
         `<span class="cat-chip ${a.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`
       ).join("")}</div>`;
@@ -2450,6 +2467,18 @@ async function loadAttachments(id) {
           a.textContent = "轉文字失敗，點一下再試";
           showToast(err.message);
         }
+      };
+    });
+    // 「略過」＝標成不整理（不呼叫 AI），待整理數與批次都會跳過；可從「還是要辨識/擷取」反悔
+    wrap.querySelectorAll('a[data-act="skip-transcribe"], a[data-act="skip-ocr"]').forEach((a) => {
+      a.onclick = async (ev) => {
+        ev.preventDefault();
+        const attId = a.closest(".note").dataset.id;
+        const field = a.dataset.act === "skip-transcribe" ? "skip_transcribe" : "skip_ocr";
+        try {
+          await api(`/attachments/${attId}`, { method: "PUT", body: JSON.stringify({ [field]: true, author: me() }) });
+          loadAttachments(id); loadHistory(id);
+        } catch (err) { showToast("設定失敗：" + err.message); }
       };
     });
     wrap.querySelectorAll('a[data-act="edit-transcript"]').forEach((a) => {

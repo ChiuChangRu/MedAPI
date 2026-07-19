@@ -272,6 +272,18 @@ async function handleApi(request, env, url) {
       await logHistory(db, old.entry_id, null, "編輯擷取文字", `${old.filename}：「${ocrText.slice(0, 80)}」`);
       return json({ ok: true });
     }
+    // 標記「不整理」：把 *_at 設成 'skipped'（不呼叫 AI、不花額度），
+    // 待整理數字與批次整理都會跳過；之後按「還是要整理」跑 AI 會覆寫回真正時間戳
+    if (body.skip_transcribe) {
+      await db.prepare("UPDATE attachments SET transcribed_at = 'skipped' WHERE id = ?").bind(id).run();
+      await logHistory(db, old.entry_id, null, "設為不整理", `${old.filename}（錄音不轉文字）`);
+      return json({ ok: true });
+    }
+    if (body.skip_ocr) {
+      await db.prepare("UPDATE attachments SET ocr_at = 'skipped' WHERE id = ?").bind(id).run();
+      await logHistory(db, old.entry_id, null, "設為不整理", `${old.filename}（不擷取文字）`);
+      return json({ ok: true });
+    }
     const category = (body.category !== undefined ? body.category : old.category) || "";
     await db.prepare("UPDATE attachments SET category = ? WHERE id = ?").bind(category.trim(), id).run();
     return json({ ok: true });
