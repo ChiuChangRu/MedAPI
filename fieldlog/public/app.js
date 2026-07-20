@@ -870,8 +870,11 @@ function startAudioSegRecorder() {
     .find((m) => MediaRecorder.isTypeSupported(m)) || "";
   const recorder = mimeType ? new MediaRecorder(AUDIO.stream, { mimeType }) : new MediaRecorder(AUDIO.stream);
   const chunks = [];
+  // 把這一段的中繼資料快照進閉包，不在 onstop 時才去讀 AUDIO——這樣「背景被系統中斷
+  // 的舊 recorder」與「前台回復時接續的新 recorder」不會互相搶 segIndex/offset。
+  const seg = { index: AUDIO.segIndex, startOffset: Math.floor((Date.now() - AUDIO.startedAt) / 1000), entryId: AUDIO.entryId };
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-  recorder.onstop = () => onAudioSegmentStop(recorder, chunks);
+  recorder.onstop = () => onAudioSegmentStop(recorder, chunks, seg);
   AUDIO.recorder = recorder;
   AUDIO.segStartMs = Date.now();
   recorder.start();
@@ -902,36 +905,70 @@ async function startAudio(entryId) {
 function stopAudio() {
   if (!AUDIO) return;
   AUDIO.ending = true;
-  if (AUDIO.recorder && AUDIO.recorder.state !== "inactive") AUDIO.recorder.stop();
+  if (AUDIO.recorder && AUDIO.recorder.state !== "inactive") {
+    AUDIO.recorder.stop(); // → onstop 走 ending 收尾路徑（會上傳最後一段）
+  } else {
+    finalizeAudioStop(); // recorder 已被系統停掉（背景中斷）：沒有新段可傳，直接收尾
+  }
 }
 
-async function onAudioSegmentStop(recorder, chunks) {
+// 收尾：關麥克風、藏浮動列、跳完成提示、重開紀錄。stopAudio 與 onstop 收尾路徑共用
+function finalizeAudioStop() {
   if (!AUDIO) return;
-  const { stream, entryId, timerId, ending, autoStopped, segIndex, segStartMs, startedAt } = AUDIO;
-  const segStartOffset = Math.floor((segStartMs - startedAt) / 1000);
+  const { stream, timerId, photos, entryId, segIndex } = AUDIO;
+  clearInterval(timerId);
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  $("audio-badge").style.display = "none";
+  AUDIO = null;
+  showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}`);
+  openEntry(entryId);
+}
+
+async function onAudioSegmentStop(recorder, chunks, seg) {
   const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
   const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
-  const filename = `錄音-段${segIndex}.${ext}`;
+  const filename = `錄音-段${seg.index}.${ext}`;
+  const uploadSeg = async () => {
+    if (!blob.size) return;
+    try { await putFile(seg.entryId, blob, filename, seg.startOffset); }
+    catch { await queueFile(seg.entryId, blob, filename, seg.startOffset); }
+  };
 
-  if (ending) {
-    clearInterval(timerId);
-    stream.getTracks().forEach((t) => t.stop());
-    $("audio-badge").style.display = "none";
-    const photos = AUDIO.photos;
-    AUDIO = null;
-    if (blob.size) {
-      showToast(autoStopped ? "偵測到切換 App，已自動結束並存檔" : "錄音上傳中…");
-      try { await putFile(entryId, blob, filename, segStartOffset); }
-      catch { await queueFile(entryId, blob, filename, segStartOffset); }
-    }
-    showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}`);
-    openEntry(entryId);
-  } else {
+  // AUDIO 已整個結束（stopAudio 收尾時把 AUDIO 設成 null）：這是最後一段，只上傳
+  if (!AUDIO) { await uploadSeg(); return; }
+
+  // 只有「仍是當前 recorder」的 onstop 才負責收尾或接續下一段——避免背景中被系統
+  // 停掉的舊 recorder，其延遲觸發的 onstop 跟前台回復時已接續的新 recorder 重複啟動
+  const isCurrent = AUDIO.recorder === recorder;
+
+  if (AUDIO.ending && isCurrent) {
+    if (blob.size) showToast(AUDIO.autoStopped ? "頁面關閉，已自動存檔" : "錄音上傳中…");
+    await uploadSeg();
+    finalizeAudioStop();
+    return;
+  }
+
+  // 一般段落輪替，或背景中被系統停掉：仍是當前 recorder 才接續下一段
+  if (isCurrent && !AUDIO.ending) {
     AUDIO.segIndex++;
     startAudioSegRecorder();
-    if (blob.size) {
-      putFile(entryId, blob, filename, segStartOffset)
-        .catch(() => queueFile(entryId, blob, filename, segStartOffset));
+  }
+  await uploadSeg();
+}
+
+// 回到前台時：若背景中錄音被系統中斷（iOS 一定會、Android 記憶體吃緊時可能），
+// 且沒有自動接上，就接續錄新的一段。錄音不會整個結束，切走前錄的也都保住。
+function resumeAudioOnForeground() {
+  if (!AUDIO || AUDIO.ending) return;
+  const st = AUDIO.recorder && AUDIO.recorder.state;
+  if (st !== "recording") {
+    // 桌機 Chrome 背景分頁不會中斷，這條通常不會走到；留著是保底（其他情境被系統停掉時接續）
+    try {
+      AUDIO.segIndex++;
+      startAudioSegRecorder();
+      showToast("錄音曾被系統中斷，已接續錄音");
+    } catch (err) {
+      showToast("錄音無法自動接續，請再按一次錄音：" + err.message);
     }
   }
 }
@@ -975,6 +1012,14 @@ async function audioPhotoSnap() {
   showToast(`已拍照（第 ${AUDIO.photos} 張）`);
   try { await putFile(entryId, blob, filename, offset); }
   catch { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); }
+}
+
+// 切到別的分頁/App（頁面隱藏）：錄影要用鏡頭、背景無法運作，維持自動結束存檔；
+// 純錄音則「不結束」，繼續在背景錄——Android 真的會繼續，iOS 系統會暫停但回前台
+// 自動接續、切走前錄的都保住。頁面「真的卸載」（pagehide）才把錄音收尾存檔。
+function onPageHidden() {
+  if (VIDEO) { VIDEO.autoStopped = true; stopVideo(); }
+  if (AUDIO_PHOTO_STREAM) closeAudioPhotoPopup(); // 拍照鏡頭關掉，但錄音續錄
 }
 
 function stopAnyActiveCapture() {
@@ -1028,8 +1073,11 @@ function init() {
   $("audio-photo-snap").onclick = audioPhotoSnap;
 
   $("entry-overlay").addEventListener("click", (e) => { if (e.target === $("entry-overlay")) closeEntry(); });
-  document.addEventListener("visibilitychange", () => { if (document.hidden) stopAnyActiveCapture(); });
-  window.addEventListener("pagehide", stopAnyActiveCapture);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) onPageHidden();     // 背景：錄影結束、錄音續錄
+    else resumeAudioOnForeground();          // 回前台：錄音若被系統中斷則接續
+  });
+  window.addEventListener("pagehide", stopAnyActiveCapture); // 真的關頁面：全部收尾存檔
   window.addEventListener("online", syncPendingFiles);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
