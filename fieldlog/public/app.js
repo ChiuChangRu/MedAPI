@@ -263,6 +263,11 @@ async function openEntry(id) {
   const folder = e.folder_id ? FOLDERS.find((f) => f.id === e.folder_id) : null;
   const template = FOLDER_TEMPLATES[folder ? folder.type : "其他"] || [];
   const fields = JSON.parse(e.fields_json || "{}");
+  const mergedTranscript = (e.attachments || [])
+    .filter((a) => a.kind === "audio" && (a.transcript || "").trim())
+    .sort((a, b) => (a.offset_secs ?? 0) - (b.offset_secs ?? 0) || a.id - b.id)
+    .map((a) => `【${fmtSecs(a.offset_secs ?? 0)}｜${a.filename}】\n${a.transcript.trim()}`)
+    .join("\n\n");
   const modal = $("entry-modal");
   modal.innerHTML = `
     <div class="modal-close-float"><button class="btn small ghost" id="e-close" type="button" aria-label="關閉記事" title="關閉記事">✕</button></div>
@@ -270,6 +275,11 @@ async function openEntry(id) {
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
     </div>
     <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "📥 收件匣"}</p>
+    <section class="merged-transcript ${mergedTranscript ? "" : "empty"}">
+      <div><strong>📝 合併逐字稿</strong><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>複製</button></div>
+      ${mergedTranscript ? `<pre>${esc(mergedTranscript)}</pre>` : `<p class="sub" id="e-auto-status">新錄音會在 70% 安全額度內自動轉錄並合併；舊錄音請使用下方「Cloudflare AI 整理」。</p>`}
+      ${mergedTranscript ? `<p class="sub" id="e-auto-status">正在檢查是否有新的安全轉錄項目…</p>` : ""}
+    </section>
     ${!folder ? `<div class="archive-row"><label>歸檔到：</label><select id="e-folder">
       <option value="">— 留在收件匣 —</option>
       ${FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("")}
@@ -297,6 +307,11 @@ async function openEntry(id) {
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("e-close").onclick = closeEntry;
+  $("e-copy-transcript").onclick = async () => {
+    if (!mergedTranscript) return;
+    await navigator.clipboard.writeText(mergedTranscript);
+    showToast("已複製合併逐字稿");
+  };
   $("e-delete").onclick = async () => {
     if (!confirm(`確定刪除整筆紀錄「${e.title || "（未命名）"}」？裡面的附件也會一起刪除，無法復原。`)) return;
     try {
@@ -325,6 +340,18 @@ async function openEntry(id) {
   const processBtn = $("e-process");
   if (processBtn) processBtn.onclick = () => processEntryAttachments(id, processBtn);
   bindAttActions(id);
+  api(`/entries/${id}/auto-transcribe`, { method: "POST", body: "{}" }).then((r) => {
+    if (r.processed) {
+      showToast(`已安全自動轉錄 ${r.processed} 段`);
+      openEntry(id);
+      return;
+    }
+    const status = $("e-auto-status");
+    if (status && r.reason) status.textContent = r.reason;
+  }).catch((err) => {
+    const status = $("e-auto-status");
+    if (status) status.textContent = `自動轉錄未執行：${err.message}`;
+  });
 }
 
 // 🪄 一鍵整理：這筆紀錄還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取。
@@ -482,6 +509,10 @@ function attHtml(a, siblings) {
           `<p class="att-transcript">📝 ${esc(a.transcript)} <a href="#" class="att-transcribe skip-link" data-id="${a.id}" title="重新跑 AI 辨識並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`)
       : a.transcribed_at === "skipped"
         ? aiFold(`🚫 不整理`, `<p class="att-transcript skipped">已設為不整理 <a href="#" class="att-transcribe" data-id="${a.id}">還是要辨識</a></p>`)
+        : a.transcribed_at === "auto_failed"
+          ? aiFold(`⚠️ 自動轉錄失敗`, `<p class="att-transcript">系統不會自動重試，以免重複計費。<a href="#" class="att-transcribe" data-id="${a.id}">手動重試</a></p>`)
+          : a.transcribed_at === "processing"
+            ? aiFold(`⏳ 自動轉錄中`, `<p class="att-transcript">正在安全轉錄，請稍後重新開啟記事。</p>`)
         : a.transcribed_at
           ? aiFold(`📝 已整理（無語音內容）`, `<p class="att-transcript">辨識過，沒有語音內容 <a href="#" class="att-transcribe" data-id="${a.id}">重新辨識</a></p>`)
           : aiFold(`⏳ 未整理`, `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_transcribe" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`))
@@ -587,6 +618,7 @@ async function putFile(entryId, blob, filename, offsetSecs, meta) {
     "x-filename": encodeURIComponent(filename),
   };
   if (offsetSecs !== null && offsetSecs !== undefined) headers["x-offset-secs"] = String(offsetSecs);
+  if (meta?.durationSecs) headers["x-duration-secs"] = String(Math.round(meta.durationSecs));
   // Tier 2 深度處理：PDF 逐頁 render 成圖片時，帶回來源 PDF id 與頁碼
   if (meta && meta.sourcePdfId !== undefined && meta.sourcePdfId !== null) headers["x-source-pdf-id"] = String(meta.sourcePdfId);
   if (meta && meta.pageNo !== undefined && meta.pageNo !== null) headers["x-page-no"] = String(meta.pageNo);
@@ -914,7 +946,7 @@ function startAudioSegRecorder() {
   const chunks = [];
   // 把這一段的中繼資料快照進閉包，不在 onstop 時才去讀 AUDIO——這樣「背景被系統中斷
   // 的舊 recorder」與「前台回復時接續的新 recorder」不會互相搶 segIndex/offset。
-  const seg = { index: AUDIO.segIndex, startOffset: Math.floor((Date.now() - AUDIO.startedAt) / 1000), entryId: AUDIO.entryId };
+  const seg = { index: AUDIO.segIndex, startOffset: Math.floor((Date.now() - AUDIO.startedAt) / 1000), entryId: AUDIO.entryId, startedAt: Date.now() };
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = () => onAudioSegmentStop(recorder, chunks, seg);
   AUDIO.recorder = recorder;
@@ -970,9 +1002,10 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
   const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
   const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
   const filename = `錄音-段${seg.index}.${ext}`;
+  const durationSecs = Math.max(1, Math.ceil((Date.now() - seg.startedAt) / 1000));
   const uploadSeg = async () => {
     if (!blob.size) return;
-    try { await putFile(seg.entryId, blob, filename, seg.startOffset); }
+    try { await putFile(seg.entryId, blob, filename, seg.startOffset, { durationSecs }); }
     catch { await queueFile(seg.entryId, blob, filename, seg.startOffset); }
   };
 
