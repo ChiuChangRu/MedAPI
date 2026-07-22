@@ -18,6 +18,7 @@ let FOLDERS = [];
 let CURRENT_FOLDER = null; // 開啟中的資料夾物件
 let TRANSCRIBE_ENABLED = false;
 let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
+let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 let MERGE_SOURCE_ID = null;
 let MOVE_ENTRY_ID = null;
 let MOVE_ENTRY_TITLE = "";
@@ -469,7 +470,7 @@ async function newSubfolder() {
 function renderChildFolders(parentId) {
   const children = FOLDERS.filter((f) => Number(f.parent_id) === Number(parentId));
   const wrap = $("folder-children");
-  wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list">${children.map((f) => `
+  wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${children.map((f) => `
     <button class="child-folder-card" type="button" data-id="${f.id}">
       <span>📁</span><strong>${esc(f.name)}</strong><small>${esc(f.type)}｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
     </button>`).join("")}</div>` : "";
@@ -485,12 +486,21 @@ async function openFolder(id) {
   const parent = CURRENT_FOLDER.parent_id ? FOLDERS.find((f) => f.id === CURRENT_FOLDER.parent_id) : null;
   $("btn-back").textContent = parent ? `‹ ${parent.name}` : "‹ 回首頁";
   $("folder-title").textContent = `${CURRENT_FOLDER.type}｜${CURRENT_FOLDER.name}`;
+  $("btn-inner-grid").classList.toggle("active", INNER_FOLDER_VIEW === "grid");
+  $("btn-inner-list").classList.toggle("active", INNER_FOLDER_VIEW === "list");
   renderChildFolders(id);
   const entries = await api(`/entries?folder_id=${id}`);
+  $("folder-entries").className = `entry-list inner-entry-list ${INNER_FOLDER_VIEW}-view`;
   $("folder-entries").innerHTML = entries.length
     ? entries.map(entryRowHtml).join("")
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
   bindEntryRows($("folder-entries"));
+}
+
+function setInnerFolderView(view) {
+  INNER_FOLDER_VIEW = view;
+  localStorage.setItem("fieldlog_inner_folder_view", view);
+  if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id);
 }
 
 function backHome() {
@@ -1464,6 +1474,8 @@ function init() {
   $("btn-new-folder").onclick = newFolder;
   $("btn-folder-grid").onclick = () => setFolderView("grid");
   $("btn-folder-list").onclick = () => setFolderView("list");
+  $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
+  $("btn-inner-list").onclick = () => setInnerFolderView("list");
   $("merge-folder-cancel").onclick = closeMergeFolderDialog;
   $("merge-folder-confirm").onclick = () => {
     const targetId = Number($("merge-folder-target").value);
