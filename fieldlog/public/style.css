@@ -140,7 +140,16 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
   pointer-events: auto;
 }
-.entry-delete { min-width: 44px; min-height: 44px; }
+.entry-danger-zone {
+  margin-top: 28px; padding-top: 18px;
+  border-top: 1px solid #fecaca;
+  text-align: right;
+}
+.entry-delete {
+  min-height: 44px;
+  color: #b91c1c; border-color: #fecaca; background: #fff7f7;
+}
+.entry-danger-zone .sub { margin-top: 6px; color: #991b1b; }
 
 /* 本次批次剛整理完的附件：綠邊條標示，一眼看到新結果 */
 .att-item.just-processed { border-left: 3px solid #16a34a; background: #f0fdf4; padding-left: 8px; }
