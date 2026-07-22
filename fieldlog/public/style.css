@@ -18,6 +18,7 @@ body {
 }
 
 .container { max-width: 760px; margin: 0 auto; padding: calc(14px + env(safe-area-inset-top)) 14px 60px; }
+@media (min-width: 900px) { .container { max-width: 1080px; } }
 
 /* ===== 首頁：採集優先。四個獨立入口排 2x2，方型好按、單手拇指範圍內 ===== */
 .capture-grid {
@@ -70,21 +71,57 @@ body {
 .usage-error { margin: 0; color: #b91c1c; font-size: 12px; line-height: 1.5; }
 
 /* ===== 資料夾與紀錄清單 ===== */
-.folder-list { display: flex; flex-direction: column; gap: 6px; }
+.folders-panel { padding: 18px; }
+.folders-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.folders-toolbar h2 { margin: 0 auto 0 0; }
+.folder-view-toggle { display: flex; gap: 4px; }
+.folder-view-toggle .active { color: #fff; background: var(--accent); border-color: var(--accent); }
+.folder-list { display: flex; flex-direction: column; gap: 8px; }
+.folder-list.grid-view { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .folder-card {
-  display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+  position: relative; display: flex; align-items: center; gap: 8px; padding: 0;
   border: 1px solid var(--border); border-radius: var(--radius);
-  cursor: pointer; background: #fff;
+  background: #fff;
   box-shadow: 0 1px 2px rgba(27, 29, 28, 0.05);
 }
 .folder-card:hover { border-color: var(--accent); }
 .folder-card.done { opacity: 0.55; }
+.folder-card-main { min-width: 0; flex: 1; cursor: pointer; }
+.list-view .folder-card-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 12px; }
+.grid-view .folder-card { min-height: 150px; align-items: stretch; }
+.grid-view .folder-card-main { display: flex; flex-direction: column; align-items: flex-start; padding: 16px; }
+.grid-view .folder-name { margin-top: 12px; font-size: 16px; }
+.grid-view .folder-count { margin-top: auto; padding-top: 16px; }
+.grid-view .folder-date { margin-top: 5px; }
 .folder-type {
   font-size: 11px; padding: 2px 8px; border-radius: 999px;
   background: #e6f2f0; color: var(--accent-dark); white-space: nowrap;
 }
 .folder-name { font-size: 14px; font-weight: 600; flex: 1; }
 .folder-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.folder-date { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.folder-more {
+  align-self: flex-start; width: 40px; height: 40px; margin: 6px 6px 0 0;
+  border: 0; border-radius: 8px; background: transparent; cursor: pointer; font-size: 20px;
+}
+.folder-more:hover { background: #f1f5f4; }
+.folder-menu {
+  position: absolute; z-index: 8; top: 44px; right: 8px; min-width: 130px;
+  padding: 5px; background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+.folder-menu button { display: block; width: 100%; padding: 9px 10px; border: 0; background: none; text-align: left; cursor: pointer; border-radius: 6px; }
+.folder-menu button:hover { background: #f1f5f4; }
+.folder-menu .danger { color: #b91c1c; }
+@media (max-width: 719px) {
+  .folder-view-toggle { display: none; }
+  .folders-toolbar { flex-wrap: wrap; }
+  .folder-list.grid-view { display: flex; }
+  .folder-list.grid-view .folder-card { min-height: 0; align-items: center; }
+  .folder-list.grid-view .folder-card-main,
+  .list-view .folder-card-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
+  .folder-date { display: none; }
+}
 
 .entry-list { display: flex; flex-direction: column; gap: 4px; }
 .entry-row {
