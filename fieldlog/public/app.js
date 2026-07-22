@@ -229,7 +229,6 @@ async function openEntry(id) {
     <div class="modal-close-float"><button class="btn small ghost" id="e-close" type="button" aria-label="關閉記事" title="關閉記事">✕</button></div>
     <div class="detail-head">
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
-      <button class="btn small ghost entry-delete" id="e-delete" type="button" aria-label="刪除整筆紀錄" title="刪除整筆紀錄">🗑</button>
     </div>
     <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "📥 收件匣"}</p>
     ${!folder ? `<div class="archive-row"><label>歸檔到：</label><select id="e-folder">
@@ -251,6 +250,10 @@ async function openEntry(id) {
       <span id="e-upload-status" class="sub"></span>
     </div>
     <div id="e-attachments" class="att-list">${e.attachments.map((a) => attHtml(a, e.attachments)).join("") || `<p class="sub">尚無附件</p>`}</div>
+    <div class="entry-danger-zone">
+      <button class="btn entry-delete" id="e-delete" type="button">🗑 刪除整筆記事</button>
+      <p class="sub">刪除後無法復原，附件也會一併刪除。</p>
+    </div>
   `;
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
