@@ -44,6 +44,23 @@ body {
 .panel h2 .count { color: var(--text-muted); font-size: 13px; font-weight: 400; }
 .panel h2 .btn { margin-left: auto; }
 
+.usage-grid { display: grid; gap: 8px; }
+.usage-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px; align-items: center; padding: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: #fafbfa;
+  font-size: 12px;
+}
+.usage-item strong { overflow-wrap: anywhere; }
+.usage-item span { color: var(--text-muted); }
+.usage-item b { color: var(--accent-dark); white-space: nowrap; }
+.usage-updated { margin: 8px 0 0; text-align: right; }
+.usage-error { margin: 0; color: #b91c1c; font-size: 12px; line-height: 1.5; }
+@media (max-width: 560px) {
+  .usage-item { grid-template-columns: 1fr auto; }
+  .usage-item strong { grid-column: 1 / -1; }
+}
+
 /* ===== 資料夾與紀錄清單 ===== */
 .folder-list { display: flex; flex-direction: column; gap: 6px; }
 .folder-card {
