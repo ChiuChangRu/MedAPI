@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=9" />
+<link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
 <div class="container">
@@ -29,8 +29,15 @@
       <div id="inbox-list" class="entry-list"></div>
     </section>
 
-    <section class="panel">
-      <h2>📂 資料夾 <button class="btn small" id="btn-new-folder">＋ 新增</button></h2>
+    <section class="panel folders-panel">
+      <div class="folders-toolbar">
+        <h2>📂 資料夾</h2>
+        <div class="folder-view-toggle" aria-label="資料夾顯示模式">
+          <button class="btn small" id="btn-folder-grid" type="button" title="卡片模式">▦ 卡片</button>
+          <button class="btn small" id="btn-folder-list" type="button" title="清單模式">☷ 清單</button>
+        </div>
+        <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
+      </div>
       <div id="folder-list" class="folder-list"></div>
     </section>
 
@@ -149,6 +156,6 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
