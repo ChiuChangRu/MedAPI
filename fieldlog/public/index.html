@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=11" />
+<link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
 <div class="container">
@@ -78,6 +78,19 @@
     <div class="modal-actions">
       <button class="btn ghost" id="merge-folder-cancel" type="button">取消</button>
       <button class="btn primary" id="merge-folder-confirm" type="button">下一步</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="move-entry-overlay">
+  <div class="modal narrow">
+    <h2>移動收件匣記事</h2>
+    <p class="sub" id="move-entry-desc"></p>
+    <label for="move-entry-target">移動到</label>
+    <select id="move-entry-target"></select>
+    <div class="modal-actions">
+      <button class="btn ghost" id="move-entry-cancel" type="button">取消</button>
+      <button class="btn primary" id="move-entry-confirm" type="button">移動</button>
     </div>
   </div>
 </div>
@@ -171,6 +184,6 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
