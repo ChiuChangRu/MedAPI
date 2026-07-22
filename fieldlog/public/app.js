@@ -15,6 +15,7 @@ const FOLDER_TEMPLATES = {
 let FOLDERS = [];
 let CURRENT_FOLDER = null; // 開啟中的資料夾物件
 let TRANSCRIBE_ENABLED = false;
+let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 
 // ---------- API ----------
 function pin() { return localStorage.getItem("fieldlog_pin") || ""; }
@@ -155,20 +156,70 @@ async function boot() {
 
 async function loadFolders() {
   FOLDERS = await api("/folders");
+  renderFolders();
+}
+
+function renderFolders() {
   const wrap = $("folder-list");
+  wrap.className = `folder-list ${FOLDER_VIEW === "grid" ? "grid-view" : "list-view"}`;
+  $("btn-folder-grid")?.classList.toggle("active", FOLDER_VIEW === "grid");
+  $("btn-folder-list")?.classList.toggle("active", FOLDER_VIEW === "list");
   if (!FOLDERS.length) {
     wrap.innerHTML = `<p class="sub">還沒有資料夾。採集會先進收件匣；建了資料夾之後可以歸檔進去。</p>`;
     return;
   }
   wrap.innerHTML = FOLDERS.map((f) => `
     <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}">
-      <span class="folder-type">${esc(f.type)}</span>
-      <span class="folder-name">${esc(f.name)}</span>
-      <span class="folder-count">${f.entry_count} 筆</span>
+      <div class="folder-card-main">
+        <span class="folder-type">${esc(f.type)}</span>
+        <span class="folder-name">${esc(f.name)}</span>
+        <span class="folder-count">${f.entry_count} 筆記事</span>
+        <span class="folder-date">建立於 ${esc((f.created_at || "").slice(0, 10))}</span>
+      </div>
+      <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
+      <div class="folder-menu" hidden>
+        <button type="button" data-act="rename">重新命名</button>
+        <button type="button" data-act="delete" class="danger">刪除資料夾</button>
+      </div>
     </div>`).join("");
   wrap.querySelectorAll(".folder-card").forEach((el) => {
-    el.onclick = () => openFolder(Number(el.dataset.id));
+    el.querySelector(".folder-card-main").onclick = () => openFolder(Number(el.dataset.id));
+    el.querySelector(".folder-more").onclick = (ev) => {
+      ev.stopPropagation();
+      wrap.querySelectorAll(".folder-menu").forEach((m) => { if (m !== el.querySelector(".folder-menu")) m.hidden = true; });
+      el.querySelector(".folder-menu").hidden = !el.querySelector(".folder-menu").hidden;
+    };
+    el.querySelector('[data-act="rename"]').onclick = () => renameFolder(Number(el.dataset.id));
+    el.querySelector('[data-act="delete"]').onclick = () => deleteFolder(Number(el.dataset.id));
   });
+}
+
+function setFolderView(view) {
+  FOLDER_VIEW = view;
+  localStorage.setItem("fieldlog_folder_view", view);
+  renderFolders();
+}
+
+async function renameFolder(id) {
+  const folder = FOLDERS.find((f) => f.id === id);
+  if (!folder) return;
+  const name = prompt("新的資料夾名稱：", folder.name);
+  if (!name || !name.trim() || name.trim() === folder.name) return;
+  await api(`/folders/${id}`, { method: "PUT", body: JSON.stringify({ name: name.trim() }) });
+  showToast("資料夾已重新命名");
+  loadFolders();
+}
+
+async function deleteFolder(id) {
+  const folder = FOLDERS.find((f) => f.id === id);
+  if (!folder) return;
+  const detail = folder.entry_count
+    ? `裡面的 ${folder.entry_count} 筆記事與附件會移回收件匣，不會刪除資料。`
+    : "這是空資料夾。";
+  if (!confirm(`確定刪除資料夾「${folder.name}」？\n\n${detail}`)) return;
+  const result = await api(`/folders/${id}`, { method: "DELETE" });
+  showToast(result.moved ? `資料夾已刪除，${result.moved} 筆記事移回收件匣` : "空資料夾已刪除");
+  await Promise.all([loadFolders(), loadInbox()]);
 }
 
 async function loadInbox() {
@@ -1112,6 +1163,8 @@ function init() {
   $("btn-audio").onclick = () => startAudio(null);
   $("btn-quick-note").onclick = quickNote;
   $("btn-new-folder").onclick = newFolder;
+  $("btn-folder-grid").onclick = () => setFolderView("grid");
+  $("btn-folder-list").onclick = () => setFolderView("list");
   $("btn-usage-refresh").onclick = loadUsage;
   $("btn-back").onclick = backHome;
   $("btn-video-f").onclick = () => startVideo(null);
