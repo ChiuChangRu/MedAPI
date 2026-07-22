@@ -88,6 +88,32 @@ function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+function fmtUsageNumber(n) {
+  return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 }).format(Number(n || 0));
+}
+
+async function loadUsage() {
+  const wrap = $("usage-content");
+  if (!wrap) return;
+  wrap.innerHTML = `<p class="sub">正在讀取 Cloudflare 帳單用量…</p>`;
+  try {
+    const data = await api("/usage");
+    if (!data.products.length) {
+      wrap.innerHTML = `<p class="sub">目前沒有 Workers AI、D1 或 R2 的付費用量紀錄。免費額度內可能不會產生帳單項目。</p>`;
+      return;
+    }
+    wrap.innerHTML = `<div class="usage-grid">${data.products.map((p) => `
+      <article class="usage-item">
+        <strong>${esc(p.family)}｜${esc(p.name)}</strong>
+        <span>${fmtUsageNumber(p.quantity)} ${esc(p.unit)}</span>
+        <b>${esc(p.currency)} ${fmtUsageNumber(p.cost)}</b>
+      </article>`).join("")}</div>
+      <p class="sub usage-updated">${data.source === "billable" ? "實際帳單資料" : "Pay-as-you-go 帳單資料"}｜更新：${new Date(data.updatedAt).toLocaleString("zh-TW")}</p>`;
+  } catch (err) {
+    wrap.innerHTML = `<p class="usage-error">暫時無法讀取用量：${esc(err.message)}</p>`;
+  }
+}
+
 // ---------- 登入 ----------
 function showLogin() { $("login-overlay").classList.add("open"); }
 
@@ -117,6 +143,7 @@ async function boot() {
     TRANSCRIBE_ENABLED = !!JSON.parse(localStorage.getItem("fieldlog_config") || "{}").transcribe;
   }
   await Promise.all([loadFolders(), loadInbox()]);
+  loadUsage();
   syncPendingFiles();
 }
 
@@ -1046,6 +1073,7 @@ function init() {
   $("btn-audio").onclick = () => startAudio(null);
   $("btn-quick-note").onclick = quickNote;
   $("btn-new-folder").onclick = newFolder;
+  $("btn-usage-refresh").onclick = loadUsage;
   $("btn-back").onclick = backHome;
   $("btn-video-f").onclick = () => startVideo(null);
   $("btn-photo-f").onclick = () => startPhoto(null);
