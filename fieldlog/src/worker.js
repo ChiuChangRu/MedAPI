@@ -99,6 +99,34 @@ function bad(message, status = 400) {
   return json({ error: message }, status);
 }
 
+async function cloudflareUsage(env) {
+  const accountId = (env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+  const token = (env.CLOUDFLARE_USAGE_API_TOKEN || "").trim();
+  if (!accountId || !token) throw new Error("尚未設定 Cloudflare 用量查詢資訊");
+  const headers = { authorization: `Bearer ${token}`, accept: "application/json" };
+  const endpoints = [`/accounts/${accountId}/billable/usage`, `/accounts/${accountId}/paygo-usage`];
+  const failures = [];
+  for (const endpoint of endpoints) {
+    const res = await fetch(`https://api.cloudflare.com/client/v4${endpoint}`, { headers });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.success === false) {
+      failures.push((body.errors || []).map((e) => e.message).join("；") || `HTTP ${res.status}`);
+      continue;
+    }
+    const records = Array.isArray(body.result) ? body.result : (Array.isArray(body) ? body : []);
+    const products = records.map((r) => ({
+      family: r.x_ProductFamilyName || r.ServiceFamilyName || "Cloudflare",
+      name: r.x_BillableMetricName || r.ServiceName || r.ChargeDescription || "用量",
+      quantity: Number(r.ConsumedQuantity ?? r.PricingQuantity ?? 0),
+      unit: r.ConsumedUnit || r.PricingUnit || "",
+      cost: Number(r.EffectiveCost ?? r.BilledCost ?? r.CumulatedContractedCost ?? r.ContractedCost ?? 0),
+      currency: r.BillingCurrency || "USD",
+    })).filter((r) => /workers|ai|d1|r2/i.test(`${r.family} ${r.name}`));
+    return { source: endpoint.includes("billable") ? "billable" : "paygo", products, updatedAt: new Date().toISOString() };
+  }
+  throw new Error(`Cloudflare 用量 API 無法讀取：${failures.join("；")}`);
+}
+
 async function logHistory(db, entryId, folderId, action, detail) {
   await db
     .prepare("INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)")
@@ -128,6 +156,9 @@ async function handleApi(request, env, url) {
 
   if (path === "/config" && method === "GET") {
     return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI) });
+  }
+  if (path === "/usage" && method === "GET") {
+    return json(await cloudflareUsage(env));
   }
 
   // ---- folders ----
