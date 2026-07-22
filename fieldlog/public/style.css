@@ -52,6 +52,16 @@ body {
 }
 .usage-total strong { font-size: 20px; }
 .usage-total small { grid-column: 1 / -1; opacity: 0.85; }
+.usage-limits { margin-top: 16px; }
+.usage-limits h3 { margin: 0 0 10px; font-size: 13px; }
+.usage-limit { margin-bottom: 12px; }
+.usage-limit > div:first-child { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.usage-limit > div:first-child span { color: var(--text-muted); text-align: right; }
+.usage-bar { height: 9px; margin-top: 5px; overflow: hidden; background: #e5e7eb; border-radius: 999px; }
+.usage-bar i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.usage-limit small { display: block; margin-top: 3px; color: var(--text-muted); text-align: right; }
+.usage-limit.over .usage-bar i { background: #dc2626; }
+.usage-limit.over small { color: #b91c1c; font-weight: 600; }
 .usage-item {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px; align-items: center; padding: 10px;
