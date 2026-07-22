@@ -4,6 +4,12 @@
   "name": "fieldlog",
   "main": "src/worker.js",
   "compatibility_date": "2026-07-01",
+  // 保留 Dashboard 設定的 FIELD_PIN 與 Cloudflare API Token 等 Secret／變數。
+  "keep_vars": true,
+  "vars": {
+    // Account ID 不是機密；放進部署設定，確保分支預覽也能查用量。
+    "CLOUDFLARE_ACCOUNT_ID": "a791952f49fcd61ca18b9a82dda12dd1"
+  },
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
