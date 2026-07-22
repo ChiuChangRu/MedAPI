@@ -251,6 +251,18 @@ async function handleApi(request, env, url) {
     await logHistory(db, null, id, "更新資料夾", `${name}／${status}`);
     return json({ ok: true });
   }
+  if (folderMatch && method === "DELETE") {
+    const id = Number(folderMatch[1]);
+    const folder = await db.prepare("SELECT * FROM folders WHERE id = ?").bind(id).first();
+    if (!folder) return bad("找不到資料夾", 404);
+    const countRow = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE folder_id = ?").bind(id).first();
+    const moved = Number(countRow?.count || 0);
+    // 安全刪除分類：記事與附件完整保留，只把記事移回收件匣。
+    await db.prepare("UPDATE entries SET folder_id = NULL, updated_at = ? WHERE folder_id = ?").bind(now(), id).run();
+    await db.prepare("DELETE FROM folders WHERE id = ?").bind(id).run();
+    await logHistory(db, null, null, "刪除資料夾", `${folder.name}；${moved} 筆記事移回收件匣`);
+    return json({ ok: true, moved });
+  }
 
   // ---- entries ----
   if (path === "/entries" && method === "GET") {
