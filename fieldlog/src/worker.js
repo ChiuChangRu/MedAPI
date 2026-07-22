@@ -121,6 +121,7 @@ async function cloudflareUsage(env) {
       unit: r.ConsumedUnit || r.PricingUnit || "",
       cost: Number(r.EffectiveCost ?? r.BilledCost ?? r.CumulatedContractedCost ?? r.ContractedCost ?? 0),
       currency: r.BillingCurrency || "USD",
+      periodStart: r.ChargePeriodStart || r.BillingPeriodStart || "",
     })).filter((r) => /workers|ai|d1|r2/i.test(`${r.family} ${r.name}`));
     const grouped = new Map();
     for (const row of rows) {
@@ -133,10 +134,29 @@ async function cloudflareUsage(env) {
     const products = [...grouped.values()].sort((a, b) =>
       a.family.localeCompare(b.family) || a.name.localeCompare(b.name)
     );
+    const findUsage = (family, name) => rows
+      .filter((r) => family.test(r.family) && name.test(r.name))
+      .reduce((sum, r) => sum + r.quantity, 0);
+    const aiRows = rows.filter((r) => /workers ai/i.test(r.family) && /neuron/i.test(r.name));
+    const latestAiDate = aiRows.map((r) => r.periodStart.slice(0, 10)).filter(Boolean).sort().at(-1) || "";
+    const aiUsage = aiRows
+      .filter((r) => !latestAiDate || r.periodStart.startsWith(latestAiDate))
+      .reduce((sum, r) => sum + r.quantity, 0);
+    const limits = [
+      { key: "ai", label: `Workers AI Neurons${latestAiDate ? `（${latestAiDate}）` : ""}`, used: aiUsage, limit: 10000, unit: "／日" },
+      { key: "d1-read", label: "D1 讀取列數", used: findUsage(/^D1$/i, /Rows Read/i), limit: 25e9, unit: "／月" },
+      { key: "d1-write", label: "D1 寫入列數", used: findUsage(/^D1$/i, /Rows Written/i), limit: 50e6, unit: "／月" },
+      { key: "r2-a", label: "R2 Class A 操作", used: findUsage(/^R2$/i, /Class A/i), limit: 1e6, unit: "／月" },
+      { key: "r2-b", label: "R2 Class B 操作", used: findUsage(/^R2$/i, /Class B/i), limit: 10e6, unit: "／月" },
+      { key: "worker-requests", label: "Workers 請求", used: findUsage(/^Workers$/i, /Standard Requests/i), limit: 10e6, unit: "／月" },
+      { key: "worker-cpu", label: "Workers CPU", used: findUsage(/^Workers$/i, /CPU ms/i), limit: 30e6, unit: "ms／月" },
+      { key: "worker-build", label: "Worker 建置", used: findUsage(/^Workers$/i, /Build Minutes/i), limit: 6000, unit: "分鐘／月" },
+    ].filter((item) => item.used > 0);
     const totalCost = products.reduce((sum, p) => sum + p.cost, 0);
     return {
       source: endpoint.includes("billable") ? "billable" : "paygo",
       products,
+      limits,
       totalCost,
       currency: products[0]?.currency || "USD",
       updatedAt: new Date().toISOString(),
