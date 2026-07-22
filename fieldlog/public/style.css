@@ -128,9 +128,19 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   .edit-modal { height: 100vh; }
 }
 
-/* 關閉鈕黏在捲動視窗頂端：捲到頁面中段也隨時關得掉，不用捲回最上面 */
-.modal-close-float { position: sticky; top: 4px; z-index: 6; display: flex; justify-content: flex-end; height: 0; }
-.modal-close-float .btn { background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18); }
+/* 關閉鈕黏在捲動視窗頂端：保留獨立列，避免和下一列的刪除鈕重疊誤按。 */
+.modal-close-float {
+  position: sticky; top: 4px; z-index: 6;
+  display: flex; justify-content: flex-end; align-items: center;
+  min-height: 44px; margin-bottom: 8px;
+  pointer-events: none;
+}
+.modal-close-float .btn {
+  width: 44px; height: 44px; padding: 0;
+  background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+.entry-delete { min-width: 44px; min-height: 44px; }
 
 /* 本次批次剛整理完的附件：綠邊條標示，一眼看到新結果 */
 .att-item.just-processed { border-left: 3px solid #16a34a; background: #f0fdf4; padding-left: 8px; }
