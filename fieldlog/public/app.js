@@ -226,10 +226,10 @@ async function openEntry(id) {
   const fields = JSON.parse(e.fields_json || "{}");
   const modal = $("entry-modal");
   modal.innerHTML = `
-    <div class="modal-close-float"><button class="btn small ghost" id="e-close">✕</button></div>
+    <div class="modal-close-float"><button class="btn small ghost" id="e-close" type="button" aria-label="關閉記事" title="關閉記事">✕</button></div>
     <div class="detail-head">
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
-      <button class="btn small ghost" id="e-delete" title="刪除整筆紀錄">🗑</button>
+      <button class="btn small ghost entry-delete" id="e-delete" type="button" aria-label="刪除整筆紀錄" title="刪除整筆紀錄">🗑</button>
     </div>
     <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "📥 收件匣"}</p>
     ${!folder ? `<div class="archive-row"><label>歸檔到：</label><select id="e-folder">
