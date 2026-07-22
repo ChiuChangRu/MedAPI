@@ -66,6 +66,7 @@ const SCHEMA = [
 
 // 舊表補欄位用（D1 沒有 ADD COLUMN IF NOT EXISTS，欄位已存在時失敗直接忽略即可）
 const MIGRATIONS = [
+  `ALTER TABLE folders ADD COLUMN parent_id INTEGER`,
   `ALTER TABLE folders ADD COLUMN notion_page_id TEXT DEFAULT ''`,
   `ALTER TABLE folders ADD COLUMN notion_last_entry_id INTEGER DEFAULT 0`,
   `ALTER TABLE folders ADD COLUMN notion_synced_at TEXT DEFAULT ''`,
@@ -81,6 +82,12 @@ const MIGRATIONS = [
   `ALTER TABLE attachments ADD COLUMN page_no INTEGER`,
   `ALTER TABLE attachments ADD COLUMN duration_secs INTEGER`,
 ];
+
+const AI_DAILY_FREE_NEURONS = 10000;
+const AI_AUTO_SAFE_NEURONS = 7000;
+const AI_MONTHLY_SOFT_USD = 4.5;
+const AI_MONTHLY_HARD_USD = 5;
+const AI_RATE_PER_1000_NEURONS = 0.011;
 
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -150,8 +157,15 @@ async function cloudflareUsage(env) {
     const aiUsage = aiRows
       .filter((r) => !latestAiDate || r.periodStart.startsWith(latestAiDate))
       .reduce((sum, r) => sum + r.quantity, 0);
+    const aiMonthlyPaidCost = aiRows.reduce((sum, r) => sum + r.cost, 0);
     const limits = [
-      { key: "ai", label: `Workers AI Neurons${latestAiDate ? `（${latestAiDate}）` : ""}`, used: aiUsage, limit: 10000, unit: "／日" },
+      {
+        key: "ai", label: `Workers AI Neurons${latestAiDate ? `（${latestAiDate}）` : ""}`,
+        used: aiUsage, limit: AI_DAILY_FREE_NEURONS, safeLimit: AI_AUTO_SAFE_NEURONS,
+        monthlyPaidCost: aiMonthlyPaidCost, softBudget: AI_MONTHLY_SOFT_USD,
+        hardBudget: AI_MONTHLY_HARD_USD, paidRatePerThousand: AI_RATE_PER_1000_NEURONS,
+        gatewayConfigured: !!env.AI_GATEWAY_ID, unit: "／日",
+      },
       { key: "d1-read", label: "D1 讀取列數", used: findUsage(/^D1$/i, /Rows Read/i), limit: 25e9, unit: "／月" },
       { key: "d1-write", label: "D1 寫入列數", used: findUsage(/^D1$/i, /Rows Written/i), limit: 50e6, unit: "／月" },
       { key: "r2-a", label: "R2 Class A 操作", used: findUsage(/^R2$/i, /Class A/i), limit: 1e6, unit: "／月" },
@@ -159,7 +173,7 @@ async function cloudflareUsage(env) {
       { key: "worker-requests", label: "Workers 請求", used: findUsage(/^Workers$/i, /Standard Requests/i), limit: 10e6, unit: "／月" },
       { key: "worker-cpu", label: "Workers CPU", used: findUsage(/^Workers$/i, /CPU ms/i), limit: 30e6, unit: "ms／月" },
       { key: "worker-build", label: "Worker 建置", used: findUsage(/^Workers$/i, /Build Minutes/i), limit: 6000, unit: "分鐘／月" },
-    ].filter((item) => item.used > 0);
+    ].filter((item) => item.key === "ai" || item.used > 0);
     const totalCost = products.reduce((sum, p) => sum + p.cost, 0);
     return {
       source: endpoint.includes("billable") ? "billable" : "paygo",
@@ -173,13 +187,40 @@ async function cloudflareUsage(env) {
   throw new Error(`Cloudflare 用量 API 無法讀取：${failures.join("；")}`);
 }
 
+// 帳單 API 不是即時資料，所以這是提前於 Gateway 硬上限的第二道（軟）保護。
+// 查不到帳單時採 fail-closed：寧可暫停 AI，也不要在無法判斷費用時繼續扣款。
+async function enforceAiSoftBudget(env) {
+  const usage = await cloudflareUsage(env);
+  const ai = usage.limits?.find((item) => item.key === "ai");
+  if (Number(ai?.monthlyPaidCost || 0) >= AI_MONTHLY_SOFT_USD) {
+    const err = new Error(`本月 Workers AI 付費已達 USD ${AI_MONTHLY_SOFT_USD} 軟上限，已停止新的 AI 處理`);
+    err.code = "AI_BUDGET_REACHED";
+    throw err;
+  }
+  return usage;
+}
+
+// 設定 AI_GATEWAY_ID 後，所有 env.AI.run() 都走同一 Gateway，讓 Dashboard 的
+// USD 5 spend limit 成為最後防線。尚未設定時維持原呼叫，避免現有功能突然失效。
+function budgetedAi(env) {
+  if (!env.AI_GATEWAY_ID) return env.AI;
+  return {
+    run(model, input, options = {}) {
+      return env.AI.run(model, input, {
+        ...options,
+        gateway: { ...(options.gateway || {}), id: env.AI_GATEWAY_ID },
+      });
+    },
+  };
+}
+
 async function transcribeAttachment(env, db, old) {
   const obj = await env.FILES.get(old.key);
   if (!obj) throw new Error("找不到檔案內容");
   const bytes = new Uint8Array(await obj.arrayBuffer());
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
+  const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
   const text = (result?.text || "").trim();
   await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
   await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
@@ -223,7 +264,9 @@ async function handleApi(request, env, url) {
   // ---- folders ----
   if (path === "/folders" && method === "GET") {
     const { results } = await db.prepare(
-      `SELECT f.*, (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id) AS entry_count
+      `SELECT f.*,
+        (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id) AS entry_count,
+        (SELECT COUNT(*) FROM folders c WHERE c.parent_id = f.id) AS child_count
        FROM folders f ORDER BY f.status = '進行中' DESC, f.id DESC`
     ).all();
     return json(results);
@@ -233,8 +276,10 @@ async function handleApi(request, env, url) {
     const name = (body.name || "").trim();
     if (!name) return bad("name 為必填");
     const type = (body.type || "其他").trim();
-    const r = await db.prepare("INSERT INTO folders (name, type, created_at) VALUES (?, ?, ?)")
-      .bind(name, type, now()).run();
+    const parentId = body.parent_id ? Number(body.parent_id) : null;
+    if (parentId && !await db.prepare("SELECT id FROM folders WHERE id = ?").bind(parentId).first()) return bad("找不到上層資料夾", 404);
+    const r = await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
+      .bind(name, type, parentId, now()).run();
     await logHistory(db, null, r.meta.last_row_id, "建立資料夾", `${name}（${type}）`);
     return json({ id: r.meta.last_row_id, ok: true });
   }
@@ -257,10 +302,11 @@ async function handleApi(request, env, url) {
     if (!folder) return bad("找不到資料夾", 404);
     const countRow = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE folder_id = ?").bind(id).first();
     const moved = Number(countRow?.count || 0);
-    // 安全刪除分類：記事與附件完整保留，只把記事移回收件匣。
-    await db.prepare("UPDATE entries SET folder_id = NULL, updated_at = ? WHERE folder_id = ?").bind(now(), id).run();
+    // 安全刪除分類：記事移到上層（最上層才回收件匣），子資料夾也上移一層。
+    await db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?").bind(folder.parent_id || null, now(), id).run();
+    await db.prepare("UPDATE folders SET parent_id = ? WHERE parent_id = ?").bind(folder.parent_id || null, id).run();
     await db.prepare("DELETE FROM folders WHERE id = ?").bind(id).run();
-    await logHistory(db, null, null, "刪除資料夾", `${folder.name}；${moved} 筆記事移回收件匣`);
+    await logHistory(db, null, folder.parent_id || null, "刪除資料夾", `${folder.name}；${moved} 筆記事移至${folder.parent_id ? "上層" : "收件匣"}`);
     return json({ ok: true, moved });
   }
   const mergeFolderMatch = path.match(/^\/folders\/(\d+)\/merge$/);
@@ -277,6 +323,7 @@ async function handleApi(request, env, url) {
     const countRow = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE folder_id = ?").bind(sourceId).first();
     const moved = Number(countRow?.count || 0);
     await db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?").bind(targetId, now(), sourceId).run();
+    await db.prepare("UPDATE folders SET parent_id = ? WHERE parent_id = ?").bind(source.parent_id || null, sourceId).run();
     await db.prepare("DELETE FROM folders WHERE id = ?").bind(sourceId).run();
     await logHistory(db, null, targetId, "合併資料夾", `${source.name} → ${target.name}；移動 ${moved} 筆記事`);
     return json({ ok: true, moved, target_id: targetId });
@@ -438,6 +485,8 @@ async function handleApi(request, env, url) {
     const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到附件", 404);
     if (old.kind !== "audio") return bad("只有錄音檔可以轉文字");
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
     const text = await transcribeAttachment(env, db, old);
     return json({ text });
   }
@@ -450,17 +499,20 @@ async function handleApi(request, env, url) {
       "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND duration_secs > 0 ORDER BY offset_secs, id"
     ).bind(entryId).all();
     if (!candidates.length) return json({ processed: 0, reason: "沒有可安全自動轉錄的新錄音" });
-    const usage = await cloudflareUsage(env);
+    let usage;
+    try { usage = await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
     const today = new Date().toISOString().slice(0, 10);
     const aiLimit = usage.limits?.find((x) => x.key === "ai");
     const cloudUsed = aiLimit?.label.includes(today) ? aiLimit.used : 0;
     const reservedRow = await db.prepare("SELECT COALESCE(SUM(estimated_neurons), 0) AS total FROM ai_usage_reservations WHERE usage_date = ?").bind(today).first();
     let reserved = Number(reservedRow?.total || 0);
     let processed = 0;
+    const transcripts = [];
     for (const audio of candidates) {
       const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
       if (cloudUsed + reserved + estimate > 7000) {
-        return json({ processed, stopped: true, reason: "預估將超過 70% 安全門檻", cloudUsed, reserved });
+        return json({ processed, stopped: true, reason: "預估將超過 70% 安全門檻", cloudUsed, reserved, transcripts });
       }
       const claim = await db.prepare(
         "INSERT OR IGNORE INTO ai_usage_reservations (attachment_id, usage_date, estimated_neurons, status, created_at) VALUES (?, ?, ?, 'reserved', ?)"
@@ -470,16 +522,17 @@ async function handleApi(request, env, url) {
       if (!lock.meta.changes) continue;
       reserved += estimate;
       try {
-        await transcribeAttachment(env, db, audio);
+        const text = await transcribeAttachment(env, db, audio);
         await db.prepare("UPDATE ai_usage_reservations SET status = 'completed' WHERE attachment_id = ?").bind(audio.id).run();
+        transcripts.push({ attachmentId: audio.id, offsetSecs: Number(audio.offset_secs || 0), text });
         processed++;
       } catch (err) {
         await db.prepare("UPDATE attachments SET transcribed_at = 'auto_failed' WHERE id = ?").bind(audio.id).run();
         await db.prepare("UPDATE ai_usage_reservations SET status = 'failed' WHERE attachment_id = ?").bind(audio.id).run();
-        return json({ processed, stopped: true, reason: `自動轉錄失敗，未自動重試：${err.message}` });
+        return json({ processed, stopped: true, reason: `自動轉錄失敗，未自動重試：${err.message}`, transcripts });
       }
     }
-    return json({ processed, stopped: false, cloudUsed, reserved });
+    return json({ processed, stopped: false, cloudUsed, reserved, transcripts });
   }
 
   // ---- 照片擷取文字（影像 skill，與 Medtec 共用同一份模組）----
@@ -493,6 +546,8 @@ async function handleApi(request, env, url) {
     if (!old) return bad("找不到附件", 404);
     const isPdf = (old.mime || "") === "application/pdf" || old.filename.toLowerCase().endsWith(".pdf");
     if (old.kind !== "photo" && !isPdf) return bad("只有照片與 PDF 可以擷取文字");
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
     const obj = await env.FILES.get(old.key);
     if (!obj) return bad("找不到檔案內容", 404);
     if (isPdf) {
@@ -508,7 +563,8 @@ async function handleApi(request, env, url) {
       return json({ ocr_text: pdfText });
     }
     const bytes = new Uint8Array(await obj.arrayBuffer());
-    const r = await extractImageText(env.AI, bytes);
+    const ai = budgetedAi(env);
+    const r = await extractImageText(ai, bytes);
     if (!r.ok) return bad(r.error, 502);
     let text = r.text;
     if (old.offset_secs !== null && old.offset_secs !== undefined) {
@@ -523,7 +579,7 @@ async function handleApi(request, env, url) {
       }
       const transcript = seg ? (seg.transcript || "").trim() : "";
       if (transcript) {
-        const relation = await judgeRelation(env.AI, transcript, text);
+        const relation = await judgeRelation(ai, transcript, text);
         if (relation && !relation.includes("看不出明顯關聯")) {
           text += `\n\n【對話關聯】${relation}（錄音 ${fmtSecs(old.offset_secs)} 時拍攝）`;
         }

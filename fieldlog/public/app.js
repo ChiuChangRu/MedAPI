@@ -18,6 +18,7 @@ let TRANSCRIBE_ENABLED = false;
 let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 let MERGE_SOURCE_ID = null;
 let MOVE_ENTRY_ID = null;
+let MOVE_ENTRY_TITLE = "";
 
 // ---------- API ----------
 function pin() { return localStorage.getItem("fieldlog_pin") || ""; }
@@ -95,28 +96,66 @@ function fmtUsageNumber(n) {
   return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 }).format(Number(n || 0));
 }
 
+function renderAiUsage(item) {
+  const used = Number(item.used || 0);
+  const freeLimit = Number(item.limit || 10000);
+  const safeLimit = Number(item.safeLimit || 7000);
+  const paidCost = Number(item.monthlyPaidCost || 0);
+  const softBudget = Number(item.softBudget || 4.5);
+  const hardBudget = Number(item.hardBudget || 5);
+  const bar = (label, value, limit, tone, note, digits = 0) => `<div class="ai-budget-row ${tone}">
+    <div><b>${label}</b><span>${digits ? Number(value).toFixed(digits) : fmtUsageNumber(value)} / ${digits ? Number(limit).toFixed(digits) : fmtUsageNumber(limit)}</span></div>
+    <div class="usage-bar"><i style="width:${Math.min(100, Number(value) / Number(limit) * 100)}%"></i></div>
+    <small>${note}</small>
+  </div>`;
+  return `<div class="usage-limit ai-usage">
+    <div><strong>${esc(item.label)}</strong><span>${fmtUsageNumber(used)} Neurons</span></div>
+    <div class="ai-budget-grid">
+      ${bar("① 今日自動安全額度", Math.min(used, safeLimit), safeLimit, "safe", used >= safeLimit ? "已停止自動轉錄" : "70% 安全門檻")}
+      ${bar("② 今日免費額度", Math.min(used, freeLimit), freeLimit, "daily", used > freeLimit ? "今日已進入按量計費" : "每日 00:00 UTC 重置")}
+      ${bar("③ 本月付費 AI 預算（USD）", paidCost, hardBudget, "paid", paidCost >= softBudget ? `已達 USD ${softBudget.toFixed(2)}，Fieldlog AI 已軟停止` : `USD ${softBudget.toFixed(2)} 軟停止｜USD ${hardBudget.toFixed(2)} Gateway 硬停`, 4)}
+    </div>
+    <p class="ai-plan-note">${item.gatewayConfigured ? "✓ AI Gateway 已接入；請確認 Dashboard 的每月 USD 5 Spend Limit 已啟用。" : "⚠ 尚未設定 AI_GATEWAY_ID；USD 5 Gateway 硬停止尚未生效。"}</p>
+  </div>`;
+}
+
+function renderUsageLimit(item) {
+  if (item.key === "ai") return renderAiUsage(item);
+  const percent = item.limit ? item.used / item.limit * 100 : 0;
+  return `<div class="usage-limit ${percent > 100 ? "over" : ""}">
+    <div><strong>${esc(item.label)}</strong><span>${fmtUsageNumber(item.used)} / ${fmtUsageNumber(item.limit)} ${esc(item.unit)}</span></div>
+    <div class="usage-bar" role="progressbar" aria-valuenow="${Math.round(percent)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.min(100, percent)}%"></i></div>
+    <small>${percent > 100 ? `已超出免費額度 ${fmtUsageNumber(percent - 100)}%` : `已使用 ${fmtUsageNumber(percent)}%`}</small>
+  </div>`;
+}
+
+function usageReachedTenPercent(data) {
+  return (data.limits || []).some((item) => {
+    if (item.key === "ai") {
+      return Number(item.used || 0) / Number(item.safeLimit || 7000) >= 0.1
+        || Number(item.monthlyPaidCost || 0) / Number(item.hardBudget || 5) >= 0.1;
+    }
+    return Number(item.limit || 0) > 0 && Number(item.used || 0) / Number(item.limit) >= 0.1;
+  });
+}
+
 async function loadUsage() {
   const wrap = $("usage-content");
   if (!wrap) return;
   wrap.innerHTML = `<p class="sub">正在讀取 Cloudflare 帳單用量…</p>`;
   try {
     const data = await api("/usage");
-    if (!data.products.length) {
-      wrap.innerHTML = `<p class="sub">目前沒有 Workers AI、D1 或 R2 的付費用量紀錄。免費額度內可能不會產生帳單項目。</p>`;
+    if (!usageReachedTenPercent(data)) {
+      const ai = (data.limits || []).find((item) => item.key === "ai");
+      wrap.innerHTML = `<p class="usage-quiet">✓ 目前各項用量都低於 10%，暫不顯示詳細結果。</p>
+        ${ai && !ai.gatewayConfigured ? `<p class="usage-error">⚠ AI Gateway 尚未接入，USD 5 硬停止尚未生效。</p>` : ""}`;
       return;
     }
     wrap.innerHTML = `<div class="usage-total">
         <span>本期實際費用</span><strong>${esc(data.currency)} ${fmtUsageNumber(data.totalCost)}</strong>
         <small>${Number(data.totalCost) === 0 ? "目前都在包含額度內" : "已有超額費用"}</small>
       </div>
-      <div class="usage-limits"><h3>包含額度使用率</h3>${(data.limits || []).map((item) => {
-        const percent = item.limit ? item.used / item.limit * 100 : 0;
-        return `<div class="usage-limit ${percent > 100 ? "over" : ""}">
-          <div><strong>${esc(item.label)}</strong><span>${fmtUsageNumber(item.used)} / ${fmtUsageNumber(item.limit)} ${esc(item.unit)}</span></div>
-          <div class="usage-bar" role="progressbar" aria-valuenow="${Math.round(percent)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.min(100, percent)}%"></i></div>
-          <small>${percent > 100 ? `已超出免費額度 ${fmtUsageNumber(percent - 100)}%` : `已使用 ${fmtUsageNumber(percent)}%`}</small>
-        </div>`;
-      }).join("")}</div>
+      <div class="usage-limits"><h3>額度使用狀態</h3>${(data.limits || []).map(renderUsageLimit).join("")}</div>
       <p class="sub usage-updated">${data.source === "billable" ? "實際帳單資料" : "Pay-as-you-go 帳單資料"}｜更新：${new Date(data.updatedAt).toLocaleString("zh-TW")}</p>`;
   } catch (err) {
     wrap.innerHTML = `<p class="usage-error">暫時無法讀取用量：${esc(err.message)}</p>`;
@@ -163,20 +202,21 @@ async function loadFolders() {
 
 function renderFolders() {
   const wrap = $("folder-list");
+  const rootFolders = FOLDERS.filter((f) => !f.parent_id);
   wrap.className = `folder-list ${FOLDER_VIEW === "grid" ? "grid-view" : "list-view"}`;
   $("btn-folder-grid")?.classList.toggle("active", FOLDER_VIEW === "grid");
   $("btn-folder-list")?.classList.toggle("active", FOLDER_VIEW === "list");
-  if (!FOLDERS.length) {
+  if (!rootFolders.length) {
     wrap.innerHTML = `<p class="sub">還沒有資料夾。採集會先進收件匣；建了資料夾之後可以歸檔進去。</p>`;
     return;
   }
-  wrap.innerHTML = FOLDERS.map((f) => `
+  wrap.innerHTML = rootFolders.map((f) => `
     <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}">
       <button class="folder-drag" type="button" draggable="true" title="拖曳合併或刪除" aria-label="拖曳${esc(f.name)}">⠿</button>
       <div class="folder-card-main">
         <span class="folder-type">${esc(f.type)}</span>
         <span class="folder-name">${esc(f.name)}</span>
-        <span class="folder-count">${f.entry_count} 筆記事</span>
+        <span class="folder-count">${f.entry_count} 筆記事${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</span>
         <span class="folder-date">建立於 ${esc((f.created_at || "").slice(0, 10))}</span>
       </div>
       <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
@@ -242,12 +282,11 @@ async function renameFolder(id) {
 async function deleteFolder(id) {
   const folder = FOLDERS.find((f) => f.id === id);
   if (!folder) return;
-  const detail = folder.entry_count
-    ? `裡面的 ${folder.entry_count} 筆記事與附件會移回收件匣，不會刪除資料。`
-    : "這是空資料夾。";
+  const destination = folder.parent_id ? "上層資料夾" : "收件匣";
+  const detail = `${folder.entry_count ? `裡面的 ${folder.entry_count} 筆記事與附件會移到${destination}。` : "裡面沒有直接記事。"}${folder.child_count ? ` ${folder.child_count} 個子資料夾也會安全上移一層。` : ""}`;
   if (!confirm(`確定刪除資料夾「${folder.name}」？\n\n${detail}`)) return;
   const result = await api(`/folders/${id}`, { method: "DELETE" });
-  showToast(result.moved ? `資料夾已刪除，${result.moved} 筆記事移回收件匣` : "空資料夾已刪除");
+  showToast(result.moved ? `資料夾已刪除，${result.moved} 筆記事移至${destination}` : "資料夾已刪除，內容已安全保留");
   await Promise.all([loadFolders(), loadInbox()]);
 }
 
@@ -320,24 +359,58 @@ function bindEntryRows(wrap) {
       ev.stopPropagation();
       ev.dataTransfer.effectAllowed = "move";
       ev.dataTransfer.setData("application/x-fieldlog-entry", drag.closest(".entry-row").dataset.id);
+      ev.dataTransfer.setData("application/x-fieldlog-entry-title", drag.closest(".entry-row").querySelector(".entry-title")?.textContent || "新資料夾");
       drag.closest(".entry-row").classList.add("dragging");
+      document.body.classList.add("entry-dragging");
     };
-    drag.ondragend = () => drag.closest(".entry-row").classList.remove("dragging");
+    drag.ondragend = () => {
+      drag.closest(".entry-row").classList.remove("dragging");
+      document.body.classList.remove("entry-dragging");
+      $("entry-new-folder-zone").classList.remove("active");
+    };
   });
 }
 
 function openMoveEntryDialog(entryId) {
   const row = $("inbox-list").querySelector(`.entry-row[data-id="${entryId}"]`);
-  if (!FOLDERS.length) { showToast("請先建立資料夾"); return; }
   MOVE_ENTRY_ID = entryId;
-  $("move-entry-desc").textContent = `將「${row?.querySelector(".entry-title")?.textContent || "這筆記事"}」移出收件匣。`;
-  $("move-entry-target").innerHTML = FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("");
+  MOVE_ENTRY_TITLE = row?.querySelector(".entry-title")?.textContent || "這筆記事";
+  $("move-entry-desc").textContent = `將「${MOVE_ENTRY_TITLE}」移出收件匣；也可以直接建立新資料夾。`;
+  $("move-entry-target").innerHTML = `<option value="__new__">＋ 建立新資料夾並歸檔</option>${FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("")}`;
   $("move-entry-overlay").classList.add("open");
 }
 
 function closeMoveEntryDialog() {
   MOVE_ENTRY_ID = null;
+  MOVE_ENTRY_TITLE = "";
   $("move-entry-overlay").classList.remove("open");
+}
+
+async function createFolderForArchive(suggestedName) {
+  const defaultName = String(suggestedName || "ISO 文件").replace(/（未命名）/g, "").trim() || "ISO 文件";
+  const name = prompt("新資料夾名稱：", defaultName);
+  if (!name || !name.trim()) return null;
+  const types = Object.keys(FOLDER_TEMPLATES);
+  const type = prompt(`類型（${types.join("／")}）：`, "其他");
+  if (type === null) return null;
+  const resolved = types.includes((type || "").trim()) ? type.trim() : "其他";
+  const folder = await api("/folders", { method: "POST", body: JSON.stringify({ name: name.trim(), type: resolved }) });
+  return { id: Number(folder.id), name: name.trim(), type: resolved };
+}
+
+async function createFolderAndMoveEntry(entryId, title) {
+  const folder = await createFolderForArchive(title);
+  if (!folder) return;
+  try {
+    await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: folder.id }) });
+  } catch (err) {
+    // 歸檔失敗時清掉剛建的空資料夾，避免留下半套結果；原記事仍在收件匣。
+    await api(`/folders/${folder.id}`, { method: "DELETE" }).catch(() => {});
+    throw err;
+  }
+  closeMoveEntryDialog();
+  showToast(`已建立「${folder.name}」並完成歸檔`);
+  await Promise.all([loadFolders(), loadInbox()]);
 }
 
 async function moveInboxEntry(entryId, folderId) {
@@ -360,13 +433,41 @@ async function newFolder() {
   loadFolders();
 }
 
+async function newSubfolder() {
+  if (!CURRENT_FOLDER) return;
+  const parentId = CURRENT_FOLDER.id;
+  const name = prompt(`在「${CURRENT_FOLDER.name}」內建立子資料夾：`);
+  if (!name || !name.trim()) return;
+  const types = Object.keys(FOLDER_TEMPLATES);
+  const type = prompt(`類型（${types.join("／")}）：`, "其他");
+  if (type === null) return;
+  const resolved = types.includes((type || "").trim()) ? type.trim() : "其他";
+  await api("/folders", { method: "POST", body: JSON.stringify({ name: name.trim(), type: resolved, parent_id: parentId }) });
+  await loadFolders();
+  showToast(`已在「${CURRENT_FOLDER.name}」建立子資料夾`);
+  openFolder(parentId);
+}
+
+function renderChildFolders(parentId) {
+  const children = FOLDERS.filter((f) => Number(f.parent_id) === Number(parentId));
+  const wrap = $("folder-children");
+  wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list">${children.map((f) => `
+    <button class="child-folder-card" type="button" data-id="${f.id}">
+      <span>📁</span><strong>${esc(f.name)}</strong><small>${esc(f.type)}｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
+    </button>`).join("")}</div>` : "";
+  wrap.querySelectorAll(".child-folder-card").forEach((el) => { el.onclick = () => openFolder(Number(el.dataset.id)); });
+}
+
 // ---------- 資料夾內頁 ----------
 async function openFolder(id) {
   CURRENT_FOLDER = FOLDERS.find((f) => f.id === id);
   if (!CURRENT_FOLDER) return;
   $("view-home").style.display = "none";
   $("view-folder").style.display = "block";
+  const parent = CURRENT_FOLDER.parent_id ? FOLDERS.find((f) => f.id === CURRENT_FOLDER.parent_id) : null;
+  $("btn-back").textContent = parent ? `‹ ${parent.name}` : "‹ 回首頁";
   $("folder-title").textContent = `${CURRENT_FOLDER.type}｜${CURRENT_FOLDER.name}`;
+  renderChildFolders(id);
   const entries = await api(`/entries?folder_id=${id}`);
   $("folder-entries").innerHTML = entries.length
     ? entries.map(entryRowHtml).join("")
@@ -375,6 +476,7 @@ async function openFolder(id) {
 }
 
 function backHome() {
+  if (CURRENT_FOLDER?.parent_id) { openFolder(CURRENT_FOLDER.parent_id); return; }
   CURRENT_FOLDER = null;
   $("view-folder").style.display = "none";
   $("view-home").style.display = "block";
@@ -420,6 +522,7 @@ async function openEntry(id) {
     </section>
     ${!folder ? `<div class="archive-row"><label>歸檔到：</label><select id="e-folder">
       <option value="">— 留在收件匣 —</option>
+      <option value="__new__">＋ 建立新資料夾並歸檔</option>
       ${FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("")}
     </select></div>` : ""}
     ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
@@ -464,7 +567,11 @@ async function openEntry(id) {
     modal.querySelectorAll(".e-field").forEach((i) => { newFields[i.dataset.key] = i.value.trim(); });
     const patch = { title: $("e-title").value.trim(), body: $("e-body").value.trim(), fields: newFields };
     const sel = $("e-folder");
-    if (sel && sel.value) patch.folder_id = Number(sel.value);
+    if (sel?.value === "__new__") {
+      const newFolder = await createFolderForArchive(patch.title || e.title);
+      if (!newFolder) return;
+      patch.folder_id = newFolder.id;
+    } else if (sel?.value) patch.folder_id = Number(sel.value);
     await api(`/entries/${id}`, { method: "PUT", body: JSON.stringify(patch) });
     showToast("已儲存");
     closeEntry();
@@ -563,7 +670,7 @@ async function processEntryAttachments(id, btn) {
 // Cloudflare Worker 沒有 PDF 渲染能力，這步只能在瀏覽器端用 pdf.js 把每一頁畫成圖片，
 // 再把每張頁面圖丟進既有的照片 OCR 流程——向量圖表跟排版化的技術參數文字都變成看得見
 // 的像素，Llama Vision 抄得到，也自動進搜尋索引，不用另外蓋一套 Tier 2 儲存/搜尋機制。
-async function deepProcessPdf(entryId, pdfAtt, btn) {
+async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
   if (!window.pdfjsLib) { showToast("PDF 渲染程式庫載入失敗，請檢查網路連線後重新整理頁面再試"); return; }
   if (btn.disabled) return;
   btn.disabled = true;
@@ -577,36 +684,55 @@ async function deepProcessPdf(entryId, pdfAtt, btn) {
     if (!fileRes.ok) throw new Error(`下載 PDF 失敗（HTTP ${fileRes.status}）`);
     const pdf = await pdfjsLib.getDocument({ data: await fileRes.arrayBuffer() }).promise;
     const total = pdf.numPages;
-    if (total > 40 && !confirm(`這份 PDF 有 ${total} 頁，深度處理會產生 ${total} 張截圖並逐一跑 AI 辨識，較耗時間與額度。確定要繼續嗎？`)) {
+    const completedPageNos = new Set(existingPages.filter((a) => a.ocr_at).map((a) => Number(a.page_no)));
+    const pendingCount = Math.max(0, total - completedPageNos.size);
+    if (!pendingCount) {
+      showToast(`深度處理已完成：${total} 頁都已有結果，不會重複扣額度`);
       return;
     }
-    let done = 0, failed = 0;
+    if (total > 40 && !confirm(`這份 PDF 有 ${total} 頁，已有 ${completedPageNos.size} 頁完成，尚有 ${pendingCount} 頁。接續處理只會執行未完成頁面，確定繼續嗎？`)) {
+      return;
+    }
+    // 同一頁若因舊版重跑而有重複附件，優先取已有 OCR 狀態的那一筆。
+    const existingByPage = new Map();
+    for (const a of existingPages) {
+      const pageNo = Number(a.page_no);
+      const current = existingByPage.get(pageNo);
+      if (!current || (!current.ocr_at && a.ocr_at)) existingByPage.set(pageNo, a);
+    }
+    let done = 0, skipped = 0, failed = 0;
     const baseName = pdfAtt.filename.replace(/\.pdf$/i, "");
     for (let p = 1; p <= total; p++) {
       try {
-        btn.textContent = `渲染第 ${p}/${total} 頁…`;
-        const page = await pdf.getPage(p);
-        const viewport = page.getViewport({ scale: 2 }); // scale 2：解析度足夠給 OCR 辨識文字
-        const canvas = document.createElement("canvas");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-        if (!blob) throw new Error("畫布輸出失敗");
-        const uploaded = await putFile(entryId, blob, `${baseName}-p${p}.png`, null, { sourcePdfId: pdfAtt.id, pageNo: p });
+        const existing = existingByPage.get(p);
+        if (existing?.ocr_at) { skipped++; continue; }
+        let attachmentId = existing?.id;
+        if (!attachmentId) {
+          btn.textContent = `渲染第 ${p}/${total} 頁…`;
+          const page = await pdf.getPage(p);
+          const viewport = page.getViewport({ scale: 2 }); // scale 2：解析度足夠給 OCR 辨識文字
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+          if (!blob) throw new Error("畫布輸出失敗");
+          const uploaded = await putFile(entryId, blob, `${baseName}-p${p}.png`, null, { sourcePdfId: pdfAtt.id, pageNo: p });
+          attachmentId = uploaded.id;
+        }
         btn.textContent = `辨識第 ${p}/${total} 頁…`;
-        await api(`/attachments/${uploaded.id}/ocr`, { method: "POST", body: "{}" });
+        await api(`/attachments/${attachmentId}/ocr`, { method: "POST", body: "{}" });
         done++;
       } catch (err) {
         failed++;
         console.error(`Tier 2 第 ${p} 頁失敗`, err);
-        if (/4006|neuron/i.test(err.message || "")) {
-          showToast("⛔ Cloudflare AI 每日免費額度已用完，深度處理中止（已完成的頁面已保留）");
+        if (/4006|429|neuron|budget|額度|上限/i.test(err.message || "")) {
+          showToast("⛔ AI 額度或預算保護已啟動，接續處理已停止（完成頁面已保留）");
           break;
         }
       }
     }
-    showToast(failed ? `深度處理完成：${done} 頁成功、${failed} 頁失敗` : `深度處理完成：共 ${total} 頁`);
+    showToast(`接續處理完成：新完成 ${done} 頁、跳過 ${skipped} 頁${failed ? `、失敗 ${failed} 頁` : ""}`);
     openEntry(entryId);
   } catch (err) {
     showToast("深度處理失敗：" + err.message);
@@ -666,9 +792,11 @@ function attHtml(a, siblings) {
           : aiFold(`⏳ 未整理`, `<a href="#" class="att-ocr" data-id="${a.id}">🔍 擷取文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_ocr" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`))
     : "";
   // Tier 2 深度處理：只給 PDF，手動觸發，絕不自動全庫跑（見 DATA-MODEL.md）
-  const tier2Count = (siblings || []).filter((x) => x.source_pdf_id === a.id).length;
+  const tier2Pages = (siblings || []).filter((x) => x.source_pdf_id === a.id);
+  const tier2Count = tier2Pages.length;
+  const tier2Done = new Set(tier2Pages.filter((x) => x.ocr_at).map((x) => Number(x.page_no))).size;
   const tier2Bit = !isPdfAtt(a) || !TRANSCRIBE_ENABLED ? "" : tier2Count
-    ? `<p class="att-tier2">🔬 已深度處理（${tier2Count} 頁截圖，在附件清單裡） <a href="#" class="att-tier2-btn skip-link" data-id="${a.id}">重新處理</a></p>`
+    ? `<p class="att-tier2">🔬 深度頁面：${tier2Done} 頁完成／${tier2Count} 頁已建立 <a href="#" class="att-tier2-btn" data-id="${a.id}">檢查並接續</a></p>`
     : `<p class="att-tier2"><a href="#" class="att-tier2-btn" data-id="${a.id}" title="把這份 PDF 逐頁轉成圖片並跑 AI 辨識，補齊一般擷取抓不到的圖形化排版/圖表內容。手動觸發、只處理這一份，較耗時間與額度">🔬 深度處理（逐頁轉圖辨識）</a></p>`;
   return `<div class="att-item" data-id="${a.id}" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
@@ -740,9 +868,8 @@ function bindAttActions(entryId) {
       const e = await api(`/entries/${entryId}`);
       const pdfAtt = (e.attachments || []).find((x) => String(x.id) === el.dataset.id);
       if (!pdfAtt) return;
-      const existingCount = (e.attachments || []).filter((x) => x.source_pdf_id === pdfAtt.id).length;
-      if (existingCount && !confirm(`這份 PDF 已經深度處理過（${existingCount} 頁），要重新處理一次嗎？會再產生一組新的頁面截圖。`)) return;
-      deepProcessPdf(entryId, pdfAtt, el);
+      const existingPages = (e.attachments || []).filter((x) => x.source_pdf_id === pdfAtt.id);
+      deepProcessPdf(entryId, pdfAtt, el, existingPages);
     };
   });
 }
@@ -837,6 +964,7 @@ async function syncPendingFiles() {
 // 順便打開鏡頭全螢幕——只有按「錄影」才是真的要錄影。
 // 拍照永遠要看得到即時畫面才拍（不做隱藏鏡頭盲拍那套）。
 const SEG_MINUTES = 10;
+const AUDIO_LIVE_SEG_SECONDS = 60;
 
 function segOffset(session) { return Math.floor((Date.now() - session.startedAt) / 1000); }
 
@@ -1077,6 +1205,31 @@ function finishPhoto() {
 // ================= 🎙 錄音（不開鏡頭；浮動控制列，拍照時才臨時開鏡頭預覽） =================
 let AUDIO = null;
 
+function setAudioStatus(text = "", interrupted = false) {
+  const el = $("audio-status");
+  el.textContent = text;
+  el.hidden = !text;
+  el.classList.toggle("interrupted", interrupted);
+}
+
+function resetAudioLiveTranscript() {
+  const el = $("audio-live-transcript");
+  el.innerHTML = "";
+  el.hidden = true;
+}
+
+function appendAudioLiveTranscripts(items = []) {
+  if (!AUDIO || !items.length) return;
+  AUDIO.liveLines.push(...items.filter((item) => (item.text || "").trim()));
+  AUDIO.liveLines = AUDIO.liveLines.slice(-6); // 浮動列只留最近六段，完整內容仍存於記事
+  const el = $("audio-live-transcript");
+  el.innerHTML = `<strong>即時逐字稿</strong>${AUDIO.liveLines.map((item) =>
+    `<p><time>${fmtSecs(Number(item.offsetSecs || 0))}</time>${esc(item.text)}</p>`
+  ).join("")}`;
+  el.hidden = !AUDIO.liveLines.length;
+  el.scrollTop = el.scrollHeight;
+}
+
 function startAudioSegRecorder() {
   const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
     .find((m) => MediaRecorder.isTypeSupported(m)) || "";
@@ -1101,14 +1254,16 @@ async function startAudio(entryId) {
   let ref;
   try { ref = await ensureEntryForCapture(entryId, "錄音"); }
   catch (err) { stream.getTracks().forEach((t) => t.stop()); showToast("無法建立紀錄：" + err.message); return; }
-  AUDIO = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0 };
+  AUDIO = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, liveLines: [], liveTranscriptionStopped: false };
   startAudioSegRecorder();
+  setAudioStatus();
+  resetAudioLiveTranscript();
   $("audio-timer").textContent = "00:00";
   $("audio-badge").style.display = "flex";
   AUDIO.timerId = setInterval(() => {
     if (!AUDIO || AUDIO.ending) return;
     $("audio-timer").textContent = fmtSecs(segOffset(AUDIO));
-    if (AUDIO.recorder.state === "recording" && Date.now() - AUDIO.segStartMs >= SEG_MINUTES * 60 * 1000) {
+    if (AUDIO.recorder.state === "recording" && Date.now() - AUDIO.segStartMs >= AUDIO_LIVE_SEG_SECONDS * 1000) {
       AUDIO.recorder.stop();
     }
   }, 1000);
@@ -1131,6 +1286,8 @@ function finalizeAudioStop() {
   clearInterval(timerId);
   if (stream) stream.getTracks().forEach((t) => t.stop());
   $("audio-badge").style.display = "none";
+  setAudioStatus();
+  resetAudioLiveTranscript();
   AUDIO = null;
   showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}`);
   openEntry(entryId);
@@ -1144,7 +1301,22 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
   const uploadSeg = async () => {
     if (!blob.size) return;
     try { await putFile(seg.entryId, blob, filename, seg.startOffset, { durationSecs }); }
-    catch { await queueFile(seg.entryId, blob, filename, seg.startOffset); }
+    catch { await queueFile(seg.entryId, blob, filename, seg.startOffset); return; }
+    // 錄音仍持續時才做準即時轉錄；最後一段由記事頁的既有安全流程接手。
+    if (AUDIO && !AUDIO.ending && AUDIO.entryId === seg.entryId && !AUDIO.liveTranscriptionStopped && navigator.onLine) {
+      try {
+        const result = await api(`/entries/${seg.entryId}/auto-transcribe`, { method: "POST", body: "{}" });
+        appendAudioLiveTranscripts(result.transcripts || []);
+        if (result.stopped) {
+          AUDIO.liveTranscriptionStopped = true;
+          setAudioStatus(`即時轉錄已停止：${result.reason || "額度保護已啟動"}`, true);
+        }
+      } catch (err) {
+        // 音檔已成功保存；轉錄失敗絕不把同一音檔再排入上傳佇列，避免重複附件。
+        if (AUDIO && /429|budget|額度|上限|費用/i.test(err.message || "")) AUDIO.liveTranscriptionStopped = true;
+        if (AUDIO) setAudioStatus(`即時轉錄暫停：${err.message}`, true);
+      }
+    }
   };
 
   // AUDIO 已整個結束（stopAudio 收尾時把 AUDIO 設成 null）：這是最後一段，只上傳
@@ -1162,7 +1334,7 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
   }
 
   // 一般段落輪替，或背景中被系統停掉：仍是當前 recorder 才接續下一段
-  if (isCurrent && !AUDIO.ending) {
+  if (isCurrent && !AUDIO.ending && !document.hidden && !AUDIO.resuming) {
     AUDIO.segIndex++;
     startAudioSegRecorder();
   }
@@ -1171,18 +1343,31 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
 
 // 回到前台時：若背景中錄音被系統中斷（iOS 一定會、Android 記憶體吃緊時可能），
 // 且沒有自動接上，就接續錄新的一段。錄音不會整個結束，切走前錄的也都保住。
-function resumeAudioOnForeground() {
+async function resumeAudioOnForeground() {
   if (!AUDIO || AUDIO.ending) return;
+  const backgroundSecs = AUDIO.backgroundAt ? Math.max(1, Math.round((Date.now() - AUDIO.backgroundAt) / 1000)) : 0;
+  AUDIO.backgroundAt = 0;
+  AUDIO.backgroundSecs += backgroundSecs;
   const st = AUDIO.recorder && AUDIO.recorder.state;
-  if (st !== "recording") {
-    // 桌機 Chrome 背景分頁不會中斷，這條通常不會走到；留著是保底（其他情境被系統停掉時接續）
+  const trackEnded = !AUDIO.stream || AUDIO.stream.getAudioTracks().every((track) => track.readyState === "ended");
+  if (st !== "recording" || trackEnded) {
+    AUDIO.interrupted = true;
+    AUDIO.resuming = true;
     try {
+      if (trackEnded) AUDIO.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!AUDIO || AUDIO.ending) return;
       AUDIO.segIndex++;
       startAudioSegRecorder();
-      showToast("錄音曾被系統中斷，已接續錄音");
+      setAudioStatus(`⚠️ 背景期間偵測到中斷（最多可能漏錄 ${fmtSecs(backgroundSecs)}），已從第 ${AUDIO.segIndex} 段接續`, true);
+      showToast("錄音曾中斷，已另開新段接續");
     } catch (err) {
-      showToast("錄音無法自動接續，請再按一次錄音：" + err.message);
+      setAudioStatus("⛔ 錄音已中斷且無法自動接續，請結束後重新錄音", true);
+      showToast("錄音無法自動接續：" + err.message);
+    } finally {
+      if (AUDIO) AUDIO.resuming = false;
     }
+  } else if (backgroundSecs) {
+    setAudioStatus(`ℹ️ 曾在背景 ${fmtSecs(backgroundSecs)}；系統無法保證此段完整，重要內容請確認錄音`, false);
   }
 }
 
@@ -1232,6 +1417,12 @@ async function audioPhotoSnap() {
 // 自動接續、切走前錄的都保住。頁面「真的卸載」（pagehide）才把錄音收尾存檔。
 function onPageHidden() {
   if (VIDEO) { VIDEO.autoStopped = true; stopVideo(); }
+  if (AUDIO && !AUDIO.ending) {
+    AUDIO.backgroundAt = Date.now();
+    setAudioStatus("切換至背景中；手機系統可能暫停錄音");
+    // 先要求瀏覽器交出目前資料，降低稍後遭系統暫停時遺失整段的風險。
+    try { if (AUDIO.recorder?.state === "recording") AUDIO.recorder.requestData(); } catch {}
+  }
   if (AUDIO_PHOTO_STREAM) closeAudioPhotoPopup(); // 拍照鏡頭關掉，但錄音續錄
 }
 
@@ -1266,8 +1457,10 @@ function init() {
   $("merge-folder-overlay").addEventListener("click", (e) => { if (e.target === $("merge-folder-overlay")) closeMergeFolderDialog(); });
   $("move-entry-cancel").onclick = closeMoveEntryDialog;
   $("move-entry-confirm").onclick = () => {
-    const targetId = Number($("move-entry-target").value);
-    if (MOVE_ENTRY_ID && targetId) moveInboxEntry(MOVE_ENTRY_ID, targetId);
+    const target = $("move-entry-target").value;
+    if (!MOVE_ENTRY_ID) return;
+    if (target === "__new__") createFolderAndMoveEntry(MOVE_ENTRY_ID, MOVE_ENTRY_TITLE).catch((err) => showToast("建立並歸檔失敗：" + err.message));
+    else if (Number(target)) moveInboxEntry(MOVE_ENTRY_ID, Number(target));
   };
   $("move-entry-overlay").addEventListener("click", (e) => { if (e.target === $("move-entry-overlay")) closeMoveEntryDialog(); });
   const trash = $("folder-trash-zone");
@@ -1279,8 +1472,25 @@ function init() {
     const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-folder"));
     if (sourceId) deleteFolder(sourceId);
   };
+  const newFolderZone = $("entry-new-folder-zone");
+  newFolderZone.ondragover = (ev) => {
+    if (!ev.dataTransfer.types.includes("application/x-fieldlog-entry")) return;
+    ev.preventDefault();
+    newFolderZone.classList.add("active");
+    ev.dataTransfer.dropEffect = "move";
+  };
+  newFolderZone.ondragleave = () => newFolderZone.classList.remove("active");
+  newFolderZone.ondrop = (ev) => {
+    ev.preventDefault();
+    newFolderZone.classList.remove("active");
+    document.body.classList.remove("entry-dragging");
+    const entryId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
+    const title = ev.dataTransfer.getData("application/x-fieldlog-entry-title") || "新資料夾";
+    if (entryId) createFolderAndMoveEntry(entryId, title).catch((err) => showToast("建立並歸檔失敗：" + err.message));
+  };
   $("btn-usage-refresh").onclick = loadUsage;
   $("btn-back").onclick = backHome;
+  $("btn-new-subfolder").onclick = newSubfolder;
   $("btn-video-f").onclick = () => startVideo(null);
   $("btn-photo-f").onclick = () => startPhoto(null);
   $("btn-audio-f").onclick = () => startAudio(null);

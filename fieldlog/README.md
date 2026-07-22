@@ -24,7 +24,20 @@ D1、不同 R2，互不影響。
    「加入主畫面」變成 App
 
 > Workers AI（錄音轉文字）不用另外開通，`wrangler.jsonc` 已含 AI
-> binding，第一次部署即生效。免費額度每天 10,000 Neurons，單人用不完。
+> binding。免費額度每天 10,000 Neurons；Fieldlog 在 7,000 停止自動轉錄，
+> 本月實際 AI 付費達 USD 4.50 時停止新的 AI 處理（錄音與記事仍正常）。
+
+## AI 費用雙層保護
+
+1. AI Gateway 建立專用 Gateway（例如 `fieldlog-budget`）。
+2. 在 Gateway 的 Spend limits 建立固定月週期 USD 5 規則。Cloudflare 的
+   spend limit 採最終一致性，短時間並行請求仍可能有少量超出。
+3. Worker → Settings → Variables and Secrets 新增一般變數
+   `AI_GATEWAY_ID=fieldlog-budget`，再重新部署。
+4. 首頁用量區必須顯示「AI Gateway 已接入」；若仍顯示尚未設定，USD 5
+   硬停止就還沒有生效。
+
+一般 Billing Budget Alert 只會通知、不會停止服務；不能替代 Gateway spend limit。
 
 ## 使用流程
 
