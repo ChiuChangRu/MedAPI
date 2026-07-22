@@ -184,6 +184,17 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   color: #b91c1c; border-color: #fecaca; background: #fff7f7;
 }
 .entry-danger-zone .sub { margin-top: 6px; color: #991b1b; }
+.merged-transcript {
+  margin: 12px 0; padding: 12px;
+  border: 1px solid #99f6e4; border-radius: var(--radius); background: #f0fdfa;
+}
+.merged-transcript > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.merged-transcript pre {
+  max-height: 280px; overflow: auto; margin: 10px 0 0; padding: 10px;
+  white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 inherit;
+  background: #fff; border-radius: 6px;
+}
+.merged-transcript.empty { background: #fafafa; border-color: var(--border); }
 
 /* 本次批次剛整理完的附件：綠邊條標示，一眼看到新結果 */
 .att-item.just-processed { border-left: 3px solid #16a34a; background: #f0fdf4; padding-left: 8px; }
