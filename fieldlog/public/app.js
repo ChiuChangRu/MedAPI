@@ -16,6 +16,7 @@ let FOLDERS = [];
 let CURRENT_FOLDER = null; // 開啟中的資料夾物件
 let TRANSCRIBE_ENABLED = false;
 let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
+let MERGE_SOURCE_ID = null;
 
 // ---------- API ----------
 function pin() { return localStorage.getItem("fieldlog_pin") || ""; }
@@ -170,6 +171,7 @@ function renderFolders() {
   }
   wrap.innerHTML = FOLDERS.map((f) => `
     <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}">
+      <button class="folder-drag" type="button" draggable="true" title="拖曳合併或刪除" aria-label="拖曳${esc(f.name)}">⠿</button>
       <div class="folder-card-main">
         <span class="folder-type">${esc(f.type)}</span>
         <span class="folder-name">${esc(f.name)}</span>
@@ -179,6 +181,7 @@ function renderFolders() {
       <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
       <div class="folder-menu" hidden>
         <button type="button" data-act="rename">重新命名</button>
+        <button type="button" data-act="merge">合併至其他資料夾</button>
         <button type="button" data-act="delete" class="danger">刪除資料夾</button>
       </div>
     </div>`).join("");
@@ -190,7 +193,30 @@ function renderFolders() {
       el.querySelector(".folder-menu").hidden = !el.querySelector(".folder-menu").hidden;
     };
     el.querySelector('[data-act="rename"]').onclick = () => renameFolder(Number(el.dataset.id));
+    el.querySelector('[data-act="merge"]').onclick = () => openMergeFolderDialog(Number(el.dataset.id));
     el.querySelector('[data-act="delete"]').onclick = () => deleteFolder(Number(el.dataset.id));
+    const drag = el.querySelector(".folder-drag");
+    drag.ondragstart = (ev) => {
+      const sourceId = Number(el.dataset.id);
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("text/plain", String(sourceId));
+      el.classList.add("dragging");
+      document.body.classList.add("folder-dragging");
+    };
+    drag.ondragend = () => {
+      el.classList.remove("dragging");
+      document.body.classList.remove("folder-dragging");
+      wrap.querySelectorAll(".drop-target").forEach((x) => x.classList.remove("drop-target"));
+    };
+    el.ondragover = (ev) => { ev.preventDefault(); el.classList.add("drop-target"); ev.dataTransfer.dropEffect = "move"; };
+    el.ondragleave = () => el.classList.remove("drop-target");
+    el.ondrop = (ev) => {
+      ev.preventDefault();
+      el.classList.remove("drop-target");
+      const sourceId = Number(ev.dataTransfer.getData("text/plain"));
+      const targetId = Number(el.dataset.id);
+      if (sourceId && sourceId !== targetId) mergeFolder(sourceId, targetId);
+    };
   });
 }
 
@@ -219,6 +245,32 @@ async function deleteFolder(id) {
   if (!confirm(`確定刪除資料夾「${folder.name}」？\n\n${detail}`)) return;
   const result = await api(`/folders/${id}`, { method: "DELETE" });
   showToast(result.moved ? `資料夾已刪除，${result.moved} 筆記事移回收件匣` : "空資料夾已刪除");
+  await Promise.all([loadFolders(), loadInbox()]);
+}
+
+function openMergeFolderDialog(sourceId) {
+  const source = FOLDERS.find((f) => f.id === sourceId);
+  const targets = FOLDERS.filter((f) => f.id !== sourceId);
+  if (!source || !targets.length) { showToast("沒有其他資料夾可以合併"); return; }
+  MERGE_SOURCE_ID = sourceId;
+  $("merge-folder-desc").textContent = `將「${source.name}」的記事移入另一個資料夾；原資料夾會在合併後刪除。`;
+  $("merge-folder-target").innerHTML = targets.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}（${f.entry_count} 筆）</option>`).join("");
+  $("merge-folder-overlay").classList.add("open");
+}
+
+function closeMergeFolderDialog() {
+  MERGE_SOURCE_ID = null;
+  $("merge-folder-overlay").classList.remove("open");
+}
+
+async function mergeFolder(sourceId, targetId) {
+  const source = FOLDERS.find((f) => f.id === sourceId);
+  const target = FOLDERS.find((f) => f.id === targetId);
+  if (!source || !target) return;
+  if (!confirm(`確定將「${source.name}」合併到「${target.name}」？\n\n${source.entry_count} 筆記事與附件會移入目標資料夾，來源資料夾才會刪除。`)) return;
+  const result = await api(`/folders/${sourceId}/merge`, { method: "POST", body: JSON.stringify({ target_id: targetId }) });
+  closeMergeFolderDialog();
+  showToast(`已合併，移動 ${result.moved} 筆記事`);
   await Promise.all([loadFolders(), loadInbox()]);
 }
 
@@ -1165,6 +1217,21 @@ function init() {
   $("btn-new-folder").onclick = newFolder;
   $("btn-folder-grid").onclick = () => setFolderView("grid");
   $("btn-folder-list").onclick = () => setFolderView("list");
+  $("merge-folder-cancel").onclick = closeMergeFolderDialog;
+  $("merge-folder-confirm").onclick = () => {
+    const targetId = Number($("merge-folder-target").value);
+    if (MERGE_SOURCE_ID && targetId) mergeFolder(MERGE_SOURCE_ID, targetId);
+  };
+  $("merge-folder-overlay").addEventListener("click", (e) => { if (e.target === $("merge-folder-overlay")) closeMergeFolderDialog(); });
+  const trash = $("folder-trash-zone");
+  trash.ondragover = (ev) => { ev.preventDefault(); trash.classList.add("active"); ev.dataTransfer.dropEffect = "move"; };
+  trash.ondragleave = () => trash.classList.remove("active");
+  trash.ondrop = (ev) => {
+    ev.preventDefault();
+    trash.classList.remove("active");
+    const sourceId = Number(ev.dataTransfer.getData("text/plain"));
+    if (sourceId) deleteFolder(sourceId);
+  };
   $("btn-usage-refresh").onclick = loadUsage;
   $("btn-back").onclick = backHome;
   $("btn-video-f").onclick = () => startVideo(null);
