@@ -1,0 +1,17 @@
+{
+  "name": "kiwi-second-brain",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check fieldlog/src/worker.js && node --check fieldlog/src/imageSkill.js && node --check cloudflare/src/worker.js && node --check cloudflare/src/imageSkill.js && node --check mcp/src/worker.js && node --check mcp/src/textFold.js",
+    "test": "node --test tests/*.test.js",
+    "validate:fieldlog": "wrangler deploy --dry-run --config fieldlog/wrangler.jsonc --outdir .wrangler/dry-run-fieldlog",
+    "validate:medtec": "wrangler deploy --dry-run --config cloudflare/wrangler.jsonc --outdir .wrangler/dry-run-medtec",
+    "validate:mcp": "wrangler deploy --dry-run --config mcp/wrangler.jsonc --outdir .wrangler/dry-run-mcp",
+    "validate": "npm run check && npm test && npm run validate:fieldlog && npm run validate:medtec && npm run validate:mcp"
+  },
+  "devDependencies": {
+    "wrangler": "^4.113.0"
+  }
+}
