@@ -112,6 +112,14 @@ async function loadUsage() {
         <span>${fmtUsageNumber(p.quantity)} ${esc(p.unit)}</span>
         <b>${esc(p.currency)} ${fmtUsageNumber(p.cost)}</b>
       </article>`).join("")}</div>
+      <div class="usage-limits"><h3>包含額度使用率</h3>${(data.limits || []).map((item) => {
+        const percent = item.limit ? item.used / item.limit * 100 : 0;
+        return `<div class="usage-limit ${percent > 100 ? "over" : ""}">
+          <div><strong>${esc(item.label)}</strong><span>${fmtUsageNumber(item.used)} / ${fmtUsageNumber(item.limit)} ${esc(item.unit)}</span></div>
+          <div class="usage-bar" role="progressbar" aria-valuenow="${Math.round(percent)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.min(100, percent)}%"></i></div>
+          <small>${percent > 100 ? `已超出免費額度 ${fmtUsageNumber(percent - 100)}%` : `已使用 ${fmtUsageNumber(percent)}%`}</small>
+        </div>`;
+      }).join("")}</div>
       <p class="sub usage-updated">${data.source === "billable" ? "實際帳單資料" : "Pay-as-you-go 帳單資料"}｜更新：${new Date(data.updatedAt).toLocaleString("zh-TW")}</p>`;
   } catch (err) {
     wrap.innerHTML = `<p class="usage-error">暫時無法讀取用量：${esc(err.message)}</p>`;
