@@ -1,7 +1,7 @@
 {
   "name": "隨身記",
   "short_name": "隨身記",
-  "description": "現場採集參展／拜訪／實驗／上課的原始資料，AI 彙整後送 Notion",
+  "description": "現場採集參展／拜訪／實驗／上課／會議／查廠的原始資料，AI 彙整後送 Notion",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f6f7f6",

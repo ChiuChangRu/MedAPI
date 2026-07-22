@@ -1,7 +1,7 @@
 /**
  * 隨身助理記事本（fieldlog）— Cloudflare Worker API
  *
- * 定位：現場採集參展/拜訪/實驗/上課的原始資料（錄音、照片、速記），
+ * 定位：現場採集參展/拜訪/實驗/上課/會議/查廠的原始資料（錄音、照片、速記），
  * AI 事後彙整成報告送 Notion。本 Worker 只管 raw data 的存取：
  *   - folders：一個活動/工作項目＝一個資料夾（自帶欄位模板 type）
  *   - entries：一筆紀錄（folder_id 為空＝收件匣，之後再歸檔）
