@@ -106,12 +106,6 @@ async function loadUsage() {
         <span>本期實際費用</span><strong>${esc(data.currency)} ${fmtUsageNumber(data.totalCost)}</strong>
         <small>${Number(data.totalCost) === 0 ? "目前都在包含額度內" : "已有超額費用"}</small>
       </div>
-      <div class="usage-grid">${data.products.map((p) => `
-      <article class="usage-item">
-        <strong>${esc(p.family)}｜${esc(p.name)}</strong>
-        <span>${fmtUsageNumber(p.quantity)} ${esc(p.unit)}</span>
-        <b>${esc(p.currency)} ${fmtUsageNumber(p.cost)}</b>
-      </article>`).join("")}</div>
       <div class="usage-limits"><h3>包含額度使用率</h3>${(data.limits || []).map((item) => {
         const percent = item.limit ? item.used / item.limit * 100 : 0;
         return `<div class="usage-limit ${percent > 100 ? "over" : ""}">
