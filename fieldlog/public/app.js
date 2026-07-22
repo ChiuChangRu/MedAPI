@@ -21,6 +21,13 @@ let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(
 let MERGE_SOURCE_ID = null;
 let MOVE_ENTRY_ID = null;
 let MOVE_ENTRY_TITLE = "";
+let CREATE_FOLDER_RESOLVE = null;
+const FOLDER_TYPE_META = {
+  "參展": ["🏢", "展會與廠商"], "拜訪": ["🤝", "客戶與供應商"],
+  "實驗": ["🧪", "條件與結果"], "上課": ["🎓", "課程與筆記"],
+  "會議": ["👥", "決議與待辦"], "查廠": ["🔎", "查核與改善"],
+  "其他": ["🗂️", "自由分類"],
+};
 
 // ---------- API ----------
 function pin() { return localStorage.getItem("fieldlog_pin") || ""; }
@@ -388,16 +395,32 @@ function closeMoveEntryDialog() {
   $("move-entry-overlay").classList.remove("open");
 }
 
+function closeCreateFolderDialog(result = null) {
+  $("create-folder-overlay").classList.remove("open");
+  if (CREATE_FOLDER_RESOLVE) CREATE_FOLDER_RESOLVE(result);
+  CREATE_FOLDER_RESOLVE = null;
+}
+
+function askFolderDetails({ title = "新增資料夾", desc = "整理成容易找到的分類", name = "", type = "其他" } = {}) {
+  if (CREATE_FOLDER_RESOLVE) closeCreateFolderDialog(null);
+  $("create-folder-title").textContent = title;
+  $("create-folder-desc").textContent = desc;
+  $("create-folder-name").value = name;
+  $("create-folder-types").innerHTML = Object.keys(FOLDER_TEMPLATES).map((key) => {
+    const [icon, note] = FOLDER_TYPE_META[key];
+    return `<label class="folder-type-option"><input type="radio" name="folder-type" value="${key}" ${key === type ? "checked" : ""}><span><b>${icon}</b><strong>${key}</strong><small>${note}</small></span></label>`;
+  }).join("");
+  $("create-folder-overlay").classList.add("open");
+  setTimeout(() => $("create-folder-name").focus(), 0);
+  return new Promise((resolve) => { CREATE_FOLDER_RESOLVE = resolve; });
+}
+
 async function createFolderForArchive(suggestedName) {
   const defaultName = String(suggestedName || "ISO 文件").replace(/（未命名）/g, "").trim() || "ISO 文件";
-  const name = prompt("新資料夾名稱：", defaultName);
-  if (!name || !name.trim()) return null;
-  const types = Object.keys(FOLDER_TEMPLATES);
-  const type = prompt(`類型（${types.join("／")}）：`, "其他");
-  if (type === null) return null;
-  const resolved = types.includes((type || "").trim()) ? type.trim() : "其他";
-  const folder = await api("/folders", { method: "POST", body: JSON.stringify({ name: name.trim(), type: resolved }) });
-  return { id: Number(folder.id), name: name.trim(), type: resolved };
+  const details = await askFolderDetails({ title: "建立並歸檔", desc: "建立新資料夾後，記事會自動移入", name: defaultName });
+  if (!details) return null;
+  const folder = await api("/folders", { method: "POST", body: JSON.stringify(details) });
+  return { id: Number(folder.id), ...details };
 }
 
 async function createFolderAndMoveEntry(entryId, title) {
@@ -425,12 +448,9 @@ async function moveInboxEntry(entryId, folderId) {
 }
 
 async function newFolder() {
-  const name = prompt("資料夾名稱（例：2026 上海 Medtec、○○廠商拜訪、親水塗層 batch 12）：");
-  if (!name || !name.trim()) return;
-  const types = Object.keys(FOLDER_TEMPLATES);
-  const type = prompt(`類型（${types.join("／")}）：`, "其他");
-  const resolved = types.includes((type || "").trim()) ? type.trim() : "其他";
-  await api("/folders", { method: "POST", body: JSON.stringify({ name: name.trim(), type: resolved }) });
+  const details = await askFolderDetails();
+  if (!details) return;
+  await api("/folders", { method: "POST", body: JSON.stringify(details) });
   showToast("資料夾已建立");
   loadFolders();
 }
@@ -438,13 +458,9 @@ async function newFolder() {
 async function newSubfolder() {
   if (!CURRENT_FOLDER) return;
   const parentId = CURRENT_FOLDER.id;
-  const name = prompt(`在「${CURRENT_FOLDER.name}」內建立子資料夾：`);
-  if (!name || !name.trim()) return;
-  const types = Object.keys(FOLDER_TEMPLATES);
-  const type = prompt(`類型（${types.join("／")}）：`, "其他");
-  if (type === null) return;
-  const resolved = types.includes((type || "").trim()) ? type.trim() : "其他";
-  await api("/folders", { method: "POST", body: JSON.stringify({ name: name.trim(), type: resolved, parent_id: parentId }) });
+  const details = await askFolderDetails({ title: "新增子資料夾", desc: `建立在「${CURRENT_FOLDER.name}」裡面` });
+  if (!details) return;
+  await api("/folders", { method: "POST", body: JSON.stringify({ ...details, parent_id: parentId }) });
   await loadFolders();
   showToast(`已在「${CURRENT_FOLDER.name}」建立子資料夾`);
   openFolder(parentId);
@@ -1000,12 +1016,9 @@ function folderChipLabel(folderId) {
 }
 
 async function createFolderInline() {
-  const name = prompt("資料夾名稱：");
-  if (!name || !name.trim()) return undefined;
-  const types = Object.keys(FOLDER_TEMPLATES);
-  const type = prompt(`類型（${types.join("／")}）：`, "其他");
-  const resolved = types.includes((type || "").trim()) ? type.trim() : "其他";
-  const r = await api("/folders", { method: "POST", body: JSON.stringify({ name: name.trim(), type: resolved }) });
+  const details = await askFolderDetails({ title: "拍攝到新資料夾", desc: "建立後會自動選取這個資料夾" });
+  if (!details) return undefined;
+  const r = await api("/folders", { method: "POST", body: JSON.stringify(details) });
   FOLDERS = await api("/folders");
   return r.id;
 }
@@ -1465,6 +1478,15 @@ function init() {
     else if (Number(target)) moveInboxEntry(MOVE_ENTRY_ID, Number(target));
   };
   $("move-entry-overlay").addEventListener("click", (e) => { if (e.target === $("move-entry-overlay")) closeMoveEntryDialog(); });
+  $("create-folder-cancel").onclick = () => closeCreateFolderDialog(null);
+  $("create-folder-overlay").addEventListener("click", (e) => { if (e.target === $("create-folder-overlay")) closeCreateFolderDialog(null); });
+  $("create-folder-form").onsubmit = (e) => {
+    e.preventDefault();
+    const name = $("create-folder-name").value.trim();
+    const type = document.querySelector('input[name="folder-type"]:checked')?.value || "其他";
+    if (!name) { $("create-folder-name").focus(); return; }
+    closeCreateFolderDialog({ name, type });
+  };
   const trash = $("folder-trash-zone");
   trash.ondragover = (ev) => { ev.preventDefault(); trash.classList.add("active"); ev.dataTransfer.dropEffect = "move"; };
   trash.ondragleave = () => trash.classList.remove("active");

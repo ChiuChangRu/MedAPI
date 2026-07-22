@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=21" />
+<link rel="stylesheet" href="style.css?v=22" />
 </head>
 <body>
 <div class="container">
@@ -95,6 +95,25 @@
       <button class="btn primary" id="move-entry-confirm" type="button">移動</button>
     </div>
   </div>
+</div>
+
+<div class="overlay" id="create-folder-overlay">
+  <form class="modal create-folder-modal" id="create-folder-form">
+    <div class="create-folder-head">
+      <span class="create-folder-icon">📁</span>
+      <div><h2 id="create-folder-title">新增資料夾</h2><p class="sub" id="create-folder-desc">整理成容易找到的分類</p></div>
+    </div>
+    <label for="create-folder-name">資料夾名稱</label>
+    <input id="create-folder-name" maxlength="80" autocomplete="off" placeholder="例如：供應商會議、查廠紀錄" required />
+    <fieldset class="folder-type-fieldset">
+      <legend>選擇類型</legend>
+      <div class="folder-type-picker" id="create-folder-types"></div>
+    </fieldset>
+    <div class="modal-actions">
+      <button class="btn ghost" id="create-folder-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">建立資料夾</button>
+    </div>
+  </form>
 </div>
 
 <div class="folder-trash-zone" id="folder-trash-zone" aria-hidden="true">🗑 放開以刪除資料夾分類</div>
@@ -189,6 +208,6 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
