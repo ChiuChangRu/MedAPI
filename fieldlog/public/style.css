@@ -35,6 +35,11 @@ body {
 .cap-photo { background: linear-gradient(135deg, #1d4ed8, #3b82f6); box-shadow: 0 4px 14px rgba(29, 78, 216, 0.35); }
 .cap-audio { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 4px 14px rgba(180, 83, 9, 0.35); }
 .cap-note { background: linear-gradient(135deg, #4b5563, #6b7280); box-shadow: 0 4px 14px rgba(75, 85, 99, 0.35); }
+@media (min-width: 720px) {
+  .capture-grid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .cap-tile { aspect-ratio: auto; min-height: 88px; padding: 10px; font-size: 24px; border-radius: 12px; }
+  .cap-tile span { font-size: 13px; }
+}
 
 .panel {
   background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
@@ -44,7 +49,6 @@ body {
 .panel h2 .count { color: var(--text-muted); font-size: 13px; font-weight: 400; }
 .panel h2 .btn { margin-left: auto; }
 
-.usage-grid { display: grid; gap: 8px; }
 .usage-total {
   display: grid; grid-template-columns: 1fr auto; gap: 3px 10px;
   align-items: center; margin-bottom: 10px; padding: 12px;
@@ -62,21 +66,8 @@ body {
 .usage-limit small { display: block; margin-top: 3px; color: var(--text-muted); text-align: right; }
 .usage-limit.over .usage-bar i { background: #dc2626; }
 .usage-limit.over small { color: #b91c1c; font-weight: 600; }
-.usage-item {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 10px; align-items: center; padding: 10px;
-  border: 1px solid var(--border); border-radius: var(--radius); background: #fafbfa;
-  font-size: 12px;
-}
-.usage-item strong { overflow-wrap: anywhere; }
-.usage-item span { color: var(--text-muted); }
-.usage-item b { color: var(--accent-dark); white-space: nowrap; }
 .usage-updated { margin: 8px 0 0; text-align: right; }
 .usage-error { margin: 0; color: #b91c1c; font-size: 12px; line-height: 1.5; }
-@media (max-width: 560px) {
-  .usage-item { grid-template-columns: 1fr auto; }
-  .usage-item strong { grid-column: 1 / -1; }
-}
 
 /* ===== 資料夾與紀錄清單 ===== */
 .folder-list { display: flex; flex-direction: column; gap: 6px; }
