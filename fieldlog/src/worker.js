@@ -263,6 +263,24 @@ async function handleApi(request, env, url) {
     await logHistory(db, null, null, "刪除資料夾", `${folder.name}；${moved} 筆記事移回收件匣`);
     return json({ ok: true, moved });
   }
+  const mergeFolderMatch = path.match(/^\/folders\/(\d+)\/merge$/);
+  if (mergeFolderMatch && method === "POST") {
+    const sourceId = Number(mergeFolderMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const targetId = Number(body.target_id || 0);
+    if (!targetId || targetId === sourceId) return bad("合併目標不正確");
+    const [source, target] = await Promise.all([
+      db.prepare("SELECT * FROM folders WHERE id = ?").bind(sourceId).first(),
+      db.prepare("SELECT * FROM folders WHERE id = ?").bind(targetId).first(),
+    ]);
+    if (!source || !target) return bad("找不到來源或目標資料夾", 404);
+    const countRow = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE folder_id = ?").bind(sourceId).first();
+    const moved = Number(countRow?.count || 0);
+    await db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?").bind(targetId, now(), sourceId).run();
+    await db.prepare("DELETE FROM folders WHERE id = ?").bind(sourceId).run();
+    await logHistory(db, null, targetId, "合併資料夾", `${source.name} → ${target.name}；移動 ${moved} 筆記事`);
+    return json({ ok: true, moved, target_id: targetId });
+  }
 
   // ---- entries ----
   if (path === "/entries" && method === "GET") {
