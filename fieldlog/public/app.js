@@ -102,7 +102,11 @@ async function loadUsage() {
       wrap.innerHTML = `<p class="sub">目前沒有 Workers AI、D1 或 R2 的付費用量紀錄。免費額度內可能不會產生帳單項目。</p>`;
       return;
     }
-    wrap.innerHTML = `<div class="usage-grid">${data.products.map((p) => `
+    wrap.innerHTML = `<div class="usage-total">
+        <span>本期實際費用</span><strong>${esc(data.currency)} ${fmtUsageNumber(data.totalCost)}</strong>
+        <small>${Number(data.totalCost) === 0 ? "目前都在包含額度內" : "已有超額費用"}</small>
+      </div>
+      <div class="usage-grid">${data.products.map((p) => `
       <article class="usage-item">
         <strong>${esc(p.family)}｜${esc(p.name)}</strong>
         <span>${fmtUsageNumber(p.quantity)} ${esc(p.unit)}</span>
