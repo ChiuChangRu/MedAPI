@@ -114,7 +114,7 @@ async function cloudflareUsage(env) {
       continue;
     }
     const records = Array.isArray(body.result) ? body.result : (Array.isArray(body) ? body : []);
-    const products = records.map((r) => ({
+    const rows = records.map((r) => ({
       family: r.x_ProductFamilyName || r.ServiceFamilyName || "Cloudflare",
       name: r.x_BillableMetricName || r.ServiceName || r.ChargeDescription || "用量",
       quantity: Number(r.ConsumedQuantity ?? r.PricingQuantity ?? 0),
@@ -122,7 +122,25 @@ async function cloudflareUsage(env) {
       cost: Number(r.EffectiveCost ?? r.BilledCost ?? r.CumulatedContractedCost ?? r.ContractedCost ?? 0),
       currency: r.BillingCurrency || "USD",
     })).filter((r) => /workers|ai|d1|r2/i.test(`${r.family} ${r.name}`));
-    return { source: endpoint.includes("billable") ? "billable" : "paygo", products, updatedAt: new Date().toISOString() };
+    const grouped = new Map();
+    for (const row of rows) {
+      const key = `${row.family}\u0000${row.name}\u0000${row.unit}\u0000${row.currency}`;
+      const item = grouped.get(key) || { ...row, quantity: 0, cost: 0 };
+      item.quantity += row.quantity;
+      item.cost += row.cost;
+      grouped.set(key, item);
+    }
+    const products = [...grouped.values()].sort((a, b) =>
+      a.family.localeCompare(b.family) || a.name.localeCompare(b.name)
+    );
+    const totalCost = products.reduce((sum, p) => sum + p.cost, 0);
+    return {
+      source: endpoint.includes("billable") ? "billable" : "paygo",
+      products,
+      totalCost,
+      currency: products[0]?.currency || "USD",
+      updatedAt: new Date().toISOString(),
+    };
   }
   throw new Error(`Cloudflare 用量 API 無法讀取：${failures.join("；")}`);
 }
