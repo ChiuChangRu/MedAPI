@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=10" />
+<link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
 <div class="container">
@@ -68,6 +68,21 @@
     <div id="folder-entries" class="entry-list"></div>
   </div>
 </div>
+
+<div class="overlay" id="merge-folder-overlay">
+  <div class="modal narrow">
+    <h2>合併資料夾</h2>
+    <p class="sub" id="merge-folder-desc"></p>
+    <label for="merge-folder-target">合併到</label>
+    <select id="merge-folder-target"></select>
+    <div class="modal-actions">
+      <button class="btn ghost" id="merge-folder-cancel" type="button">取消</button>
+      <button class="btn primary" id="merge-folder-confirm" type="button">下一步</button>
+    </div>
+  </div>
+</div>
+
+<div class="folder-trash-zone" id="folder-trash-zone" aria-hidden="true">🗑 放開以刪除資料夾分類</div>
 
 <!-- 登入 -->
 <div class="overlay" id="login-overlay">
@@ -156,6 +171,6 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
