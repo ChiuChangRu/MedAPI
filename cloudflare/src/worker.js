@@ -9,7 +9,7 @@
  *   - CSV 匯出
  *
  * 驗證：所有 /api/* 需帶 x-team-pin header，與 TEAM_PIN（secret）比對。
- * 未設定 TEAM_PIN 時視為開發模式、不驗證（正式部署請務必設定）。
+ * TEAM_PIN 未設定時一律拒絕（fail-closed）。
  */
 
 import { extractImageText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
