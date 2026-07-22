@@ -36,7 +36,7 @@ Worker 建好後：**Settings → Variables and Secrets → Add**，
 Type 選 **Secret**，名稱 `TEAM_PIN`，值填你們團隊的共用密碼（例如 `bioteq2026`）。
 存檔後 redeploy 一次。
 
-> 沒設 TEAM_PIN 時 API 不驗證（方便本機測試），正式使用前務必設定。
+> `TEAM_PIN` 採 fail-closed：未設定時所有 API 請求一律拒絕。正式部署與本機測試都必須提供 PIN。
 
 ### 4. 完成
 
