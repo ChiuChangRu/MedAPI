@@ -17,6 +17,7 @@ let CURRENT_FOLDER = null; // 開啟中的資料夾物件
 let TRANSCRIBE_ENABLED = false;
 let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 let MERGE_SOURCE_ID = null;
+let MOVE_ENTRY_ID = null;
 
 // ---------- API ----------
 function pin() { return localStorage.getItem("fieldlog_pin") || ""; }
@@ -199,7 +200,7 @@ function renderFolders() {
     drag.ondragstart = (ev) => {
       const sourceId = Number(el.dataset.id);
       ev.dataTransfer.effectAllowed = "move";
-      ev.dataTransfer.setData("text/plain", String(sourceId));
+      ev.dataTransfer.setData("application/x-fieldlog-folder", String(sourceId));
       el.classList.add("dragging");
       document.body.classList.add("folder-dragging");
     };
@@ -213,8 +214,10 @@ function renderFolders() {
     el.ondrop = (ev) => {
       ev.preventDefault();
       el.classList.remove("drop-target");
-      const sourceId = Number(ev.dataTransfer.getData("text/plain"));
       const targetId = Number(el.dataset.id);
+      const entryId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
+      if (entryId) { moveInboxEntry(entryId, targetId); return; }
+      const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-folder"));
       if (sourceId && sourceId !== targetId) mergeFolder(sourceId, targetId);
     };
   });
@@ -284,8 +287,10 @@ async function loadInbox() {
 
 function entryRowHtml(e) {
   return `<div class="entry-row" data-id="${e.id}">
+    <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
     <span class="entry-meta">${esc(e.created_at.slice(5, 16))}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
+    <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
     <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄">🗑</button>
   </div>`;
 }
@@ -306,6 +311,42 @@ function bindEntryRows(wrap) {
       } catch (err) { showToast("刪除失敗：" + err.message); }
     };
   });
+  wrap.querySelectorAll(".entry-move").forEach((btn) => {
+    btn.onclick = (ev) => { ev.stopPropagation(); openMoveEntryDialog(Number(btn.dataset.id)); };
+  });
+  wrap.querySelectorAll(".entry-drag").forEach((drag) => {
+    drag.onclick = (ev) => ev.stopPropagation();
+    drag.ondragstart = (ev) => {
+      ev.stopPropagation();
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("application/x-fieldlog-entry", drag.closest(".entry-row").dataset.id);
+      drag.closest(".entry-row").classList.add("dragging");
+    };
+    drag.ondragend = () => drag.closest(".entry-row").classList.remove("dragging");
+  });
+}
+
+function openMoveEntryDialog(entryId) {
+  const row = $("inbox-list").querySelector(`.entry-row[data-id="${entryId}"]`);
+  if (!FOLDERS.length) { showToast("請先建立資料夾"); return; }
+  MOVE_ENTRY_ID = entryId;
+  $("move-entry-desc").textContent = `將「${row?.querySelector(".entry-title")?.textContent || "這筆記事"}」移出收件匣。`;
+  $("move-entry-target").innerHTML = FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("");
+  $("move-entry-overlay").classList.add("open");
+}
+
+function closeMoveEntryDialog() {
+  MOVE_ENTRY_ID = null;
+  $("move-entry-overlay").classList.remove("open");
+}
+
+async function moveInboxEntry(entryId, folderId) {
+  const folder = FOLDERS.find((f) => f.id === folderId);
+  if (!folder) return;
+  await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: folderId }) });
+  closeMoveEntryDialog();
+  showToast(`已移至「${folder.name}」`);
+  await Promise.all([loadFolders(), loadInbox()]);
 }
 
 async function newFolder() {
@@ -1223,13 +1264,19 @@ function init() {
     if (MERGE_SOURCE_ID && targetId) mergeFolder(MERGE_SOURCE_ID, targetId);
   };
   $("merge-folder-overlay").addEventListener("click", (e) => { if (e.target === $("merge-folder-overlay")) closeMergeFolderDialog(); });
+  $("move-entry-cancel").onclick = closeMoveEntryDialog;
+  $("move-entry-confirm").onclick = () => {
+    const targetId = Number($("move-entry-target").value);
+    if (MOVE_ENTRY_ID && targetId) moveInboxEntry(MOVE_ENTRY_ID, targetId);
+  };
+  $("move-entry-overlay").addEventListener("click", (e) => { if (e.target === $("move-entry-overlay")) closeMoveEntryDialog(); });
   const trash = $("folder-trash-zone");
   trash.ondragover = (ev) => { ev.preventDefault(); trash.classList.add("active"); ev.dataTransfer.dropEffect = "move"; };
   trash.ondragleave = () => trash.classList.remove("active");
   trash.ondrop = (ev) => {
     ev.preventDefault();
     trash.classList.remove("active");
-    const sourceId = Number(ev.dataTransfer.getData("text/plain"));
+    const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-folder"));
     if (sourceId) deleteFolder(sourceId);
   };
   $("btn-usage-refresh").onclick = loadUsage;
