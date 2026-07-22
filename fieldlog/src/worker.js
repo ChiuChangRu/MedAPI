@@ -53,6 +53,13 @@ const SCHEMA = [
     detail TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS ai_usage_reservations (
+    attachment_id INTEGER PRIMARY KEY,
+    usage_date TEXT NOT NULL,
+    estimated_neurons REAL NOT NULL,
+    status TEXT DEFAULT 'reserved',
+    created_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder_id)`,
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
 ];
@@ -72,6 +79,7 @@ const MIGRATIONS = [
   // page_no 是第幾頁，兩者都空＝不是深度處理產生的附件。
   `ALTER TABLE attachments ADD COLUMN source_pdf_id INTEGER`,
   `ALTER TABLE attachments ADD COLUMN page_no INTEGER`,
+  `ALTER TABLE attachments ADD COLUMN duration_secs INTEGER`,
 ];
 
 let schemaReady = false;
@@ -163,6 +171,19 @@ async function cloudflareUsage(env) {
     };
   }
   throw new Error(`Cloudflare 用量 API 無法讀取：${failures.join("；")}`);
+}
+
+async function transcribeAttachment(env, db, old) {
+  const obj = await env.FILES.get(old.key);
+  if (!obj) throw new Error("找不到檔案內容");
+  const bytes = new Uint8Array(await obj.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
+  const text = (result?.text || "").trim();
+  await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
+  await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
+  return text;
 }
 
 async function logHistory(db, entryId, folderId, action, detail) {
@@ -321,9 +342,11 @@ async function handleApi(request, env, url) {
     const pageNoRaw = request.headers.get("x-page-no");
     const sourcePdfId = sourcePdfRaw !== null && sourcePdfRaw !== "" ? Number(sourcePdfRaw) : null;
     const pageNo = pageNoRaw !== null && pageNoRaw !== "" ? Number(pageNoRaw) : null;
+    const durationRaw = request.headers.get("x-duration-secs");
+    const durationSecs = durationRaw !== null && durationRaw !== "" ? Math.max(0, Math.round(Number(durationRaw))) : null;
     const r = await db.prepare(
-      "INSERT INTO attachments (entry_id, kind, filename, key, size, mime, offset_secs, source_pdf_id, page_no, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(entryId, kind, filename, key, body.byteLength, mime, offsetSecs, sourcePdfId, pageNo, now()).run();
+      "INSERT INTO attachments (entry_id, kind, filename, key, size, mime, offset_secs, source_pdf_id, page_no, duration_secs, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(entryId, kind, filename, key, body.byteLength, mime, offsetSecs, sourcePdfId, pageNo, durationSecs, now()).run();
     await logHistory(db, entryId, null, "上傳附件", `${filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
     return json({ id: r.meta.last_row_id, key, ok: true });
   }
@@ -385,16 +408,48 @@ async function handleApi(request, env, url) {
     const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到附件", 404);
     if (old.kind !== "audio") return bad("只有錄音檔可以轉文字");
-    const obj = await env.FILES.get(old.key);
-    if (!obj) return bad("找不到檔案內容", 404);
-    const bytes = new Uint8Array(await obj.arrayBuffer());
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
-    const text = (result?.text || "").trim();
-    await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), id).run();
-    await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
+    const text = await transcribeAttachment(env, db, old);
     return json({ text });
+  }
+
+  const autoTranscribeMatch = path.match(/^\/entries\/(\d+)\/auto-transcribe$/);
+  if (autoTranscribeMatch && method === "POST") {
+    if (!env.AI || !env.FILES) return bad("尚未啟用自動轉錄", 501);
+    const entryId = Number(autoTranscribeMatch[1]);
+    const { results: candidates } = await db.prepare(
+      "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND duration_secs > 0 ORDER BY offset_secs, id"
+    ).bind(entryId).all();
+    if (!candidates.length) return json({ processed: 0, reason: "沒有可安全自動轉錄的新錄音" });
+    const usage = await cloudflareUsage(env);
+    const today = new Date().toISOString().slice(0, 10);
+    const aiLimit = usage.limits?.find((x) => x.key === "ai");
+    const cloudUsed = aiLimit?.label.includes(today) ? aiLimit.used : 0;
+    const reservedRow = await db.prepare("SELECT COALESCE(SUM(estimated_neurons), 0) AS total FROM ai_usage_reservations WHERE usage_date = ?").bind(today).first();
+    let reserved = Number(reservedRow?.total || 0);
+    let processed = 0;
+    for (const audio of candidates) {
+      const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
+      if (cloudUsed + reserved + estimate > 7000) {
+        return json({ processed, stopped: true, reason: "預估將超過 70% 安全門檻", cloudUsed, reserved });
+      }
+      const claim = await db.prepare(
+        "INSERT OR IGNORE INTO ai_usage_reservations (attachment_id, usage_date, estimated_neurons, status, created_at) VALUES (?, ?, ?, 'reserved', ?)"
+      ).bind(audio.id, today, estimate, now()).run();
+      if (!claim.meta.changes) continue;
+      const lock = await db.prepare("UPDATE attachments SET transcribed_at = 'processing' WHERE id = ? AND COALESCE(transcribed_at, '') = ''").bind(audio.id).run();
+      if (!lock.meta.changes) continue;
+      reserved += estimate;
+      try {
+        await transcribeAttachment(env, db, audio);
+        await db.prepare("UPDATE ai_usage_reservations SET status = 'completed' WHERE attachment_id = ?").bind(audio.id).run();
+        processed++;
+      } catch (err) {
+        await db.prepare("UPDATE attachments SET transcribed_at = 'auto_failed' WHERE id = ?").bind(audio.id).run();
+        await db.prepare("UPDATE ai_usage_reservations SET status = 'failed' WHERE attachment_id = ?").bind(audio.id).run();
+        return json({ processed, stopped: true, reason: `自動轉錄失敗，未自動重試：${err.message}` });
+      }
+    }
+    return json({ processed, stopped: false, cloudUsed, reserved });
   }
 
   // ---- 照片擷取文字（影像 skill，與 Medtec 共用同一份模組）----
