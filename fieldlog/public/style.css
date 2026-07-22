@@ -87,6 +87,13 @@ body {
 .folder-card:hover { border-color: var(--accent); }
 .folder-card.done { opacity: 0.55; }
 .folder-card-main { min-width: 0; flex: 1; cursor: pointer; }
+.folder-drag {
+  flex: none; align-self: center; width: 32px; height: 44px; margin-left: 6px;
+  border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 20px;
+}
+.folder-drag:active { cursor: grabbing; }
+.folder-card.dragging { opacity: 0.35; }
+.folder-card.drop-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
 .list-view .folder-card-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 12px; }
 .grid-view .folder-card { min-height: 150px; align-items: stretch; }
 .grid-view .folder-card-main { display: flex; flex-direction: column; align-items: flex-start; padding: 16px; }
@@ -113,6 +120,17 @@ body {
 .folder-menu button { display: block; width: 100%; padding: 9px 10px; border: 0; background: none; text-align: left; cursor: pointer; border-radius: 6px; }
 .folder-menu button:hover { background: #f1f5f4; }
 .folder-menu .danger { color: #b91c1c; }
+.folder-trash-zone {
+  position: fixed; z-index: 120; left: 50%; bottom: 24px;
+  width: min(420px, calc(100vw - 32px)); padding: 18px;
+  border: 2px dashed #ef4444; border-radius: 14px;
+  color: #b91c1c; background: #fff1f2; text-align: center; font-weight: 700;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.22);
+  transform: translate(-50%, calc(100% + 60px)); opacity: 0; pointer-events: none;
+  transition: transform 0.18s, opacity 0.18s;
+}
+.folder-dragging .folder-trash-zone { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.folder-trash-zone.active { color: #fff; background: #dc2626; border-color: #fff; }
 @media (max-width: 719px) {
   .folder-view-toggle { display: none; }
   .folders-toolbar { flex-wrap: wrap; }
@@ -121,6 +139,7 @@ body {
   .folder-list.grid-view .folder-card-main,
   .list-view .folder-card-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
   .folder-date { display: none; }
+  .folder-drag, .folder-trash-zone { display: none; }
 }
 
 .entry-list { display: flex; flex-direction: column; gap: 4px; }
