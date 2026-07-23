@@ -538,7 +538,11 @@ async function openFolder(id) {
   ));
   const files = entries.flatMap((e) =>
     (e.attachments || []).filter((a) => !a.source_pdf_id).map((a) => ({ attachment: a, entryId: e.id }))
-  );
+  ).sort((a, b) => String(a.attachment.filename || "").localeCompare(
+    String(b.attachment.filename || ""),
+    "zh-Hant",
+    { numeric: true, sensitivity: "base" },
+  ));
   // 有附件的記事通常只是上傳容器；若內文只重複標題，就不再顯示成另一筆記事。
   const notes = entries.filter((e) => {
     const body = (e.body || "").trim();
