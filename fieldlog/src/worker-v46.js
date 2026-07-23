@@ -131,7 +131,7 @@ const FOLDER_LAYOUT_AND_DEPTH_UI = String.raw`
     button.disabled = atLimit;
     button.title = atLimit
       ? "資料夾最多四層"
-      : `新增第 ${Math.max(1, depth + 1)} 層子資料夾（最多四層）`;
+      : "新增第 " + Math.max(1, depth + 1) + " 層子資料夾（最多四層）";
   }
 
   async function safeNewSubfolderDepth4() {
