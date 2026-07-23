@@ -919,11 +919,14 @@ async function putFile(entryId, blob, filename, offsetSecs, meta) {
   if (meta && meta.sourcePdfId !== undefined && meta.sourcePdfId !== null) headers["x-source-pdf-id"] = String(meta.sourcePdfId);
   if (meta && meta.pageNo !== undefined && meta.pageNo !== null) headers["x-page-no"] = String(meta.pageNo);
   const res = await fetch("/api/upload", { method: "POST", headers, body: blob });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `HTTP ${res.status}`);
+  const responseBody = await res.json().catch(() => ({}));
+  if (res.status === 409 && responseBody.duplicate) {
+    return { ...responseBody, duplicate: true };
   }
-  return res.json();
+  if (!res.ok) {
+    throw new Error(responseBody.error || `HTTP ${res.status}`);
+  }
+  return responseBody;
 }
 
 async function uploadFiles(entryId, input) {
@@ -932,14 +935,18 @@ async function uploadFiles(entryId, input) {
   input.value = "";
   const status = $("e-upload-status");
   let done = 0;
+  let duplicates = 0;
   for (const f of files) {
     if (f.size > 50 * 1024 * 1024) { showToast(`${f.name} 超過 50MB，略過`); continue; }
     status.textContent = `上傳中…（${done + 1}/${files.length}）`;
-    try { await putFile(entryId, f, f.name, null); done++; }
+    try {
+      const uploaded = await putFile(entryId, f, f.name, null);
+      if (uploaded.duplicate) duplicates++; else done++;
+    }
     catch { await queueFile(entryId, f, f.name, null); done++; }
   }
   status.textContent = "";
-  showToast(`已處理 ${done} 個檔案`);
+  showToast(`已上傳 ${done} 個檔案${duplicates ? `，略過 ${duplicates} 個重複檔案` : ""}`);
   openEntry(entryId);
 }
 
