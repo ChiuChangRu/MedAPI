@@ -264,7 +264,7 @@ async function autoRenameAttachment(db, att, extractedText) {
   const ext = original.match(/(\.[a-z0-9]{1,8})$/i)?.[1]?.toLowerCase() || "";
   const text = `${original}\n${String(extractedText || "").slice(0, 12000)}`;
   let next = "";
-  const standard = text.match(/\b(ISO(?:\s*\/\s*(?:TS|TR))?|IEC|ASTM|EN\s+ISO|JIS)\s*[-:]?\s*([A-Z]?\d{3,6}(?:-\d{1,3})?)(?:\s*[:\-]\s*((?:19|20)\d{2}))?/i);
+  const standard = text.match(/\b(ISO(?:\s*\/\s*(?:TS|TR))?|IEC|ASTM|EN\s+ISO|JIS)\s*[-:]?\s*([A-Z]?\d{3,6}(?:-\d{1,3})?)(?:\s*[:\-]?\s*((?:19|20)\d{2}))?/i);
   if (standard) {
     const org = standard[1].toUpperCase().replace(/\s*\/\s*/g, "_").replace(/\s+/g, "_");
     next = [org, standard[2].toUpperCase(), standard[3] || ""].filter(Boolean).join("_") + ext;
