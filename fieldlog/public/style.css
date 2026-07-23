@@ -209,6 +209,27 @@ body {
 }
 .entry-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .att-original { margin-top: 2px; color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }
+.folder-file-list { width: 100%; grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+.folder-file-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; align-items: center; gap: 9px;
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff;
+}
+.folder-file-icon { font-size: 20px; text-align: center; }
+.folder-file-name { min-width: 0; color: var(--accent-dark); font-weight: 600; overflow-wrap: anywhere; text-decoration: none; }
+.folder-file-name:hover { text-decoration: underline; }
+.folder-file-meta { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.folder-file-manage {
+  padding: 5px 9px; border: 1px solid var(--border); border-radius: 7px;
+  background: #fff; color: var(--text-muted); cursor: pointer; font-size: 12px;
+}
+.folder-file-list.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.folder-file-list.grid-view .folder-file-row {
+  min-height: 130px; grid-template-columns: 1fr auto; align-content: start;
+}
+.folder-file-list.grid-view .folder-file-icon { grid-column: 1 / 3; text-align: left; font-size: 28px; }
+.folder-file-list.grid-view .folder-file-name { grid-column: 1 / 3; }
+.folder-file-list.grid-view .folder-file-meta { align-self: end; margin-top: 14px; }
+.folder-note-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .entry-del {
   background: none; border: none; cursor: pointer; padding: 2px 4px;
   font-size: 14px; opacity: 0.45; line-height: 1;
@@ -217,6 +238,14 @@ body {
 @media (max-width: 719px) {
   .entry-drag { display: none; }
   .entry-move { display: inline-block; }
+  .folder-file-list.grid-view { display: flex; }
+  .folder-file-list.grid-view .folder-file-row,
+  .folder-file-row { min-height: 0; grid-template-columns: 26px minmax(0, 1fr) auto; }
+  .folder-file-list.grid-view .folder-file-icon,
+  .folder-file-list.grid-view .folder-file-name { grid-column: auto; }
+  .folder-file-list.grid-view .folder-file-icon { font-size: 20px; text-align: center; }
+  .folder-file-list.grid-view .folder-file-meta, .folder-file-meta { display: none; }
+  .folder-file-list.grid-view .folder-file-manage { margin: 0; }
 }
 
 .folder-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
