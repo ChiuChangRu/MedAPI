@@ -477,6 +477,20 @@ function renderChildFolders(parentId) {
   wrap.querySelectorAll(".child-folder-card").forEach((el) => { el.onclick = () => openFolder(Number(el.dataset.id)); });
 }
 
+function folderFileHtml(a, entryId) {
+  const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
+  const ext = (a.filename || "").split(".").pop().toLowerCase();
+  const icon = isPdfAtt(a) ? "📕" : a.kind === "photo" ? "🖼️" : a.kind === "audio" ? "🎙️"
+    : ["doc", "docx"].includes(ext) ? "📘" : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
+      : ["ppt", "pptx"].includes(ext) ? "📙" : "📄";
+  return `<div class="folder-file-row">
+    <span class="folder-file-icon">${icon}</span>
+    <a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>
+    <span class="folder-file-meta">${esc((a.created_at || "").slice(5, 16))}</span>
+    <button class="folder-file-manage" type="button" data-entry-id="${entryId}">詳情</button>
+  </div>`;
+}
+
 // ---------- 資料夾內頁 ----------
 async function openFolder(id) {
   CURRENT_FOLDER = FOLDERS.find((f) => f.id === id);
@@ -489,12 +503,28 @@ async function openFolder(id) {
   $("btn-inner-grid").classList.toggle("active", INNER_FOLDER_VIEW === "grid");
   $("btn-inner-list").classList.toggle("active", INNER_FOLDER_VIEW === "list");
   renderChildFolders(id);
-  const entries = await api(`/entries?folder_id=${id}`);
+  const summaries = await api(`/entries?folder_id=${id}`);
+  const entries = await Promise.all(summaries.map((e) =>
+    e.att_count ? api(`/entries/${e.id}`) : Promise.resolve({ ...e, attachments: [] })
+  ));
+  const files = entries.flatMap((e) =>
+    (e.attachments || []).filter((a) => !a.source_pdf_id).map((a) => ({ attachment: a, entryId: e.id }))
+  );
+  // 有附件的記事通常只是上傳容器；若內文只重複標題，就不再顯示成另一筆記事。
+  const notes = entries.filter((e) => {
+    const body = (e.body || "").trim();
+    const fields = Object.values(JSON.parse(e.fields_json || "{}")).some((v) => String(v || "").trim());
+    return !(e.attachments || []).length || fields || (body && body !== (e.title || "").trim());
+  });
   $("folder-entries").className = `entry-list inner-entry-list ${INNER_FOLDER_VIEW}-view`;
-  $("folder-entries").innerHTML = entries.length
-    ? entries.map(entryRowHtml).join("")
+  $("folder-entries").innerHTML = files.length || notes.length
+    ? `${files.length ? `<div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
+       ${notes.length ? `<div class="folder-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
   bindEntryRows($("folder-entries"));
+  $("folder-entries").querySelectorAll(".folder-file-manage").forEach((btn) => {
+    btn.onclick = () => openEntry(Number(btn.dataset.entryId));
+  });
 }
 
 function setInnerFolderView(view) {
