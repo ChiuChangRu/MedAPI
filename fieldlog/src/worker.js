@@ -272,7 +272,10 @@ async function autoRenameAttachment(db, att, extractedText) {
     // 部分 ISO PDF 的原始檔名只有正式英文標題，完全沒有標準編號。
     // 只處理能由標題唯一對應的系列；年份無法確認時不自行猜測。
     const syringePart = text.match(/\bSterile\s+hypodermic\s+syringes\s+for\s+single\s+use\s+Part\s+([1-4])\b/i);
-    if (syringePart) next = `ISO_7886-${syringePart[1]}${ext}`;
+    if (syringePart) {
+      const currentYear = { "1": "2017", "2": "2020", "3": "2020", "4": "2018" }[syringePart[1]];
+      next = `ISO_7886-${syringePart[1]}_${currentYear}${ext}`;
+    }
   }
   if (!next) {
     const patent = text.match(/\b(US|EP|WO|CN|JP|TW)\s*[-/]?\s*(\d{6,14})(?:\s*([A-Z]\d?))?\b/i);
@@ -473,12 +476,24 @@ async function handleApi(request, env, url) {
     if (body.byteLength > 50 * 1024 * 1024) return bad("檔案過大（上限 50MB）");
     const digest = await crypto.subtle.digest("SHA-256", body);
     const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const sourcePdfRaw = request.headers.get("x-source-pdf-id");
+    const sourcePdfId = sourcePdfRaw !== null && sourcePdfRaw !== "" ? Number(sourcePdfRaw) : null;
+    const entry = await db.prepare("SELECT folder_id FROM entries WHERE id = ?").bind(entryId).first();
+    if (!entry) return bad("找不到附件所屬記事", 404);
     // 新檔直接比 SHA-256；舊檔尚無 hash 時，只針對同檔名同大小者讀 R2 補算一次，
-    // 避免誤判不同內容，也讓既有附件可以立即參與去重。
-    const { results: candidates } = await db.prepare(
-      `SELECT id, key, filename, size, content_hash FROM attachments
-       WHERE entry_id = ? AND (content_hash = ? OR (COALESCE(content_hash, '') = '' AND filename = ? AND size = ?))`
-    ).bind(entryId, contentHash, filename, body.byteLength).all();
+    // 避免誤判不同內容。一般附件在同一資料夾內去重；PDF 拆頁仍只在同一記事內比對。
+    const candidateQuery = sourcePdfId
+      ? db.prepare(
+        `SELECT id, key, filename, size, content_hash FROM attachments
+         WHERE entry_id = ? AND (content_hash = ? OR (COALESCE(content_hash, '') = '' AND filename = ? AND size = ?))`
+      ).bind(entryId, contentHash, filename, body.byteLength)
+      : db.prepare(
+        `SELECT a.id, a.key, a.filename, a.size, a.content_hash
+         FROM attachments a JOIN entries e ON e.id = a.entry_id
+         WHERE a.source_pdf_id IS NULL AND e.folder_id IS ?
+           AND (a.content_hash = ? OR (COALESCE(a.content_hash, '') = '' AND a.filename = ? AND a.size = ?))`
+      ).bind(entry.folder_id ?? null, contentHash, filename, body.byteLength);
+    const { results: candidates } = await candidateQuery.all();
     for (const old of candidates || []) {
       let oldHash = old.content_hash || "";
       if (!oldHash) {
@@ -496,9 +511,7 @@ async function handleApi(request, env, url) {
     const key = `${entryId}/${Date.now()}-${filename.replace(/[^\w.\-一-鿿]+/g, "_")}`;
     await env.FILES.put(key, body, { httpMetadata: { contentType: mime } });
     // Tier 2 深度處理：PDF 逐頁 render 成圖片上傳時，帶回來源 PDF 的 id 與頁碼
-    const sourcePdfRaw = request.headers.get("x-source-pdf-id");
     const pageNoRaw = request.headers.get("x-page-no");
-    const sourcePdfId = sourcePdfRaw !== null && sourcePdfRaw !== "" ? Number(sourcePdfRaw) : null;
     const pageNo = pageNoRaw !== null && pageNoRaw !== "" ? Number(pageNoRaw) : null;
     const durationRaw = request.headers.get("x-duration-secs");
     const durationSecs = durationRaw !== null && durationRaw !== "" ? Math.max(0, Math.round(Number(durationRaw))) : null;
@@ -542,7 +555,50 @@ async function handleApi(request, env, url) {
       const text = att.ocr_text || att.transcript || "";
       if (await autoRenameAttachment(db, att, text)) renamed++;
     }
-    return json({ ok: true, checked: (results || []).length, renamed });
+    // 同一資料夾內僅刪除 SHA-256 完全相同的附件，保留最早上傳的一份。
+    // 舊附件若尚無 hash，只為「同檔名且同大小」的疑似重複組補算，避免大量讀取 R2。
+    const { results: current } = await db.prepare(
+      `SELECT a.*, e.folder_id FROM attachments a
+       JOIN entries e ON e.id = a.entry_id
+       WHERE a.source_pdf_id IS NULL ORDER BY a.id`
+    ).all();
+    const suspectCounts = new Map();
+    for (const att of current || []) {
+      const key = `${att.folder_id ?? "inbox"}\n${att.filename}\n${att.size}`;
+      suspectCounts.set(key, (suspectCounts.get(key) || 0) + 1);
+    }
+    for (const att of current || []) {
+      if (att.content_hash || !env.FILES) continue;
+      const suspectKey = `${att.folder_id ?? "inbox"}\n${att.filename}\n${att.size}`;
+      if ((suspectCounts.get(suspectKey) || 0) < 2) continue;
+      const obj = await env.FILES.get(att.key);
+      if (!obj) continue;
+      const digest = await crypto.subtle.digest("SHA-256", await obj.arrayBuffer());
+      att.content_hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+      await db.prepare("UPDATE attachments SET content_hash = ? WHERE id = ?").bind(att.content_hash, att.id).run();
+    }
+    let duplicatesRemoved = 0;
+    const kept = new Map();
+    for (const att of current || []) {
+      if (!att.content_hash) continue;
+      const duplicateKey = `${att.folder_id ?? "inbox"}\n${att.content_hash}`;
+      if (!kept.has(duplicateKey)) {
+        kept.set(duplicateKey, att.id);
+        continue;
+      }
+      const { results: pages } = await db.prepare(
+        "SELECT id, key FROM attachments WHERE source_pdf_id = ?"
+      ).bind(att.id).all();
+      if (env.FILES) {
+        for (const page of pages || []) await env.FILES.delete(page.key).catch(() => {});
+        await env.FILES.delete(att.key).catch(() => {});
+      }
+      await db.prepare("DELETE FROM attachments WHERE source_pdf_id = ?").bind(att.id).run();
+      await db.prepare("DELETE FROM attachments WHERE id = ?").bind(att.id).run();
+      await logHistory(db, att.entry_id, null, "移除重複附件", `${att.filename}（保留相同內容的較早版本）`);
+      duplicatesRemoved++;
+    }
+    return json({ ok: true, checked: (results || []).length, renamed, duplicates_removed: duplicatesRemoved });
   }
   const attMatch = path.match(/^\/attachments\/(\d+)$/);
   if (attMatch && method === "PUT") {
