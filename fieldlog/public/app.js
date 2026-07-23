@@ -29,6 +29,20 @@ const FOLDER_TYPE_META = {
   "會議": ["👥", "決議與待辦"], "查廠": ["🔎", "查核與改善"],
   "其他": ["🗂️", "自由分類"],
 };
+const FOLDER_TYPE_ORDER = Object.keys(FOLDER_TEMPLATES);
+
+function compareFolders(a, b) {
+  const active = Number(b.status === "進行中") - Number(a.status === "進行中");
+  if (active) return active;
+  const typeA = FOLDER_TYPE_ORDER.indexOf(a.type);
+  const typeB = FOLDER_TYPE_ORDER.indexOf(b.type);
+  const byType = (typeA < 0 ? 999 : typeA) - (typeB < 0 ? 999 : typeB);
+  if (byType) return byType;
+  return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
 
 // ---------- API ----------
 function pin() { return localStorage.getItem("fieldlog_pin") || ""; }
@@ -212,7 +226,7 @@ async function loadFolders() {
 
 function renderFolders() {
   const wrap = $("folder-list");
-  const rootFolders = FOLDERS.filter((f) => !f.parent_id);
+  const rootFolders = FOLDERS.filter((f) => !f.parent_id).sort(compareFolders);
   wrap.className = `folder-list ${FOLDER_VIEW === "grid" ? "grid-view" : "list-view"}`;
   $("btn-folder-grid")?.classList.toggle("active", FOLDER_VIEW === "grid");
   $("btn-folder-list")?.classList.toggle("active", FOLDER_VIEW === "list");
@@ -468,7 +482,9 @@ async function newSubfolder() {
 }
 
 function renderChildFolders(parentId) {
-  const children = FOLDERS.filter((f) => Number(f.parent_id) === Number(parentId));
+  const children = FOLDERS
+    .filter((f) => Number(f.parent_id) === Number(parentId))
+    .sort(compareFolders);
   const wrap = $("folder-children");
   wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${children.map((f) => `
     <button class="child-folder-card" type="button" data-id="${f.id}">
