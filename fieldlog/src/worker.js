@@ -43,6 +43,7 @@ const SCHEMA = [
     transcript TEXT DEFAULT '',
     offset_secs INTEGER,
     category TEXT DEFAULT '',
+    content_hash TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS history (
@@ -81,6 +82,9 @@ const MIGRATIONS = [
   `ALTER TABLE attachments ADD COLUMN source_pdf_id INTEGER`,
   `ALTER TABLE attachments ADD COLUMN page_no INTEGER`,
   `ALTER TABLE attachments ADD COLUMN duration_secs INTEGER`,
+  // 檔案內容 SHA-256：同一筆記事重複上傳完全相同的檔案時直接略過
+  `ALTER TABLE attachments ADD COLUMN content_hash TEXT DEFAULT ''`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_att_entry_hash ON attachments(entry_id, content_hash) WHERE content_hash IS NOT NULL AND content_hash <> ''`,
 ];
 
 const AI_DAILY_FREE_NEURONS = 10000;
@@ -412,6 +416,28 @@ async function handleApi(request, env, url) {
     const body = await request.arrayBuffer();
     if (!body.byteLength) return bad("空檔案");
     if (body.byteLength > 50 * 1024 * 1024) return bad("檔案過大（上限 50MB）");
+    const digest = await crypto.subtle.digest("SHA-256", body);
+    const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    // 新檔直接比 SHA-256；舊檔尚無 hash 時，只針對同檔名同大小者讀 R2 補算一次，
+    // 避免誤判不同內容，也讓既有附件可以立即參與去重。
+    const { results: candidates } = await db.prepare(
+      `SELECT id, key, filename, size, content_hash FROM attachments
+       WHERE entry_id = ? AND (content_hash = ? OR (COALESCE(content_hash, '') = '' AND filename = ? AND size = ?))`
+    ).bind(entryId, contentHash, filename, body.byteLength).all();
+    for (const old of candidates || []) {
+      let oldHash = old.content_hash || "";
+      if (!oldHash) {
+        const oldObj = await env.FILES.get(old.key);
+        if (oldObj) {
+          const oldDigest = await crypto.subtle.digest("SHA-256", await oldObj.arrayBuffer());
+          oldHash = [...new Uint8Array(oldDigest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+          await db.prepare("UPDATE attachments SET content_hash = ? WHERE id = ?").bind(oldHash, old.id).run().catch(() => {});
+        }
+      }
+      if (oldHash === contentHash) {
+        return json({ ok: true, duplicate: true, id: old.id, error: "相同檔案已存在，已略過上傳" }, 409);
+      }
+    }
     const key = `${entryId}/${Date.now()}-${filename.replace(/[^\w.\-一-鿿]+/g, "_")}`;
     await env.FILES.put(key, body, { httpMetadata: { contentType: mime } });
     // Tier 2 深度處理：PDF 逐頁 render 成圖片上傳時，帶回來源 PDF 的 id 與頁碼
@@ -422,8 +448,8 @@ async function handleApi(request, env, url) {
     const durationRaw = request.headers.get("x-duration-secs");
     const durationSecs = durationRaw !== null && durationRaw !== "" ? Math.max(0, Math.round(Number(durationRaw))) : null;
     const r = await db.prepare(
-      "INSERT INTO attachments (entry_id, kind, filename, key, size, mime, offset_secs, source_pdf_id, page_no, duration_secs, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(entryId, kind, filename, key, body.byteLength, mime, offsetSecs, sourcePdfId, pageNo, durationSecs, now()).run();
+      "INSERT INTO attachments (entry_id, kind, filename, key, size, mime, offset_secs, source_pdf_id, page_no, duration_secs, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(entryId, kind, filename, key, body.byteLength, mime, offsetSecs, sourcePdfId, pageNo, durationSecs, contentHash, now()).run();
     await logHistory(db, entryId, null, "上傳附件", `${filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
     return json({ id: r.meta.last_row_id, key, ok: true });
   }
