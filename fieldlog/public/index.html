@@ -17,13 +17,14 @@
 <body>
 <div class="container">
   <div id="view-home">
+    <header class="home-app-head">
+      <h1>隨身記</h1>
+      <small>輸入、整理、歸檔</small>
+    </header>
+
     <section class="home-section home-input-section" aria-labelledby="home-input-title">
       <div class="home-section-head">
-        <span class="home-section-number">01</span>
-        <div>
-          <h1 class="home-section-title" id="home-input-title">輸入與草稿</h1>
-          <p class="home-section-desc">先快速收進來，再從收件匣補充、整理與歸檔。</p>
-        </div>
+        <h2 class="home-section-title" id="home-input-title">輸入與草稿</h2>
       </div>
 
       <div class="capture-grid">
@@ -34,24 +35,20 @@
       </div>
 
       <section class="panel home-inbox-panel" id="inbox-panel">
-        <h2>📥 收件匣／待整理 <span id="inbox-count" class="count"></span></h2>
+        <h2>收件匣／待整理 <span id="inbox-count" class="count"></span></h2>
         <div id="inbox-list" class="entry-list"></div>
       </section>
     </section>
 
     <section class="home-section home-files-section" aria-labelledby="home-files-title">
       <div class="home-section-head">
-        <span class="home-section-number">02</span>
-        <div>
-          <h1 class="home-section-title" id="home-files-title">檔案</h1>
-          <p class="home-section-desc">依產品、標準或專案建立最多四層資料夾，集中閱讀、分析與管理。</p>
-        </div>
+        <h2 class="home-section-title" id="home-files-title">檔案</h2>
       </div>
 
       <div class="home-file-stack">
         <section class="panel folders-panel home-files-panel">
           <div class="folders-toolbar">
-            <h2>📂 資料夾</h2>
+            <h2>資料夾</h2>
             <div class="folder-view-toggle" aria-label="資料夾顯示模式">
               <button class="btn small" id="btn-folder-grid" type="button" title="卡片模式">▦ 卡片</button>
               <button class="btn small" id="btn-folder-list" type="button" title="清單模式">☷ 清單</button>
@@ -60,24 +57,12 @@
           </div>
           <div id="folder-list" class="folder-list"></div>
         </section>
-
-        <section class="home-knowledge-card">
-          <div>
-            <h2>🗺 知識庫</h2>
-            <p>把整理完成的資料沉澱成策略地圖、支撐知識與供應商圖譜。</p>
-          </div>
-          <a class="btn small" href="wiki.html">開啟策略地圖 Wiki ›</a>
-        </section>
       </div>
     </section>
 
     <section class="home-section home-usage-section" aria-labelledby="home-usage-title">
       <div class="home-section-head">
-        <span class="home-section-number">03</span>
-        <div>
-          <h1 class="home-section-title" id="home-usage-title">Cloudflare 用量</h1>
-          <p class="home-section-desc">查看 Worker、AI 與儲存資源的目前使用情況。</p>
-        </div>
+        <h2 class="home-section-title" id="home-usage-title">Cloudflare 用量</h2>
       </div>
       <div class="home-usage-toolbar">
         <strong>資源監控</strong>
@@ -248,5 +233,6 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="app.js?v=34"></script>
+<script src="home.js"></script>
 </body>
 </html>
