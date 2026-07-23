@@ -259,7 +259,7 @@ function isGenericFilename(name) {
 
 // 只用可驗證的編號與既有記事脈絡命名，不讓 AI 自由猜測。
 async function autoRenameAttachment(db, att, extractedText) {
-  if (!att?.id || att.source_pdf_id) return;
+  if (!att?.id || att.source_pdf_id) return false;
   const original = att.original_filename || att.filename || "file";
   const ext = original.match(/(\.[a-z0-9]{1,8})$/i)?.[1]?.toLowerCase() || "";
   const text = `${original}\n${String(extractedText || "").slice(0, 12000)}`;
@@ -283,11 +283,12 @@ async function autoRenameAttachment(db, att, extractedText) {
       next = [date, type, topic, att.id].filter(Boolean).join("_") + ext;
     }
   }
-  if (!next || next === att.filename) return;
+  if (!next || next === att.filename) return false;
   await db.prepare(
     "UPDATE attachments SET original_filename = CASE WHEN COALESCE(original_filename, '') = '' THEN filename ELSE original_filename END, filename = ? WHERE id = ?"
   ).bind(next, att.id).run();
   await logHistory(db, att.entry_id, null, "自動重新命名", `${original} → ${next}`);
+  return true;
 }
 
 // 貼上的 Notion 頁面網址 → 32 碼 page ID（補回標準 UUID 格式的連字號）
@@ -519,6 +520,23 @@ async function handleApi(request, env, url) {
         "cache-control": "private, max-age=3600",
       },
     });
+  }
+  // 手動整理既有附件名稱：只用已入庫的 OCR／逐字稿與記事脈絡，不重新呼叫 AI。
+  if (path === "/attachments/rename-existing" && method === "POST") {
+    await db.prepare(
+      "UPDATE attachments SET original_filename = filename WHERE COALESCE(original_filename, '') = ''"
+    ).run();
+    const { results } = await db.prepare(
+      `SELECT * FROM attachments
+       WHERE source_pdf_id IS NULL
+       ORDER BY id`
+    ).all();
+    let renamed = 0;
+    for (const att of results || []) {
+      const text = att.ocr_text || att.transcript || "";
+      if (await autoRenameAttachment(db, att, text)) renamed++;
+    }
+    return json({ ok: true, checked: (results || []).length, renamed });
   }
   const attMatch = path.match(/^\/attachments\/(\d+)$/);
   if (attMatch && method === "PUT") {
