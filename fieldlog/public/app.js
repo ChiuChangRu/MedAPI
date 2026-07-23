@@ -791,6 +791,8 @@ function closeEntry() { $("entry-overlay").classList.remove("open"); unlockBodyS
 
 function attHtml(a, siblings) {
   const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
+  const originalName = a.original_filename && a.original_filename !== a.filename
+    ? `<div class="att-original">原始名稱：${esc(a.original_filename)}</div>` : "";
   let preview = `<a href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
   if (a.kind === "photo") preview = `<a href="${url}" target="_blank" rel="noopener"><img class="att-thumb" src="${url}" loading="lazy" alt="${esc(a.filename)}" /></a>`;
   if (a.kind === "audio") preview = `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`;
@@ -833,7 +835,7 @@ function attHtml(a, siblings) {
     <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
       <a href="#" class="att-delete" data-id="${a.id}">刪除</a>
     </div>
-    ${preview}${ocrBit}${transcribeBit}${tier2Bit}
+    ${preview}${originalName}${ocrBit}${transcribeBit}${tier2Bit}
   </div>`;
 }
 
