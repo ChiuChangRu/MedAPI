@@ -1,6 +1,17 @@
 import previousWorker from "./worker-v45.js";
 
 const MAX_FOLDER_DEPTH = 4;
+const DEVICE_CATEGORIES = new Set([
+  "",
+  "中央靜脈導管（CVC）",
+  "血液透析導管（HD）",
+  "引流導管（Pigtail）",
+  "高壓注射筒組",
+  "輸液器具／逆止閥",
+  "其他",
+]);
+
+let categorySchemaReady = false;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -31,6 +42,12 @@ async function warmSchema(request, env, ctx) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error || `初始化資料庫失敗（HTTP ${response.status}）`);
   }
+}
+
+async function ensureCategorySchema(env) {
+  if (categorySchemaReady || !env.DB) return;
+  await env.DB.prepare("ALTER TABLE attachments ADD COLUMN device_category TEXT DEFAULT ''").run().catch(() => {});
+  categorySchemaReady = true;
 }
 
 async function folderDepth(env, folderId) {
@@ -81,6 +98,45 @@ async function createFolderWithDepthLimit(request, env, ctx) {
   return json({ id, ok: true, depth, max_depth: MAX_FOLDER_DEPTH });
 }
 
+async function readAttachmentCategory(env, attachmentId) {
+  await ensureCategorySchema(env);
+  const attachment = await env.DB.prepare(
+    "SELECT id, entry_id, filename, COALESCE(device_category, '') AS device_category FROM attachments WHERE id = ?"
+  ).bind(attachmentId).first();
+  if (!attachment) return { error: "找不到附件", status: 404 };
+  return {
+    ok: true,
+    id: attachment.id,
+    filename: attachment.filename,
+    category: attachment.device_category || "",
+    categories: [...DEVICE_CATEGORIES].filter(Boolean),
+  };
+}
+
+async function saveAttachmentCategory(env, attachmentId, request) {
+  await ensureCategorySchema(env);
+  const body = await request.json().catch(() => ({}));
+  const category = String(body.category || "").trim();
+  if (!DEVICE_CATEGORIES.has(category)) return { error: "分類選項不正確", status: 400 };
+
+  const attachment = await env.DB.prepare(
+    "SELECT id, entry_id, filename FROM attachments WHERE id = ?"
+  ).bind(attachmentId).first();
+  if (!attachment) return { error: "找不到附件", status: 404 };
+
+  await env.DB.prepare("UPDATE attachments SET device_category = ? WHERE id = ?")
+    .bind(category, attachmentId).run();
+  await env.DB.prepare(
+    "INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, NULL, '更新醫材分類', ?, ?)"
+  ).bind(
+    attachment.entry_id,
+    `${attachment.filename}：${category || "未分類"}`.slice(0, 200),
+    now()
+  ).run().catch(() => {});
+
+  return { ok: true, category };
+}
+
 const FOLDER_LAYOUT_AND_DEPTH_UI = String.raw`
 ;(() => {
   if (window.__fieldlogFolderLayoutDepth4) return;
@@ -95,6 +151,16 @@ const FOLDER_LAYOUT_AND_DEPTH_UI = String.raw`
   style.textContent = [
     ".folder-file-row .folder-file-delete{width:40px!important;height:36px!important;padding:0!important;border:1px solid var(--border)!important;border-radius:7px!important;background:#fff!important;color:#b91c1c!important;cursor:pointer!important}",
     ".folder-file-row .folder-file-manage{width:40px!important;height:36px!important;padding:0!important}",
+    ".file-primary-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}",
+    ".file-primary-actions button,.file-primary-actions a{display:flex;align-items:center;justify-content:center;min-height:44px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--text);text-decoration:none;cursor:pointer;font-weight:600}",
+    ".file-primary-actions button:hover,.file-primary-actions a:hover{border-color:var(--accent);background:#f0fdfa}",
+    ".file-primary-actions .disabled{opacity:.45;pointer-events:none}",
+    ".file-category-panel{display:none;margin:0 0 14px;padding:12px;border:1px solid var(--border);border-radius:9px;background:#f8faf9}",
+    ".file-category-panel.open{display:block}",
+    ".file-category-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:7px}",
+    ".file-category-row select{min-width:0;width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:#fff}",
+    ".file-category-current{margin:6px 0 0;color:var(--text-muted);font-size:12px}",
+    "@media(max-width:719px){.file-primary-actions{grid-template-columns:1fr 1fr}.file-category-row{grid-template-columns:1fr}}",
     "@media(min-width:720px){",
     ".folder-file-list.grid-view{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))!important;align-items:stretch!important}",
     ".folder-file-list.grid-view .folder-file-row.folder-file-row{min-height:180px!important;display:grid!important;grid-template-columns:minmax(0,1fr) 40px 40px!important;grid-template-rows:36px minmax(0,1fr) auto!important;align-content:stretch!important;align-items:start!important;gap:8px!important;padding:14px!important;overflow:hidden!important}",
@@ -143,6 +209,93 @@ const FOLDER_LAYOUT_AND_DEPTH_UI = String.raw`
     return originalNewSubfolderDepth4();
   }
 
+  function currentAttachmentId(modal) {
+    const item = modal.querySelector(".att-item[data-id]");
+    return Number(item && item.dataset.id || 0);
+  }
+
+  function injectFilePrimaryActions() {
+    const modal = document.getElementById("entry-modal");
+    if (!modal || !modal.querySelector("#file-note") || modal.querySelector(".file-primary-actions")) return;
+
+    const attachmentId = currentAttachmentId(modal);
+    if (!attachmentId) return;
+    const attachmentItem = modal.querySelector(".att-item[data-id=\"" + attachmentId + "\"]");
+    const readLink = attachmentItem && attachmentItem.querySelector("a[href*=\"/api/file/\"]");
+    const doodleLink = attachmentItem && attachmentItem.querySelector(".att-pdf-doodle");
+    const heading = modal.querySelector(".detail-head");
+    if (!heading) return;
+
+    const actions = document.createElement("div");
+    actions.className = "file-primary-actions";
+    actions.innerHTML = [
+      readLink ? '<a id="file-read-action" href="' + readLink.href + '" target="_blank" rel="noopener">📖 閱讀</a>' : '<span class="disabled">📖 閱讀</span>',
+      '<button id="file-doodle-action" type="button"' + (doodleLink ? '' : ' class="disabled" disabled') + '>✍️ 塗鴉</button>',
+      '<button id="file-category-action" type="button">🏷 分類</button>',
+      '<button id="file-note-action" type="button">📝 Note</button>'
+    ].join("");
+
+    const panel = document.createElement("div");
+    panel.className = "file-category-panel";
+    panel.innerHTML = [
+      '<strong>醫療器材分類</strong>',
+      '<div class="file-category-row">',
+      '<select id="file-device-category"><option value="">未分類</option><option>中央靜脈導管（CVC）</option><option>血液透析導管（HD）</option><option>引流導管（Pigtail）</option><option>高壓注射筒組</option><option>輸液器具／逆止閥</option><option>其他</option></select>',
+      '<button class="btn primary" id="file-category-save" type="button">儲存分類</button>',
+      '</div>',
+      '<p class="file-category-current" id="file-category-current">讀取分類中…</p>'
+    ].join("");
+
+    heading.insertAdjacentElement("afterend", panel);
+    heading.insertAdjacentElement("afterend", actions);
+
+    const noteLabel = modal.querySelector('label[for="file-note"]');
+    if (noteLabel) noteLabel.textContent = "Note 文字（只屬於這一份檔案）";
+    const noteSave = modal.querySelector("#file-note-save");
+    if (noteSave) noteSave.textContent = "儲存 Note";
+
+    const categoryButton = modal.querySelector("#file-category-action");
+    const categorySelect = modal.querySelector("#file-device-category");
+    const categoryCurrent = modal.querySelector("#file-category-current");
+
+    modal.querySelector("#file-note-action").onclick = () => {
+      const textarea = modal.querySelector("#file-note");
+      textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+      textarea.focus();
+    };
+    categoryButton.onclick = () => {
+      panel.classList.toggle("open");
+      if (panel.classList.contains("open")) categorySelect.focus();
+    };
+    if (doodleLink) {
+      modal.querySelector("#file-doodle-action").onclick = () => doodleLink.click();
+    }
+
+    api("/attachments/" + attachmentId + "/category").then((result) => {
+      categorySelect.value = result.category || "";
+      categoryCurrent.textContent = "目前分類：" + (result.category || "未分類");
+    }).catch((error) => {
+      categoryCurrent.textContent = "讀取分類失敗：" + error.message;
+    });
+
+    modal.querySelector("#file-category-save").onclick = async () => {
+      const saveButton = modal.querySelector("#file-category-save");
+      saveButton.disabled = true;
+      try {
+        const result = await api("/attachments/" + attachmentId + "/category", {
+          method: "PUT",
+          body: JSON.stringify({ category: categorySelect.value })
+        });
+        categoryCurrent.textContent = "目前分類：" + (result.category || "未分類");
+        showToast("醫療器材分類已儲存");
+      } catch (error) {
+        showToast("分類儲存失敗：" + error.message);
+      } finally {
+        saveButton.disabled = false;
+      }
+    };
+  }
+
   newSubfolder = safeNewSubfolderDepth4;
   const button = document.getElementById("btn-new-subfolder");
   if (button) button.onclick = safeNewSubfolderDepth4;
@@ -154,12 +307,27 @@ const FOLDER_LAYOUT_AND_DEPTH_UI = String.raw`
   };
 
   syncSubfolderButton();
+  injectFilePrimaryActions();
+  new MutationObserver(injectFilePrimaryActions).observe(document.getElementById("entry-modal") || document.documentElement, { childList: true, subtree: true });
 })();
 `;
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    const categoryMatch = url.pathname.match(/^\/api\/attachments\/(\d+)\/category$/);
+    if (categoryMatch && (request.method === "GET" || request.method === "PUT")) {
+      if (!authorized(request, env)) return json({ error: "PIN 錯誤或未提供" }, 401);
+      try {
+        const result = request.method === "GET"
+          ? await readAttachmentCategory(env, Number(categoryMatch[1]))
+          : await saveAttachmentCategory(env, Number(categoryMatch[1]), request);
+        return json(result, result.status || 200);
+      } catch (error) {
+        return json({ error: `醫療器材分類處理失敗：${error.message}` }, 500);
+      }
+    }
 
     if (request.method === "POST" && url.pathname === "/api/folders") {
       if (!authorized(request, env)) return json({ error: "PIN 錯誤或未提供" }, 401);
@@ -189,11 +357,7 @@ export default {
 
     let cleanupResponse;
     try {
-      // 先讓既有 Worker 完成 schema migration，避免下一步暫時移除索引後又被 migration 立即建立回來。
       await warmSchema(request, env, ctx);
-
-      // 舊檔補寫 SHA-256 時，若較晚的附件與既有附件相同，唯一索引會在刪除重複檔前先中斷。
-      // 整理期間暫時移除索引，讓既有流程先補 hash、刪除較晚重複檔，再恢復索引。
       await env.DB.prepare("DROP INDEX IF EXISTS idx_att_entry_hash").run();
       cleanupResponse = await previousWorker.fetch(request, env, ctx);
     } catch (error) {
