@@ -503,6 +503,19 @@ async function openFolder(id) {
   $("btn-inner-grid").classList.toggle("active", INNER_FOLDER_VIEW === "grid");
   $("btn-inner-list").classList.toggle("active", INNER_FOLDER_VIEW === "list");
   renderChildFolders(id);
+  // v30：既有附件第一次進資料夾時自動套用安全命名規則。
+  // 只使用已存在的 OCR／逐字稿，不呼叫 AI；整個瀏覽器只執行一次。
+  if (!localStorage.getItem("fieldlog_legacy_rename_v30")) {
+    localStorage.setItem("fieldlog_legacy_rename_v30", "running");
+    try {
+      const renamed = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
+      localStorage.setItem("fieldlog_legacy_rename_v30", "done");
+      if (renamed.renamed) showToast(`已自動整理 ${renamed.renamed} 個舊檔名`);
+    } catch (err) {
+      localStorage.removeItem("fieldlog_legacy_rename_v30");
+      console.error("舊檔名自動整理失敗", err);
+    }
+  }
   const summaries = await api(`/entries?folder_id=${id}`);
   const entries = await Promise.all(summaries.map((e) =>
     e.att_count ? api(`/entries/${e.id}`) : Promise.resolve({ ...e, attachments: [] })
