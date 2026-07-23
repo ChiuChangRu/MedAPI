@@ -568,6 +568,7 @@ async function openEntry(id) {
       <button class="btn small capture-btn" id="e-audio">🎙 錄音</button>
       <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
       <button class="btn small" id="e-process" type="button" title="用 Cloudflare AI 把還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取（已處理過的不會重跑）">🪄 Cloudflare AI 整理</button>
+      <button class="btn small" id="e-rename-files" type="button" title="利用既有 OCR、逐字稿與記事資訊整理全部舊附件名稱，不會重新呼叫 AI">🏷 整理舊檔名</button>
       <span id="e-upload-status" class="sub"></span>
     </div>
     <div id="e-attachments" class="att-list">${visibleAttachments.map((a) => attHtml(a, e.attachments)).join("") || `<p class="sub">尚無附件</p>`}</div>
@@ -615,6 +616,21 @@ async function openEntry(id) {
   fileInput.onchange = () => uploadFiles(id, fileInput);
   const processBtn = $("e-process");
   if (processBtn) processBtn.onclick = () => processEntryAttachments(id, processBtn);
+  const renameBtn = $("e-rename-files");
+  if (renameBtn) renameBtn.onclick = async () => {
+    if (!confirm("確定整理全部舊附件的檔名？只會改能安全判定的名稱，原始檔名仍會保留。")) return;
+    renameBtn.disabled = true;
+    renameBtn.textContent = "整理中…";
+    try {
+      const result = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
+      showToast(`已檢查 ${result.checked} 個舊附件，重新命名 ${result.renamed} 個`);
+      openEntry(id);
+    } catch (err) {
+      showToast("整理舊檔名失敗：" + err.message);
+      renameBtn.disabled = false;
+      renameBtn.textContent = "🏷 整理舊檔名";
+    }
+  };
   bindAttActions(id);
   api(`/entries/${id}/auto-transcribe`, { method: "POST", body: "{}" }).then((r) => {
     if (r.processed) {
