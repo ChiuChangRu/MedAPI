@@ -1,7 +1,7 @@
 // 隨身記 Service Worker：快取 UI 資源，斷網時介面照常開啟
 // （raw data 的離線保底走 app.js 的 IndexedDB 佇列，這裡只管殼）
-const CACHE = "fieldlog-v49-general-architecture";
-const ASSETS = ["./", "index.html", "app.js?v=49-files", "style.css?v=49-files", "home.css", "wiki.html", "manifest.json", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
+const CACHE = "fieldlog-v49-simple-workspace";
+const ASSETS = ["./", "index.html", "app.js?v=49-files", "style.css?v=49-files", "home.css", "home.js", "wiki.html", "manifest.json", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
