@@ -269,6 +269,12 @@ async function autoRenameAttachment(db, att, extractedText) {
     const org = standard[1].toUpperCase().replace(/\s*\/\s*/g, "_").replace(/\s+/g, "_");
     next = [org, standard[2].toUpperCase(), standard[3] || ""].filter(Boolean).join("_") + ext;
   } else {
+    // 部分 ISO PDF 的原始檔名只有正式英文標題，完全沒有標準編號。
+    // 只處理能由標題唯一對應的系列；年份無法確認時不自行猜測。
+    const syringePart = text.match(/\bSterile\s+hypodermic\s+syringes\s+for\s+single\s+use\s+Part\s+([1-4])\b/i);
+    if (syringePart) next = `ISO_7886-${syringePart[1]}${ext}`;
+  }
+  if (!next) {
     const patent = text.match(/\b(US|EP|WO|CN|JP|TW)\s*[-/]?\s*(\d{6,14})(?:\s*([A-Z]\d?))?\b/i);
     if (patent) {
       next = `${patent[1].toUpperCase()}_${patent[2]}${patent[3] ? `_${patent[3].toUpperCase()}` : ""}${ext}`;
