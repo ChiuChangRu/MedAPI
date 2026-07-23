@@ -519,16 +519,18 @@ async function openFolder(id) {
   $("btn-inner-grid").classList.toggle("active", INNER_FOLDER_VIEW === "grid");
   $("btn-inner-list").classList.toggle("active", INNER_FOLDER_VIEW === "list");
   renderChildFolders(id);
-  // v31：既有附件第一次進資料夾時自動套用安全命名規則。
+  // v34：既有附件重新命名並移除內容完全相同的重複檔。
   // 只使用已存在的 OCR／逐字稿，不呼叫 AI；整個瀏覽器只執行一次。
-  if (!localStorage.getItem("fieldlog_legacy_rename_v31")) {
-    localStorage.setItem("fieldlog_legacy_rename_v31", "running");
+  if (!localStorage.getItem("fieldlog_legacy_rename_v34")) {
+    localStorage.setItem("fieldlog_legacy_rename_v34", "running");
     try {
       const renamed = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
-      localStorage.setItem("fieldlog_legacy_rename_v31", "done");
-      if (renamed.renamed) showToast(`已自動整理 ${renamed.renamed} 個舊檔名`);
+      localStorage.setItem("fieldlog_legacy_rename_v34", "done");
+      if (renamed.renamed || renamed.duplicates_removed) {
+        showToast(`已整理 ${renamed.renamed || 0} 個檔名，移除 ${renamed.duplicates_removed || 0} 個重複檔`);
+      }
     } catch (err) {
-      localStorage.removeItem("fieldlog_legacy_rename_v31");
+      localStorage.removeItem("fieldlog_legacy_rename_v34");
       console.error("舊檔名自動整理失敗", err);
     }
   }
