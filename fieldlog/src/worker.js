@@ -37,6 +37,7 @@ const SCHEMA = [
     entry_id INTEGER NOT NULL,
     kind TEXT DEFAULT 'file',
     filename TEXT NOT NULL,
+    original_filename TEXT DEFAULT '',
     key TEXT NOT NULL,
     size INTEGER DEFAULT 0,
     mime TEXT DEFAULT '',
@@ -84,6 +85,7 @@ const MIGRATIONS = [
   `ALTER TABLE attachments ADD COLUMN duration_secs INTEGER`,
   // 檔案內容 SHA-256：同一筆記事重複上傳完全相同的檔案時直接略過
   `ALTER TABLE attachments ADD COLUMN content_hash TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN original_filename TEXT DEFAULT ''`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_att_entry_hash ON attachments(entry_id, content_hash) WHERE content_hash IS NOT NULL AND content_hash <> ''`,
 ];
 
@@ -227,6 +229,7 @@ async function transcribeAttachment(env, db, old) {
   const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
   const text = (result?.text || "").trim();
   await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
+  await autoRenameAttachment(db, old, text);
   await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
   return text;
 }
@@ -240,6 +243,51 @@ async function logHistory(db, entryId, folderId, action, detail) {
 
 function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function cleanFilenamePart(value, max = 42) {
+  return String(value || "").replace(/\.[a-z0-9]{1,8}$/i, "")
+    .replace(/[\\/:*?"<>|#]+/g, " ").replace(/\s+/g, "_")
+    .replace(/^_+|_+$/g, "").slice(0, max);
+}
+
+function isGenericFilename(name) {
+  const stem = String(name || "").replace(/\.[^.]+$/, "");
+  return /^(img|dsc|pxl|scan|document|download|file|audio|recording|video|image|未命名|螢幕擷取|已貼上)[-_ (]?\d*/i.test(stem)
+    || /^(附件|照片|錄音|影片)[-_ ]?\d*$/i.test(stem);
+}
+
+// 只用可驗證的編號與既有記事脈絡命名，不讓 AI 自由猜測。
+async function autoRenameAttachment(db, att, extractedText) {
+  if (!att?.id || att.source_pdf_id) return;
+  const original = att.original_filename || att.filename || "file";
+  const ext = original.match(/(\.[a-z0-9]{1,8})$/i)?.[1]?.toLowerCase() || "";
+  const text = `${original}\n${String(extractedText || "").slice(0, 12000)}`;
+  let next = "";
+  const standard = text.match(/\b(ISO(?:\s*\/\s*(?:TS|TR))?|IEC|ASTM|EN\s+ISO|JIS)\s*[-:]?\s*([A-Z]?\d{3,6}(?:-\d{1,3})?)(?:\s*[:\-]\s*((?:19|20)\d{2}))?/i);
+  if (standard) {
+    const org = standard[1].toUpperCase().replace(/\s*\/\s*/g, "_").replace(/\s+/g, "_");
+    next = [org, standard[2].toUpperCase(), standard[3] || ""].filter(Boolean).join("_") + ext;
+  } else {
+    const patent = text.match(/\b(US|EP|WO|CN|JP|TW)\s*[-/]?\s*(\d{6,14})(?:\s*([A-Z]\d?))?\b/i);
+    if (patent) {
+      next = `${patent[1].toUpperCase()}_${patent[2]}${patent[3] ? `_${patent[3].toUpperCase()}` : ""}${ext}`;
+    } else if (isGenericFilename(original)) {
+      const context = await db.prepare(
+        `SELECT e.title, e.created_at, f.type AS folder_type, f.name AS folder_name
+         FROM entries e LEFT JOIN folders f ON f.id = e.folder_id WHERE e.id = ?`
+      ).bind(att.entry_id).first();
+      const date = String(context?.created_at || att.created_at || now()).slice(0, 10);
+      const type = cleanFilenamePart(context?.folder_type || (att.kind === "audio" ? "錄音" : att.kind === "photo" ? "照片" : "文件"), 12);
+      const topic = cleanFilenamePart(context?.title || context?.folder_name || "", 32);
+      next = [date, type, topic, att.id].filter(Boolean).join("_") + ext;
+    }
+  }
+  if (!next || next === att.filename) return;
+  await db.prepare(
+    "UPDATE attachments SET original_filename = CASE WHEN COALESCE(original_filename, '') = '' THEN filename ELSE original_filename END, filename = ? WHERE id = ?"
+  ).bind(next, att.id).run();
+  await logHistory(db, att.entry_id, null, "自動重新命名", `${original} → ${next}`);
 }
 
 // 貼上的 Notion 頁面網址 → 32 碼 page ID（補回標準 UUID 格式的連字號）
@@ -448,10 +496,17 @@ async function handleApi(request, env, url) {
     const durationRaw = request.headers.get("x-duration-secs");
     const durationSecs = durationRaw !== null && durationRaw !== "" ? Math.max(0, Math.round(Number(durationRaw))) : null;
     const r = await db.prepare(
-      "INSERT INTO attachments (entry_id, kind, filename, key, size, mime, offset_secs, source_pdf_id, page_no, duration_secs, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(entryId, kind, filename, key, body.byteLength, mime, offsetSecs, sourcePdfId, pageNo, durationSecs, contentHash, now()).run();
+      "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, offset_secs, source_pdf_id, page_no, duration_secs, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(entryId, kind, filename, filename, key, body.byteLength, mime, offsetSecs, sourcePdfId, pageNo, durationSecs, contentHash, now()).run();
+    const attachmentId = r.meta.last_row_id;
+    if (!sourcePdfId) {
+      await autoRenameAttachment(db, {
+        id: attachmentId, entry_id: entryId, filename, original_filename: filename,
+        kind, mime, created_at: now(),
+      }, "");
+    }
     await logHistory(db, entryId, null, "上傳附件", `${filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
-    return json({ id: r.meta.last_row_id, key, ok: true });
+    return json({ id: attachmentId, key, ok: true });
   }
   const fileMatch = path.match(/^\/file\/(.+)$/);
   if (fileMatch && method === "GET") {
@@ -585,6 +640,7 @@ async function handleApi(request, env, url) {
       // 無文字層）→ ocr_at 有時間戳但 ocr_text 空 → 顯示「已整理（沒有文字內容）」
       const pdfText = stripPdfMetadata(converted?.[0]?.data || "").slice(0, 60000);
       await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(pdfText, now(), id).run();
+      await autoRenameAttachment(db, old, pdfText);
       await logHistory(db, old.entry_id, null, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 60) || "（沒有擷取到文字，可能是圖形型 PDF）"}`);
       return json({ ocr_text: pdfText });
     }
@@ -612,6 +668,7 @@ async function handleApi(request, env, url) {
       }
     }
     await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
+    await autoRenameAttachment(db, old, text);
     await logHistory(db, old.entry_id, null, "照片擷取文字", `${old.filename}：${text.slice(0, 60) || "（照片上沒有文字）"}`);
     return json({ ocr_text: text });
   }
