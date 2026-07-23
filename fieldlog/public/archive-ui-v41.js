@@ -62,8 +62,18 @@
       label.textContent = "已歸檔筆記";
       noteList.before(label);
       noteList.querySelectorAll(".entry-row").forEach((row) => {
+        const metaText = row.querySelector(".entry-meta")?.textContent || "";
+        // 有附件的 entry 只是上傳容器；資料夾內只顯示附件，不再重複顯示記事列。
+        if (metaText.includes("📎")) {
+          row.remove();
+          return;
+        }
         row.querySelectorAll(".entry-drag,.entry-move,.entry-del").forEach((node) => node.remove());
       });
+      if (!noteList.querySelector(".entry-row")) {
+        label.remove();
+        noteList.remove();
+      }
     }
   }
 
