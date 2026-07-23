@@ -7,62 +7,37 @@ const ARCHIVE_FIX_V42 = String.raw`
 
   const style = document.createElement("style");
   style.id = "fieldlog-archive-fix-v42";
-  style.textContent = `
-    .folder-file-row{
-      grid-template-columns:28px minmax(0,1fr) auto auto 38px!important;
-      align-items:center!important;
-    }
-    .folder-file-doodle{white-space:nowrap;justify-self:end}
-    .folder-file-manage{
-      min-width:38px!important;width:38px!important;height:34px!important;
-      padding:4px 7px!important;font-size:20px!important;line-height:1!important;
-      white-space:nowrap!important;justify-self:end
-    }
-    .archive-section-label{
-      margin:14px 0 8px;color:var(--text-muted,#64748b);
-      font-size:13px;font-weight:700;letter-spacing:.04em
-    }
-    .archive-note-list{display:grid;gap:8px;margin-top:10px;width:100%}
-    .archive-note-list .entry-row{
-      display:grid;grid-template-columns:28px minmax(0,1fr) auto;
-      align-items:center;gap:10px;padding:12px 14px;
-      border:1px solid #dce5e1;border-radius:12px;background:#fff;cursor:pointer
-    }
-    .archive-note-list .entry-row::before{content:"📝";font-size:19px;line-height:1}
-    .archive-note-list .entry-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}
-    .archive-note-list .entry-meta{white-space:nowrap;color:var(--text-muted,#64748b);font-size:13px}
-    .archive-note-list .entry-drag,.archive-note-list .entry-move,.archive-note-list .entry-del{display:none!important}
-    .folder-file-list.grid-view .folder-file-row{
-      grid-template-columns:minmax(0,1fr) auto 38px!important
-    }
-    .folder-file-list.grid-view .folder-file-icon,
-    .folder-file-list.grid-view .folder-file-name{grid-column:1 / 4!important}
-    .folder-file-list.grid-view .folder-file-meta{grid-column:1!important}
-    .folder-file-list.grid-view .folder-file-doodle{grid-column:2!important}
-    .folder-file-list.grid-view .folder-file-manage{grid-column:3!important}
-    @media(max-width:719px){
-      .folder-file-list.grid-view .folder-file-row,.folder-file-row{
-        grid-template-columns:26px minmax(0,1fr) auto 38px!important
-      }
-      .folder-file-list.grid-view .folder-file-icon,
-      .folder-file-list.grid-view .folder-file-name{grid-column:auto!important}
-      .folder-file-meta{display:none!important}
-      .archive-note-list .entry-row{grid-template-columns:26px minmax(0,1fr)}
-      .archive-note-list .entry-meta{grid-column:2;font-size:12px}
-    }
-  `;
+  style.textContent = [
+    ".folder-file-row{grid-template-columns:28px minmax(0,1fr) auto auto 38px!important;align-items:center!important}",
+    ".folder-file-doodle{white-space:nowrap;justify-self:end}",
+    ".folder-file-manage{min-width:38px!important;width:38px!important;height:34px!important;padding:4px 7px!important;font-size:20px!important;line-height:1!important;white-space:nowrap!important;justify-self:end}",
+    ".archive-section-label{margin:14px 0 8px;color:var(--text-muted,#64748b);font-size:13px;font-weight:700;letter-spacing:.04em}",
+    ".archive-note-list{display:grid;gap:8px;margin-top:10px;width:100%}",
+    ".archive-note-list .entry-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:10px;padding:12px 14px;border:1px solid #dce5e1;border-radius:12px;background:#fff;cursor:pointer}",
+    ".archive-note-list .entry-row::before{content:'📝';font-size:19px;line-height:1}",
+    ".archive-note-list .entry-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}",
+    ".archive-note-list .entry-meta{white-space:nowrap;color:var(--text-muted,#64748b);font-size:13px}",
+    ".archive-note-list .entry-drag,.archive-note-list .entry-move,.archive-note-list .entry-del{display:none!important}",
+    ".folder-file-list.grid-view .folder-file-row{grid-template-columns:minmax(0,1fr) auto 38px!important}",
+    ".folder-file-list.grid-view .folder-file-icon,.folder-file-list.grid-view .folder-file-name{grid-column:1 / 4!important}",
+    ".folder-file-list.grid-view .folder-file-meta{grid-column:1!important}",
+    ".folder-file-list.grid-view .folder-file-doodle{grid-column:2!important}",
+    ".folder-file-list.grid-view .folder-file-manage{grid-column:3!important}",
+    "@media(max-width:719px){.folder-file-list.grid-view .folder-file-row,.folder-file-row{grid-template-columns:26px minmax(0,1fr) auto 38px!important}.folder-file-list.grid-view .folder-file-icon,.folder-file-list.grid-view .folder-file-name{grid-column:auto!important}.folder-file-meta{display:none!important}.archive-note-list .entry-row{grid-template-columns:26px minmax(0,1fr)}.archive-note-list .entry-meta{grid-column:2;font-size:12px}}"
+  ].join("");
   document.head.appendChild(style);
 
   let applying = false;
   function setHeading(selector, text) {
     const heading = document.querySelector(selector);
-    if (!heading) return;
+    if (!heading || heading.dataset.archiveTitle === text) return;
     const count = heading.querySelector(".count");
     heading.textContent = text;
     if (count) heading.append(" ", count);
+    heading.dataset.archiveTitle = text;
   }
 
-  function addLabel(root, target, text) {
+  function addLabel(target, text) {
     if (!target || target.previousElementSibling?.dataset?.archiveLabel === text) return;
     const label = document.createElement("div");
     label.className = "archive-section-label";
@@ -82,14 +57,13 @@ const ARCHIVE_FIX_V42 = String.raw`
       if (!root) return;
 
       root.querySelectorAll(".folder-file-manage").forEach((button) => {
-        button.textContent = "⋯";
+        if (button.textContent !== "⋯") button.textContent = "⋯";
         button.title = "管理附件、OCR 與刪除";
         button.setAttribute("aria-label", "管理附件");
       });
 
-      root.querySelectorAll(".archive-section-label").forEach((label) => label.remove());
       const fileList = root.querySelector(".folder-file-list");
-      if (fileList) addLabel(root, fileList, "已歸檔檔案");
+      if (fileList) addLabel(fileList, "已歸檔檔案");
 
       const noteList = root.querySelector(".folder-note-list, .archive-note-list");
       if (noteList) {
@@ -103,7 +77,7 @@ const ARCHIVE_FIX_V42 = String.raw`
           }
           row.querySelectorAll(".entry-drag,.entry-move,.entry-del").forEach((node) => node.remove());
         });
-        if (noteList.querySelector(".entry-row")) addLabel(root, noteList, "已歸檔筆記");
+        if (noteList.querySelector(".entry-row")) addLabel(noteList, "已歸檔筆記");
         else noteList.remove();
       }
     } finally {
