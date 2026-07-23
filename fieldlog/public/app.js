@@ -528,6 +528,9 @@ async function quickNote() {
 
 async function openEntry(id) {
   const e = await api(`/entries/${id}`);
+  // Tier 2 會把 PDF 每頁轉成圖檔供 OCR 使用；這些是處理用的衍生附件，
+  // 不逐張顯示在附件清單，避免數十頁 PDF 產生大量縮圖。處理進度仍顯示在來源 PDF 上。
+  const visibleAttachments = (e.attachments || []).filter((a) => !a.source_pdf_id);
   const folder = e.folder_id ? FOLDERS.find((f) => f.id === e.folder_id) : null;
   const template = FOLDER_TEMPLATES[folder ? folder.type : "其他"] || [];
   const fields = JSON.parse(e.fields_json || "{}");
@@ -567,7 +570,7 @@ async function openEntry(id) {
       <button class="btn small" id="e-process" type="button" title="用 Cloudflare AI 把還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取（已處理過的不會重跑）">🪄 Cloudflare AI 整理</button>
       <span id="e-upload-status" class="sub"></span>
     </div>
-    <div id="e-attachments" class="att-list">${e.attachments.map((a) => attHtml(a, e.attachments)).join("") || `<p class="sub">尚無附件</p>`}</div>
+    <div id="e-attachments" class="att-list">${visibleAttachments.map((a) => attHtml(a, e.attachments)).join("") || `<p class="sub">尚無附件</p>`}</div>
     <div class="entry-danger-zone">
       <button class="btn entry-delete" id="e-delete" type="button">🗑 刪除整筆記事</button>
       <p class="sub">刪除後無法復原，附件也會一併刪除。</p>
