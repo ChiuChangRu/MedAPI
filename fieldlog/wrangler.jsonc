@@ -2,7 +2,7 @@
   // 隨身助理記事本（fieldlog）— 與 medtec-2026 完全獨立的 Worker
   // 部署前要改的：把下方 database_id 換成新建 D1 資料庫的 UUID（見 README）
   "name": "fieldlog",
-  "main": "src/worker-v49.js",
+  "main": "src/worker-entry.js",
   "compatibility_date": "2026-07-01",
   // 保留 Dashboard 設定的 FIELD_PIN 與 Cloudflare API Token 等 Secret／變數。
   "keep_vars": true,
@@ -13,7 +13,7 @@
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
-    // 首頁與 app.js 先進 Worker；v49 固定單行三點管理，且只開啟所選附件。
+    // 首頁與 app.js 先進 Worker；worker-entry 提供固定入口與原子「記一句」API。
     "run_worker_first": ["/", "/index.html", "/wiki/*", "/app.js"]
   },
   "d1_databases": [
