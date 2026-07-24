@@ -62,8 +62,22 @@ const SCHEMA = [
     status TEXT DEFAULT 'reserved',
     created_at TEXT NOT NULL
   )`,
+  // 記事與記事之間的關聯（例：這次實驗引用了這份 ISO 標準、這份專利對照這家廠商的產品）。
+  // 刻意不分「主從」、也不限制 relation_type 的字典——用途橫跨標準/實驗/廠商/專利，
+  // 關係種類會一直長，寫死列表反而綁死用法。方向性用 relation_type 的文字本身表達
+  // （例："引用標準"／"被引用於"是同一件事的兩個方向，查詢時雙向都會找到）。
+  `CREATE TABLE IF NOT EXISTS relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_entry_id INTEGER NOT NULL,
+    to_entry_id INTEGER NOT NULL,
+    relation_type TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder_id)`,
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_entry_id)`,
 ];
 
 // 舊表補欄位用（D1 沒有 ADD COLUMN IF NOT EXISTS，欄位已存在時失敗直接忽略即可）
@@ -392,6 +406,21 @@ async function handleApi(request, env, url) {
   }
 
   // ---- entries ----
+  // 跨資料夾找記事（給「新增關聯」的選取器用：關聯常常是跨資料夾的，
+  // 例如把一筆實驗記事關聯到另一棵資料夾樹下的廠商記事）
+  if (path === "/entries/search" && method === "GET") {
+    const q = (url.searchParams.get("q") || "").trim();
+    const excludeId = Number(url.searchParams.get("exclude_id") || 0);
+    if (!q) return json([]);
+    const like = `%${q}%`;
+    const { results } = await db.prepare(
+      `SELECT e.id, e.title, e.folder_id, f.name AS folder_name, f.type AS folder_type, e.created_at
+       FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+       WHERE (e.title LIKE ? OR e.body LIKE ?) AND e.id != ?
+       ORDER BY e.id DESC LIMIT 20`
+    ).bind(like, like, excludeId).all();
+    return json(results);
+  }
   if (path === "/entries" && method === "GET") {
     const folderId = url.searchParams.get("folder_id");
     const inbox = url.searchParams.get("inbox");
@@ -456,9 +485,156 @@ async function handleApi(request, env, url) {
       for (const a of atts) await env.FILES.delete(a.key).catch(() => {});
     }
     await db.prepare("DELETE FROM attachments WHERE entry_id = ?").bind(id).run();
+    await db.prepare("DELETE FROM relations WHERE from_entry_id = ? OR to_entry_id = ?").bind(id, id).run();
     await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
     await logHistory(db, null, old.folder_id, "刪除紀錄", old.title);
     return json({ ok: true });
+  }
+
+  // ---- relations（記事與記事的關聯：實驗引用標準、專利對照廠商產品……不限類型）----
+  if (path === "/relations" && method === "GET") {
+    const entryId = Number(url.searchParams.get("entry_id") || 0);
+    if (!entryId) return bad("需指定 entry_id");
+    // 雙向都要查：這筆記事可能是關聯的起點，也可能是別人關聯過來的終點
+    const { results } = await db.prepare(
+      `SELECT r.*, e.title AS other_title, e.folder_id AS other_folder_id,
+              f.name AS other_folder_name, f.type AS other_folder_type,
+              (r.from_entry_id = ?) AS is_from
+       FROM relations r
+       JOIN entries e ON e.id = (CASE WHEN r.from_entry_id = ? THEN r.to_entry_id ELSE r.from_entry_id END)
+       LEFT JOIN folders f ON f.id = e.folder_id
+       WHERE r.from_entry_id = ? OR r.to_entry_id = ?
+       ORDER BY r.id DESC`
+    ).bind(entryId, entryId, entryId, entryId).all();
+    return json(results);
+  }
+  if (path === "/relations" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const fromId = Number(body.from_entry_id || 0);
+    const toId = Number(body.to_entry_id || 0);
+    const relationType = (body.relation_type || "").trim();
+    if (!fromId || !toId) return bad("需指定 from_entry_id 與 to_entry_id");
+    if (fromId === toId) return bad("不能關聯到自己");
+    if (!relationType) return bad("relation_type 為必填");
+    const [from, to] = await Promise.all([
+      db.prepare("SELECT id FROM entries WHERE id = ?").bind(fromId).first(),
+      db.prepare("SELECT id FROM entries WHERE id = ?").bind(toId).first(),
+    ]);
+    if (!from || !to) return bad("找不到其中一筆記事", 404);
+    const r = await db.prepare(
+      "INSERT INTO relations (from_entry_id, to_entry_id, relation_type, note, created_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(fromId, toId, relationType, (body.note || "").trim(), now()).run();
+    await logHistory(db, fromId, null, "新增關聯", `${relationType} → entry ${toId}`);
+    return json({ id: r.meta.last_row_id, ok: true });
+  }
+  const relationMatch = path.match(/^\/relations\/(\d+)$/);
+  if (relationMatch && method === "DELETE") {
+    const id = Number(relationMatch[1]);
+    const old = await db.prepare("SELECT * FROM relations WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到關聯", 404);
+    await db.prepare("DELETE FROM relations WHERE id = ?").bind(id).run();
+    await logHistory(db, old.from_entry_id, null, "刪除關聯", `${old.relation_type} → entry ${old.to_entry_id}`);
+    return json({ ok: true });
+  }
+
+  // ---- 一次性匯入：把 Medtec 展商主檔＋團隊拜訪紀錄搬進來，變成「廠商」類型的記事 ----
+  // 展商主檔（exhibitors.json）走 MEDTEC Service Binding；團隊狀態／拜訪紀錄／附件擷取文字
+  // 直接讀 DB_MEDTEC（唯讀共綁，同一顆 D1，做法跟 mcp/src/worker.js 一樣）。
+  // 冪等：用 fields_json 裡的 medtec_exhibitor_id 判斷這家展商是否已經匯入過，
+  // 重複呼叫不會產生重複記事（但也不會覆寫匯入後使用者自己編輯過的內容）。
+  // 支援 limit/offset 分頁——585 家一次處理容易跑太久，分批呼叫、看回傳的 next_offset 繼續。
+  if (path === "/admin/import-exhibitors" && method === "POST") {
+    if (!env.MEDTEC) return bad("尚未設定 MEDTEC Service Binding（見 fieldlog/wrangler.jsonc）", 501);
+    if (!env.DB_MEDTEC) return bad("尚未設定 DB_MEDTEC D1 binding（見 fieldlog/wrangler.jsonc）", 501);
+    const limit = Math.min(Number(url.searchParams.get("limit") || 50) || 50, 200);
+    const offset = Math.max(Number(url.searchParams.get("offset") || 0) || 0, 0);
+
+    const exRes = await env.MEDTEC.fetch("https://medtec.internal/data/exhibitors.json");
+    if (!exRes.ok) return bad(`讀取 Medtec 展商資料失敗（HTTP ${exRes.status}）`, 502);
+    const exData = await exRes.json();
+    const allExhibitors = exData.exhibitors || [];
+    const categoryNames = new Map((exData.categories || []).map((c) => [c.id, c.name_zh || c.name_en || c.id]));
+    const batch = allExhibitors.slice(offset, offset + limit);
+    if (!batch.length) {
+      return json({ ok: true, processed: 0, imported: 0, skipped: 0, total: allExhibitors.length, next_offset: null });
+    }
+
+    let rootFolder = await db.prepare(
+      "SELECT id FROM folders WHERE type = '廠商' AND parent_id IS NULL AND name = ?"
+    ).bind("廠商（Medtec 2026）").first();
+    const rootFolderId = rootFolder
+      ? rootFolder.id
+      : (await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
+          .bind("廠商（Medtec 2026）", "廠商", null, now()).run()).meta.last_row_id;
+    const categoryFolderIds = new Map(); // 分類名稱 -> 資料夾 id（懶建立，用到才建）
+    async function categoryFolderId(catId) {
+      const name = categoryNames.get(catId) || "未分類";
+      if (categoryFolderIds.has(name)) return categoryFolderIds.get(name);
+      const existing = await db.prepare(
+        "SELECT id FROM folders WHERE type = '廠商' AND parent_id = ? AND name = ?"
+      ).bind(rootFolderId, name).first();
+      if (existing) { categoryFolderIds.set(name, existing.id); return existing.id; }
+      const r = await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
+        .bind(name, "廠商", rootFolderId, now()).run();
+      categoryFolderIds.set(name, r.meta.last_row_id);
+      return r.meta.last_row_id;
+    }
+
+    let imported = 0, skipped = 0;
+    for (const ex of batch) {
+      const already = await db.prepare(
+        "SELECT id FROM entries WHERE json_extract(fields_json, '$.medtec_exhibitor_id') = ?"
+      ).bind(ex.id).first();
+      if (already) { skipped++; continue; }
+      const folderId = await categoryFolderId(ex.category);
+      const [state, notesRes, attsRes] = await Promise.all([
+        env.DB_MEDTEC.prepare("SELECT * FROM exhibitor_state WHERE exhibitor_id = ?").bind(ex.id).first(),
+        env.DB_MEDTEC.prepare("SELECT * FROM notes WHERE exhibitor_id = ? AND deleted = 0 ORDER BY created_at").bind(ex.id).all(),
+        env.DB_MEDTEC.prepare("SELECT * FROM attachments WHERE exhibitor_id = ? ORDER BY id").bind(ex.id).all(),
+      ]);
+      const bodyParts = [];
+      if (ex.description) bodyParts.push(String(ex.description).trim());
+      if (state) {
+        const deptTags = JSON.parse(state.dept_tags || "[]").join("、");
+        const goalTags = JSON.parse(state.goal_tags || "[]").join("、");
+        const stateLine = [
+          state.status ? `拜訪狀態：${state.status}` : "",
+          state.assignee ? `負責人：${state.assignee}` : "",
+          deptTags ? `部門標籤：${deptTags}` : "",
+          goalTags ? `目標標籤：${goalTags}` : "",
+          state.post_class ? `分類後評估：${state.post_class}` : "",
+        ].filter(Boolean).join("｜");
+        if (stateLine) bodyParts.push(`## 匯入時的團隊狀態\n${stateLine}`);
+      }
+      const notes = notesRes.results || [];
+      if (notes.length) {
+        bodyParts.push(`## 拜訪紀錄（匯入自 Medtec 系統，共 ${notes.length} 則）`);
+        for (const n of notes) bodyParts.push(`- ${n.created_at}｜${n.author}｜${n.type}：${n.content}`);
+      }
+      const atts = attsRes.results || [];
+      if (atts.length) {
+        bodyParts.push(`## 附件擷取內容（匯入自 Medtec 系統，原始檔案仍留在 Medtec；共 ${atts.length} 個）`);
+        for (const a of atts) {
+          const text = stripPdfMetadata(a.ocr_text || "") || (a.transcript || "");
+          bodyParts.push(`- ${a.filename}${text ? `：${text.slice(0, 3000)}${text.length > 3000 ? "…（已截斷，原始檔案在 Medtec 系統）" : ""}` : "（尚無擷取內容）"}`);
+        }
+      }
+      const fields = {
+        "攤位／位置": ex.booth_no || "",
+        "國家": ex.country || "",
+        "產品": (ex.products || []).join("、"),
+        "聯絡窗口": "",
+        "評估結果": "",
+        medtec_exhibitor_id: ex.id,
+      };
+      const r = await db.prepare(
+        "INSERT INTO entries (folder_id, title, fields_json, body, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(folderId, ex.name_zh || ex.name_en || ex.id, JSON.stringify(fields), bodyParts.join("\n\n"), now()).run();
+      await logHistory(db, r.meta.last_row_id, folderId, "匯入廠商", `來自 Medtec：${ex.name_zh || ex.id}`);
+      imported++;
+    }
+    const nextOffset = offset + batch.length < allExhibitors.length ? offset + batch.length : null;
+    return json({ ok: true, processed: batch.length, imported, skipped, total: allExhibitors.length, next_offset: nextOffset });
   }
 
   // ---- 附件上傳（R2）----

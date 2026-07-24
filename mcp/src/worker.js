@@ -256,7 +256,7 @@ const TOOLS = [
   },
   {
     name: "search_fieldlog",
-    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的檔名／錄音逐字稿／照片與 PDF 擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。可選 folder_id／folder_type 縮小到特定資料夾（例如專門歸檔標準規範、型錄的資料夾——先用 list_fieldlog_folders 查 id）。回傳命中片段與 entry/attachment id；附件命中後用 get_fieldlog_attachment 拉該附件完整未截斷的全文（例如查一份 ISO 標準的完整條文，不是只看片段）。",
+    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的檔名／錄音逐字稿／照片與 PDF 擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。可選 folder_id／folder_type 縮小到特定資料夾（例如專門歸檔標準規範、型錄的資料夾——先用 list_fieldlog_folders 查 id）。回傳命中片段與 entry/attachment id；附件命中後用 get_fieldlog_attachment 拉該附件完整未截斷的全文（例如查一份 ISO 標準的完整條文，不是只看片段）。找到 entry 後想看它跟哪些標準／實驗／廠商／專利有交叉關聯，改用 get_related(id)。",
     inputSchema: {
       type: "object",
       properties: {
@@ -404,6 +404,39 @@ const TOOLS = [
       if (a.transcript) lines.push("", "## 逐字稿（完整）", a.transcript);
       if (ocrBody) lines.push("", "## 擷取文字（完整）", ocrBody);
       if (!a.transcript && !ocrBody) lines.push("", "（這個附件還沒轉文字/擷取，或該檔案本身沒有可擷取的文字內容——PDF 若是圖形排版、沒有文字層，一般擷取抓不到，需要 Tier 2 深度處理）");
+      return lines.join("\n");
+    },
+  },
+  {
+    name: "get_related",
+    description: "查詢隨身記裡『這筆記事跟哪些其他記事有關聯』（雙向），例如一份 ISO 標準被哪些實驗引用、一家廠商對照哪些專利、一次查廠關聯到哪次拜訪。這是交叉比對用的，不是關鍵字搜尋——關聯要先在隨身記前端手動建立（🔗 新增關聯）才查得到，不是系統自動猜出來的。找不到關聯不代表沒關係，可能只是還沒手動連過。",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "number", description: "entry id（search_fieldlog 或 get_fieldlog_entry 查到的編號）" } },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(id).first();
+      if (!e) throw new Error(`找不到 entry ${id}`);
+      const { results } = await env.DB_FIELDLOG.prepare(
+        `SELECT r.*, ent.title AS other_title, f.name AS other_folder_name, f.type AS other_folder_type
+         FROM relations r
+         JOIN entries ent ON ent.id = (CASE WHEN r.from_entry_id = ? THEN r.to_entry_id ELSE r.from_entry_id END)
+         LEFT JOIN folders f ON f.id = ent.folder_id
+         WHERE r.from_entry_id = ? OR r.to_entry_id = ?
+         ORDER BY r.id DESC`
+      ).bind(id, id, id).all();
+      if (!results.length) return `[entry ${id}] ${e.title || "（未命名）"} 目前沒有任何關聯（關聯要在隨身記前端手動建立，用 search_fieldlog 找到候選記事後，去隨身記 App 點「🔗 新增關聯」）。`;
+      const lines = [`# ${e.title || "（未命名）"} 的關聯`];
+      for (const r of results) {
+        const isFrom = r.from_entry_id === id;
+        const otherId = isFrom ? r.to_entry_id : r.from_entry_id;
+        const arrow = isFrom ? "→" : "←";
+        const where = r.other_folder_name ? `${r.other_folder_type}｜${r.other_folder_name}` : "收件匣";
+        lines.push(`- ${arrow} [entry ${otherId}] ${r.relation_type}：${r.other_title || "（未命名）"}｜${where}${r.note ? `（${r.note}）` : ""}`);
+      }
       return lines.join("\n");
     },
   },

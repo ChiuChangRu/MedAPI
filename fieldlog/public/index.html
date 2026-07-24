@@ -140,6 +140,35 @@
   </form>
 </div>
 
+<div class="overlay" id="relation-picker-overlay">
+  <div class="modal narrow">
+    <h2>新增關聯</h2>
+    <p class="sub">關聯到哪一筆記事？（例如這次實驗引用的標準、對照的廠商產品）</p>
+    <input id="relation-search-input" placeholder="輸入標題關鍵字搜尋…" autocomplete="off" />
+    <div id="relation-search-results" class="relation-search-results"></div>
+    <div id="relation-picked" class="relation-picked" style="display:none;">
+      <p class="sub">已選：<strong id="relation-picked-title"></strong></p>
+      <label for="relation-type-input">關係</label>
+      <input id="relation-type-input" list="relation-type-suggestions" autocomplete="off" placeholder="例：引用標準、測試對象、專利依據" />
+      <datalist id="relation-type-suggestions">
+        <option value="引用標準"></option>
+        <option value="被引用於"></option>
+        <option value="測試對象"></option>
+        <option value="專利依據"></option>
+        <option value="供應商"></option>
+        <option value="比對對象"></option>
+        <option value="延伸自"></option>
+      </datalist>
+      <label for="relation-note-input">備註（選填）</label>
+      <input id="relation-note-input" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="relation-picker-cancel" type="button">取消</button>
+      <button class="btn primary" id="relation-picker-confirm" type="button" disabled>建立關聯</button>
+    </div>
+  </div>
+</div>
+
 <div class="folder-trash-zone" id="folder-trash-zone" aria-hidden="true">🗑 放開以刪除資料夾分類</div>
 <div class="entry-new-folder-zone" id="entry-new-folder-zone" aria-hidden="true">📁 放開以建立新資料夾並歸檔</div>
 

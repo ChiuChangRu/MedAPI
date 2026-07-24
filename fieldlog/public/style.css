@@ -414,6 +414,21 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .att-transcript { font-size: 13px; line-height: 1.6; margin: 6px 0 0; white-space: pre-line; color: var(--text-muted); }
 .att-transcribe { display: inline-block; margin-top: 6px; font-size: 13px; }
 
+/* ===== 關聯（記事與記事的交叉引用）===== */
+.section-title { display: flex; align-items: center; gap: 8px; }
+.relation-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 6px; font-size: 13px;
+}
+.relation-arrow { color: var(--text-muted); font-weight: 700; }
+.relation-type { background: var(--accent-light, #eef2ff); color: var(--accent-dark); border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+.relation-link { font-weight: 600; }
+.relation-del { margin-left: auto; color: #b91c1c; }
+.relation-search-results { max-height: 220px; overflow-y: auto; margin: 6px 0; }
+.relation-result { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.relation-result:hover { border-color: var(--accent-dark); }
+.relation-picked { margin-top: 8px; }
+
 /* ===== 現場採集模式（同 Medtec 款式）===== */
 .capture-overlay { position: fixed; inset: 0; z-index: 80; background: #000; display: flex; flex-direction: column; }
 #capture-video { flex: 1; width: 100%; min-height: 0; object-fit: cover; }

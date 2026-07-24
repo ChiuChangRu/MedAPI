@@ -11,6 +11,9 @@ const FOLDER_TEMPLATES = {
   "上課": ["課程名", "講者", "重點", "待查資料"],
   "會議": ["會議主題", "與會者", "討論事項", "決議", "待辦／負責人"],
   "查廠": ["廠商／廠區", "查核範圍", "觀察結果", "缺失／風險", "改善追蹤"],
+  "標準": ["標準編號", "版本／年份", "適用範圍", "關鍵要求", "對應產品／實驗"],
+  "廠商": ["攤位／位置", "國家", "產品", "聯絡窗口", "評估結果"],
+  "專利": ["專利號", "申請／公告日", "專利權人", "技術重點", "與我方關聯"],
   "其他": [],
 };
 
@@ -27,6 +30,8 @@ const FOLDER_TYPE_META = {
   "參展": ["🏢", "展會與廠商"], "拜訪": ["🤝", "客戶與供應商"],
   "實驗": ["🧪", "條件與結果"], "上課": ["🎓", "課程與筆記"],
   "會議": ["👥", "決議與待辦"], "查廠": ["🔎", "查核與改善"],
+  "標準": ["📐", "ISO／ASTM 等規範"], "廠商": ["🏭", "供應商與產品"],
+  "專利": ["💡", "專利與技術"],
   "其他": ["🗂️", "自由分類"],
 };
 const FOLDER_TYPE_ORDER = Object.keys(FOLDER_TEMPLATES);
@@ -637,6 +642,9 @@ async function openEntry(id) {
       <span id="e-upload-status" class="sub"></span>
     </div>
     <div id="e-attachments" class="att-list">${visibleAttachments.map((a) => attHtml(a, e.attachments)).join("") || `<p class="sub">尚無附件</p>`}</div>
+    <hr/>
+    <h3 class="section-title">關聯 <button class="btn small" id="e-add-relation" type="button" title="關聯到另一筆記事，例如這次實驗引用的標準、對照的廠商產品">🔗 新增關聯</button></h3>
+    <div id="e-relations"><p class="sub">載入中…</p></div>
     <div class="entry-danger-zone">
       <button class="btn entry-delete" id="e-delete" type="button">🗑 刪除整筆記事</button>
       <p class="sub">刪除後無法復原，附件也會一併刪除。</p>
@@ -697,6 +705,8 @@ async function openEntry(id) {
     }
   };
   bindAttActions(id);
+  loadRelations(id);
+  $("e-add-relation").onclick = () => openRelationPicker(id, () => loadRelations(id));
   api(`/entries/${id}/auto-transcribe`, { method: "POST", body: "{}" }).then((r) => {
     if (r.processed) {
       showToast(`已安全自動轉錄 ${r.processed} 段`);
@@ -709,6 +719,121 @@ async function openEntry(id) {
     const status = $("e-auto-status");
     if (status) status.textContent = `自動轉錄未執行：${err.message}`;
   });
+}
+
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+// 關聯：這筆記事跟另一筆記事的關係（例：實驗引用標準、專利對照廠商產品）。
+// 雙向都查得到——本記事是起點時箭頭朝右，是別人關聯過來的終點時箭頭朝左。
+async function loadRelations(entryId) {
+  const box = $("e-relations");
+  if (!box) return; // modal 可能已經關閉（切換太快）
+  try {
+    const rels = await api(`/relations?entry_id=${entryId}`);
+    if (!rels.length) { box.innerHTML = `<p class="sub">尚無關聯</p>`; return; }
+    box.innerHTML = rels.map((r) => {
+      const otherId = r.is_from ? r.to_entry_id : r.from_entry_id;
+      const arrow = r.is_from ? "→" : "←";
+      const where = r.other_folder_name ? `${esc(r.other_folder_type)}｜${esc(r.other_folder_name)}` : "收件匣";
+      return `<div class="relation-row" data-id="${r.id}">
+        <span class="relation-arrow">${arrow}</span>
+        <span class="relation-type">${esc(r.relation_type)}</span>
+        <a href="#" class="relation-link" data-open="${otherId}">${esc(r.other_title || "（未命名）")}</a>
+        <span class="sub">${where}</span>
+        ${r.note ? `<span class="sub">「${esc(r.note)}」</span>` : ""}
+        <button class="btn small ghost relation-del" data-id="${r.id}" type="button" title="刪除這個關聯">✕</button>
+      </div>`;
+    }).join("");
+    box.querySelectorAll(".relation-link").forEach((el) => {
+      el.onclick = (ev) => { ev.preventDefault(); openEntry(Number(el.dataset.open)); };
+    });
+    box.querySelectorAll(".relation-del").forEach((el) => {
+      el.onclick = async () => {
+        if (!confirm("確定刪除這個關聯？")) return;
+        try {
+          await api(`/relations/${el.dataset.id}`, { method: "DELETE" });
+          loadRelations(entryId);
+        } catch (err) { showToast("刪除關聯失敗：" + err.message); }
+      };
+    });
+  } catch (err) {
+    box.innerHTML = `<p class="sub">關聯載入失敗：${esc(err.message)}</p>`;
+  }
+}
+
+let RELATION_PICKED = null;
+
+function openRelationPicker(fromEntryId, onDone) {
+  RELATION_PICKED = null;
+  const overlay = $("relation-picker-overlay");
+  const input = $("relation-search-input");
+  const results = $("relation-search-results");
+  const picked = $("relation-picked");
+  const typeInput = $("relation-type-input");
+  const confirmBtn = $("relation-picker-confirm");
+  input.value = "";
+  results.innerHTML = "";
+  picked.style.display = "none";
+  typeInput.value = "";
+  $("relation-note-input").value = "";
+  confirmBtn.disabled = true;
+  overlay.classList.add("open");
+  input.focus();
+
+  const runSearch = debounce(async () => {
+    const q = input.value.trim();
+    if (!q || (RELATION_PICKED && q === RELATION_PICKED.title)) { results.innerHTML = ""; return; }
+    try {
+      const rows = await api(`/entries/search?q=${encodeURIComponent(q)}&exclude_id=${fromEntryId}`);
+      results.innerHTML = rows.length
+        ? rows.map((r) => `<div class="relation-result" data-id="${r.id}" data-title="${esc(r.title || "（未命名）")}">
+            <strong>${esc(r.title || "（未命名）")}</strong>
+            <span class="sub">${r.folder_name ? `${esc(r.folder_type)}｜${esc(r.folder_name)}` : "收件匣"}</span>
+          </div>`).join("")
+        : `<p class="sub">沒有符合的記事</p>`;
+      results.querySelectorAll(".relation-result").forEach((el) => {
+        el.onclick = () => {
+          RELATION_PICKED = { id: Number(el.dataset.id), title: el.dataset.title };
+          $("relation-picked-title").textContent = RELATION_PICKED.title;
+          picked.style.display = "";
+          results.innerHTML = "";
+          input.value = RELATION_PICKED.title;
+          confirmBtn.disabled = !typeInput.value.trim();
+        };
+      });
+    } catch (err) {
+      results.innerHTML = `<p class="sub">搜尋失敗：${esc(err.message)}</p>`;
+    }
+  }, 300);
+  input.oninput = runSearch;
+  typeInput.oninput = () => { confirmBtn.disabled = !RELATION_PICKED || !typeInput.value.trim(); };
+
+  const close = () => { overlay.classList.remove("open"); input.oninput = null; typeInput.oninput = null; };
+  $("relation-picker-cancel").onclick = close;
+  confirmBtn.onclick = async () => {
+    if (!RELATION_PICKED || !typeInput.value.trim()) return;
+    confirmBtn.disabled = true;
+    try {
+      await api("/relations", {
+        method: "POST",
+        body: JSON.stringify({
+          from_entry_id: fromEntryId,
+          to_entry_id: RELATION_PICKED.id,
+          relation_type: typeInput.value.trim(),
+          note: $("relation-note-input").value.trim(),
+        }),
+      });
+      showToast("已新增關聯");
+      close();
+      onDone();
+    } catch (err) {
+      showToast("新增關聯失敗：" + err.message);
+      confirmBtn.disabled = false;
+    }
+  };
 }
 
 // 🪄 一鍵整理：這筆紀錄還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取。
