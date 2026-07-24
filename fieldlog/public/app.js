@@ -73,6 +73,12 @@ function isPdfAtt(a) {
   return (a.mime || "") === "application/pdf" || (a.filename || "").toLowerCase().endsWith(".pdf");
 }
 
+// docx／xlsx／pptx／純文字：後端直接從檔案結構解出文字，不經過 AI（見 imageSkill.js
+// 的 detectNativeTextKind），前端只需要知道「這種檔案也可以按擷取文字」
+function isNativeDocAtt(a) {
+  return /\.(docx|xlsx|pptx|txt|md|csv|json|log)$/i.test(a.filename || "");
+}
+
 // 長文（PDF 全文可達數萬字）在清單裡只顯示開頭
 function clipText(s, n) {
   s = String(s ?? "").trim();
@@ -636,7 +642,7 @@ async function openEntry(id) {
       <button class="btn small capture-btn" id="e-video">🎥 錄影</button>
       <button class="btn small capture-btn" id="e-photo">📷 拍照</button>
       <button class="btn small capture-btn" id="e-audio">🎙 錄音</button>
-      <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
+      <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf,.docx,.xlsx,.pptx,.txt,.md,.csv" multiple hidden /></label>
       <button class="btn small" id="e-process" type="button" title="用 Cloudflare AI 把還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取（已處理過的不會重跑）">🪄 Cloudflare AI 整理</button>
       <button class="btn small" id="e-rename-files" type="button" title="利用既有 OCR、逐字稿與記事資訊整理全部舊附件名稱，不會重新呼叫 AI">🏷 整理舊檔名</button>
       <span id="e-upload-status" class="sub"></span>
@@ -846,7 +852,7 @@ async function processEntryAttachments(id, btn) {
     const e = await api(`/entries/${id}`);
     // 「處理過但結果是空的」（transcribed_at/ocr_at 有時間戳）不算待整理，不重跑
     const audioTodo = (e.attachments || []).filter((a) => a.kind === "audio" && !a.transcript && !a.transcribed_at);
-    const photoTodo = (e.attachments || []).filter((a) => (a.kind === "photo" || isPdfAtt(a)) && !a.ocr_text && !a.ocr_at);
+    const photoTodo = (e.attachments || []).filter((a) => (a.kind === "photo" || isPdfAtt(a) || isNativeDocAtt(a)) && !a.ocr_text && !a.ocr_at);
     const total = audioTodo.length + photoTodo.length;
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
@@ -999,7 +1005,11 @@ function attHtml(a, siblings) {
   const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
   const originalName = a.original_filename && a.original_filename !== a.filename
     ? `<div class="att-original">原始名稱：${esc(a.original_filename)}</div>` : "";
-  let preview = `<a href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
+  const docIcon = (a.filename || "").toLowerCase();
+  const fileIcon = isPdfAtt(a) ? "📕"
+    : docIcon.endsWith(".docx") ? "📘" : docIcon.endsWith(".xlsx") ? "📊" : docIcon.endsWith(".pptx") ? "📙"
+      : isNativeDocAtt(a) ? "📄" : "📎";
+  let preview = `<a href="${url}" target="_blank" rel="noopener">${fileIcon} ${esc(a.filename)}</a>`;
   if (a.kind === "photo") preview = `<a href="${url}" target="_blank" rel="noopener"><img class="att-thumb" src="${url}" loading="lazy" alt="${esc(a.filename)}" /></a>`;
   if (a.kind === "audio") preview = `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`;
   const offset = a.offset_secs !== null && a.offset_secs !== undefined ? `<span class="att-offset">📸 錄音 ${fmtSecs(a.offset_secs)}</span>` : "";
@@ -1020,7 +1030,7 @@ function attHtml(a, siblings) {
           ? aiFold(`📝 已整理（無語音內容）`, `<p class="att-transcript">辨識過，沒有語音內容 <a href="#" class="att-transcribe" data-id="${a.id}">重新辨識</a></p>`)
           : aiFold(`⏳ 未整理`, `<a href="#" class="att-transcribe" data-id="${a.id}">轉文字</a> <a href="#" class="att-skip skip-link" data-id="${a.id}" data-field="skip_transcribe" title="標成不整理：不呼叫 AI、不佔待整理數，之後可反悔">略過</a>`))
     : "";
-  const ocrBit = (a.kind === "photo" || isPdfAtt(a)) && TRANSCRIBE_ENABLED
+  const ocrBit = (a.kind === "photo" || isPdfAtt(a) || isNativeDocAtt(a)) && TRANSCRIBE_ENABLED
     ? (a.ocr_text
       ? aiFold(`🔍 已整理｜${esc(clipText(a.ocr_text, 40))}`,
           `<p class="att-transcript">🔍 ${esc(clipText(a.ocr_text, 600))} <a href="#" class="att-ocr-edit" data-id="${a.id}">編輯</a> <a href="#" class="att-ocr skip-link" data-id="${a.id}" title="重新跑 AI 擷取並覆蓋現有文字（會花額度）——結果亂掉時用">重抄</a></p>`)

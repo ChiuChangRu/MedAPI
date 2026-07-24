@@ -1569,7 +1569,7 @@ async function openDetail(id) {
         <button class="btn small capture-btn" id="d-capture-btn" type="button">📸 採集模式<small>可拍照</small></button>
         <button class="btn small record-btn" id="d-record-btn" type="button">🎙 錄音<small>純錄音</small></button>
         <button class="btn small photo-btn" id="d-photo-btn" type="button">📷 連續拍照</button>
-        <label class="btn small upload-btn">📁 上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden /></label>
+        <label class="btn small upload-btn">📁 上傳檔案<input type="file" id="d-file" accept="image/*,video/*,audio/*,application/pdf,.docx,.xlsx,.pptx,.txt,.md,.csv" multiple hidden /></label>
         <button class="btn small ghost" id="d-att-process" type="button" title="用 Cloudflare AI 把這家展商還沒處理的錄音全部轉文字、照片全部擷取文字（已處理過的不會重跑；結果照樣可編輯）">🪄 Cloudflare AI 整理</button>
         <button class="btn small ghost" id="d-att-reorganize" type="button" title="剛剛分類的照片還沒歸位時，點這個立刻重新整理">🗂 整理歸檔</button>
         <span id="d-att-pending" class="sub"></span>
@@ -1904,7 +1904,7 @@ async function processAllAttachments(id, btn) {
     const atts = await api(`/attachments?exhibitor_id=${id}`);
     // 「處理過但結果是空的」（transcribed_at/ocr_at 有時間戳）不算待整理，不重跑
     const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript && !a.transcribed_at);
-    const imgTodo = atts.filter((a) => ((a.mime || "").startsWith("image/") || isPdfAtt(a)) && !a.ocr_text && !a.ocr_at);
+    const imgTodo = atts.filter((a) => ((a.mime || "").startsWith("image/") || isPdfAtt(a) || isNativeDocAtt(a)) && !a.ocr_text && !a.ocr_at);
     const total = audioTodo.length + imgTodo.length;
     if (!total) { showToast("沒有需要整理的附件，都處理過了"); return; }
     let done = 0;
@@ -2439,6 +2439,12 @@ function isPdfAtt(a) {
   return (a.mime || "") === "application/pdf" || (a.filename || "").toLowerCase().endsWith(".pdf");
 }
 
+// docx／xlsx／pptx／純文字：後端直接從檔案結構解出文字，不經過 AI（見 imageSkill.js
+// 的 detectNativeTextKind），前端只需要知道「這種檔案也可以按擷取文字」
+function isNativeDocAtt(a) {
+  return /\.(docx|xlsx|pptx|txt|md|csv|json|log)$/i.test(a.filename || "");
+}
+
 // 一鍵整理按下去之前先讓人看得到「還有沒有東西可整理」，不用猜、不用白按一次
 // 去確認（浪費一次 API 來回，也讓人誤以為每次按都會真的重新跑 AI）
 function updatePendingBadge(atts) {
@@ -2446,7 +2452,7 @@ function updatePendingBadge(atts) {
   if (!el) return;
   if (!TRANSCRIBE_ENABLED) { el.textContent = ""; return; }
   const audioTodo = atts.filter((a) => (a.mime || "").startsWith("audio/") && !a.transcript && !a.transcribed_at).length;
-  const imgTodo = atts.filter((a) => ((a.mime || "").startsWith("image/") || isPdfAtt(a)) && !a.ocr_text && !a.ocr_at).length;
+  const imgTodo = atts.filter((a) => ((a.mime || "").startsWith("image/") || isPdfAtt(a) || isNativeDocAtt(a)) && !a.ocr_text && !a.ocr_at).length;
   const pending = audioTodo + imgTodo;
   el.textContent = pending ? `⏳ ${pending} 筆待整理` : atts.length ? "✓ 已全部整理" : "";
   const btn = $("d-att-process");
@@ -2475,7 +2481,11 @@ async function loadAttachments(id) {
     for (const a of atts) if (a.source_pdf_id) tier2CountByPdf[a.source_pdf_id] = (tier2CountByPdf[a.source_pdf_id] || 0) + 1;
     const renderAttNote = (a) => {
       const url = fileUrl(a.key);
-      let preview = `<a href="${url}" target="_blank" rel="noopener" class="directory-link">${esc(a.filename)}</a>`;
+      const docName = (a.filename || "").toLowerCase();
+      const fileIcon = isPdfAtt(a) ? "📕"
+        : docName.endsWith(".docx") ? "📘" : docName.endsWith(".xlsx") ? "📊" : docName.endsWith(".pptx") ? "📙"
+          : isNativeDocAtt(a) ? "📄" : "📎";
+      let preview = `<a href="${url}" target="_blank" rel="noopener" class="directory-link">${fileIcon} ${esc(a.filename)}</a>`;
       if ((a.mime || "").startsWith("image/")) {
         preview = `<img class="att-thumb" src="${url}" alt="${esc(a.filename)}" loading="lazy" data-lightbox="${url}" />`;
       } else if ((a.mime || "").startsWith("audio/")) {
@@ -2485,7 +2495,7 @@ async function loadAttachments(id) {
       }
       const isAudio = (a.mime || "").startsWith("audio/");
       const isImage = (a.mime || "").startsWith("image/");
-      const canOcr = isImage || isPdfAtt(a); // PDF 型錄也能擷取文字（後端走 toMarkdown）
+      const canOcr = isImage || isPdfAtt(a) || isNativeDocAtt(a); // PDF 型錄走 toMarkdown，docx/xlsx/pptx/純文字直接解出文字
       // AI 整理區塊預設收合，只露一行狀態（附件一多頁面才不會被文字撐爆），點狀態展開全文與操作
       const aiFold = (summary, body) =>
         `<details class="att-ai"><summary>${summary}</summary><div class="att-ai-body">${body}</div></details>`;

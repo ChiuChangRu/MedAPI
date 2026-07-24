@@ -13,7 +13,7 @@
  * FIELD_PIN 未設定時一律拒絕（fail-closed）。raw data 只增不刪。
  */
 
-import { extractImageText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
+import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS folders (
@@ -877,16 +877,33 @@ async function handleApi(request, env, url) {
   // 的範圍，就拿那段的逐字稿判斷「拍這張時在講什麼」，附上關聯句
   const ocrMatch = path.match(/^\/attachments\/(\d+)\/ocr$/);
   if (ocrMatch && method === "POST") {
-    if (!env.AI || !env.FILES) return bad("尚未啟用圖片擷取文字（需 Workers AI 與 R2）", 501);
+    if (!env.FILES) return bad("尚未啟用附件儲存（需 R2）", 501);
     const id = Number(ocrMatch[1]);
     const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到附件", 404);
     const isPdf = (old.mime || "") === "application/pdf" || old.filename.toLowerCase().endsWith(".pdf");
-    if (old.kind !== "photo" && !isPdf) return bad("只有照片與 PDF 可以擷取文字");
-    try { await enforceAiSoftBudget(env); }
-    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    // docx／xlsx／pptx／純文字：直接從檔案結構解出文字，不經過 AI——免費、瞬間、
+    // 沒有 OCR 辨識誤差，也不用管 Neurons 額度或軟預算
+    const nativeKind = !isPdf ? detectNativeTextKind(old.filename, old.mime) : null;
+    if (old.kind !== "photo" && !isPdf && !nativeKind) return bad("只有照片、PDF、Word/Excel/PowerPoint（docx/xlsx/pptx）與純文字檔可以擷取文字");
     const obj = await env.FILES.get(old.key);
     if (!obj) return bad("找不到檔案內容", 404);
+    if (nativeKind) {
+      let text;
+      try {
+        text = await extractNativeText(nativeKind, new Uint8Array(await obj.arrayBuffer()));
+      } catch (err) {
+        // legacy-office（.doc/.xls/.ppt 舊格式）給的是操作指引，不是系統錯誤，用 400
+        return bad(err.message, nativeKind === "legacy-office" ? 400 : 502);
+      }
+      await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
+      await autoRenameAttachment(db, old, text);
+      await logHistory(db, old.entry_id, null, "文件擷取文字", `${old.filename}：${text.slice(0, 60) || "（沒有擷取到文字）"}`);
+      return json({ ocr_text: text });
+    }
+    if (!env.AI) return bad("尚未啟用圖片擷取文字（需 Workers AI）", 501);
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
     if (isPdf) {
       // PDF（文獻、型錄、講義）走 Workers AI 的 toMarkdown 轉文字，內容才進得了搜尋跟 MCP
       const converted = await env.AI.toMarkdown([
