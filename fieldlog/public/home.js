@@ -2,6 +2,24 @@
   if (window.__fieldlogSimpleHome) return;
   window.__fieldlogSimpleHome = true;
 
+  // 錄影／錄音中的「記一句」改用後端原子 append；首頁 quickNote() 不受影響。
+  window.addTimedNote = async function atomicTimedNote(session) {
+    if (!session) return;
+    const text = prompt("記一句（會標上目前的時間點）：");
+    if (!text || !text.trim()) return;
+    const offset = fmtSecs(segOffset(session));
+    const line = `[${offset}] ${text.trim()}`;
+    try {
+      await api(`/entries/${session.entryId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ line }),
+      });
+      showToast("已記錄");
+    } catch (error) {
+      showToast("記錄失敗：" + error.message);
+    }
+  };
+
   function removeDeferredHomepageExtras() {
     document.querySelectorAll(".folder-architecture-guide, .home-knowledge-card").forEach((element) => element.remove());
   }
