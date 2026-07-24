@@ -1,4 +1,5 @@
 name: Fix fieldlog timed note race
+# Second push: workflow already exists in the parent commit, so this push can trigger it.
 
 on:
   push:
