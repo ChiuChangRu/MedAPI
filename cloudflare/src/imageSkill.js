@@ -1,10 +1,13 @@
 /**
- * 影像 skill（共用模組）：照片 → 抄出文字（OCR），並可另判斷與對話逐字稿的關聯。
+ * 文件擷取 skill（共用模組）：把各種附件變成可搜尋的文字。
+ * 照片 → AI 抄字（OCR），可另判斷與對話逐字稿的關聯；docx/xlsx/pptx/純文字 →
+ * 直接從檔案結構解出文字，不經過 AI（免費、瞬間、100% 準確，沒有 OCR 辨識誤差）。
  *
- * 這份是唯一正本。隨身記（fieldlog）接入時由同步腳本複製到 fieldlog/src/，
- * 要修 prompt、換模型、調防護規則一律改這裡，不要在別處另寫一份。
+ * 這份是唯一正本。隨身記（fieldlog）接入時複製到 fieldlog/src/（逐位元一致，
+ * 由 tests/core.test.js 檢查），要修 prompt、換模型、調防護規則、加格式支援
+ * 一律改這裡，不要在別處另寫一份。
  *
- * 三條經過實測換來的設計原則（2026-07 用真實展商照片驗證）：
+ * 三條經過實測換來的 OCR 設計原則（2026-07 用真實展商照片驗證）：
  * 1. 抄字時模型「只看圖片」——逐字稿絕不能餵進 vision prompt，
  *    模型會把逐字稿內容當成照片裡的字抄出來（實測踩過）。
  * 2. 關聯判斷交給另一顆純文字模型另跑一步，兩個任務分開、互不污染。
@@ -12,6 +15,11 @@
  *    重試一次；仍鬼打牆就截掉重複段、保留有用前段入庫（標註已截斷）。
  *    ——原本是整筆拒收，實測發現 temperature 0 下同一張圖每次都掉進
  *    同一個迴圈，等於永遠卡在待整理清單，重跑幾次都白燒額度。
+ *
+ * docx/xlsx/pptx 都是 zip 包裡塞 XML——不加 npm 套件解壓縮，直接用 Workers
+ * 原生的 DecompressionStream("deflate-raw") 解壓內容，自己讀 zip 的 Central
+ * Directory 找檔案位置。少一個第三方依賴，Cloudflare Git 自動部署不用煩惱
+ * node_modules 有沒有正確安裝進去。
  */
 
 export const OCR_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
@@ -146,4 +154,177 @@ export async function judgeRelation(ai, transcript, ocrText) {
   } catch {
     return "";
   }
+}
+
+// ---------- 原生文件文字擷取（docx／xlsx／pptx／純文字）：不經過 AI ----------
+
+// 依副檔名／mime 判斷這個檔案能不能直接解出文字（不用 AI 讀）。
+// 回傳 null 代表交給既有的照片 OCR／PDF toMarkdown 邏輯判斷。
+export function detectNativeTextKind(filename, mime) {
+  const ext = (String(filename || "").match(/\.([a-z0-9]+)$/i)?.[1] || "").toLowerCase();
+  const m = String(mime || "").toLowerCase();
+  if (ext === "docx" || m.includes("wordprocessingml.document")) return "docx";
+  if (ext === "xlsx" || m.includes("spreadsheetml.sheet")) return "xlsx";
+  if (ext === "pptx" || m.includes("presentationml.presentation")) return "pptx";
+  if (["txt", "md", "csv", "json", "log"].includes(ext) || m.startsWith("text/") || m === "application/json") return "text";
+  // 舊版二進位格式（OLE Compound File），解析成本高、報酬低，明確不支援、給清楚指引
+  if (["doc", "xls", "ppt"].includes(ext)) return "legacy-office";
+  return null;
+}
+
+function decodeXmlEntities(s) {
+  return String(s || "")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+}
+
+const ZIP_EOCD_SIG = 0x06054b50;
+const ZIP_CENTRAL_SIG = 0x02014b50;
+const ZIP_LOCAL_SIG = 0x04034b50;
+
+// 從檔尾往前找 End Of Central Directory（EOCD 之後可能還有一段 zip comment，
+// 最長 65535 bytes，所以不能假設它一定在最後 22 bytes）
+function findEocd(view) {
+  const searchStart = Math.max(0, view.byteLength - 22 - 65535);
+  for (let i = view.byteLength - 22; i >= searchStart; i--) {
+    if (i >= 0 && view.getUint32(i, true) === ZIP_EOCD_SIG) return i;
+  }
+  throw new Error("不是有效的 zip 檔（找不到 End of Central Directory）");
+}
+
+// 讀出 zip 裡每個檔案的位置索引（走 Central Directory，不掃 Local Header，
+// 避免資料流式壓縮時 Local Header 大小欄位為 0 的邊界情況）
+function indexZip(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const eocd = findEocd(view);
+  const totalEntries = view.getUint16(eocd + 10, true);
+  let offset = view.getUint32(eocd + 16, true);
+  const entries = new Map();
+  for (let i = 0; i < totalEntries; i++) {
+    if (view.getUint32(offset, true) !== ZIP_CENTRAL_SIG) break;
+    const compressionMethod = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const nameLen = view.getUint16(offset + 28, true);
+    const extraLen = view.getUint16(offset + 30, true);
+    const commentLen = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(offset + 46, offset + 46 + nameLen));
+    entries.set(name, { compressionMethod, compressedSize, localHeaderOffset });
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return { bytes, view, entries };
+}
+
+async function readZipEntry(zip, name) {
+  const meta = zip.entries.get(name);
+  if (!meta) return null;
+  const lh = meta.localHeaderOffset;
+  if (zip.view.getUint32(lh, true) !== ZIP_LOCAL_SIG) throw new Error("zip 本機檔頭損毀");
+  const nameLen = zip.view.getUint16(lh + 26, true);
+  const extraLen = zip.view.getUint16(lh + 28, true);
+  const dataStart = lh + 30 + nameLen + extraLen;
+  const compressed = zip.bytes.subarray(dataStart, dataStart + meta.compressedSize);
+  if (meta.compressionMethod === 0) return compressed; // stored（未壓縮）
+  if (meta.compressionMethod !== 8) throw new Error(`不支援的 zip 壓縮方式（method ${meta.compressionMethod}）`);
+  const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function readZipEntryText(zip, name) {
+  const raw = await readZipEntry(zip, name);
+  return raw ? new TextDecoder("utf-8").decode(raw) : "";
+}
+
+// word/document.xml：文字都在 <w:t> 裡，段落用 </w:p> 分行
+function extractDocxText(xml) {
+  const paragraphs = xml.split(/<\/w:p>/);
+  const lines = paragraphs
+    .map((p) => [...p.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => decodeXmlEntities(m[1])).join(""))
+    .filter((l) => l.trim());
+  return lines.join("\n");
+}
+
+// ppt/slides/slideN.xml：文字在 <a:t> 裡，段落用 </a:p> 分行
+function extractPptxSlideText(xml) {
+  const paragraphs = xml.split(/<\/a:p>/);
+  const lines = paragraphs
+    .map((p) => [...p.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1])).join(""))
+    .filter((l) => l.trim());
+  return lines.join("\n");
+}
+
+// xl/sharedStrings.xml：每個 <si> 是一個共用字串（可能有多個 <t> rich text run 要串起來）
+function extractSharedStrings(xml) {
+  if (!xml) return [];
+  return [...xml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) =>
+    [...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => decodeXmlEntities(t[1])).join("")
+  );
+}
+
+// xl/worksheets/sheetN.xml：逐列逐格取值，共用字串型別（t="s"）查表、其餘直接讀 <v>。
+// 用 tab 分隔還原成表格文字，方便搜尋比對數字／型號。不處理合併儲存格、數字格式化
+// （日期會是序號原樣），目標是「搜得到」不是「render 出漂亮表格」。
+function extractSheetText(xml, sharedStrings) {
+  const rows = [...xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)];
+  const lines = [];
+  for (const rowMatch of rows) {
+    const cellChunks = rowMatch[1].split(/<c\b/).slice(1);
+    const values = cellChunks.map((chunk) => {
+      const closeIdx = chunk.indexOf(">");
+      const attrs = chunk.slice(0, closeIdx);
+      const inner = chunk.slice(closeIdx + 1);
+      const type = attrs.match(/\bt="([^"]*)"/)?.[1] || "";
+      if (type === "s") {
+        const idx = inner.match(/<v>([\s\S]*?)<\/v>/)?.[1];
+        return idx !== undefined ? (sharedStrings[Number(idx)] || "") : "";
+      }
+      if (type === "inlineStr") {
+        return decodeXmlEntities(inner.match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] || "");
+      }
+      return decodeXmlEntities(inner.match(/<v>([\s\S]*?)<\/v>/)?.[1] || "");
+    });
+    if (values.some((v) => v !== "")) lines.push(values.join("\t"));
+  }
+  return lines.join("\n");
+}
+
+function sortByTrailingNumber(names) {
+  return names.sort((a, b) => Number(a.match(/(\d+)/)[1]) - Number(b.match(/(\d+)/)[1]));
+}
+
+// 統一入口：kind 由 detectNativeTextKind 判斷，回傳擷取出的純文字。
+// 讀不到內容時丟錯（呼叫端跟既有 OCR 錯誤處理走同一套：不寫入、維持「尚未處理」）。
+export async function extractNativeText(kind, bytes) {
+  if (kind === "text") return new TextDecoder("utf-8").decode(bytes).trim();
+  if (kind === "legacy-office") {
+    throw new Error("不支援舊版 .doc/.xls/.ppt（二進位格式），請用 Word/Excel/PowerPoint 另存成新格式（.docx/.xlsx/.pptx）再上傳");
+  }
+  const zip = indexZip(bytes);
+  if (kind === "docx") {
+    const xml = await readZipEntryText(zip, "word/document.xml");
+    if (!xml) throw new Error("讀不到 word/document.xml，檔案可能已損毀或不是 .docx");
+    return extractDocxText(xml).trim();
+  }
+  if (kind === "pptx") {
+    const slideNames = sortByTrailingNumber([...zip.entries.keys()].filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)));
+    if (!slideNames.length) throw new Error("讀不到投影片內容，檔案可能已損毀或不是 .pptx");
+    const parts = [];
+    for (const name of slideNames) {
+      const text = extractPptxSlideText(await readZipEntryText(zip, name));
+      if (text) parts.push(`== 投影片 ${name.match(/(\d+)/)[1]} ==\n${text}`);
+    }
+    return parts.join("\n\n").trim();
+  }
+  if (kind === "xlsx") {
+    const sharedStrings = extractSharedStrings(await readZipEntryText(zip, "xl/sharedStrings.xml"));
+    const sheetNames = sortByTrailingNumber([...zip.entries.keys()].filter((n) => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)));
+    if (!sheetNames.length) throw new Error("讀不到工作表內容，檔案可能已損毀或不是 .xlsx");
+    const parts = [];
+    for (const name of sheetNames) {
+      const text = extractSheetText(await readZipEntryText(zip, name), sharedStrings);
+      if (text) parts.push(`== 工作表 ${name.match(/(\d+)/)[1]} ==\n${text}`);
+    }
+    return parts.join("\n\n").trim();
+  }
+  throw new Error(`未知的文件類型：${kind}`);
 }

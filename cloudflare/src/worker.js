@@ -9,10 +9,10 @@
  *   - CSV 匯出
  *
  * 驗證：所有 /api/* 需帶 x-team-pin header，與 TEAM_PIN（secret）比對。
- * 未設定 TEAM_PIN 時視為開發模式、不驗證（正式部署請務必設定）。
+ * TEAM_PIN 未設定時一律拒絕（fail-closed）。
  */
 
-import { extractImageText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
+import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS members (
@@ -488,16 +488,31 @@ async function handleApi(request, env, url, ctx) {
   // PDF 走 Workers AI 的 toMarkdown 轉換——型錄/DM 的內容也要進得了搜尋跟 MCP ----
   const attOcrMatch = path.match(/^\/attachments\/(\d+)\/ocr$/);
   if (attOcrMatch && method === "POST") {
-    if (!env.AI || !env.FILES) return bad("尚未啟用圖片擷取文字（需 Workers AI 與 R2）", 501);
+    if (!env.FILES) return bad("尚未啟用附件儲存（需 R2）", 501);
     const id = Number(attOcrMatch[1]);
     const body = await request.json().catch(() => ({}));
     const author = (body.author || "").trim() || "匿名";
     const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到附件", 404);
     const isPdf = (old.mime || "") === "application/pdf" || old.filename.toLowerCase().endsWith(".pdf");
-    if (!(old.mime || "").startsWith("image/") && !isPdf) return bad("只有照片與 PDF 可以擷取文字");
+    // docx／xlsx／pptx／純文字：直接從檔案結構解出文字，不經過 AI——免費、瞬間、
+    // 沒有 OCR 辨識誤差，也不用管 Neurons 額度
+    const nativeKind = !isPdf ? detectNativeTextKind(old.filename, old.mime) : null;
+    if (!(old.mime || "").startsWith("image/") && !isPdf && !nativeKind) return bad("只有照片、PDF、Word/Excel/PowerPoint（docx/xlsx/pptx）與純文字檔可以擷取文字");
     const obj = await env.FILES.get(old.key);
     if (!obj) return bad("找不到檔案內容", 404);
+    if (nativeKind) {
+      let text;
+      try {
+        text = await extractNativeText(nativeKind, new Uint8Array(await obj.arrayBuffer()));
+      } catch (err) {
+        return bad(err.message, nativeKind === "legacy-office" ? 400 : 502);
+      }
+      await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
+      await logHistory(db, old.exhibitor_id, author, "文件擷取文字", `${old.filename}：${text.slice(0, 80) || "（沒有擷取到文字）"}`);
+      return json({ ocr_text: text });
+    }
+    if (!env.AI) return bad("尚未啟用圖片擷取文字（需 Workers AI）", 501);
     if (isPdf) {
       const converted = await env.AI.toMarkdown([
         { name: old.filename, blob: new Blob([await obj.arrayBuffer()], { type: "application/pdf" }) },

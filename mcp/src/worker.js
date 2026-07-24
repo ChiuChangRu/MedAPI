@@ -222,7 +222,7 @@ const TOOLS = [
   },
   {
     name: "list_fieldlog_folders",
-    description: "列出隨身記的所有資料夾（參展／拜訪／實驗／上課等活動）與各自的紀錄數量。",
+    description: "列出隨身記的所有資料夾（參展／拜訪／實驗／上課等活動，含巢狀子資料夾）與各自的紀錄數量。想把 search_fieldlog 縮小到某個資料夾（例如專門歸檔標準規範的資料夾）時，先用這個查 folder id。",
     inputSchema: { type: "object", properties: {} },
     async handler(env) {
       const { results } = await env.DB_FIELDLOG.prepare(
@@ -230,19 +230,40 @@ const TOOLS = [
          FROM folders f ORDER BY f.status = '進行中' DESC, f.id DESC`
       ).all();
       if (!results.length) return "隨身記目前沒有任何資料夾。";
-      return results
-        .map((f) => `- [${f.id}] ${f.type}｜${f.name}｜${f.status}｜${f.entry_count} 筆紀錄｜建於 ${f.created_at}`)
-        .join("\n");
+      // 資料夾有 parent_id 巢狀結構（四層目錄）：先照樹狀排序（父在子之前）再縮排顯示，
+      // 路徑才看得懂，不會出現子資料夾印在父資料夾前面的怪順序
+      const byParent = new Map();
+      for (const f of results) {
+        const key = f.parent_id ?? null;
+        if (!byParent.has(key)) byParent.set(key, []);
+        byParent.get(key).push(f);
+      }
+      const lines = [];
+      const visited = new Set();
+      const walk = (parentKey, depth) => {
+        for (const f of byParent.get(parentKey) || []) {
+          if (visited.has(f.id)) continue; // 保險：資料異常成環時不要無限遞迴
+          visited.add(f.id);
+          lines.push(`${"  ".repeat(depth)}- [${f.id}] ${f.type}｜${f.name}｜${f.status}｜${f.entry_count} 筆紀錄｜建於 ${f.created_at}`);
+          walk(f.id, depth + 1);
+        }
+      };
+      walk(null, 0);
+      // 保險：parent_id 指向已刪除/查無的資料夾時不會被上面的樹狀遞迴印到，補在最後
+      for (const f of results) if (!visited.has(f.id)) lines.push(`- [${f.id}] ${f.type}｜${f.name}｜${f.status}｜${f.entry_count} 筆紀錄｜建於 ${f.created_at}`);
+      return lines.join("\n");
     },
   },
   {
     name: "search_fieldlog",
-    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的錄音逐字稿／照片擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。回傳命中片段與 entry id，細節再用 get_fieldlog_entry 拉全文。",
+    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的檔名／錄音逐字稿／照片與 PDF 擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。可選 folder_id／folder_type 縮小到特定資料夾（例如專門歸檔標準規範、型錄的資料夾——先用 list_fieldlog_folders 查 id）。回傳命中片段與 entry/attachment id；附件命中後用 get_fieldlog_attachment 拉該附件完整未截斷的全文（例如查一份 ISO 標準的完整條文，不是只看片段）。找到 entry 後想看它跟哪些標準／實驗／廠商／專利有交叉關聯，改用 get_related(id)。",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "關鍵字" },
+        query: { type: "string", description: "關鍵字，簡繁不拘（例：ISO 7886-1、抗結痂）" },
         limit: { type: "number", description: "每類最多回傳幾筆（預設 10，上限 30）" },
+        folder_id: { type: "number", description: "選填：只搜這個資料夾與其子資料夾（先用 list_fieldlog_folders 查 id）" },
+        folder_type: { type: "string", description: "選填：只搜這個類型的資料夾（例：參展、拜訪、實驗、上課、會議、查廠、其他）" },
       },
       required: ["query"],
     },
@@ -250,26 +271,52 @@ const TOOLS = [
       const q = needQuery(args);
       const fq = foldText(q);
       const limit = capLimit(args);
+      const wantFolderType = (args.folder_type || "").trim();
+      const wantFolderId = args.folder_id !== undefined && args.folder_id !== null && args.folder_id !== "" ? Number(args.folder_id) : null;
+      // folder_id 篩選要含子資料夾（四層巢狀目錄，parent_id 串起來），先撈全部資料夾
+      // 在 JS 端算出「這個 folder_id 底下的整棵子樹」，比對時看 entry 的 folder 在不在這個集合裡
+      let allowedFolderIds = null;
+      if (wantFolderId !== null) {
+        const { results: allFolders } = await env.DB_FIELDLOG.prepare(`SELECT id, parent_id FROM folders`).all();
+        const byParent = new Map();
+        for (const f of allFolders) {
+          const key = f.parent_id ?? null;
+          if (!byParent.has(key)) byParent.set(key, []);
+          byParent.get(key).push(f.id);
+        }
+        allowedFolderIds = new Set();
+        const collect = (id) => {
+          if (allowedFolderIds.has(id)) return; // 防環
+          allowedFolderIds.add(id);
+          for (const childId of byParent.get(id) || []) collect(childId);
+        };
+        collect(wantFolderId);
+      }
       // 簡繁摺疊沒辦法交給 SQL LIKE（byte 硬比），改成撈候選列後在 JS 端摺疊比對。
       // 掃描上限 SCAN_CAP 純為記憶體保險；現階段資料量遠低於此。
       const [{ results: allEntries }, { results: allAtts }] = await Promise.all([
         env.DB_FIELDLOG.prepare(
-          `SELECT e.id, e.title, e.body, e.fields_json, e.created_at, f.name AS folder_name, f.type AS folder_type
+          `SELECT e.id, e.folder_id, e.title, e.body, e.fields_json, e.created_at, f.name AS folder_name, f.type AS folder_type
            FROM entries e LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY e.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
         env.DB_FIELDLOG.prepare(
           `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,
-                  e.id AS entry_id, e.title, f.name AS folder_name
+                  e.id AS entry_id, e.folder_id, e.title, f.name AS folder_name, f.type AS folder_type
            FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY a.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
       ]);
+      const inScope = (row) =>
+        (!wantFolderType || row.folder_type === wantFolderType) &&
+        (allowedFolderIds === null || allowedFolderIds.has(row.folder_id));
       const entries = allEntries
+        .filter(inScope)
         .filter((e) => foldIncludes(`${e.title}\n${e.body}\n${e.fields_json}`, fq))
         .slice(0, limit);
       for (const a of allAtts) a._ocr = stripPdfMetadata(a.ocr_text || ""); // 即時剝 PDF metadata
       const atts = allAtts
+        .filter(inScope)
         .filter((a) => foldIncludes(`${a.transcript}\n${a._ocr}\n${a.filename}`, fq))
         .slice(0, limit);
       const out = [];
@@ -282,19 +329,23 @@ const TOOLS = [
         }
       }
       if (atts.length) {
-        out.push("## 命中的附件（逐字稿／照片文字）");
+        out.push("## 命中的附件（檔名／逐字稿／擷取文字，想看完整全文用 get_fieldlog_attachment(id)）");
         for (const a of atts) {
           const src = a.transcript && foldIncludes(a.transcript, fq) ? a.transcript : a._ocr || a.filename;
           const off = a.offset_secs !== null && a.offset_secs !== undefined ? `｜錄音 ${fmtSecs(a.offset_secs)}` : "";
-          out.push(`- [entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${foldSnippet(src, fq)}`);
+          out.push(`- [attachment ${a.att_id}／entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${foldSnippet(src, fq)}`);
         }
       }
-      return out.length ? out.join("\n") : `隨身記裡沒有「${q}」的相關內容（簡繁已互通）。`;
+      if (!out.length) {
+        const scopeNote = (wantFolderType || wantFolderId !== null) ? "（在指定的資料夾範圍內；範圍設定得太窄的話試試拿掉 folder_id/folder_type 全庫查）" : "";
+        return `隨身記裡沒有「${q}」的相關內容${scopeNote}（簡繁已互通）。`;
+      }
+      return out.join("\n");
     },
   },
   {
     name: "get_fieldlog_entry",
-    description: "讀取隨身記單筆紀錄的完整內容：欄位、內文、所有附件的逐字稿與照片擷取文字。",
+    description: "讀取隨身記單筆紀錄的完整內容：欄位、內文、所有附件的逐字稿與照片/PDF擷取文字（每個附件有長度上限，超過會截斷並提示；附件內容截斷時改用 get_fieldlog_attachment 拉那一個附件的完整全文，例如一份完整的 ISO 標準條文）。",
     inputSchema: {
       type: "object",
       properties: { id: { type: "number", description: "entry id（search_fieldlog 回傳的編號）" } },
@@ -310,12 +361,81 @@ const TOOLS = [
       const fields = Object.entries(JSON.parse(e.fields_json || "{}")).filter(([, v]) => v && String(v).trim());
       for (const [k, v] of fields) lines.push(`- **${k}**：${v}`);
       if (e.body) lines.push("", e.body);
+      // 單筆紀錄常見多個附件，每個給預覽長度上限（避免一次撈爆整個回應）；
+      // 完整全文（例如一份幾千字的 ISO 標準 PDF）用 get_fieldlog_attachment(id) 單獨拉
+      const PREVIEW_CAP = 6000;
       for (const a of atts) {
         const off = a.offset_secs !== null && a.offset_secs !== undefined ? `（錄音 ${fmtSecs(a.offset_secs)}）` : "";
-        lines.push("", `## 附件：${a.filename}｜${a.kind}${off}`);
-        if (a.transcript) lines.push(`逐字稿：${clip(a.transcript, 4000)}`);
-        if (a.ocr_text) lines.push(`照片文字：${clip(a.ocr_text, 2000)}`);
-        if (!a.transcript && !a.ocr_text) lines.push("（尚未轉文字／擷取）");
+        lines.push("", `## 附件 [${a.id}]：${a.filename}｜${a.kind}${off}`);
+        const ocrBody = stripPdfMetadata(a.ocr_text || ""); // 修正：先前這裡漏了剝 PDF metadata，會show出一堆 Creator=/PDFFormatVersion= 雜訊
+        if (a.transcript) {
+          lines.push(`逐字稿：${clip(a.transcript, PREVIEW_CAP)}`);
+          if (a.transcript.length > PREVIEW_CAP) lines.push(`（逐字稿共 ${a.transcript.length} 字，above 已截斷，完整全文用 get_fieldlog_attachment(${a.id})）`);
+        }
+        if (ocrBody) {
+          lines.push(`擷取文字：${clip(ocrBody, PREVIEW_CAP)}`);
+          if (ocrBody.length > PREVIEW_CAP) lines.push(`（擷取文字共 ${ocrBody.length} 字，above 已截斷，完整全文用 get_fieldlog_attachment(${a.id})）`);
+        }
+        if (!a.transcript && !ocrBody) lines.push("（尚未轉文字／擷取，或該檔案本身沒有可擷取的文字內容）");
+      }
+      return lines.join("\n");
+    },
+  },
+  {
+    name: "get_fieldlog_attachment",
+    description: "讀取隨身記單一附件的『完整、未截斷』文字內容（逐字稿或擷取文字），PDF 已自動剝除檔案 metadata 雜訊。用途：search_fieldlog 或 get_fieldlog_entry 找到候選附件、內容被截斷時，用這個拉出完整全文——例如查一份 ISO/ASTM 標準 PDF 的完整條文、或一段完整的會議逐字稿，不是只看片段摘要。",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "number", description: "attachment id（search_fieldlog 回傳的 attachment id，或 get_fieldlog_entry 附件標題旁的 [id]）" } },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const a = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+      if (!a) throw new Error(`找不到附件 ${id}——請先用 search_fieldlog 或 get_fieldlog_entry 查編號`);
+      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(a.entry_id).first();
+      const off = a.offset_secs !== null && a.offset_secs !== undefined ? `｜錄音 ${fmtSecs(a.offset_secs)}` : "";
+      const lines = [
+        `# ${a.filename}`,
+        `類型：${a.kind}｜所屬紀錄：${e ? `[entry ${e.id}] ${e.title || "（未命名）"}` : `entry ${a.entry_id}`}${off}｜上傳：${a.created_at}`,
+      ];
+      const ocrBody = stripPdfMetadata(a.ocr_text || "");
+      if (a.transcript) lines.push("", "## 逐字稿（完整）", a.transcript);
+      if (ocrBody) lines.push("", "## 擷取文字（完整）", ocrBody);
+      if (!a.transcript && !ocrBody) lines.push("", "（這個附件還沒轉文字/擷取，或該檔案本身沒有可擷取的文字內容——PDF 若是圖形排版、沒有文字層，一般擷取抓不到，需要 Tier 2 深度處理）");
+      return lines.join("\n");
+    },
+  },
+  {
+    name: "get_related",
+    description: "查詢隨身記裡『這筆記事跟哪些其他記事有關聯』（雙向），例如一份 ISO 標準被哪些實驗引用、一家廠商對照哪些專利、一次查廠關聯到哪次拜訪。這是交叉比對用的，不是關鍵字搜尋——關聯要先在隨身記前端手動建立（🔗 新增關聯）才查得到，不是系統自動猜出來的。找不到關聯不代表沒關係，可能只是還沒手動連過。",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "number", description: "entry id（search_fieldlog 或 get_fieldlog_entry 查到的編號）" } },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(id).first();
+      if (!e) throw new Error(`找不到 entry ${id}`);
+      const { results } = await env.DB_FIELDLOG.prepare(
+        `SELECT r.*, ent.title AS other_title, f.name AS other_folder_name, f.type AS other_folder_type
+         FROM relations r
+         JOIN entries ent ON ent.id = (CASE WHEN r.from_entry_id = ? THEN r.to_entry_id ELSE r.from_entry_id END)
+         LEFT JOIN folders f ON f.id = ent.folder_id
+         WHERE r.from_entry_id = ? OR r.to_entry_id = ?
+         ORDER BY r.id DESC`
+      ).bind(id, id, id).all();
+      if (!results.length) return `[entry ${id}] ${e.title || "（未命名）"} 目前沒有任何關聯（關聯要在隨身記前端手動建立，用 search_fieldlog 找到候選記事後，去隨身記 App 點「🔗 新增關聯」）。`;
+      const lines = [`# ${e.title || "（未命名）"} 的關聯`];
+      for (const r of results) {
+        const isFrom = r.from_entry_id === id;
+        const otherId = isFrom ? r.to_entry_id : r.from_entry_id;
+        const arrow = isFrom ? "→" : "←";
+        const where = r.other_folder_name ? `${r.other_folder_type}｜${r.other_folder_name}` : "收件匣";
+        lines.push(`- ${arrow} [entry ${otherId}] ${r.relation_type}：${r.other_title || "（未命名）"}｜${where}${r.note ? `（${r.note}）` : ""}`);
       }
       return lines.join("\n");
     },

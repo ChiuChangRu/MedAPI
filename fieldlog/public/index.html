@@ -11,32 +11,64 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=34" />
+<link rel="stylesheet" href="home.css" />
 </head>
 <body>
 <div class="container">
-  <!-- 首頁：採集優先。錄影／拍照／錄音／記事各自獨立，按哪個就只做那件事 -->
   <div id="view-home">
-    <div class="capture-grid">
-      <button class="cap-tile cap-video" id="btn-video">🎥<span>錄影</span></button>
-      <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
-      <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
-      <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
-    </div>
+    <header class="home-app-head">
+      <h1>隨身記</h1>
+      <small>輸入、整理、歸檔</small>
+    </header>
 
-    <section class="panel" id="inbox-panel">
-      <h2>📥 收件匣 <span id="inbox-count" class="count"></span></h2>
-      <div id="inbox-list" class="entry-list"></div>
+    <section class="home-section home-input-section" aria-labelledby="home-input-title">
+      <div class="home-section-head">
+        <h2 class="home-section-title" id="home-input-title">輸入與草稿</h2>
+      </div>
+
+      <div class="capture-grid">
+        <button class="cap-tile cap-video" id="btn-video">🎥<span>錄影</span></button>
+        <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
+        <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
+        <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
+      </div>
+
+      <section class="panel home-inbox-panel" id="inbox-panel">
+        <h2>收件匣／待整理 <span id="inbox-count" class="count"></span></h2>
+        <div id="inbox-list" class="entry-list"></div>
+      </section>
     </section>
 
-    <section class="panel">
-      <h2>📂 資料夾 <button class="btn small" id="btn-new-folder">＋ 新增</button></h2>
-      <div id="folder-list" class="folder-list"></div>
+    <section class="home-section home-files-section" aria-labelledby="home-files-title">
+      <div class="home-section-head">
+        <h2 class="home-section-title" id="home-files-title">檔案</h2>
+      </div>
+
+      <div class="home-file-stack">
+        <section class="panel folders-panel home-files-panel">
+          <div class="folders-toolbar">
+            <h2>資料夾</h2>
+            <div class="folder-view-toggle" aria-label="資料夾顯示模式">
+              <button class="btn small" id="btn-folder-grid" type="button" title="卡片模式">▦ 卡片</button>
+              <button class="btn small" id="btn-folder-list" type="button" title="清單模式">☷ 清單</button>
+            </div>
+            <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
+          </div>
+          <div id="folder-list" class="folder-list"></div>
+        </section>
+      </div>
     </section>
 
-    <section class="panel">
-      <h2>🗺 知識庫 <a class="btn small" href="wiki.html" style="margin-left:auto; text-decoration:none;">開啟策略地圖 Wiki ›</a></h2>
-      <p class="sub" style="margin:0; color:var(--text-muted); font-size:13px;">披膜三主題＋支撐知識＋供應商圖譜的總攬，採集資料最終沉澱的地方。</p>
+    <section class="home-section home-usage-section" aria-labelledby="home-usage-title">
+      <div class="home-section-head">
+        <h2 class="home-section-title" id="home-usage-title">Cloudflare 用量</h2>
+      </div>
+      <div class="home-usage-toolbar">
+        <strong>資源監控</strong>
+        <button class="btn small" id="btn-usage-refresh">重新整理</button>
+      </div>
+      <div class="home-usage-content" id="usage-content"><p class="sub">登入後自動載入用量。</p></div>
     </section>
   </div>
 
@@ -46,6 +78,11 @@
       <button class="btn small ghost" id="btn-back">‹ 回首頁</button>
       <h2 id="folder-title"></h2>
       <div class="folder-actions">
+        <div class="folder-view-toggle inner-view-toggle" aria-label="資料夾內容顯示模式">
+          <button class="btn small" id="btn-inner-grid" type="button" title="卡片模式">▦ 卡片</button>
+          <button class="btn small" id="btn-inner-list" type="button" title="清單模式">☷ 清單</button>
+        </div>
+        <button class="btn small" id="btn-new-subfolder">＋ 子資料夾</button>
         <button class="btn small" id="btn-video-f">🎥 錄影</button>
         <button class="btn small" id="btn-photo-f">📷 拍照</button>
         <button class="btn small" id="btn-audio-f">🎙 錄音</button>
@@ -53,9 +90,87 @@
         <button class="btn small primary" id="btn-folder-export">📄 匯出給 AI</button>
       </div>
     </div>
+    <div id="folder-children"></div>
     <div id="folder-entries" class="entry-list"></div>
   </div>
 </div>
+
+<div class="overlay" id="merge-folder-overlay">
+  <div class="modal narrow">
+    <h2>合併資料夾</h2>
+    <p class="sub" id="merge-folder-desc"></p>
+    <label for="merge-folder-target">合併到</label>
+    <select id="merge-folder-target"></select>
+    <div class="modal-actions">
+      <button class="btn ghost" id="merge-folder-cancel" type="button">取消</button>
+      <button class="btn primary" id="merge-folder-confirm" type="button">下一步</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="move-entry-overlay">
+  <div class="modal narrow">
+    <h2>移動收件匣記事</h2>
+    <p class="sub" id="move-entry-desc"></p>
+    <label for="move-entry-target">移動到</label>
+    <select id="move-entry-target"></select>
+    <div class="modal-actions">
+      <button class="btn ghost" id="move-entry-cancel" type="button">取消</button>
+      <button class="btn primary" id="move-entry-confirm" type="button">移動</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="create-folder-overlay">
+  <form class="modal create-folder-modal" id="create-folder-form">
+    <div class="create-folder-head">
+      <span class="create-folder-icon">📁</span>
+      <div><h2 id="create-folder-title">新增資料夾</h2><p class="sub" id="create-folder-desc">整理成容易找到的分類</p></div>
+    </div>
+    <label for="create-folder-name">資料夾名稱</label>
+    <input id="create-folder-name" maxlength="80" autocomplete="off" placeholder="例如：供應商會議、查廠紀錄" required />
+    <fieldset class="folder-type-fieldset">
+      <legend>選擇類型</legend>
+      <div class="folder-type-picker" id="create-folder-types"></div>
+    </fieldset>
+    <div class="modal-actions">
+      <button class="btn ghost" id="create-folder-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">建立資料夾</button>
+    </div>
+  </form>
+</div>
+
+<div class="overlay" id="relation-picker-overlay">
+  <div class="modal narrow">
+    <h2>新增關聯</h2>
+    <p class="sub">關聯到哪一筆記事？（例如這次實驗引用的標準、對照的廠商產品）</p>
+    <input id="relation-search-input" placeholder="輸入標題關鍵字搜尋…" autocomplete="off" />
+    <div id="relation-search-results" class="relation-search-results"></div>
+    <div id="relation-picked" class="relation-picked" style="display:none;">
+      <p class="sub">已選：<strong id="relation-picked-title"></strong></p>
+      <label for="relation-type-input">關係</label>
+      <input id="relation-type-input" list="relation-type-suggestions" autocomplete="off" placeholder="例：引用標準、測試對象、專利依據" />
+      <datalist id="relation-type-suggestions">
+        <option value="引用標準"></option>
+        <option value="被引用於"></option>
+        <option value="測試對象"></option>
+        <option value="專利依據"></option>
+        <option value="供應商"></option>
+        <option value="比對對象"></option>
+        <option value="延伸自"></option>
+      </datalist>
+      <label for="relation-note-input">備註（選填）</label>
+      <input id="relation-note-input" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="relation-picker-cancel" type="button">取消</button>
+      <button class="btn primary" id="relation-picker-confirm" type="button" disabled>建立關聯</button>
+    </div>
+  </div>
+</div>
+
+<div class="folder-trash-zone" id="folder-trash-zone" aria-hidden="true">🗑 放開以刪除資料夾分類</div>
+<div class="entry-new-folder-zone" id="entry-new-folder-zone" aria-hidden="true">📁 放開以建立新資料夾並歸檔</div>
 
 <!-- 登入 -->
 <div class="overlay" id="login-overlay">
@@ -123,6 +238,8 @@
 
 <!-- 🎙 錄音：不開鏡頭，浮動控制列，畫面照常滑手機 -->
 <div class="audio-badge" id="audio-badge" style="display:none;">
+  <span class="audio-status" id="audio-status" role="status" aria-live="polite" hidden></span>
+  <div class="audio-live-transcript" id="audio-live-transcript" aria-live="polite" hidden></div>
   <span class="audio-badge-dot"></span><span id="audio-timer">00:00</span>
   <button id="audio-photo-btn" type="button" title="拍照">📷</button>
   <button id="audio-note-btn" type="button" title="記一句">✏️</button>
@@ -144,6 +261,7 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=34"></script>
+<script src="home.js"></script>
 </body>
 </html>

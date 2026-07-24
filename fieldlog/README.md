@@ -1,6 +1,6 @@
 # 隨身記（fieldlog）
 
-隨身助理的記事本子項目：現場採集**參展／拜訪／實驗／上課**的原始資料
+隨身助理的記事本子項目：現場採集**參展／拜訪／實驗／上課／會議／查廠**的原始資料
 （錄音自動分段、拍照帶錄音時間戳、速記、轉文字），資料夾一鍵匯出
 Markdown 原料包，貼給 AI 彙整成報告後放進 Notion。
 
@@ -24,7 +24,20 @@ D1、不同 R2，互不影響。
    「加入主畫面」變成 App
 
 > Workers AI（錄音轉文字）不用另外開通，`wrangler.jsonc` 已含 AI
-> binding，第一次部署即生效。免費額度每天 10,000 Neurons，單人用不完。
+> binding。免費額度每天 10,000 Neurons；Fieldlog 在 7,000 停止自動轉錄，
+> 本月實際 AI 付費達 USD 4.50 時停止新的 AI 處理（錄音與記事仍正常）。
+
+## AI 費用雙層保護
+
+1. AI Gateway 建立專用 Gateway（例如 `fieldlog-budget`）。
+2. 在 Gateway 的 Spend limits 建立固定月週期 USD 5 規則。Cloudflare 的
+   spend limit 採最終一致性，短時間並行請求仍可能有少量超出。
+3. Worker → Settings → Variables and Secrets 新增一般變數
+   `AI_GATEWAY_ID=fieldlog-budget`，再重新部署。
+4. 首頁用量區必須顯示「AI Gateway 已接入」；若仍顯示尚未設定，USD 5
+   硬停止就還沒有生效。
+
+一般 Billing Budget Alert 只會通知、不會停止服務；不能替代 Gateway spend limit。
 
 ## 使用流程
 
@@ -32,7 +45,7 @@ D1、不同 R2，互不影響。
    隨時拍照（自動標「錄音第幾分幾秒拍的」）→ 結束後自動存成一筆
    收件匣紀錄
 2. 有空時打開紀錄：轉文字、補欄位、歸檔到資料夾（參展／拜訪／實驗／
-   上課各有欄位模板）
+   上課／會議／查廠各有欄位模板）
 3. 活動結束後，資料夾按「匯出給 AI」→ 得到一份 Markdown 原料包
    （速記＋轉錄全文＋照片時間點）→ 貼給 Claude/GPT：「彙整成報告」
    → 成品貼進 Notion

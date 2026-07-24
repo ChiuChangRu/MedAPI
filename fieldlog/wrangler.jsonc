@@ -2,20 +2,32 @@
   // 隨身助理記事本（fieldlog）— 與 medtec-2026 完全獨立的 Worker
   // 部署前要改的：把下方 database_id 換成新建 D1 資料庫的 UUID（見 README）
   "name": "fieldlog",
-  "main": "src/worker.js",
+  "main": "src/worker-entry.js",
   "compatibility_date": "2026-07-01",
+  // 保留 Dashboard 設定的 FIELD_PIN 與 Cloudflare API Token 等 Secret／變數。
+  "keep_vars": true,
+  "vars": {
+    // Account ID 不是機密；放進部署設定，確保分支預覽也能查用量。
+    "CLOUDFLARE_ACCOUNT_ID": "a791952f49fcd61ca18b9a82dda12dd1"
+  },
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
-    // wiki 內容是個人策略筆記，不能像其他靜態檔直接公開——
-    // 這些路徑先進 Worker 驗 PIN，通過才回傳檔案
-    "run_worker_first": ["/wiki/*"]
+    // 首頁與 app.js 先進 Worker；worker-entry 提供固定入口與原子「記一句」API。
+    "run_worker_first": ["/", "/index.html", "/wiki/*", "/app.js"]
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "fieldlog",
       "database_id": "41483c93-9398-4be6-a670-a3120c880781"
+    },
+    // 唯讀共綁 medtec-2026 的 D1（D1 允許多個 Worker 綁同一庫，跟 mcp/wrangler.jsonc 手法一樣）。
+    // 只給 POST /api/admin/import-exhibitors 這支一次性匯入用，讀展商團隊狀態／拜訪紀錄／附件擷取文字。
+    {
+      "binding": "DB_MEDTEC",
+      "database_name": "medtec-2026",
+      "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
     }
   ],
   "r2_buckets": [
@@ -24,5 +36,10 @@
       "bucket_name": "fieldlog-files"
     }
   ],
-  "ai": { "binding": "AI" }
+  "ai": { "binding": "AI" },
+  // 展商主檔（exhibitors.json）是靜態資料、不在 D1 裡，一樣是 Service Binding，
+  // 只給匯入用的 admin endpoint 呼叫，跟 mcp/wrangler.jsonc 的作法相同。
+  "services": [
+    { "binding": "MEDTEC", "service": "medtec-2026" }
+  ]
 }
