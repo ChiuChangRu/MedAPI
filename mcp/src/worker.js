@@ -480,7 +480,7 @@ const TOOLS = [
       const entryId = r.meta.last_row_id;
       await env.DB_FIELDLOG.prepare(
         "INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).bind(entryId, wantFolderId, "新增紀錄", `${title}（透過 MCP／claude.ai 新增）`).run();
+      ).bind(entryId, wantFolderId, "新增紀錄", `${title}（透過 MCP／claude.ai 新增）`, now()).run();
       return `已新增 [entry ${entryId}] ${title}${folder ? `，歸檔到「${folder.name}」（${folder.type}）` : "，目前在收件匣，之後可在 App 裡歸檔"}。`;
     },
   },
@@ -517,7 +517,7 @@ const TOOLS = [
       ).bind(fromId, toId, relationType, (args.note || "").trim(), now()).run();
       await env.DB_FIELDLOG.prepare(
         "INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).bind(fromId, null, "新增關聯", `${relationType} → entry ${toId}（透過 MCP／claude.ai 新增）`).run();
+      ).bind(fromId, null, "新增關聯", `${relationType} → entry ${toId}（透過 MCP／claude.ai 新增）`, now()).run();
       return `已建立關聯（id ${r.meta.last_row_id}）：[entry ${fromId}] ${from.title || "（未命名）"} —${relationType}→ [entry ${toId}] ${to.title || "（未命名）"}`;
     },
   },

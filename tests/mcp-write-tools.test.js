@@ -61,6 +61,13 @@ function makeWritableFieldlogDB() {
     prepare(sql) {
       return {
         bind(...args) {
+          // 真正的 D1 對「? 佔位符數量 ≠ bind() 參數數量」會直接報錯（Wrong number of
+          // parameter bindings）。之前的 mock 沒做這個檢查，讓漏寫一個參數的 bug
+          // 在測試裡悄悄過關，實際上到正式環境才炸——這裡補上，跟真正的 D1 行為一致。
+          const placeholders = (sql.match(/\?/g) || []).length;
+          if (placeholders !== args.length) {
+            throw new Error(`D1_ERROR: Wrong number of parameter bindings for SQL query.`);
+          }
           return {
             async all() { return { results: exec(sql, args).results }; },
             async first() { return exec(sql, args).results[0] || null; },
