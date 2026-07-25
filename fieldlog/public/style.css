@@ -732,3 +732,17 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 }
 /* 照片縮圖／檔案列的照片可點，游標要看得出來 */
 .att-photo-link, .folder-file-row .folder-file-name.is-photo { cursor: zoom-in; }
+
+/* ===== 版本印記與舊版警示 ===== */
+/* 曾經發生「Cloudflare 部署是最新版，但瀏覽器跑的是快取住的舊 app.js」，
+   而畫面上完全看不出版本，只能靠反覆試誤才找到原因。版本號常駐顯示，
+   對不上時直接在畫面最上面講清楚並提供一鍵清除。 */
+.app-version { margin-left: 6px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.stale-banner {
+  margin: 0 0 14px; padding: 13px 15px;
+  border: 1px solid #fdba74; border-radius: var(--radius);
+  background: #fff7ed; color: #9a3412;
+}
+.stale-banner[hidden] { display: none; }
+.stale-banner strong { display: block; margin-bottom: 5px; }
+.stale-banner p { margin: 0 0 11px; font-size: 13px; line-height: 1.6; }

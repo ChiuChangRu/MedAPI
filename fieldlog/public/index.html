@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=54" />
+<link rel="stylesheet" href="style.css?v=55" />
 <link rel="stylesheet" href="home.css" />
 </head>
 <body>
@@ -19,8 +19,11 @@
   <div id="view-home">
     <header class="home-app-head">
       <h1>隨身記</h1>
-      <small>輸入、整理、歸檔</small>
+      <small>輸入、整理、歸檔 <span id="app-version" class="app-version"></span></small>
     </header>
+
+    <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
+    <div class="stale-banner" id="stale-version-banner" hidden></div>
 
     <section class="home-section home-input-section" aria-labelledby="home-input-title">
       <div class="home-section-head">
@@ -290,8 +293,8 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=54"></script>
+<script src="app.js?v=55"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=54"></script>
+<script src="pdf-editor.js?v=55"></script>
 </body>
 </html>

@@ -850,6 +850,57 @@ test("wrangler.jsonc 的 run_worker_first 涵蓋 worker.js 裡要求 no-store �
   }
 });
 
+test("版本號在四個地方一致：worker.js／app.js／index.html／sw.js", async () => {
+  // 這四處只要有一處沒跟上，就會出現「伺服器以為是新版、瀏覽器載到舊版」而且
+  // 完全沒有提示的狀況（2026-07-25 為此耗掉很多來回）。全部綁在一起檢查。
+  const [worker, app, html, sw] = await Promise.all([
+    readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/public/sw.js", import.meta.url), "utf8"),
+  ]);
+  const uiVersion = worker.match(/const UI_VERSION = "(\d+)"/)[1];
+  const appVersion = app.match(/const APP_VERSION = "(\d+)"/)[1];
+  assert.equal(appVersion, uiVersion, "app.js 的 APP_VERSION 要等於 worker.js 的 UI_VERSION");
+
+  const htmlVersions = new Set([...html.matchAll(/\?v=(\d+)/g)].map((m) => m[1]));
+  assert.deepEqual([...htmlVersions], [uiVersion], `index.html 的 ?v= 應該全部是 ${uiVersion}`);
+
+  const swVersions = new Set([...sw.matchAll(/\?v=(\d+)/g)].map((m) => m[1]));
+  assert.deepEqual([...swVersions], [uiVersion], `sw.js 的 ?v= 應該全部是 ${uiVersion}`);
+  assert.match(sw.match(/const CACHE = "([^"]+)"/)[1], new RegExp(`v${uiVersion}`), "sw.js 的 CACHE 名稱要帶版本號");
+});
+
+test("版本對不上時畫面會直接講，並提供一鍵清除快取", async () => {
+  const [app, html] = await Promise.all([
+    readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/public/index.html", import.meta.url), "utf8"),
+  ]);
+  assert.match(html, /id="stale-version-banner"/, "要有顯示舊版警告的容器");
+  assert.match(html, /id="app-version"/, "版本號要常駐顯示在畫面上");
+  assert.match(app, /function showVersion/);
+  assert.match(app, /function forceReloadLatest/);
+  // 一鍵清除要真的解除 service worker 並清掉快取，不能只是 location.reload()
+  const reload = app.match(/async function forceReloadLatest[\s\S]*?\n}/)[0];
+  assert.match(reload, /getRegistrations\(\)/, "要解除已註冊的 service worker");
+  assert.match(reload, /registration\.unregister\(\)/);
+  assert.match(reload, /caches\.delete/, "要清掉 cache storage");
+  // boot() 一定要拿伺服器版本來對版，否則這個機制等於沒接上
+  assert.match(app, /showVersion\(cfg\.ui_version\)/, "boot() 要用 /api/config 回的版本對版");
+  // 伺服器沒回版本時不可誤報
+  const showVersion = app.match(/function showVersion[\s\S]*?\n}/)[0];
+  assert.match(showVersion, /!serverVersion/, "伺服器沒給版本時不該誤判成舊版");
+});
+
+test("/api/config 會回報伺服器端的前端版本", async () => {
+  resetSchemaCacheForTests();
+  const env = { FIELD_PIN: "pin", DB: makeDB() };
+  const res = await call(env, "/config");
+  assert.equal(res.status, 200);
+  const worker = await readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8");
+  assert.equal(res.data.ui_version, worker.match(/const UI_VERSION = "(\d+)"/)[1]);
+});
+
 test("service worker 預快取的檔名與 index.html 完全一致", async () => {
   // 版本查詢字串對不上時，預快取的是另一個 URL，等於沒快取到：斷網打不開，
   // 而且完全不會有錯誤提示。整併時 index.html 的版本號改了、sw.js 沒跟著改，

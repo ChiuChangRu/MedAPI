@@ -37,6 +37,12 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 
+// 前端資源的版本號。index.html 的 ?v=、sw.js 的 CACHE 名稱、app.js 的 APP_VERSION
+// 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
+// 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
+// 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
+const UI_VERSION = "55";
+
 const AI_DAILY_FREE_NEURONS = 10000;
 const AI_AUTO_SAFE_NEURONS = 7000;
 const AI_MONTHLY_SOFT_USD = 4.5;
@@ -283,7 +289,9 @@ async function handleApi(request, env, url) {
   const method = request.method;
 
   if (path === "/config" && method === "GET") {
-    return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI) });
+    // ui_version：伺服器上「應該」是哪一版前端。前端拿它跟自己的 APP_VERSION 比，
+    // 不一致就代表瀏覽器跑的是快取住的舊 app.js，畫面會直接提示並提供一鍵清除。
+    return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI), ui_version: UI_VERSION });
   }
   if (path === "/usage" && method === "GET") {
     return json(await cloudflareUsage(env));

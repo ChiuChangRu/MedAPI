@@ -3,6 +3,13 @@
 
 const $ = (id) => document.getElementById(id);
 
+// 這份 app.js 的版本。要跟 worker.js 的 UI_VERSION、index.html 的 ?v=、
+// sw.js 的 CACHE 名稱一致（有測試在把關）。
+// 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
+// app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
+// 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
+const APP_VERSION = "55";
+
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
 const LEVEL_HINTS = {
@@ -288,16 +295,57 @@ async function doLogin() {
   }
 }
 
+// ---------- 版本對版：避免「部署是新的、瀏覽器跑的是舊的」無聲卡住 ----------
+
+// 把 service worker 與所有快取清乾淨，然後帶一個時間戳重新載入（順便打破 HTTP 快取）
+async function forceReloadLatest(button) {
+  if (button) { button.disabled = true; button.textContent = "清除中…"; }
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+  } catch (err) {
+    console.error("清除快取失敗", err);
+  }
+  location.replace(`${location.pathname}?fresh=${Date.now()}`);
+}
+
+function showVersion(serverVersion) {
+  const stamp = $("app-version");
+  if (stamp) stamp.textContent = `v${APP_VERSION}`;
+  const banner = $("stale-version-banner");
+  if (!banner) return;
+  // 伺服器沒回版本（舊後端）就不判斷，避免誤報
+  if (!serverVersion || String(serverVersion) === APP_VERSION) {
+    banner.hidden = true;
+    return;
+  }
+  banner.hidden = false;
+  banner.innerHTML = `
+    <strong>⚠ 你現在看到的是舊版介面</strong>
+    <p>這台瀏覽器載到的是 v${esc(APP_VERSION)}，伺服器上已經是 v${esc(String(serverVersion))}。
+    這通常是瀏覽器或已安裝的 App 快取住舊檔案，按下面的按鈕清掉就會拿到最新版。</p>
+    <button class="btn primary" id="stale-version-reload" type="button">🔄 清除快取並載入最新版</button>`;
+  $("stale-version-reload").onclick = (event) => forceReloadLatest(event.currentTarget);
+}
+
 // ---------- 首頁 ----------
 async function boot() {
   try {
     const cfg = await api("/config");
     TRANSCRIBE_ENABLED = cfg.transcribe;
     localStorage.setItem("fieldlog_config", JSON.stringify(cfg));
+    showVersion(cfg.ui_version);
   } catch {
     // /config 偶發失敗（手機網路不穩）時退回上次成功的值，
     // 避免整理/轉文字按鈕憑空消失；就算誤開，後端也會擋
     TRANSCRIBE_ENABLED = !!JSON.parse(localStorage.getItem("fieldlog_config") || "{}").transcribe;
+    showVersion(null);
   }
   // 分類清單要先載入：建資料夾的對話框、資料夾排序、記事欄位模板都靠它
   await loadCategories();
