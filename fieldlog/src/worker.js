@@ -93,20 +93,36 @@ async function cloudflareUsage(env) {
     const products = [...grouped.values()].sort((a, b) =>
       a.family.localeCompare(b.family) || a.name.localeCompare(b.name)
     );
-    const findUsage = (family, name) => rows
-      .filter((r) => family.test(r.family) && name.test(r.name))
-      .reduce((sum, r) => sum + r.quantity, 0);
+    const today = now().slice(0, 10);
+    const lagDaysFrom = (dateStr) => (dateStr ? Math.round((new Date(today) - new Date(dateStr)) / 86400000) : null);
+    // 每個項目除了加總數量，也記下「這批資料最新是哪一天的」——Cloudflare 帳單 API
+    // 本身有回報延遲（實測落後 1-3 天），不是這支 Worker 沒去抓最新資料。
+    // 原本只有 AI 那一項算了落後天數，D1／R2／Workers 那幾項完全沒算，導致「查詢時間」
+    // 跟「帳單資料實際是哪天的」被混在一起講，使用者分不出兩者。這裡全部項目統一算。
+    const findUsage = (family, name) => {
+      const matched = rows.filter((r) => family.test(r.family) && name.test(r.name));
+      const latestDate = matched.map((r) => r.periodStart.slice(0, 10)).filter(Boolean).sort().at(-1) || "";
+      return {
+        quantity: matched.reduce((sum, r) => sum + r.quantity, 0),
+        latestDate,
+        dataLagDays: lagDaysFrom(latestDate),
+      };
+    };
     const aiRows = rows.filter((r) => /workers ai/i.test(r.family) && /neuron/i.test(r.name));
     const latestAiDate = aiRows.map((r) => r.periodStart.slice(0, 10)).filter(Boolean).sort().at(-1) || "";
+    // AI 額度是「每日」上限，只算最新那一天的用量；其他項目是「每月」上限，加總整期
     const aiUsage = aiRows
       .filter((r) => !latestAiDate || r.periodStart.startsWith(latestAiDate))
       .reduce((sum, r) => sum + r.quantity, 0);
     const aiMonthlyPaidCost = aiRows.reduce((sum, r) => sum + r.cost, 0);
-    // Cloudflare 帳單 API 本身有回報延遲（latestAiDate 常常不是今天，實測落後 1-3 天），
-    // 不是這支 Worker 沒去抓最新資料——把這個延遲天數算出來給前端顯示，
-    // 不然「今日」用量卡在幾天前的數字，使用者會誤以為是我們這邊沒更新
-    const today = now().slice(0, 10);
-    const aiDataLagDays = latestAiDate ? Math.round((new Date(today) - new Date(latestAiDate)) / 86400000) : null;
+    const aiDataLagDays = lagDaysFrom(latestAiDate);
+    const d1Read = findUsage(/^D1$/i, /Rows Read/i);
+    const d1Write = findUsage(/^D1$/i, /Rows Written/i);
+    const r2A = findUsage(/^R2$/i, /Class A/i);
+    const r2B = findUsage(/^R2$/i, /Class B/i);
+    const wRequests = findUsage(/^Workers$/i, /Standard Requests/i);
+    const wCpu = findUsage(/^Workers$/i, /CPU ms/i);
+    const wBuild = findUsage(/^Workers$/i, /Build Minutes/i);
     const limits = [
       {
         key: "ai", label: `Workers AI Neurons${latestAiDate ? `（${latestAiDate}）` : ""}`,
@@ -115,15 +131,20 @@ async function cloudflareUsage(env) {
         hardBudget: AI_MONTHLY_HARD_USD, paidRatePerThousand: AI_RATE_PER_1000_NEURONS,
         gatewayConfigured: !!env.AI_GATEWAY_ID, unit: "／日", dataLagDays: aiDataLagDays,
       },
-      { key: "d1-read", label: "D1 讀取列數", used: findUsage(/^D1$/i, /Rows Read/i), limit: 25e9, unit: "／月" },
-      { key: "d1-write", label: "D1 寫入列數", used: findUsage(/^D1$/i, /Rows Written/i), limit: 50e6, unit: "／月" },
-      { key: "r2-a", label: "R2 Class A 操作", used: findUsage(/^R2$/i, /Class A/i), limit: 1e6, unit: "／月" },
-      { key: "r2-b", label: "R2 Class B 操作", used: findUsage(/^R2$/i, /Class B/i), limit: 10e6, unit: "／月" },
-      { key: "worker-requests", label: "Workers 請求", used: findUsage(/^Workers$/i, /Standard Requests/i), limit: 10e6, unit: "／月" },
-      { key: "worker-cpu", label: "Workers CPU", used: findUsage(/^Workers$/i, /CPU ms/i), limit: 30e6, unit: "ms／月" },
-      { key: "worker-build", label: "Worker 建置", used: findUsage(/^Workers$/i, /Build Minutes/i), limit: 6000, unit: "分鐘／月" },
+      { key: "d1-read", label: "D1 讀取列數", used: d1Read.quantity, limit: 25e9, unit: "／月", dataLagDays: d1Read.dataLagDays },
+      { key: "d1-write", label: "D1 寫入列數", used: d1Write.quantity, limit: 50e6, unit: "／月", dataLagDays: d1Write.dataLagDays },
+      { key: "r2-a", label: "R2 Class A 操作", used: r2A.quantity, limit: 1e6, unit: "／月", dataLagDays: r2A.dataLagDays },
+      { key: "r2-b", label: "R2 Class B 操作", used: r2B.quantity, limit: 10e6, unit: "／月", dataLagDays: r2B.dataLagDays },
+      { key: "worker-requests", label: "Workers 請求", used: wRequests.quantity, limit: 10e6, unit: "／月", dataLagDays: wRequests.dataLagDays },
+      { key: "worker-cpu", label: "Workers CPU", used: wCpu.quantity, limit: 30e6, unit: "ms／月", dataLagDays: wCpu.dataLagDays },
+      { key: "worker-build", label: "Worker 建置", used: wBuild.quantity, limit: 6000, unit: "分鐘／月", dataLagDays: wBuild.dataLagDays },
     ].filter((item) => item.key === "ai" || item.used > 0);
     const totalCost = products.reduce((sum, p) => sum + p.cost, 0);
+    // 整批帳單資料裡最新的一天，不限任何一個項目——這是「查這次帳單，最新查得到
+    // 哪一天的資料」的單一總覽數字，跟下面「查詢時間」（Worker 剛剛去問的時間點）
+    // 是兩件不同的事，前端要分開講，不要合成一行讓人誤會成同一件事。
+    const allDates = rows.map((r) => r.periodStart.slice(0, 10)).filter(Boolean).sort();
+    const billingDataDate = allDates.at(-1) || "";
     return {
       source: endpoint.includes("billable") ? "billable" : "paygo",
       products,
@@ -131,6 +152,8 @@ async function cloudflareUsage(env) {
       totalCost,
       currency: products[0]?.currency || "USD",
       updatedAt: new Date().toISOString(),
+      billingDataDate,
+      billingDataLagDays: lagDaysFrom(billingDataDate),
     };
   }
   throw new Error(`Cloudflare 用量 API 無法讀取：${failures.join("；")}`);

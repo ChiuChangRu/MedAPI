@@ -50,6 +50,15 @@ body {
 .panel h2 .count { color: var(--text-muted); font-size: 13px; font-weight: 400; }
 .panel h2 .btn { margin-left: auto; }
 
+/* 「查詢時間」（剛剛去問 Cloudflare）跟「帳單資料本身是哪天的」分開兩行講，
+   不合成一句——這是使用者會誤會「剛更新＝數字最新」的根源 */
+.usage-overview { margin-bottom: 10px; }
+.usage-overview p { margin: 0 0 3px; }
+.usage-lag-warn {
+  margin: 0; padding: 6px 9px; border-radius: 7px;
+  background: #fff7ed; color: #9a3412; border: 1px solid #fdba74;
+  font-size: 12px; line-height: 1.5;
+}
 .usage-total {
   display: grid; grid-template-columns: 1fr auto; gap: 3px 10px;
   align-items: center; margin-bottom: 10px; padding: 12px;

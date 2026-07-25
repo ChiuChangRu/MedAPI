@@ -172,7 +172,24 @@ function fmtUsageNumber(n) {
   return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 }).format(Number(n || 0));
 }
 
-function renderAiUsage(item) {
+// 「查詢時間」（Worker 剛剛去問 Cloudflare 的時間點）跟「帳單資料本身是哪天的」
+// 是兩件事，混在一起講就是使用者會誤會「剛更新＝數字是最新的」的根源。
+// 這裡統一算好，個別項目的落後天數只在跟這個總覽數字不同時才需要額外提醒。
+function overviewBanner(data) {
+  const lag = Number(data.billingDataLagDays);
+  const queryTime = new Date(data.updatedAt).toLocaleString("zh-TW");
+  const dataLine = data.billingDataDate
+    ? (lag >= 1
+      ? `⚠ 帳單資料最新到 ${data.billingDataDate}（落後 ${lag} 天，Cloudflare 平台本身的限制，不是這裡沒去抓最新資料）`
+      : `✓ 帳單資料最新到 ${data.billingDataDate}（沒有回報延遲）`)
+    : "";
+  return `<div class="usage-overview">
+    <p class="sub">查詢時間：${esc(queryTime)}</p>
+    ${dataLine ? `<p class="${lag >= 1 ? "usage-lag-warn" : "sub"}">${dataLine}</p>` : ""}
+  </div>`;
+}
+
+function renderAiUsage(item, overallLagDays) {
   const used = Number(item.used || 0);
   const freeLimit = Number(item.limit || 10000);
   const safeLimit = Number(item.safeLimit || 7000);
@@ -193,10 +210,10 @@ function renderAiUsage(item) {
   ];
   const visible = rows.filter((r) => r.pct >= 10);
   const gridHtml = visible.length ? visible.map((r) => r.html).join("") : `<p class="usage-quiet">✓ 三項額度目前都低於 10%。</p>`;
-  // Cloudflare 帳單 API 本身有回報延遲（不是 fieldlog 沒去抓新資料）：
-  // 落後超過一天就明講，不然「今日」數字卡在幾天前，會被誤會是系統沒更新
-  const lagNote = Number(item.dataLagDays) >= 1
-    ? `<p class="ai-plan-note">⚠ Cloudflare 帳單資料本身落後 ${item.dataLagDays} 天更新（平台端限制，不是這裡沒去抓最新資料）；above 數字是「最新可查到的一天」，不一定是今天。</p>` : "";
+  // 面板頂端已經統一講過一次落後天數；這裡只在「這一項自己」跟那個總覽數字
+  // 不一樣時才需要額外提醒（例如 AI 落後 3 天、但其他項目只落後 1 天）
+  const lagNote = Number(item.dataLagDays) >= 1 && Number(item.dataLagDays) !== overallLagDays
+    ? `<p class="ai-plan-note">⚠ 這一項的帳單資料另外落後 ${item.dataLagDays} 天，跟上方總覽的天數不同。</p>` : "";
   return `<div class="usage-limit ai-usage">
     <div><strong>${esc(item.label)}</strong><span>${fmtUsageNumber(used)} Neurons</span></div>
     <div class="ai-budget-grid">${gridHtml}</div>
@@ -205,8 +222,8 @@ function renderAiUsage(item) {
   </div>`;
 }
 
-function renderUsageLimit(item) {
-  if (item.key === "ai") return renderAiUsage(item);
+function renderUsageLimit(item, overallLagDays) {
+  if (item.key === "ai") return renderAiUsage(item, overallLagDays);
   const percent = item.limit ? item.used / item.limit * 100 : 0;
   return `<div class="usage-limit ${percent > 100 ? "over" : ""}">
     <div><strong>${esc(item.label)}</strong><span>${fmtUsageNumber(item.used)} / ${fmtUsageNumber(item.limit)} ${esc(item.unit)}</span></div>
@@ -236,16 +253,19 @@ async function loadUsage() {
     const data = await api("/usage");
     if (!usageReachedTenPercent(data)) {
       const ai = (data.limits || []).find((item) => item.key === "ai");
-      wrap.innerHTML = `<p class="usage-quiet">✓ 目前各項用量都低於 10%，暫不顯示詳細結果。</p>
+      wrap.innerHTML = `${overviewBanner(data)}
+        <p class="usage-quiet">✓ 目前各項用量都低於 10%，暫不顯示詳細結果。</p>
         ${ai && !ai.gatewayConfigured ? `<p class="usage-error">⚠ AI Gateway 尚未接入，USD 5 硬停止尚未生效。</p>` : ""}`;
       return;
     }
-    wrap.innerHTML = `<div class="usage-total">
+    const overallLagDays = Number(data.billingDataLagDays);
+    wrap.innerHTML = `${overviewBanner(data)}
+      <div class="usage-total">
         <span>本期實際費用</span><strong>${esc(data.currency)} ${fmtUsageNumber(data.totalCost)}</strong>
         <small>${Number(data.totalCost) === 0 ? "目前都在包含額度內" : "已有超額費用"}</small>
       </div>
-      <div class="usage-limits"><h3>額度使用狀態</h3>${(data.limits || []).map(renderUsageLimit).join("")}</div>
-      <p class="sub usage-updated">${data.source === "billable" ? "實際帳單資料" : "Pay-as-you-go 帳單資料"}｜更新：${new Date(data.updatedAt).toLocaleString("zh-TW")}</p>`;
+      <div class="usage-limits"><h3>額度使用狀態</h3>${(data.limits || []).map((item) => renderUsageLimit(item, overallLagDays)).join("")}</div>
+      <p class="sub usage-updated">${data.source === "billable" ? "實際帳單資料" : "Pay-as-you-go 帳單資料"}</p>`;
   } catch (err) {
     wrap.innerHTML = `<p class="usage-error">暫時無法讀取用量：${esc(err.message)}</p>`;
   }
