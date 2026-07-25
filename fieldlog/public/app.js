@@ -644,11 +644,15 @@ function folderFileHtml(a, entryId) {
   const icon = isPdfAtt(a) ? "📕" : a.kind === "photo" ? "🖼️" : a.kind === "audio" ? "🎙️"
     : ["doc", "docx"].includes(ext) ? "📘" : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
       : ["ppt", "pptx"].includes(ext) ? "📙" : "📄";
+  // 照片走站內檢視器；其他檔案（PDF、Office）交給瀏覽器開新分頁，那邊的檢視器比較好用
+  const nameLink = isImageAtt(a)
+    ? `<a class="folder-file-name is-photo" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}">${esc(a.filename)}</a>`
+    : `<a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
   // 每一列是「一份檔案」而不是「一筆記事」：可以拖到上方子資料夾搬移，
   // 🗑 只刪這一份，⋯ 開這一份的詳情（附屬記事、分類、AI 整理）
   return `<div class="folder-file-row" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}">
     <span class="folder-file-icon" title="拖曳到上方子資料夾">${icon}</span>
-    <a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>
+    ${nameLink}
     <span class="folder-file-meta">${esc((a.created_at || "").slice(5, 16))}</span>
     <button class="folder-file-delete" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="刪除這份檔案" aria-label="刪除這份檔案">🗑</button>
     <button class="folder-file-manage" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="管理這一份檔案" aria-label="管理這一份檔案">⋯</button>
@@ -787,6 +791,7 @@ function bindFileRows() {
         .forEach((card) => card.classList.remove("file-drop-target"));
     };
   });
+  bindImageLinks();
 }
 
 function hasAttachmentDrag(event) {
@@ -1468,6 +1473,55 @@ function unlockBodyScroll() {
   window.scrollTo(0, Number(document.body.dataset.scrollY || 0));
 }
 
+// ---------- 站內圖片檢視器 ----------
+// 照片原本是 <a target="_blank"> 開原始圖片 URL。在 PWA（display:standalone）裡
+// 那會變成一個沒有瀏覽器介面的畫面：沒有返回、沒有關閉，只能強制關掉 App。
+// 改成在覆蓋層裡看，關閉鈕永遠在。
+
+// 開圖片時如果底層已經有其他 modal 開著（例如檔案詳情），關圖片時就不能解鎖
+// 底層捲動——那個 modal 還開著。記住是不是由圖片檢視器自己鎖的。
+let IMAGE_VIEWER_LOCKED_SCROLL = false;
+
+function openImageViewer(url, filename) {
+  const overlay = $("image-viewer-overlay");
+  $("image-viewer-img").src = url;
+  $("image-viewer-img").alt = filename || "照片";
+  $("image-viewer-name").textContent = filename || "";
+  $("image-viewer-open").href = url;
+  overlay.classList.add("open");
+  if (!document.body.classList.contains("modal-open")) {
+    lockBodyScroll();
+    IMAGE_VIEWER_LOCKED_SCROLL = true;
+  }
+}
+
+function closeImageViewer() {
+  const overlay = $("image-viewer-overlay");
+  if (!overlay.classList.contains("open")) return;
+  overlay.classList.remove("open");
+  $("image-viewer-img").src = ""; // 放掉大圖記憶體
+  if (IMAGE_VIEWER_LOCKED_SCROLL) {
+    unlockBodyScroll();
+    IMAGE_VIEWER_LOCKED_SCROLL = false;
+  }
+}
+
+function isImageAtt(a) {
+  return a.kind === "photo" || /^image\//i.test(a.mime || "");
+}
+
+// 把「連到圖片的連結」改成開站內檢視器。保留 href 讓長按／另開分頁仍然可用，
+// 只是攔掉一般點擊。
+function bindImageLinks(root = document) {
+  root.querySelectorAll("a[data-image-url]").forEach((link) => {
+    link.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openImageViewer(link.dataset.imageUrl, link.dataset.imageName || "");
+    };
+  });
+}
+
 function closeEntry() {
   FOCUSED_FILE = null;
   // 檔案詳情關掉之後，它註冊的分類刷新函式就失效了（指向已被替換掉的 DOM），
@@ -1514,7 +1568,9 @@ async function openFileDetail(entryId, attachmentId) {
     <div class="modal-close-float"><button class="btn small ghost" id="file-detail-close" type="button" aria-label="關閉檔案" title="關閉檔案">✕</button></div>
     <div class="detail-head"><h2 style="margin:0;overflow-wrap:anywhere">${esc(attachment.filename)}</h2></div>
     <div class="file-primary-actions">
-      <a id="file-read-action" href="${fileUrl}" target="_blank" rel="noopener">📖 閱讀</a>
+      ${isImageAtt(attachment)
+        ? `<a id="file-read-action" href="${fileUrl}" data-image-url="${fileUrl}" data-image-name="${esc(attachment.filename)}">📖 閱讀</a>`
+        : `<a id="file-read-action" href="${fileUrl}" target="_blank" rel="noopener">📖 閱讀</a>`}
       <button id="file-doodle-action" type="button" ${canDoodle ? "" : 'class="disabled" disabled'}>✍️ 塗鴉</button>
       <button id="file-category-action" type="button">🏷 分類</button>
       <button id="file-note-action" type="button">📝 Note</button>
@@ -1551,6 +1607,7 @@ async function openFileDetail(entryId, attachmentId) {
   lockBodyScroll();
   $("file-detail-close").onclick = closeEntry;
   bindAttActions(entryId);
+  bindImageLinks(modal);
 
   const panel = $("file-category-panel");
   const select = $("file-device-category");
@@ -1660,7 +1717,10 @@ function attHtml(a, siblings) {
     : docIcon.endsWith(".docx") ? "📘" : docIcon.endsWith(".xlsx") ? "📊" : docIcon.endsWith(".pptx") ? "📙"
       : isNativeDocAtt(a) ? "📄" : "📎";
   let preview = `<a href="${url}" target="_blank" rel="noopener">${fileIcon} ${esc(a.filename)}</a>`;
-  if (a.kind === "photo") preview = `<a href="${url}" target="_blank" rel="noopener"><img class="att-thumb" src="${url}" loading="lazy" alt="${esc(a.filename)}" /></a>`;
+  // 照片點縮圖開站內檢視器（不是 target=_blank——在 PWA 裡那會跳到沒有關閉鈕的畫面）
+  if (isImageAtt(a)) {
+    preview = `<a class="att-photo-link" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}"><img class="att-thumb" src="${url}" loading="lazy" alt="${esc(a.filename)}" /></a>`;
+  }
   if (a.kind === "audio") preview = `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`;
   const offset = a.offset_secs !== null && a.offset_secs !== undefined ? `<span class="att-offset">📸 錄音 ${fmtSecs(a.offset_secs)}</span>` : "";
   // AI 整理區塊預設收合，只露一行狀態（附件一多頁面才不會被文字撐爆），點狀態展開全文與操作
@@ -1763,6 +1823,7 @@ function bindAttActions(entryId) {
       } catch (e) { showToast("設定失敗：" + e.message); }
     };
   });
+  bindImageLinks();
   // PDF 塗鴉：開啟 pdf-editor.js 提供的編輯器
   document.querySelectorAll(".att-pdf-doodle").forEach((el) => {
     el.onclick = async (ev) => {
@@ -2468,6 +2529,16 @@ function init() {
   $("audio-photo-snap").onclick = audioPhotoSnap;
 
   $("entry-overlay").addEventListener("click", (e) => { if (e.target === $("entry-overlay")) closeEntry(); });
+  $("image-viewer-close").onclick = closeImageViewer;
+  // 點圖片以外的暗色區域也關掉（手機上比瞄準右上角的 ✕ 好按）
+  $("image-viewer-overlay").addEventListener("click", (e) => {
+    if (e.target.id !== "image-viewer-img") closeImageViewer();
+  });
+  // ↗ 原圖是真的要另開分頁看原始檔，別被上面那個關閉行為吃掉
+  $("image-viewer-open").addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeImageViewer();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) onPageHidden();     // 背景：錄影結束、錄音續錄
     else resumeAudioOnForeground();          // 回前台：錄音若被系統中斷則接續

@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=50" />
+<link rel="stylesheet" href="style.css?v=51" />
 <link rel="stylesheet" href="home.css" />
 </head>
 <body>
@@ -97,6 +97,22 @@
     </div>
     <div id="folder-children"></div>
     <div id="folder-entries" class="entry-list"></div>
+  </div>
+</div>
+
+<!-- 站內圖片檢視器：在 PWA（standalone）裡用 target=_blank 開圖片會跳到一個
+     沒有任何瀏覽器介面的畫面，沒有返回也沒有關閉，只能強制關掉 App。
+     照片改成在這個覆蓋層裡看，一定有關閉鈕。 -->
+<div class="overlay image-viewer-overlay" id="image-viewer-overlay">
+  <div class="image-viewer">
+    <div class="image-viewer-bar">
+      <span class="image-viewer-name" id="image-viewer-name"></span>
+      <a class="btn small ghost" id="image-viewer-open" href="#" target="_blank" rel="noopener" title="在新視窗開啟原圖">↗ 原圖</a>
+      <button class="btn small ghost" id="image-viewer-close" type="button" aria-label="關閉圖片" title="關閉圖片">✕</button>
+    </div>
+    <div class="image-viewer-body">
+      <img id="image-viewer-img" alt="" />
+    </div>
   </div>
 </div>
 
@@ -275,9 +291,9 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=50"></script>
+<script src="app.js?v=51"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=50"></script>
-<script src="home.js?v=50"></script>
+<script src="pdf-editor.js?v=51"></script>
+<script src="home.js?v=51"></script>
 </body>
 </html>

@@ -705,6 +705,44 @@ test("pdf 塗鴉改成掛 window 上的入口，不再覆寫 app.js 的函式", 
   assert.match(app, /att-pdf-doodle/, "塗鴉入口要由 app.js 自己產生");
 });
 
+test("照片一律走站內檢視器，不能用 target=_blank 開原始圖片 URL", async () => {
+  // 這個 App 是 PWA（manifest display: standalone）。在 standalone 模式下用
+  // target=_blank 開 /api/file/... 會跳到一個沒有任何瀏覽器介面的畫面——
+  // 沒有返回、沒有關閉，使用者只能強制關掉 App。所以照片必須走站內檢視器。
+  const [app, html, manifest] = await Promise.all([
+    readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/public/manifest.json", import.meta.url), "utf8"),
+  ]);
+  assert.equal(JSON.parse(manifest).display, "standalone", "前提：這是 standalone PWA");
+
+  // 檢視器本體與關閉鈕要存在
+  assert.match(html, /id="image-viewer-overlay"/);
+  assert.match(html, /id="image-viewer-close"/, "檢視器一定要有關閉鈕");
+  assert.match(app, /function closeImageViewer/);
+  assert.match(app, /function openImageViewer/);
+
+  // 產生照片連結的三個地方都要帶 data-image-url（＝交給站內檢視器），
+  // 而且同一個標籤裡不能同時有 target="_blank"
+  const imageLinks = [...app.matchAll(/<a[^>]*data-image-url[^>]*>/g)].map((m) => m[0]);
+  assert.ok(imageLinks.length >= 3, `照片連結應該有三處（縮圖／檔案列／閱讀），實得 ${imageLinks.length}`);
+  for (const tag of imageLinks) {
+    assert.doesNotMatch(tag, /target="_blank"/, `照片連結不該另開分頁：${tag.slice(0, 90)}`);
+  }
+
+  // 點擊要被攔下來轉給檢視器
+  assert.match(app, /a\[data-image-url\]/, "要有選取照片連結並改寫點擊行為的綁定");
+});
+
+test("圖片檢視器疊在其他 modal 上時，關閉不會解除底層的捲動鎖", async () => {
+  const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
+  // 檔案詳情裡點縮圖 → 檢視器疊在詳情上面。關掉檢視器時如果無條件
+  // unlockBodyScroll，底層還開著的詳情就會變成可以捲動、且捲動位置被重設。
+  assert.match(app, /IMAGE_VIEWER_LOCKED_SCROLL/, "要記住捲動鎖是不是檢視器自己上的");
+  const closeFn = app.match(/function closeImageViewer\(\)[\s\S]*?\n}/)[0];
+  assert.match(closeFn, /if \(IMAGE_VIEWER_LOCKED_SCROLL\)/, "只有自己鎖的才解鎖");
+});
+
 test("service worker 預快取的檔名與 index.html 完全一致", async () => {
   // 版本查詢字串對不上時，預快取的是另一個 URL，等於沒快取到：斷網打不開，
   // 而且完全不會有錯誤提示。整併時 index.html 的版本號改了、sw.js 沒跟著改，
