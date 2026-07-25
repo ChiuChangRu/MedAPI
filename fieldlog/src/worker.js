@@ -367,9 +367,13 @@ async function handleApi(request, env, url) {
     if (!old) return bad("找不到資料夾", 404);
     const name = body.name !== undefined ? (body.name || "").trim() : old.name;
     const status = body.status !== undefined ? (body.status || "").trim() : old.status;
+    // type 也可以改：建立時分類選錯很常見（例如誤選、或舊資料/匯入時類型跟預期不一樣），
+    // 之前只能改 name/status，改 type 沒地方修，只能刪掉重建
+    const type = body.type !== undefined ? (body.type || "").trim() : old.type;
     if (!name) return bad("name 不可為空");
-    await db.prepare("UPDATE folders SET name = ?, status = ? WHERE id = ?").bind(name, status, id).run();
-    await logHistory(db, null, id, "更新資料夾", `${name}／${status}`);
+    if (!type) return bad("type 不可為空");
+    await db.prepare("UPDATE folders SET name = ?, status = ?, type = ? WHERE id = ?").bind(name, status, type, id).run();
+    await logHistory(db, null, id, "更新資料夾", `${name}／${status}／${type}`);
     return json({ ok: true });
   }
   if (folderMatch && method === "DELETE") {

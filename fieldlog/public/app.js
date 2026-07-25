@@ -256,7 +256,7 @@ function renderFolders() {
       </div>
       <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
       <div class="folder-menu" hidden>
-        <button type="button" data-act="rename">重新命名</button>
+        <button type="button" data-act="rename">編輯（名稱／類型）</button>
         <button type="button" data-act="merge">合併至其他資料夾</button>
         <button type="button" data-act="delete" class="danger">刪除資料夾</button>
       </div>
@@ -304,13 +304,16 @@ function setFolderView(view) {
   renderFolders();
 }
 
+// 編輯資料夾：名稱＋類型一起改。類型也能改是因為建立時選錯很常見
+// （或舊資料/匯入資料類型跟預期不同），之前只能刪掉重建才能修正。
 async function renameFolder(id) {
   const folder = FOLDERS.find((f) => f.id === id);
   if (!folder) return;
-  const name = prompt("新的資料夾名稱：", folder.name);
-  if (!name || !name.trim() || name.trim() === folder.name) return;
-  await api(`/folders/${id}`, { method: "PUT", body: JSON.stringify({ name: name.trim() }) });
-  showToast("資料夾已重新命名");
+  const details = await askFolderDetails({ title: "編輯資料夾", desc: "調整名稱或類型（分類選錯了也能在這裡修正）", name: folder.name, type: folder.type });
+  if (!details) return;
+  if (details.name === folder.name && details.type === folder.type) return;
+  await api(`/folders/${id}`, { method: "PUT", body: JSON.stringify({ name: details.name, type: details.type }) });
+  showToast("資料夾已更新");
   loadFolders();
 }
 
