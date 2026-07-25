@@ -23,8 +23,9 @@
   各自的資料庫，互不影響，也刻意不合併
 - **策略地圖 Wiki**是「知識層」：純 Markdown、git 版控，AI 只能提案、
   人看 diff 才收錄
-- **MCP（`medapi-mcp`）** 是「問答層」：唯讀窗口，讓 claude.ai／Claude
-  Code 直接用自然語言跨三個來源查資料，不動任何原始系統
+- **MCP（`medapi-mcp`）** 是「問答層」：預設唯讀窗口，讓 claude.ai／Claude
+  Code 直接用自然語言跨三個來源查資料；唯二例外是新增一筆記事／建立
+  一個關聯（只能新增，不動任何既有資料）
 
 ## 二、四個組成部分
 
@@ -87,10 +88,13 @@ diff 決定收錄／修改／退回**才算數。
 **網址**：`https://medapi-mcp.gogoyankee.workers.dev`（本身不是給人瀏覽
 的頁面，是給 claude.ai 連的 MCP 端點）
 
-**鐵律：全唯讀**。只查資料，不寫入、不刪除——要改資料還是回各自的
-前台操作，wiki 收錄還是走 git 人審。技術上用 Cloudflare 的 Service
-Binding 直接呼叫隨身記／參展系統的 Worker（不透過對外網路，也因此不受
-兩邊前台怎麼改版影響），D1 則是唯讀共綁。
+**鐵律：預設唯讀，兩個例外只能新增**。絕大多數工具只查資料，不寫入、
+不刪除；`create_fieldlog_entry`（新增一筆記事）與 `create_relation`
+（建立兩筆記事的關聯）是唯二能寫入的工具，且都只做一次 INSERT，
+沒有任何工具能改掉或刪掉既有資料——要改內容還是回隨身記前台操作，
+wiki 收錄還是走 git 人審。技術上用 Cloudflare 的 Service Binding 直接
+呼叫隨身記／參展系統的 Worker（不透過對外網路，也因此不受兩邊前台怎麼
+改版影響），D1 則是共綁存取。
 
 ## 三、操作步驟
 

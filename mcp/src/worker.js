@@ -1,13 +1,16 @@
 /**
- * medapi-mcp — 跨系統唯讀問答層（MCP Server，Streamable HTTP）
+ * medapi-mcp — 跨系統問答層，預設唯讀（MCP Server，Streamable HTTP）
  *
  * 定位：讓 claude.ai／Claude Code 當「窗口」，用自然語言跨三個來源問答：
  *   - 策略地圖 Wiki（fieldlog Worker 的 /wiki/*，PIN 通道 runtime 抓取）
  *   - 隨身記 fieldlog（共綁同一個 D1，只下 SELECT）
  *   - Medtec 參展系統（共綁同一個 D1 ＋ runtime 抓公開的 exhibitors.json）
  *
- * 鐵律：這個 Worker 對三個來源一律唯讀——程式碼裡只有 SELECT 與 fetch，
- * 不寫入、不刪除。要改資料請回各自的前台，wiki 收錄一律走 git 人審。
+ * 鐵律：預設唯讀——程式碼裡絕大多數是 SELECT 與 fetch。唯二例外是
+ * create_fieldlog_entry／create_relation 兩支工具，範圍鎖得很窄：只能
+ * INSERT 一筆全新的記事或一筆全新的關聯，程式碼裡沒有任何 UPDATE／DELETE
+ * 語句碰得到 entries／attachments／folders／relations。改內容、刪東西、
+ * wiki 收錄一律要回各自的前台／git 人審，MCP 這邊永遠做不到。
  *
  * 驗證：POST /mcp 需帶 ?pin=（或 x-pin header／Authorization: Bearer），
  * 與 MCP_PIN（Secret）比對，未設定時一律拒絕（fail-closed）。
@@ -62,6 +65,10 @@ function clip(s, n = 200) {
 
 function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function now() {
+  return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
 }
 
 // 摺疊後比對：庫內文字與查詢字都轉成同一種簡繁/全半形形式再判斷是否包含。
@@ -409,7 +416,7 @@ const TOOLS = [
   },
   {
     name: "get_related",
-    description: "查詢隨身記裡『這筆記事跟哪些其他記事有關聯』（雙向），例如一份 ISO 標準被哪些實驗引用、一家廠商對照哪些專利、一次查廠關聯到哪次拜訪。這是交叉比對用的，不是關鍵字搜尋——關聯要先在隨身記前端手動建立（🔗 新增關聯）才查得到，不是系統自動猜出來的。找不到關聯不代表沒關係，可能只是還沒手動連過。",
+    description: "查詢隨身記裡『這筆記事跟哪些其他記事有關聯』（雙向），例如一份 ISO 標準被哪些實驗引用、一家廠商對照哪些專利、一次查廠關聯到哪次拜訪。這是交叉比對用的，不是關鍵字搜尋——關聯要明確建立過（在隨身記前端點「🔗 新增關聯」，或用 create_relation 工具）才查得到，系統不會自動猜。找不到關聯不代表沒關係，可能只是還沒建立過。",
     inputSchema: {
       type: "object",
       properties: { id: { type: "number", description: "entry id（search_fieldlog 或 get_fieldlog_entry 查到的編號）" } },
@@ -438,6 +445,80 @@ const TOOLS = [
         lines.push(`- ${arrow} [entry ${otherId}] ${r.relation_type}：${r.other_title || "（未命名）"}｜${where}${r.note ? `（${r.note}）` : ""}`);
       }
       return lines.join("\n");
+    },
+  },
+  {
+    // 這是 MCP 兩個「可以寫入」的工具之一。範圍刻意鎖得很窄：只能 INSERT 一筆全新的
+    // entries 列，不能 UPDATE、不能 DELETE，程式碼裡也確實沒有任何 UPDATE/DELETE 語句
+    // 碰得到 entries／attachments／folders。改內容、刪東西一律要回隨身記前台自己動手。
+    name: "create_fieldlog_entry",
+    description: "在隨身記新增一筆記事（只能新增一筆全新的記事，不會修改或刪除任何既有內容）。適合在對話中臨時想記一件事、或幫忙把討論的重點存下來。可選填 folder_id 直接歸檔（先用 list_fieldlog_folders 查 id）；不填就留在收件匣，之後使用者自己在 App 裡歸檔。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "標題" },
+        body: { type: "string", description: "內文／速記" },
+        folder_id: { type: "number", description: "選填：直接歸檔到這個資料夾（先用 list_fieldlog_folders 查 id）" },
+        fields: { type: "object", description: "選填：依資料夾類型的自訂欄位，例如標準類型可填 {\"標準編號\":\"ISO 10555-1\"}" },
+      },
+      required: ["title"],
+    },
+    async handler(env, args) {
+      const title = (args.title || "").trim();
+      if (!title) throw new Error("title 為必填");
+      const body = (args.body || "").trim();
+      const wantFolderId = args.folder_id !== undefined && args.folder_id !== null && args.folder_id !== "" ? Number(args.folder_id) : null;
+      let folder = null;
+      if (wantFolderId !== null) {
+        folder = await env.DB_FIELDLOG.prepare("SELECT id, name, type FROM folders WHERE id = ?").bind(wantFolderId).first();
+        if (!folder) throw new Error(`找不到資料夾 ${wantFolderId}——先用 list_fieldlog_folders 查正確的 id`);
+      }
+      const fields = args.fields && typeof args.fields === "object" && !Array.isArray(args.fields) ? args.fields : {};
+      const r = await env.DB_FIELDLOG.prepare(
+        "INSERT INTO entries (folder_id, title, fields_json, body, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(wantFolderId, title, JSON.stringify(fields), body, now()).run();
+      const entryId = r.meta.last_row_id;
+      await env.DB_FIELDLOG.prepare(
+        "INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(entryId, wantFolderId, "新增紀錄", `${title}（透過 MCP／claude.ai 新增）`).run();
+      return `已新增 [entry ${entryId}] ${title}${folder ? `，歸檔到「${folder.name}」（${folder.type}）` : "，目前在收件匣，之後可在 App 裡歸檔"}。`;
+    },
+  },
+  {
+    // 第二個可寫入工具：一樣只 INSERT，不 UPDATE／DELETE。這支存在的理由是這次的核心
+    // 訴求——聊天聊到「這次實驗其實引用了某份標準」時，不用中斷去開 App 手動連，
+    // 直接在對話裡把兩筆已存在的記事連起來，之後 get_related 就查得到。
+    name: "create_relation",
+    description: "把隨身記裡兩筆已存在的記事建立關聯（只能新增關聯，不會修改或刪除任何既有記事或關聯）。例如聊到「這次實驗其實是引用某份 ISO 標準」，可以直接用這個工具把兩筆記事連起來，之後 get_related 就查得到。兩筆記事都必須已經存在——先用 search_fieldlog 或 list_fieldlog_folders 確認正確的 entry id，不要用猜的編號。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from_entry_id: { type: "number", description: "關聯的起點 entry id" },
+        to_entry_id: { type: "number", description: "關聯的終點 entry id" },
+        relation_type: { type: "string", description: "關係說明，例：引用標準、被引用於、測試對象、專利依據、供應商、比對對象" },
+        note: { type: "string", description: "選填備註" },
+      },
+      required: ["from_entry_id", "to_entry_id", "relation_type"],
+    },
+    async handler(env, args) {
+      const fromId = Number(args.from_entry_id);
+      const toId = Number(args.to_entry_id);
+      const relationType = (args.relation_type || "").trim();
+      if (!fromId || !toId) throw new Error("from_entry_id 與 to_entry_id 為必填");
+      if (fromId === toId) throw new Error("不能關聯到自己");
+      if (!relationType) throw new Error("relation_type 為必填");
+      const [from, to] = await Promise.all([
+        env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(fromId).first(),
+        env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(toId).first(),
+      ]);
+      if (!from || !to) throw new Error(`找不到其中一筆記事（from ${fromId}／to ${toId}）——先用 search_fieldlog 確認正確的 entry id`);
+      const r = await env.DB_FIELDLOG.prepare(
+        "INSERT INTO relations (from_entry_id, to_entry_id, relation_type, note, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(fromId, toId, relationType, (args.note || "").trim(), now()).run();
+      await env.DB_FIELDLOG.prepare(
+        "INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(fromId, null, "新增關聯", `${relationType} → entry ${toId}（透過 MCP／claude.ai 新增）`).run();
+      return `已建立關聯（id ${r.meta.last_row_id}）：[entry ${fromId}] ${from.title || "（未命名）"} —${relationType}→ [entry ${toId}] ${to.title || "（未命名）"}`;
     },
   },
   {
@@ -624,7 +705,7 @@ async function handleMcp(request, env) {
       capabilities: { tools: {} },
       serverInfo: { name: "medapi-mcp", version: "1.0.0" },
       instructions:
-        "長儒的個人知識層唯讀窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字）、Medtec 2026 展商與團隊拜訪紀錄。全部唯讀；要改資料請走各系統前台，wiki 收錄走 git 人審。",
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增一筆記事）與 create_relation（建立兩筆記事的關聯）例外，且都只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。",
     });
   }
   if (method.startsWith("notifications/")) return new Response(null, { status: 202, headers: CORS_HEADERS });

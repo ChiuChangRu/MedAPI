@@ -1,4 +1,4 @@
-# medapi-mcp（跨系統唯讀問答層）
+# medapi-mcp（跨系統問答層，預設唯讀）
 
 讓 **claude.ai 當你的窗口**：連上這個 MCP Server 之後，直接用自然語言
 跨三個來源問答——
@@ -6,12 +6,19 @@
 | 工具 | 查什麼 | 資料來源 |
 |---|---|---|
 | `list_wiki_pages`／`read_wiki_page`／`search_wiki` | 策略地圖 Wiki 條目 | fieldlog Worker 的 `/wiki/*`（Service Binding＋PIN） |
-| `list_fieldlog_folders`／`search_fieldlog`／`get_fieldlog_entry` | 隨身記紀錄、逐字稿、照片文字 | fieldlog D1（共綁，只下 SELECT） |
+| `list_fieldlog_folders`／`search_fieldlog`／`get_fieldlog_entry`／`get_fieldlog_attachment` | 隨身記紀錄、逐字稿、照片文字、附件完整全文 | fieldlog D1（共綁，只下 SELECT） |
+| `get_related` | 兩筆記事之間的關聯（交叉比對） | fieldlog D1 的 `relations` 表 |
+| `create_fieldlog_entry`／`create_relation` | **唯二能寫入的工具**：新增一筆記事／建立兩筆記事的關聯 | fieldlog D1（只 INSERT，見下方說明） |
 | `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR） | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
 
-**鐵律：全部唯讀。** 程式碼裡只有 SELECT 與 fetch——不寫入、不刪除，
-所以三個系統的前台怎麼改版都不受影響；只有**資料表結構**變動時才需要
-回頭同步這裡的查詢。
+**鐵律：預設唯讀，兩個例外都鎖死在「只能新增」。** 其餘 12 個工具程式碼裡
+只有 SELECT 與 fetch；`create_fieldlog_entry`／`create_relation` 是唯二會
+寫入的工具，各自只做一次 `INSERT INTO entries` 或 `INSERT INTO relations`，
+程式碼裡沒有任何 `UPDATE`／`DELETE` 語句碰得到 entries／attachments／
+folders／relations——也就是說就算透過 claude.ai 對話下指令，也不可能
+改掉或刪掉既有的任何一筆資料，只能加新的。想改內容、刪東西，一律要回
+隨身記前台親自操作；wiki 收錄一律走 git 人審。三個系統的前台怎麼改版
+都不受影響；只有**資料表結構**變動時才需要回頭同步這裡的查詢。
 
 **簡繁互通：** 所有 `search_*` 工具都做「摺疊比對」——查詢字與庫內文字
 先正規化（繁→簡、全形→半形、小寫）成同一種形再比對，所以**繁體查得到
@@ -67,7 +74,10 @@ Claude Code 也可以連：`claude mcp add --transport http medapi
 
 - **fail-closed**：`MCP_PIN` 未設定時所有請求一律 401
 - PIN 接受三種帶法：`?pin=`／`x-pin` header／`Authorization: Bearer`
-- 對 fieldlog 與 medtec 的 D1 是唯讀存取（程式碼層面約束，只有 SELECT）
+- 對 fieldlog 與 medtec 的 D1 幾乎全是唯讀存取（程式碼層面約束，只有
+  SELECT）；`create_fieldlog_entry`／`create_relation` 是唯二例外，
+  範圍鎖死在「只能 INSERT 一筆全新的記事或關聯」，沒有任何工具能
+  UPDATE 或 DELETE 既有資料——改內容、刪東西一律要回前台
 - wiki 內容經 fieldlog 的 PIN 通道取得，不另存副本；展商主檔
   `exhibitors.json` 本來就是公開靜態資產，runtime 抓取＋記憶體快取 5 分鐘
 
@@ -77,10 +87,10 @@ Claude Code 也可以連：`claude mcp add --transport http medapi
 claude.ai / Claude Code
         │  自然語言問答
         ▼
-   medapi-mcp（本 Worker，唯讀）
+   medapi-mcp（本 Worker，預設唯讀）
         │
         ├── Service Binding → fieldlog /wiki/*（PIN）      … Wiki 條目
-        ├── D1 共綁 → fieldlog DB（SELECT）                … 隨身記紀錄/逐字稿/OCR
+        ├── D1 共綁 → fieldlog DB（幾乎全 SELECT，僅 2 支工具 INSERT）… 隨身記紀錄/逐字稿/OCR/關聯
         ├── D1 共綁 → medtec-2026 DB（SELECT）             … 拜訪狀態/紀錄/附件清單
         └── Service Binding → medtec /data/exhibitors.json … 展商主檔
 ```

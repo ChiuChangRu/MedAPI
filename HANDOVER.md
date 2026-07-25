@@ -15,7 +15,7 @@ Worker ＋一個 git 版控的知識庫：
 |---|---|---|---|
 | **fieldlog（隨身記）** | 個人現場採集：錄影/拍照/錄音/速記，AI 轉文字 | `fieldlog/` | `https://fieldlog.gogoyankee.workers.dev` |
 | **medtec-2026（參展系統）** | 8 人團隊共筆：585 家展商名單、拜訪紀錄、附件 | `cloudflare/` | `https://medtec-2026.gogoyankee.workers.dev` |
-| **medapi-mcp（MCP 問答層）** | 唯讀，讓 claude.ai 跨三來源自然語言查詢 | `mcp/` | `https://medapi-mcp.gogoyankee.workers.dev` |
+| **medapi-mcp（MCP 問答層）** | 預設唯讀（僅 create_fieldlog_entry／create_relation 例外，只能新增），讓 claude.ai 跨三來源自然語言查詢 | `mcp/` | `https://medapi-mcp.gogoyankee.workers.dev` |
 | **策略地圖 Wiki（知識層）** | 純 Markdown、git 版控的技術知識條目 | `fieldlog/public/wiki/` | `.../wiki.html`（隨身記內，PIN 保護） |
 
 還有兩個參展系統的平行舊版本（`docs/` GitHub Pages 靜態版、`app/`
@@ -51,7 +51,7 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 
 | 文件 | 講什麼 |
 |---|---|
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 工程決策與全貌：為什麼三系統不合併、MCP 只做唯讀、wiki 走 git 人審。含「待解問題」清單 |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 工程決策與全貌：為什麼三系統不合併、MCP 預設唯讀（僅限定新增兩支工具例外）、wiki 走 git 人審。含「待解問題」清單 |
 | [`DATA-MODEL.md`](DATA-MODEL.md) | 資料存哪裡（R2 檔案／D1 文字）、資料表欄位、四種整理狀態、PDF 三種辨識差異、查證 SQL |
 | [`SECOND-BRAIN.md`](SECOND-BRAIN.md) | 給人看的操作手冊：採集→整理→更新 wiki→claude.ai 問答的日常流程 |
 | 各子目錄 `README.md` | `cloudflare/`、`fieldlog/`、`mcp/`、`fieldlog/public/wiki/` 各有一份，含各自的部署步驟 |
@@ -64,7 +64,7 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 |---|---|---|---|
 | Worker | `fieldlog` | root `fieldlog/` | 隨身記後端＋前端靜態資產 |
 | Worker | `medtec-2026` | root `cloudflare/` | 參展系統，含每日 LINE 摘要 cron |
-| Worker | `medapi-mcp` | deploy `mcp/wrangler.jsonc` | MCP 唯讀層，無自己的儲存 |
+| Worker | `medapi-mcp` | deploy `mcp/wrangler.jsonc` | MCP 問答層，無自己的儲存，預設唯讀（僅 2 支工具能 INSERT，見 mcp/README.md） |
 | D1 資料庫 | `fieldlog` | id `41483c93-9398-4be6-a670-a3120c880781` | fieldlog Worker＋medapi-mcp 共綁 |
 | D1 資料庫 | `medtec-2026` | id `bbb39534-bcf7-45b3-b068-60be5c3b198b` | medtec Worker＋medapi-mcp 共綁；medtec 另唯讀共綁 fieldlog 庫做「今日 AI 用量」 |
 | R2 bucket | `fieldlog-files` | fieldlog Worker（binding `FILES`） | 隨身記的照片/錄音/PDF |
@@ -141,7 +141,9 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
   GitHub Pages 靜態版部署未開；`app/` FastAPI 版後台無登入驗證。
 
 **設計鐵律（別踩）**
-- MCP **一律唯讀**，只有 SELECT／fetch，不寫入。要改資料走各前台。
+- MCP **預設唯讀**，只有 SELECT／fetch；唯二例外是 `create_fieldlog_entry`／
+  `create_relation`，範圍鎖死在「只能 INSERT 一筆全新的記事或關聯」，
+  沒有任何工具能 UPDATE 或 DELETE 既有資料。改內容、刪東西要走各前台。
 - wiki 收錄**一律人審 git diff**，AI 不直接寫入生產內容。
 - Tier 2 **絕不背景全庫批次**，只處理使用者手動指定的單一 PDF。
 - **不為單一問題／單一公司寫程式**——改就改通用的系統層。
