@@ -101,6 +101,8 @@ fetch() 打同帳號下另一個 workers.dev Worker**（會拿到 404，即使�
 Claude Code 也可以連：`claude mcp add --transport http medapi
 "https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<PIN>"`。
 
+**接 ChatGPT／GPT** 的連接器設定步驟與完整工具清單見 [`CONNECT-GPT.md`](./CONNECT-GPT.md)。
+
 ## 安全設計
 
 - **fail-closed**：`MCP_PIN` 未設定時所有請求一律 401
