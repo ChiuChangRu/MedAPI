@@ -89,10 +89,37 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
   `fieldlog/`、`cloudflare/`。
 - **前端是網路優先的 PWA**：改了 `public/app.js` 等靜態檔，使用者要
   **重新整理頁面**才會載到新版（已開著的分頁仍跑舊記憶體裡的程式）。
-- **⚠️ 目前狀態（2026-07-19）**：GitHub 正在故障，GitHub→Cloudflare
-  的部署 webhook 失靈中。最後一個 fieldlog 的部署還停在 Tier 2 那版
-  （version `b9923a11`），「背景錄音」的修正已 push 但**還沒部署**。
-  GitHub 恢復後會自動補上，或在 Cloudflare Deployments 頁手動 Retry。
+
+### 「畫面還是舊版」的排查順序（2026-07-25 為此耗掉一整輪來回）
+
+**先看首頁標頭的版本號**（例如 `輸入、整理、歸檔 v55`）。app.js 啟動時會拿自己的
+`APP_VERSION` 跟 `/api/config` 回的 `UI_VERSION` 對版，對不上就直接在畫面最上面
+顯示橘色橫幅，並提供一顆「清除快取並載入最新版」（會 unregister service worker、
+清空 cache storage、帶時間戳重載）。所以：
+
+1. **版本號就是最新的** → 不是快取問題，去查程式碼本身有沒有被覆寫（見下）。
+2. **版本號比伺服器舊** → 按橫幅那顆按鈕，會自己修好。
+3. **完全沒有版本號** → 載到的是 v55 之前的版本，才需要手動清快取。
+
+版本號要同步四個地方（有測試把關，任一處沒跟上就失敗）：
+`worker.js` 的 `UI_VERSION`、`app.js` 的 `APP_VERSION`、`index.html` 的 `?v=`、
+`sw.js` 的 `CACHE` 名稱與 `?v=`。改前端時記得一起加。
+
+**當時真正的兩個原因（都不是快取）：**
+
+- `public/home.js` 用 `loadUsage = loadActiveUsageOnly` 在執行期覆寫掉 app.js 的
+  用量面板，所以改 app.js 完全沒有效果（改在死碼上），而且不會報錯。它還用
+  MutationObserver 持續刪掉 index.html 的元素。已折進 app.js 並刪除，
+  另有結構性測試禁止 `public/` 底下任何檔案覆寫 app.js 的頂層函式。
+- `wrangler.jsonc` 的 `run_worker_first` 一度沒有列 `/`、`/app.js` 等 App 殼路徑。
+  **不在那份名單裡的路徑，Cloudflare Assets 會直接回應、Worker 完全不會執行**，
+  就沒機會蓋掉 Assets 預設的快取表頭。那份名單要跟 worker.js 的
+  `NO_CACHE_SHELL_PATHS` 一致（有測試交叉比對）。
+
+**另外：不要用 Cloudflare Dashboard 的「Edit code」手動部署這個專案。** 當時有一筆
+`Manually deployed`（無 commit 記錄）蓋掉了正確的 git 自動部署並拿走 100% 流量，
+而且 Rollback 疑似不會一併還原靜態資源，導致 Worker 程式碼與 assets 對不上。
+一律靠 push 到開發分支自動部署。
 
 ---
 
