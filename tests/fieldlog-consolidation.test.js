@@ -709,6 +709,59 @@ test("前端不再用執行期字串注入改寫 app.js", async () => {
   assert.doesNotMatch(source, /\.replace\(\s*\/app\\\.js/, "不該再改寫 HTML 裡的 app.js 版本號");
 });
 
+test("public/ 底下沒有任何檔案在執行期覆寫 app.js 的頂層函式", async () => {
+  // 這是整併要根除的模式，但第一次整併時漏掉了 home.js——它用
+  // `loadUsage = loadActiveUsageOnly` 覆寫掉 app.js 的用量面板，並用
+  // MutationObserver 持續刪掉 index.html 裡的元素。結果連改了三次 app.js 的
+  // 用量面板都完全沒有效果（改到的是死碼），而且沒有任何錯誤訊息，
+  // 只能靠使用者一直回報「還是舊介面」才會發現。
+  const { readdir } = await import("node:fs/promises");
+  const dir = new URL("../fieldlog/public/", import.meta.url);
+  const files = (await readdir(dir)).filter((name) => name.endsWith(".js"));
+
+  // app.js 自己宣告的頂層函式清單
+  const app = await readFile(new URL("app.js", dir), "utf8");
+  const appFunctions = new Set(
+    [...app.matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1])
+  );
+  assert.ok(appFunctions.size > 30, "應該抓到 app.js 的頂層函式清單");
+
+  for (const name of files) {
+    if (name === "app.js") continue;
+    const source = await readFile(new URL(name, dir), "utf8");
+    for (const fn of appFunctions) {
+      // 抓「賦值給 app.js 的函式名」這種覆寫寫法（前面不是 . 或宣告關鍵字）
+      const pattern = new RegExp(`(?<![.\\w$])${fn}\\s*=\\s*(?:async\\s*)?(?:function|\\()`);
+      assert.doesNotMatch(
+        source, pattern,
+        `${name} 覆寫了 app.js 的 ${fn}()——請把行為直接寫進 app.js，不要在執行期蓋掉`
+      );
+    }
+    // 也不該用 window.xxx = 的方式覆寫（home.js 當初就是這樣改 addTimedNote）
+    for (const fn of appFunctions) {
+      assert.doesNotMatch(
+        source, new RegExp(`window\\.${fn}\\s*=`),
+        `${name} 透過 window 覆寫了 app.js 的 ${fn}()`
+      );
+    }
+  }
+});
+
+test("index.html 輸出的元素不會被 JS 在執行期刪掉（要藏就別輸出）", async () => {
+  // home.js 曾經用 MutationObserver 持續移除 .folder-architecture-guide，
+  // 而那個元素同時還存在於 index.html 與 style.css——三個地方各說各話。
+  const { readdir } = await import("node:fs/promises");
+  const dir = new URL("../fieldlog/public/", import.meta.url);
+  const files = (await readdir(dir)).filter((name) => name.endsWith(".js") && name !== "app.js");
+  for (const name of files) {
+    const source = await readFile(new URL(name, dir), "utf8");
+    assert.doesNotMatch(
+      source, /new MutationObserver\([^)]*\)\.observe\(document\.documentElement/,
+      `${name} 用 MutationObserver 監看整份文件——這種全域覆寫很難追，行為請直接寫進 app.js`
+    );
+  }
+});
+
 test("pdf 塗鴉改成掛 window 上的入口，不再覆寫 app.js 的函式", async () => {
   const editor = await readFile(new URL("../fieldlog/public/pdf-editor.js", import.meta.url), "utf8");
   assert.match(editor, /window\.fieldlogOpenPdfEditor = openPdfEditor/);
@@ -761,7 +814,7 @@ test("App 殼檔案強制 no-store，不會被瀏覽器／CDN 快取住舊版本
   // 對得上、100% 流量），前台卻還是舊介面。原因是這幾個檔案原本沒有被
   // wrangler.jsonc 的 run_worker_first 導進 Worker，Cloudflare Assets 直接
   // 回應、Worker 完全不會執行，就沒機會蓋掉 Assets 預設的快取表頭。
-  const shellPaths = ["/", "/index.html", "/app.js", "/style.css", "/pdf-editor.js", "/home.js", "/home.css", "/sw.js", "/manifest.json"];
+  const shellPaths = ["/", "/index.html", "/app.js", "/style.css", "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json"];
 
   let requestedPath = null;
   const env = {

@@ -139,8 +139,7 @@ body {
   display: block;
 }
 
-.home-knowledge-card,
-.folder-architecture-guide {
+.home-knowledge-card {
   display: none !important;
 }
 

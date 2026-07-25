@@ -1118,7 +1118,7 @@ async function handleApi(request, env, url) {
 // （不然 Cloudflare Assets 會直接回應，Worker 根本不會執行）。
 const NO_CACHE_SHELL_PATHS = new Set([
   "/", "/index.html", "/app.js", "/style.css",
-  "/pdf-editor.js", "/home.js", "/home.css", "/sw.js", "/manifest.json",
+  "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json",
 ]);
 
 async function noStoreAsset(request, env) {

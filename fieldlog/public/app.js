@@ -232,39 +232,39 @@ function renderUsageLimit(item, overallLagDays) {
   </div>`;
 }
 
-function usageReachedTenPercent(data) {
-  return (data.limits || []).some((item) => {
-    if (item.key === "ai") {
-      // 修正：之前漏檢查「② 今日免費額度」——如果今天單純轉錄量大、
-      // 但還沒碰到安全門檻或付費預算，整個面板會被誤判成「都低於 10%」而藏起來
-      return Number(item.used || 0) / Number(item.safeLimit || 7000) >= 0.1
-        || Number(item.used || 0) / Number(item.limit || 10000) >= 0.1
-        || Number(item.monthlyPaidCost || 0) / Number(item.hardBudget || 5) >= 0.1;
-    }
-    return Number(item.limit || 0) > 0 && Number(item.used || 0) / Number(item.limit) >= 0.1;
-  });
+// 首頁只列「真的有用量」的項目：完全沒動到的額度列出來只是佔畫面。
+// （AI 那三條額度各自的 10% 判斷在 renderAiUsage 裡，是另一層、不衝突。）
+function hasActualUsage(item) {
+  if (!item) return false;
+  if (item.key === "ai") return Number(item.used || 0) > 0 || Number(item.monthlyPaidCost || 0) > 0;
+  return Number(item.used || 0) > 0;
 }
 
 async function loadUsage() {
   const wrap = $("usage-content");
   if (!wrap) return;
-  wrap.innerHTML = `<p class="sub">正在讀取 Cloudflare 帳單用量…</p>`;
+  wrap.innerHTML = `<p class="usage-quiet">正在讀取 Cloudflare 帳單用量…</p>`;
   try {
     const data = await api("/usage");
-    if (!usageReachedTenPercent(data)) {
-      const ai = (data.limits || []).find((item) => item.key === "ai");
+    const activeLimits = (data.limits || []).filter(hasActualUsage);
+    const totalCost = Number(data.totalCost || 0);
+    const ai = (data.limits || []).find((item) => item.key === "ai");
+    const gatewayWarning = ai && !ai.gatewayConfigured
+      ? `<p class="usage-error">⚠ AI Gateway 尚未接入，USD 5 硬停止尚未生效。</p>` : "";
+
+    if (!activeLimits.length && totalCost <= 0) {
       wrap.innerHTML = `${overviewBanner(data)}
-        <p class="usage-quiet">✓ 目前各項用量都低於 10%，暫不顯示詳細結果。</p>
-        ${ai && !ai.gatewayConfigured ? `<p class="usage-error">⚠ AI Gateway 尚未接入，USD 5 硬停止尚未生效。</p>` : ""}`;
+        <p class="usage-quiet">目前沒有可顯示的用量。</p>${gatewayWarning}`;
       return;
     }
     const overallLagDays = Number(data.billingDataLagDays);
-    wrap.innerHTML = `${overviewBanner(data)}
-      <div class="usage-total">
-        <span>本期實際費用</span><strong>${esc(data.currency)} ${fmtUsageNumber(data.totalCost)}</strong>
-        <small>${Number(data.totalCost) === 0 ? "目前都在包含額度內" : "已有超額費用"}</small>
-      </div>
-      <div class="usage-limits"><h3>額度使用狀態</h3>${(data.limits || []).map((item) => renderUsageLimit(item, overallLagDays)).join("")}</div>
+    const costHtml = totalCost > 0
+      ? `<div class="usage-total"><span>本期費用</span><strong>${esc(data.currency || "USD")} ${fmtUsageNumber(totalCost)}</strong></div>`
+      : "";
+    const limitsHtml = activeLimits.length
+      ? `<div class="usage-limits active-usage-list">${activeLimits.map((item) => renderUsageLimit(item, overallLagDays)).join("")}</div>`
+      : "";
+    wrap.innerHTML = `${overviewBanner(data)}${costHtml}${limitsHtml}${gatewayWarning}
       <p class="sub usage-updated">${data.source === "billable" ? "實際帳單資料" : "Pay-as-you-go 帳單資料"}</p>`;
   } catch (err) {
     wrap.innerHTML = `<p class="usage-error">暫時無法讀取用量：${esc(err.message)}</p>`;
@@ -1983,16 +1983,16 @@ async function ensureEntryForCapture(entryId, titlePrefix) {
   return { entryId: newId, folderId };
 }
 
+// 採集中「記一句」：走後端的原子附加端點（POST /entries/:id/notes）。
+// 刻意不用「讀出 body → 前端串接 → 整段寫回」——連續記好幾句時，只要有一次
+// 請求交錯，後寫回的那次就會拿舊 body 蓋掉前一句。後端用一句 SQL 完成附加。
 async function addTimedNote(session) {
   if (!session) return;
   const text = prompt("記一句（會標上目前的時間點）：");
   if (!text || !text.trim()) return;
-  const offset = fmtSecs(segOffset(session));
+  const line = `[${fmtSecs(segOffset(session))}] ${text.trim()}`;
   try {
-    const entry = await api(`/entries/${session.entryId}`);
-    const line = `[${offset}] ${text.trim()}`;
-    const body = entry.body ? `${entry.body}\n${line}` : line;
-    await api(`/entries/${session.entryId}`, { method: "PUT", body: JSON.stringify({ body }) });
+    await api(`/entries/${session.entryId}/notes`, { method: "POST", body: JSON.stringify({ line }) });
     showToast("已記錄");
   } catch (err) { showToast("記錄失敗：" + err.message); }
 }
