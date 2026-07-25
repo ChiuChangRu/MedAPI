@@ -13,10 +13,16 @@
   "assets": {
     "directory": "public",
     "binding": "ASSETS",
-    // /wiki/* 要先進 Worker 做 PIN 驗證才放行；其餘靜態檔案直接由 Assets 服務。
-    // （整併前 / 與 /app.js 也要先進 Worker，是為了讓包裝鏈在執行期改寫 HTML 與
-    //   把 JS 字串接到 app.js 後面；現在前端邏輯都在 public/ 的檔案裡，不需要了。）
-    "run_worker_first": ["/wiki/*"]
+    // /wiki/* 要先進 Worker 做 PIN 驗證才放行。
+    // App 殼（index.html／app.js／style.css 等）也要先進 Worker——不是為了改寫內容
+    // （整併後已經不需要），是因為「不先進 Worker」＝ Cloudflare Assets 直接回應，
+    // Worker 完全不會執行，就沒機會蓋掉 Assets 預設的快取表頭。這幾個檔案幾乎每次
+    // 部署都會變，被瀏覽器／CDN 快取住會讓使用者看到舊版介面卻毫無錯誤或提示
+    // （2026-07-25 實際發生過：部署確認是最新版，前台卻還是舊畫面）。
+    "run_worker_first": [
+      "/wiki/*", "/", "/index.html", "/app.js", "/style.css",
+      "/pdf-editor.js", "/home.js", "/home.css", "/sw.js", "/manifest.json"
+    ]
   },
   "d1_databases": [
     {

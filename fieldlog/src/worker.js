@@ -1111,6 +1111,24 @@ async function handleApi(request, env, url) {
   return bad("不存在的 API 路徑", 404);
 }
 
+// App 殼：這幾個檔案幾乎每次部署都會變。Cloudflare Assets 預設的快取表頭
+// 是為了長年不變的靜態檔案設計的，套在這幾個檔案上就會讓瀏覽器／CDN 快取住
+// 舊版本——部署明明是最新的，使用者卻看到舊介面，而且沒有任何錯誤訊息。
+// 要進到這裡強制蓋掉表頭，前提是 wrangler.jsonc 的 run_worker_first 要包含這些路徑
+// （不然 Cloudflare Assets 會直接回應，Worker 根本不會執行）。
+const NO_CACHE_SHELL_PATHS = new Set([
+  "/", "/index.html", "/app.js", "/style.css",
+  "/pdf-editor.js", "/home.js", "/home.css", "/sw.js", "/manifest.json",
+]);
+
+async function noStoreAsset(request, env) {
+  const response = await env.ASSETS.fetch(request);
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "no-store, no-cache, must-revalidate, max-age=0");
+  headers.set("pragma", "no-cache");
+  return new Response(response.body, { status: response.status, headers });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1122,6 +1140,9 @@ export default {
       const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
       if (given !== pin) return bad("PIN 錯誤或未提供", 401);
       return env.ASSETS.fetch(new Request(new URL(url.pathname, url.origin), request));
+    }
+    if (NO_CACHE_SHELL_PATHS.has(url.pathname)) {
+      return noStoreAsset(request, env);
     }
     if (url.pathname.startsWith("/api/")) {
       // fail-closed：FIELD_PIN 未設定時全部拒絕

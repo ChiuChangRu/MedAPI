@@ -672,13 +672,26 @@ test("八層包裝鏈的檔案已經全部移除", async () => {
   }
 });
 
-test("wrangler 入口指向整併後的 worker.js，且不再需要把 / 與 /app.js 導進 Worker", async () => {
+test("wrangler 入口指向整併後的 worker.js", async () => {
   const raw = await readFile(new URL("../fieldlog/wrangler.jsonc", import.meta.url), "utf8");
   assert.match(raw, /"main":\s*"src\/worker\.js"/);
   const runFirst = raw.match(/"run_worker_first":\s*\[([^\]]*)\]/)[1];
   assert.match(runFirst, /\/wiki\/\*/, "wiki 仍要先過 PIN 驗證");
-  assert.doesNotMatch(runFirst, /"\/app\.js"/, "app.js 不再需要 Worker 加工");
-  assert.doesNotMatch(runFirst, /"\/"/, "首頁不再需要 Worker 改寫 HTML");
+  // / 與 /app.js 仍要先進 Worker——但理由跟整併前不一樣：整併前是為了在執行期
+  // 改寫 HTML／注入 JS 字串（那個模式已經根除，見下面兩個測試）；現在是為了
+  // 讓 Worker 有機會蓋掉 Cloudflare Assets 預設的快取表頭，見「App 殼檔案強制
+  // no-store」那個測試——2026-07-25 曾經因為漏掉這件事，讓部署明明是最新版、
+  // 前台卻還在跑舊介面。
+  assert.match(runFirst, /"\/app\.js"/, "app.js 要先進 Worker 蓋快取表頭");
+  assert.match(runFirst, /"\/index\.html"/, "index.html 要先進 Worker 蓋快取表頭");
+});
+
+test("app 殼路徑進 Worker 只為了蓋快取表頭，不做內容改寫（不是整併前那種注入）", async () => {
+  const source = await readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8");
+  const fn = source.match(/async function noStoreAsset\(request, env\)[\s\S]*?\n}/)[0];
+  assert.doesNotMatch(fn, /\.replace\(/, "不該對回應內容做字串替換");
+  assert.doesNotMatch(fn, /await response\.text\(\)/, "不該讀出內容來改寫，直接轉發 body 就好");
+  assert.match(fn, /response\.body/, "應該直接轉發原始 body");
 });
 
 test("worker.js 不再用 fetch 轉呼叫下一層 Worker", async () => {
@@ -741,6 +754,47 @@ test("圖片檢視器疊在其他 modal 上時，關閉不會解除底層的捲�
   assert.match(app, /IMAGE_VIEWER_LOCKED_SCROLL/, "要記住捲動鎖是不是檢視器自己上的");
   const closeFn = app.match(/function closeImageViewer\(\)[\s\S]*?\n}/)[0];
   assert.match(closeFn, /if \(IMAGE_VIEWER_LOCKED_SCROLL\)/, "只有自己鎖的才解鎖");
+});
+
+test("App 殼檔案強制 no-store，不會被瀏覽器／CDN 快取住舊版本", async () => {
+  // 2026-07-25 實際發生過：部署到 Cloudflare 確認是最新版（Version History
+  // 對得上、100% 流量），前台卻還是舊介面。原因是這幾個檔案原本沒有被
+  // wrangler.jsonc 的 run_worker_first 導進 Worker，Cloudflare Assets 直接
+  // 回應、Worker 完全不會執行，就沒機會蓋掉 Assets 預設的快取表頭。
+  const shellPaths = ["/", "/index.html", "/app.js", "/style.css", "/pdf-editor.js", "/home.js", "/home.css", "/sw.js", "/manifest.json"];
+
+  let requestedPath = null;
+  const env = {
+    ASSETS: {
+      async fetch(req) {
+        requestedPath = new URL(req.url).pathname;
+        return new Response("ok", { headers: { "cache-control": "public, max-age=31536000, immutable" } });
+      },
+    },
+  };
+
+  for (const path of shellPaths) {
+    const res = await fieldlogWorker.fetch(new Request(`https://x${path}`), env);
+    assert.equal(requestedPath, path, `${path} 應該真的問過 Assets（代表有進到 Worker，不是被 Assets 直接攔截）`);
+    assert.match(res.headers.get("cache-control") || "", /no-store/, `${path} 的回應要蓋成 no-store`);
+  }
+});
+
+test("wrangler.jsonc 的 run_worker_first 涵蓋 worker.js 裡要求 no-store 的每一個殼路徑", async () => {
+  // 兩邊只要有一個漏列，那個路徑就會被 Cloudflare Assets 直接攔截，Worker 完全
+  // 不會執行——no-store 的程式碼寫對也沒用，這就是這次真正發生的那個 bug。
+  const [wrangler, worker] = await Promise.all([
+    readFile(new URL("../fieldlog/wrangler.jsonc", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8"),
+  ]);
+  const runFirst = new Set(
+    [...wrangler.match(/"run_worker_first":\s*\[([^\]]*)\]/)[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])
+  );
+  const shellSet = worker.match(/const NO_CACHE_SHELL_PATHS = new Set\(\[([\s\S]*?)\]\);/)[1];
+  const shellPaths = [...shellSet.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  for (const path of shellPaths) {
+    assert.ok(runFirst.has(path), `${path} 要求 no-store，但 wrangler.jsonc 的 run_worker_first 沒列它——Worker 永遠不會執行到`);
+  }
 });
 
 test("service worker 預快取的檔名與 index.html 完全一致", async () => {
