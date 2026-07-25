@@ -1,6 +1,6 @@
 ;(() => {
-  if (window.__fieldlogPdfEditorV39) return;
-  window.__fieldlogPdfEditorV39 = true;
+  if (window.__fieldlogPdfEditor) return;
+  window.__fieldlogPdfEditor = true;
 
   const state = {
     entryId: 0,
@@ -337,38 +337,8 @@
     }
   }
 
-  const originalAttHtml = typeof attHtml === "function" ? attHtml : null;
-  if (originalAttHtml) {
-    attHtml = function fieldlogV39AttHtml(attachment, siblings) {
-      let html = originalAttHtml(attachment, siblings);
-      const isPdf = (attachment.mime || "") === "application/pdf" || /\.pdf$/i.test(attachment.filename || "");
-      if (isPdf) {
-        html = html.replace(
-          `<a href="#" class="att-delete" data-id="${attachment.id}">刪除</a>`,
-          `<a href="#" class="att-pdf-doodle" data-id="${attachment.id}">✍️ 塗鴉</a><a href="#" class="att-delete" data-id="${attachment.id}">刪除</a>`
-        );
-      }
-      return html;
-    };
-  }
-
-  const originalBindAttActions = typeof bindAttActions === "function" ? bindAttActions : null;
-  if (originalBindAttActions) {
-    bindAttActions = function fieldlogV39BindAttActions(entryId) {
-      originalBindAttActions(entryId);
-      document.querySelectorAll(".att-pdf-doodle").forEach((element) => {
-        element.onclick = async (event) => {
-          event.preventDefault();
-          try {
-            const entry = await api(`/entries/${entryId}`);
-            const attachment = (entry.attachments || []).find((item) => String(item.id) === element.dataset.id);
-            if (!attachment) throw new Error("找不到 PDF 附件");
-            await openPdfEditor(entryId, attachment);
-          } catch (error) {
-            notify("開啟塗鴉失敗：" + error.message);
-          }
-        };
-      });
-    };
-  }
+  // 對外只暴露這一個入口：app.js 的附件列與單一檔案詳情都呼叫它。
+  // 之前是在這裡覆寫 attHtml／bindAttActions（用字串比對把塗鴉連結插進 app.js 產生的
+  // HTML），app.js 那段 HTML 一改，字串就對不上、塗鴉入口會靜默消失。
+  window.fieldlogOpenPdfEditor = openPdfEditor;
 })();

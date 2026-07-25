@@ -3,19 +3,69 @@
 
 const $ = (id) => document.getElementById(id);
 
-// 各種活動的欄位模板
-const FOLDER_TEMPLATES = {
-  "參展": ["廠商名", "攤位", "目標", "取得資料", "下一步"],
-  "拜訪": ["對象", "聯絡人", "討論事項", "結論", "待辦"],
-  "實驗": ["主題", "條件／參數", "觀察結果", "判定", "下次調整"],
-  "上課": ["課程名", "講者", "重點", "待查資料"],
-  "會議": ["會議主題", "與會者", "討論事項", "決議", "待辦／負責人"],
-  "查廠": ["廠商／廠區", "查核範圍", "觀察結果", "缺失／風險", "改善追蹤"],
-  "標準": ["標準編號", "版本／年份", "適用範圍", "關鍵要求", "對應產品／實驗"],
-  "廠商": ["攤位／位置", "國家", "產品", "聯絡窗口", "評估結果"],
-  "專利": ["專利號", "申請／公告日", "專利權人", "技術重點", "與我方關聯"],
-  "其他": [],
+// 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
+const MAX_FOLDER_DEPTH = 4;
+const LEVEL_HINTS = {
+  1: "產品／專案",
+  2: "文件類型",
+  3: "主題／試驗／標準系列",
+  4: "年份／版本／特定文件群",
 };
+
+// 分類字典——從 /api/categories 載入，使用者可以自己增刪改（見「管理分類」）。
+// 下面那份寫死的清單只是 API 讀不到時的退路，不是真相來源；平常都以 API 為準。
+let CATEGORIES = { folder_type: [], device: [] };
+
+// API 讀不到分類時的退路（離線、或第一次啟動還沒建表），至少讓建資料夾不會壞掉
+const FALLBACK_FOLDER_TYPES = [
+  { level: 0, name: "參展", icon: "🏢", note: "展會與廠商", fields: ["廠商名", "攤位", "目標", "取得資料", "下一步"] },
+  { level: 0, name: "拜訪", icon: "🤝", note: "客戶與供應商", fields: ["對象", "聯絡人", "討論事項", "結論", "待辦"] },
+  { level: 0, name: "實驗", icon: "🧪", note: "條件與結果", fields: ["主題", "條件／參數", "觀察結果", "判定", "下次調整"] },
+  { level: 0, name: "上課", icon: "🎓", note: "課程與筆記", fields: ["課程名", "講者", "重點", "待查資料"] },
+  { level: 0, name: "會議", icon: "👥", note: "決議與待辦", fields: ["會議主題", "與會者", "討論事項", "決議", "待辦／負責人"] },
+  { level: 0, name: "查廠", icon: "🔎", note: "查核與改善", fields: ["廠商／廠區", "查核範圍", "觀察結果", "缺失／風險", "改善追蹤"] },
+  { level: 0, name: "標準", icon: "📐", note: "ISO／ASTM 等規範", fields: ["標準編號", "版本／年份", "適用範圍", "關鍵要求", "對應產品／實驗"] },
+  { level: 0, name: "廠商", icon: "🏭", note: "供應商與產品", fields: ["攤位／位置", "國家", "產品", "聯絡窗口", "評估結果"] },
+  { level: 0, name: "專利", icon: "💡", note: "專利與技術", fields: ["專利號", "申請／公告日", "專利權人", "技術重點", "與我方關聯"] },
+  { level: 0, name: "其他", icon: "🗂️", note: "自由分類", fields: [] },
+];
+
+function folderTypes() {
+  return CATEGORIES.folder_type.length ? CATEGORIES.folder_type : FALLBACK_FOLDER_TYPES;
+}
+
+/** 這個分類的記事欄位模板 */
+function templateFor(type) {
+  const found = folderTypes().find((item) => item.name === type);
+  return found ? found.fields || [] : [];
+}
+
+/** 建第 N 層資料夾時可以選的分類：該層專屬 ＋ level 0 的通用分類 */
+function choicesForLevel(level) {
+  const wanted = Math.min(MAX_FOLDER_DEPTH, Math.max(1, Number(level || 1)));
+  const list = folderTypes().filter((item) => item.level === wanted);
+  const general = folderTypes().filter((item) => item.level === 0);
+  return [...list, ...general];
+}
+
+/** 分類排序用的位置（資料夾清單依分類分群時用） */
+function typeOrderOf(type) {
+  const index = folderTypes().findIndex((item) => item.name === type);
+  return index < 0 ? 999 : index;
+}
+
+async function loadCategories() {
+  try {
+    const data = await api("/categories");
+    const all = data.categories || [];
+    CATEGORIES = {
+      folder_type: all.filter((item) => item.kind === "folder_type"),
+      device: all.filter((item) => item.kind === "device"),
+    };
+  } catch (err) {
+    console.error("分類清單載入失敗，改用內建預設清單", err);
+  }
+}
 
 let FOLDERS = [];
 let CURRENT_FOLDER = null; // 開啟中的資料夾物件
@@ -26,22 +76,13 @@ let MERGE_SOURCE_ID = null;
 let MOVE_ENTRY_ID = null;
 let MOVE_ENTRY_TITLE = "";
 let CREATE_FOLDER_RESOLVE = null;
-const FOLDER_TYPE_META = {
-  "參展": ["🏢", "展會與廠商"], "拜訪": ["🤝", "客戶與供應商"],
-  "實驗": ["🧪", "條件與結果"], "上課": ["🎓", "課程與筆記"],
-  "會議": ["👥", "決議與待辦"], "查廠": ["🔎", "查核與改善"],
-  "標準": ["📐", "ISO／ASTM 等規範"], "廠商": ["🏭", "供應商與產品"],
-  "專利": ["💡", "專利與技術"],
-  "其他": ["🗂️", "自由分類"],
-};
-const FOLDER_TYPE_ORDER = Object.keys(FOLDER_TEMPLATES);
+// 開啟「單一檔案」詳情時記住是哪一份，這樣整理完重新開啟仍停在同一個檔案上
+let FOCUSED_FILE = null;
 
 function compareFolders(a, b) {
   const active = Number(b.status === "進行中") - Number(a.status === "進行中");
   if (active) return active;
-  const typeA = FOLDER_TYPE_ORDER.indexOf(a.type);
-  const typeB = FOLDER_TYPE_ORDER.indexOf(b.type);
-  const byType = (typeA < 0 ? 999 : typeA) - (typeB < 0 ? 999 : typeB);
+  const byType = typeOrderOf(a.type) - typeOrderOf(b.type);
   if (byType) return byType;
   return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant", {
     numeric: true,
@@ -238,6 +279,8 @@ async function boot() {
     // 避免整理/轉文字按鈕憑空消失；就算誤開，後端也會擋
     TRANSCRIBE_ENABLED = !!JSON.parse(localStorage.getItem("fieldlog_config") || "{}").transcribe;
   }
+  // 分類清單要先載入：建資料夾的對話框、資料夾排序、記事欄位模板都靠它
+  await loadCategories();
   await Promise.all([loadFolders(), loadInbox()]);
   loadUsage();
   syncPendingFiles();
@@ -443,23 +486,70 @@ function closeCreateFolderDialog(result = null) {
   CREATE_FOLDER_RESOLVE = null;
 }
 
-function askFolderDetails({ title = "新增資料夾", desc = "整理成容易找到的分類", name = "", type = "其他" } = {}) {
+/** 資料夾在四層架構裡的深度（用已載入的 FOLDERS 往上追，1＝最上層） */
+function folderDepthOf(folder) {
+  if (!folder) return 0;
+  let depth = 0;
+  let current = folder;
+  const visited = new Set();
+  while (current) {
+    const id = Number(current.id || 0);
+    if (!id || visited.has(id)) break;
+    visited.add(id);
+    depth++;
+    current = current.parent_id ? FOLDERS.find((item) => Number(item.id) === Number(current.parent_id)) : null;
+  }
+  return depth;
+}
+
+/** 從最上層到這個資料夾的完整路徑（麵包屑標題用） */
+function folderPathOf(folder) {
+  const path = [];
+  let current = folder;
+  const visited = new Set();
+  while (current) {
+    const id = Number(current.id || 0);
+    if (!id || visited.has(id)) break;
+    visited.add(id);
+    path.unshift(current.name);
+    current = current.parent_id ? FOLDERS.find((item) => Number(item.id) === Number(current.parent_id)) : null;
+  }
+  return path;
+}
+
+/**
+ * 建資料夾的對話框。分類選項依「這是第幾層」給——第 1 層問的是產品／專案，
+ * 第 2 層問文件類型，不會把四層的選項混在一起讓人選錯。
+ */
+function askFolderDetails({ title = "", desc = "", name = "", type = "", parentId = null } = {}) {
   if (CREATE_FOLDER_RESOLVE) closeCreateFolderDialog(null);
-  $("create-folder-title").textContent = title;
-  $("create-folder-desc").textContent = desc;
+  const parent = parentId ? FOLDERS.find((item) => Number(item.id) === Number(parentId)) : null;
+  const level = parent ? Math.min(MAX_FOLDER_DEPTH, folderDepthOf(parent) + 1) : 1;
+  const choices = choicesForLevel(level);
+  const selected = choices.some((item) => item.name === type) ? type : (choices[0]?.name || "其他");
+
+  $("create-folder-title").textContent = title || (level === 1 ? "新增產品／專案" : `新增第 ${level} 層資料夾`);
+  $("create-folder-desc").textContent =
+    `${desc || "建立可延伸到所有文件的共用架構"}｜第 ${level} 層：${LEVEL_HINTS[level]}`;
   $("create-folder-name").value = name;
-  $("create-folder-types").innerHTML = Object.keys(FOLDER_TEMPLATES).map((key) => {
-    const [icon, note] = FOLDER_TYPE_META[key];
-    return `<label class="folder-type-option"><input type="radio" name="folder-type" value="${key}" ${key === type ? "checked" : ""}><span><b>${icon}</b><strong>${key}</strong><small>${note}</small></span></label>`;
-  }).join("");
+  $("create-folder-types").innerHTML = choices.map((item) => `
+    <label class="folder-type-option">
+      <input type="radio" name="folder-type" value="${esc(item.name)}" ${item.name === selected ? "checked" : ""}>
+      <span><b>${esc(item.icon || "🗂️")}</b><strong>${esc(item.name)}</strong><small>${esc(item.note || "")}</small></span>
+    </label>`).join("");
   $("create-folder-overlay").classList.add("open");
   setTimeout(() => $("create-folder-name").focus(), 0);
   return new Promise((resolve) => { CREATE_FOLDER_RESOLVE = resolve; });
 }
 
 async function createFolderForArchive(suggestedName) {
-  const defaultName = String(suggestedName || "ISO 文件").replace(/（未命名）/g, "").trim() || "ISO 文件";
-  const details = await askFolderDetails({ title: "建立並歸檔", desc: "建立新資料夾後，記事會自動移入", name: defaultName });
+  const defaultName = String(suggestedName || "待分類專案").replace(/（未命名）/g, "").trim() || "待分類專案";
+  const details = await askFolderDetails({
+    title: "建立產品／專案並歸檔",
+    desc: "先建立第 1 層，後續可再加入文件類型與主題",
+    name: defaultName,
+    parentId: null,
+  });
   if (!details) return null;
   const folder = await api("/folders", { method: "POST", body: JSON.stringify(details) });
   return { id: Number(folder.id), ...details };
@@ -490,22 +580,49 @@ async function moveInboxEntry(entryId, folderId) {
 }
 
 async function newFolder() {
-  const details = await askFolderDetails();
+  const details = await askFolderDetails({
+    title: "新增產品／專案",
+    desc: "第 1 層不限定 ISO，可建立任何產品、共通法規或合作專案",
+    parentId: null,
+  });
   if (!details) return;
   await api("/folders", { method: "POST", body: JSON.stringify(details) });
-  showToast("資料夾已建立");
+  showToast("產品／專案資料夾已建立");
   loadFolders();
 }
 
 async function newSubfolder() {
   if (!CURRENT_FOLDER) return;
   const parentId = CURRENT_FOLDER.id;
-  const details = await askFolderDetails({ title: "新增子資料夾", desc: `建立在「${CURRENT_FOLDER.name}」裡面` });
+  const nextLevel = folderDepthOf(CURRENT_FOLDER) + 1;
+  if (nextLevel > MAX_FOLDER_DEPTH) {
+    showToast(`資料夾最多 ${MAX_FOLDER_DEPTH} 層，這一層不能再新增子資料夾`);
+    syncSubfolderButton();
+    return;
+  }
+  const details = await askFolderDetails({
+    title: `新增第 ${nextLevel} 層資料夾`,
+    desc: `建立在「${CURRENT_FOLDER.name}」裡面`,
+    parentId,
+  });
   if (!details) return;
   await api("/folders", { method: "POST", body: JSON.stringify({ ...details, parent_id: parentId }) });
   await loadFolders();
-  showToast(`已在「${CURRENT_FOLDER.name}」建立子資料夾`);
+  showToast(`已建立第 ${nextLevel} 層資料夾`);
   openFolder(parentId);
+}
+
+/** 已經在第 4 層時就藏起「＋ 子資料夾」，而不是讓使用者按下去才被拒絕 */
+function syncSubfolderButton() {
+  const button = $("btn-new-subfolder");
+  if (!button) return;
+  const depth = folderDepthOf(CURRENT_FOLDER);
+  const atLimit = depth >= MAX_FOLDER_DEPTH;
+  button.hidden = atLimit;
+  button.disabled = atLimit;
+  button.title = atLimit
+    ? `資料夾最多 ${MAX_FOLDER_DEPTH} 層`
+    : `新增第 ${Math.max(1, depth + 1)} 層子資料夾（最多 ${MAX_FOLDER_DEPTH} 層）`;
 }
 
 function renderChildFolders(parentId) {
@@ -515,9 +632,10 @@ function renderChildFolders(parentId) {
   const wrap = $("folder-children");
   wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${children.map((f) => `
     <button class="child-folder-card" type="button" data-id="${f.id}">
-      <span>📁</span><strong>${esc(f.name)}</strong><small>${esc(f.type)}｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
+      <span>📁</span><strong>${esc(f.name)}</strong><small>${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
     </button>`).join("")}</div>` : "";
   wrap.querySelectorAll(".child-folder-card").forEach((el) => { el.onclick = () => openFolder(Number(el.dataset.id)); });
+  bindFolderDropTargets();
 }
 
 function folderFileHtml(a, entryId) {
@@ -526,11 +644,14 @@ function folderFileHtml(a, entryId) {
   const icon = isPdfAtt(a) ? "📕" : a.kind === "photo" ? "🖼️" : a.kind === "audio" ? "🎙️"
     : ["doc", "docx"].includes(ext) ? "📘" : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
       : ["ppt", "pptx"].includes(ext) ? "📙" : "📄";
-  return `<div class="folder-file-row">
-    <span class="folder-file-icon">${icon}</span>
+  // 每一列是「一份檔案」而不是「一筆記事」：可以拖到上方子資料夾搬移，
+  // 🗑 只刪這一份，⋯ 開這一份的詳情（附屬記事、分類、AI 整理）
+  return `<div class="folder-file-row" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}">
+    <span class="folder-file-icon" title="拖曳到上方子資料夾">${icon}</span>
     <a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>
     <span class="folder-file-meta">${esc((a.created_at || "").slice(5, 16))}</span>
-    <button class="folder-file-manage" type="button" data-entry-id="${entryId}">詳情</button>
+    <button class="folder-file-delete" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="刪除這份檔案" aria-label="刪除這份檔案">🗑</button>
+    <button class="folder-file-manage" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="管理這一份檔案" aria-label="管理這一份檔案">⋯</button>
   </div>`;
 }
 
@@ -542,25 +663,13 @@ async function openFolder(id) {
   $("view-folder").style.display = "block";
   const parent = CURRENT_FOLDER.parent_id ? FOLDERS.find((f) => f.id === CURRENT_FOLDER.parent_id) : null;
   $("btn-back").textContent = parent ? `‹ ${parent.name}` : "‹ 回首頁";
-  $("folder-title").textContent = `${CURRENT_FOLDER.type}｜${CURRENT_FOLDER.name}`;
+  // 標題顯示完整路徑，四層架構下才看得出「現在在哪一層的哪個分支」
+  $("folder-title").textContent = folderPathOf(CURRENT_FOLDER).join(" ／ ");
   $("btn-inner-grid").classList.toggle("active", INNER_FOLDER_VIEW === "grid");
   $("btn-inner-list").classList.toggle("active", INNER_FOLDER_VIEW === "list");
+  syncSubfolderButton();
   renderChildFolders(id);
-  // v34：既有附件重新命名並移除內容完全相同的重複檔。
-  // 只使用已存在的 OCR／逐字稿，不呼叫 AI；整個瀏覽器只執行一次。
-  if (!localStorage.getItem("fieldlog_legacy_rename_v34")) {
-    localStorage.setItem("fieldlog_legacy_rename_v34", "running");
-    try {
-      const renamed = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
-      localStorage.setItem("fieldlog_legacy_rename_v34", "done");
-      if (renamed.renamed || renamed.duplicates_removed) {
-        showToast(`已整理 ${renamed.renamed || 0} 個檔名，移除 ${renamed.duplicates_removed || 0} 個重複檔`);
-      }
-    } catch (err) {
-      localStorage.removeItem("fieldlog_legacy_rename_v34");
-      console.error("舊檔名自動整理失敗", err);
-    }
-  }
+  await runLegacyCleanupOnce();
   const summaries = await api(`/entries?folder_id=${id}`);
   const entries = await Promise.all(summaries.map((e) =>
     e.att_count ? api(`/entries/${e.id}`) : Promise.resolve({ ...e, attachments: [] })
@@ -572,20 +681,156 @@ async function openFolder(id) {
     "zh-Hant",
     { numeric: true, sensitivity: "base" },
   ));
-  // 有附件的記事通常只是上傳容器；若內文只重複標題，就不再顯示成另一筆記事。
-  const notes = entries.filter((e) => {
-    const body = (e.body || "").trim();
-    const fields = Object.values(JSON.parse(e.fields_json || "{}")).some((v) => String(v || "").trim());
-    return !(e.attachments || []).length || fields || (body && body !== (e.title || "").trim());
-  });
+  // 有附件的記事只是上傳容器，不再另外列成一筆「筆記」——檔案已經在上面列過了。
+  // 真正的筆記＝完全沒有附件的記事。
+  const notes = entries.filter((e) => !(e.attachments || []).length);
   $("folder-entries").className = `entry-list inner-entry-list ${INNER_FOLDER_VIEW}-view`;
   $("folder-entries").innerHTML = files.length || notes.length
-    ? `${files.length ? `<div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
-       ${notes.length ? `<div class="folder-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
+    ? `${files.length ? `<div class="archive-section-label">已歸檔檔案</div>
+        <div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
+       ${notes.length ? `<div class="archive-section-label">已歸檔筆記</div>
+        <div class="archive-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
   bindEntryRows($("folder-entries"));
-  $("folder-entries").querySelectorAll(".folder-file-manage").forEach((btn) => {
-    btn.onclick = () => openEntry(Number(btn.dataset.entryId));
+  bindFileRows();
+}
+
+/**
+ * 既有附件的一次性整理：統一檔名、移除內容完全相同的重複檔。
+ * 只用已入庫的 OCR／逐字稿，不呼叫 AI（不花額度）；整個瀏覽器只跑一次。
+ */
+async function runLegacyCleanupOnce() {
+  if (localStorage.getItem("fieldlog_legacy_cleanup") === "done") return;
+  localStorage.setItem("fieldlog_legacy_cleanup", "running");
+  try {
+    const result = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
+    localStorage.setItem("fieldlog_legacy_cleanup", "done");
+    if (result.renamed || result.duplicates_removed) {
+      showToast(`已整理 ${result.renamed || 0} 個檔名，移除 ${result.duplicates_removed || 0} 個重複檔`);
+    }
+  } catch (err) {
+    localStorage.removeItem("fieldlog_legacy_cleanup");
+    console.error("舊檔名自動整理失敗", err);
+  }
+}
+
+/** 手動整理檔名（資料夾工具列的 🏷 按鈕） */
+async function cleanupFilenames(button) {
+  if (!confirm("整理全部檔名？會統一成「標準編號_年份_中文標題」，並移除內容完全相同的重複檔。不會呼叫 AI。")) return;
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = "整理中…";
+  try {
+    const result = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
+    showToast(`檔名整理完成：更新 ${result.renamed || 0} 個，移除重複檔 ${result.duplicates_removed || 0} 個`);
+    if (CURRENT_FOLDER) await openFolder(CURRENT_FOLDER.id);
+  } catch (err) {
+    showToast("整理失敗：" + err.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+// ---------- 檔案列：拖曳搬移、單檔刪除、單檔詳情 ----------
+
+async function refreshFolderView() {
+  await loadFolders();
+  if (CURRENT_FOLDER) await openFolder(CURRENT_FOLDER.id);
+  else await loadInbox();
+}
+
+async function removeOneFile(attachmentId, filename, closeDetail) {
+  if (!confirm(`確定刪除「${filename}」？只會刪除這一份檔案。`)) return;
+  await api(`/attachments/${attachmentId}`, { method: "DELETE" });
+  showToast("檔案已刪除");
+  if (closeDetail) {
+    FOCUSED_FILE = null;
+    $("entry-overlay").classList.remove("open");
+    unlockBodyScroll();
+  }
+  await refreshFolderView();
+}
+
+function bindFileRows() {
+  document.querySelectorAll(".folder-file-row[data-att-id]").forEach((row) => {
+    const manage = row.querySelector(".folder-file-manage");
+    if (manage) {
+      manage.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openFileDetail(Number(manage.dataset.entryId), Number(manage.dataset.attId))
+          .catch((error) => showToast("開啟檔案失敗：" + error.message));
+      };
+    }
+    const deleteButton = row.querySelector(".folder-file-delete");
+    if (deleteButton) {
+      deleteButton.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        removeOneFile(Number(deleteButton.dataset.attId), row.dataset.filename || "這份檔案", false)
+          .catch((error) => showToast("刪除失敗：" + error.message));
+      };
+    }
+    row.ondragstart = (event) => {
+      row.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-fieldlog-attachment", JSON.stringify({
+        attachmentId: Number(row.dataset.attId),
+        entryId: Number(row.dataset.entryId),
+        filename: row.dataset.filename || "檔案",
+      }));
+    };
+    row.ondragend = () => {
+      row.classList.remove("dragging");
+      document.querySelectorAll(".child-folder-card.file-drop-target")
+        .forEach((card) => card.classList.remove("file-drop-target"));
+    };
+  });
+}
+
+function hasAttachmentDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("application/x-fieldlog-attachment");
+}
+
+/** 子資料夾卡片當放置目標：把檔案拖進去就搬過去 */
+function bindFolderDropTargets() {
+  document.querySelectorAll(".child-folder-card[data-id]").forEach((card) => {
+    card.ondragover = (event) => {
+      if (!hasAttachmentDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+      card.classList.add("file-drop-target");
+    };
+    card.ondragleave = () => card.classList.remove("file-drop-target");
+    card.ondrop = async (event) => {
+      if (!hasAttachmentDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      card.classList.remove("file-drop-target");
+      let payload;
+      try {
+        payload = JSON.parse(event.dataTransfer.getData("application/x-fieldlog-attachment"));
+      } catch {
+        showToast("無法讀取拖曳的檔案");
+        return;
+      }
+      const targetId = Number(card.dataset.id || 0);
+      const targetName = card.querySelector("strong")?.textContent?.trim() || "子資料夾";
+      if (!payload?.attachmentId || !targetId) return;
+      if (!confirm(`將「${payload.filename}」移入「${targetName}」？`)) return;
+      try {
+        await api(`/attachments/${payload.attachmentId}/move`, {
+          method: "POST",
+          body: JSON.stringify({ folder_id: targetId }),
+        });
+        showToast(`已移入「${targetName}」`);
+        await refreshFolderView();
+      } catch (error) {
+        showToast("移動失敗：" + error.message);
+      }
+    };
   });
 }
 
@@ -619,12 +864,18 @@ async function quickNote() {
 }
 
 async function openEntry(id) {
+  // 從單一檔案詳情觸發的重新開啟（存檔、AI 整理完成）要停在同一份檔案上，
+  // 不要跳回整筆記事——否則使用者每整理一次就被彈回上一層
+  const entryId = Number(id || 0);
+  if (FOCUSED_FILE && FOCUSED_FILE.entryId === entryId) {
+    return openFileDetail(FOCUSED_FILE.entryId, FOCUSED_FILE.attachmentId);
+  }
   const e = await api(`/entries/${id}`);
   // Tier 2 會把 PDF 每頁轉成圖檔供 OCR 使用；這些是處理用的衍生附件，
   // 不逐張顯示在附件清單，避免數十頁 PDF 產生大量縮圖。處理進度仍顯示在來源 PDF 上。
   const visibleAttachments = (e.attachments || []).filter((a) => !a.source_pdf_id);
   const folder = e.folder_id ? FOLDERS.find((f) => f.id === e.folder_id) : null;
-  const template = FOLDER_TEMPLATES[folder ? folder.type : "其他"] || [];
+  const template = templateFor(folder ? folder.type : "其他");
   const fields = JSON.parse(e.fields_json || "{}");
   const mergedTranscript = (e.attachments || [])
     .filter((a) => a.kind === "audio" && (a.transcript || "").trim())
@@ -741,6 +992,208 @@ async function openEntry(id) {
     const status = $("e-auto-status");
     if (status) status.textContent = `自動轉錄未執行：${err.message}`;
   });
+}
+
+/**
+ * 把一批檔案直接上傳到目前資料夾——每個檔案自成一筆記事。
+ * 重複檔（後端以 SHA-256 判定）會被略過，並把剛建的空記事收掉，
+ * 不留下「有記事但沒檔案」的殘骸。
+ */
+async function uploadFilesToFolder(input) {
+  const files = Array.from(input.files || []);
+  input.value = "";
+  if (!files.length || !CURRENT_FOLDER) return;
+
+  const folderId = Number(CURRENT_FOLDER.id);
+  const button = $("btn-folder-upload-file");
+  const label = button.textContent;
+  button.disabled = true;
+  let uploaded = 0;
+  let duplicates = 0;
+  let failed = 0;
+
+  try {
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index];
+      button.textContent = `上傳中 ${index + 1}/${files.length}`;
+      if (file.size > 50 * 1024 * 1024) {
+        failed++;
+        showToast(`${file.name} 超過 50MB，已略過`);
+        continue;
+      }
+      let entryId = 0;
+      try {
+        const rawName = String(file.name || "上傳檔案");
+        const dotIndex = rawName.lastIndexOf(".");
+        const title = dotIndex > 0 ? rawName.slice(0, dotIndex) : rawName;
+        entryId = Number(await createEntry(folderId, title));
+        const result = await putFile(entryId, file, file.name, null);
+        if (result && result.duplicate) {
+          duplicates++;
+          await api(`/entries/${entryId}`, { method: "DELETE" }).catch(() => {});
+        } else {
+          uploaded++;
+        }
+      } catch (error) {
+        failed++;
+        if (entryId) await api(`/entries/${entryId}`, { method: "DELETE" }).catch(() => {});
+        console.error(`檔案上傳失敗 [${file.name}]`, error);
+      }
+    }
+    const parts = [`已加入 ${uploaded} 個檔案`];
+    if (duplicates) parts.push(`略過 ${duplicates} 個重複檔`);
+    if (failed) parts.push(`${failed} 個失敗`);
+    showToast(parts.join("，"));
+    if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === folderId) await openFolder(folderId);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+// ---------- 管理分類 ----------
+// 分類清單存在資料庫（categories 表），這個畫面就是它的維護介面：
+// 新增、改名、刪除都在這裡做完，不用改程式碼也不用重新部署。
+let FILE_CATEGORY_REFRESH = null; // 檔案詳情頁開著時，改完分類要順手刷新那邊的下拉
+
+function categoryManagerRows(kind) {
+  const list = CATEGORIES[kind] || [];
+  if (!list.length) return `<p class="sub">目前沒有分類，用下面的欄位新增第一個。</p>`;
+  const groups = kind === "device"
+    ? [{ level: 0, label: "醫材分類" }]
+    : [
+      { level: 0, label: "通用（每一層都可以選）" },
+      { level: 1, label: `第 1 層：${LEVEL_HINTS[1]}` },
+      { level: 2, label: `第 2 層：${LEVEL_HINTS[2]}` },
+      { level: 3, label: `第 3 層：${LEVEL_HINTS[3]}` },
+      { level: 4, label: `第 4 層：${LEVEL_HINTS[4]}` },
+    ];
+  return groups.map((group) => {
+    const items = list.filter((item) => item.level === group.level);
+    if (!items.length) return "";
+    return `<div class="cat-group">
+      <h4>${esc(group.label)}</h4>
+      ${items.map((item) => `
+        <div class="cat-row" data-id="${item.id}">
+          <span class="cat-icon">${esc(item.icon || "🗂️")}</span>
+          <span class="cat-name">${esc(item.name)}${item.note ? `<small>${esc(item.note)}</small>` : ""}</span>
+          <button class="btn small ghost cat-rename" type="button" data-id="${item.id}" data-name="${esc(item.name)}">改名</button>
+          <button class="btn small ghost cat-delete" type="button" data-id="${item.id}" data-name="${esc(item.name)}">刪除</button>
+        </div>`).join("")}
+    </div>`;
+  }).join("");
+}
+
+async function renderCategoryManager(kind) {
+  await loadCategories();
+  const body = $("category-manager-body");
+  if (!body) return;
+  const levelPicker = kind === "device" ? "" : `
+    <label for="cat-new-level">放在哪一層</label>
+    <select id="cat-new-level">
+      <option value="0">通用（每一層都可以選）</option>
+      <option value="1">第 1 層：${esc(LEVEL_HINTS[1])}</option>
+      <option value="2">第 2 層：${esc(LEVEL_HINTS[2])}</option>
+      <option value="3">第 3 層：${esc(LEVEL_HINTS[3])}</option>
+      <option value="4">第 4 層：${esc(LEVEL_HINTS[4])}</option>
+    </select>`;
+  body.innerHTML = `
+    <div class="cat-tabs">
+      <button class="btn small ${kind === "folder_type" ? "primary" : ""}" type="button" data-kind="folder_type">📁 資料夾分類</button>
+      <button class="btn small ${kind === "device" ? "primary" : ""}" type="button" data-kind="device">🏷 醫材分類</button>
+    </div>
+    <div class="cat-list">${categoryManagerRows(kind)}</div>
+    <div class="cat-add">
+      <h4>新增分類</h4>
+      <label for="cat-new-name">分類名稱</label>
+      <input id="cat-new-name" maxlength="60" placeholder="${kind === "device" ? "例如：導引導管" : "例如：抗菌導管產品線"}" />
+      <label for="cat-new-icon">圖示（選填，一個表情符號）</label>
+      <input id="cat-new-icon" maxlength="4" placeholder="🗂️" />
+      <label for="cat-new-note">說明（選填）</label>
+      <input id="cat-new-note" maxlength="120" placeholder="這個分類放什麼" />
+      ${levelPicker}
+      <button class="btn primary" id="cat-add-submit" type="button">＋ 新增</button>
+    </div>
+    <p class="sub">刪除分類只會拿掉「選項」，已經套用在資料夾或檔案上的分類文字會留著，不會被清空。改名則會同步更新既有資料。</p>
+  `;
+
+  body.querySelectorAll(".cat-tabs button").forEach((button) => {
+    button.onclick = () => renderCategoryManager(button.dataset.kind);
+  });
+
+  body.querySelectorAll(".cat-rename").forEach((button) => {
+    button.onclick = async () => {
+      const next = prompt(`把「${button.dataset.name}」改成什麼名稱？`, button.dataset.name);
+      if (next === null) return;
+      const name = next.trim();
+      if (!name || name === button.dataset.name) return;
+      try {
+        const result = await api(`/categories/${button.dataset.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ name }),
+        });
+        showToast(result.renamed ? `已改名，同步更新 ${result.renamed} 筆既有資料` : "已改名");
+        await renderCategoryManager(kind);
+        await afterCategoryChange();
+      } catch (error) {
+        showToast("改名失敗：" + error.message);
+      }
+    };
+  });
+
+  body.querySelectorAll(".cat-delete").forEach((button) => {
+    button.onclick = async () => {
+      if (!confirm(`刪除分類「${button.dataset.name}」？\n\n只會拿掉這個選項，已經用這個分類的資料夾／檔案不會被改動。`)) return;
+      try {
+        const result = await api(`/categories/${button.dataset.id}`, { method: "DELETE" });
+        showToast(result.still_used
+          ? `已刪除選項；仍有 ${result.still_used} ${result.still_used_label}沿用這個分類名稱`
+          : "分類已刪除");
+        await renderCategoryManager(kind);
+        await afterCategoryChange();
+      } catch (error) {
+        showToast("刪除失敗：" + error.message);
+      }
+    };
+  });
+
+  $("cat-add-submit").onclick = async () => {
+    const name = $("cat-new-name").value.trim();
+    if (!name) { showToast("請先填分類名稱"); return; }
+    try {
+      await api("/categories", {
+        method: "POST",
+        body: JSON.stringify({
+          kind,
+          name,
+          icon: $("cat-new-icon").value.trim() || "🗂️",
+          note: $("cat-new-note").value.trim(),
+          level: kind === "device" ? 0 : Number($("cat-new-level")?.value || 0),
+        }),
+      });
+      showToast(`已新增分類「${name}」`);
+      await renderCategoryManager(kind);
+      await afterCategoryChange();
+    } catch (error) {
+      showToast("新增失敗：" + error.message);
+    }
+  };
+}
+
+// 分類改完之後，把正在顯示分類的地方一起更新，不用重新整理頁面
+async function afterCategoryChange() {
+  if (typeof FILE_CATEGORY_REFRESH === "function") await FILE_CATEGORY_REFRESH();
+  if (CURRENT_FOLDER) renderChildFolders(CURRENT_FOLDER.id);
+  else renderFolders();
+}
+
+function openCategoryManager(kind = "folder_type") {
+  $("category-manager-overlay").classList.add("open");
+  renderCategoryManager(kind);
+}
+
+function closeCategoryManager() {
+  $("category-manager-overlay").classList.remove("open");
 }
 
 function debounce(fn, ms) {
@@ -1015,7 +1468,188 @@ function unlockBodyScroll() {
   window.scrollTo(0, Number(document.body.dataset.scrollY || 0));
 }
 
-function closeEntry() { $("entry-overlay").classList.remove("open"); unlockBodyScroll(); }
+function closeEntry() {
+  FOCUSED_FILE = null;
+  // 檔案詳情關掉之後，它註冊的分類刷新函式就失效了（指向已被替換掉的 DOM），
+  // 這裡清掉，避免之後從首頁改分類時去刷新一個已經不存在的下拉
+  FILE_CATEGORY_REFRESH = null;
+  $("entry-overlay").classList.remove("open");
+  unlockBodyScroll();
+}
+
+/**
+ * 單一檔案的詳情頁。
+ *
+ * 為什麼不直接用記事詳情：使用者在資料夾裡看到的是「一份一份的檔案」，
+ * 而一筆記事可能掛好幾份檔案。點某一份檔案應該只看到那一份的東西
+ * （它自己的附屬記事、它自己的醫材分類、只刪它自己），不是整筆記事。
+ */
+async function openFileDetail(entryId, attachmentId) {
+  entryId = Number(entryId || 0);
+  attachmentId = Number(attachmentId || 0);
+  if (!entryId || !attachmentId) return;
+  FOCUSED_FILE = { entryId, attachmentId };
+
+  const entry = await api(`/entries/${entryId}`);
+  const sourceAttachments = (entry.attachments || []).filter((item) => !item.source_pdf_id);
+  const attachment = sourceAttachments.find((item) => Number(item.id) === attachmentId);
+  if (!attachment) {
+    closeEntry();
+    showToast("這份檔案已不存在");
+    await refreshFolderView();
+    return;
+  }
+
+  // 舊資料相容：以前單一檔案的記事寫在 entries.body，現在改存在 attachments.note。
+  // 只有一份檔案時才把舊的 body 當成這份檔案的記事顯示，避免多檔案時張冠李戴。
+  const legacyNote = sourceAttachments.length === 1 ? String(entry.body || "").trim() : "";
+  const noteValue = String(attachment.note || "").trim() || legacyNote;
+  const fileUrl = `/api/file/${encodeURIComponent(attachment.key)}?pin=${encodeURIComponent(pin())}`;
+  const canDoodle = isPdfAtt(attachment) && typeof window.fieldlogOpenPdfEditor === "function";
+  const originalName = attachment.original_filename && attachment.original_filename !== attachment.filename
+    ? `<p class="sub">原始檔名：${esc(attachment.original_filename)}</p>` : "";
+
+  const modal = $("entry-modal");
+  modal.innerHTML = `
+    <div class="modal-close-float"><button class="btn small ghost" id="file-detail-close" type="button" aria-label="關閉檔案" title="關閉檔案">✕</button></div>
+    <div class="detail-head"><h2 style="margin:0;overflow-wrap:anywhere">${esc(attachment.filename)}</h2></div>
+    <div class="file-primary-actions">
+      <a id="file-read-action" href="${fileUrl}" target="_blank" rel="noopener">📖 閱讀</a>
+      <button id="file-doodle-action" type="button" ${canDoodle ? "" : 'class="disabled" disabled'}>✍️ 塗鴉</button>
+      <button id="file-category-action" type="button">🏷 分類</button>
+      <button id="file-note-action" type="button">📝 Note</button>
+    </div>
+    <div class="file-category-panel" id="file-category-panel">
+      <strong>醫療器材分類</strong>
+      <div class="file-category-row">
+        <select id="file-device-category"><option value="">讀取分類中…</option></select>
+        <button class="btn primary" id="file-category-save" type="button">儲存分類</button>
+      </div>
+      <p class="file-category-current" id="file-category-current">讀取分類中…</p>
+      <p class="sub"><button class="btn small ghost" id="file-category-manage" type="button">⚙️ 管理分類（新增／刪除選項）</button></p>
+    </div>
+    <p class="sub">${esc(attachment.created_at || entry.created_at || "")}${CURRENT_FOLDER ? `｜${esc(CURRENT_FOLDER.name)}` : ""}</p>
+    ${originalName}
+    <div class="file-note-box">
+      <label for="file-note">Note 文字（只屬於這一份檔案）</label>
+      <textarea id="file-note" placeholder="只屬於這一份檔案的記事">${esc(noteValue)}</textarea>
+    </div>
+    <div class="file-detail-actions">
+      <button class="btn primary" id="file-note-save" type="button">儲存 Note</button>
+      <button class="btn small" id="file-normalize-name" type="button">🏷 整理中文檔名</button>
+      <span id="e-upload-status" class="sub"></span>
+    </div>
+    <h3 class="section-title">檔案處理</h3>
+    <div id="e-attachments" class="att-list">${attHtml(attachment, entry.attachments || [])}</div>
+    <div class="file-detail-danger">
+      <button class="btn entry-delete" id="file-delete" type="button">🗑 刪除這份檔案</button>
+      <p class="sub">只刪除目前檔案，不刪除其他附件。</p>
+    </div>
+  `;
+
+  $("entry-overlay").classList.add("open");
+  lockBodyScroll();
+  $("file-detail-close").onclick = closeEntry;
+  bindAttActions(entryId);
+
+  const panel = $("file-category-panel");
+  const select = $("file-device-category");
+  const current = $("file-category-current");
+
+  $("file-note-action").onclick = () => {
+    const textarea = $("file-note");
+    textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+    textarea.focus();
+  };
+  $("file-category-action").onclick = () => {
+    panel.classList.toggle("open");
+    if (panel.classList.contains("open")) select.focus();
+  };
+  if (canDoodle) {
+    $("file-doodle-action").onclick = () => {
+      window.fieldlogOpenPdfEditor(entryId, attachment)
+        .catch((error) => showToast("開啟塗鴉失敗：" + error.message));
+    };
+  }
+  $("file-category-manage").onclick = () => openCategoryManager("device");
+
+  async function renderCategoryOptions() {
+    try {
+      const result = await api(`/attachments/${attachmentId}/category`);
+      select.innerHTML = `<option value="">未分類</option>${(result.categories || [])
+        .map((name) => `<option value="${esc(name)}" ${name === result.category ? "selected" : ""}>${esc(name)}</option>`)
+        .join("")}`;
+      // 分類選項被刪掉、但這份檔案還套著舊分類名稱時，仍要看得到目前的值
+      if (result.category && !(result.categories || []).includes(result.category)) {
+        select.insertAdjacentHTML("beforeend",
+          `<option value="${esc(result.category)}" selected>${esc(result.category)}（已不在分類清單）</option>`);
+      }
+      current.textContent = `目前分類：${result.category || "未分類"}`;
+    } catch (error) {
+      current.textContent = "讀取分類失敗：" + error.message;
+    }
+  }
+  renderCategoryOptions();
+  FILE_CATEGORY_REFRESH = renderCategoryOptions;
+
+  $("file-category-save").onclick = async () => {
+    const button = $("file-category-save");
+    button.disabled = true;
+    try {
+      const result = await api(`/attachments/${attachmentId}/category`, {
+        method: "PUT",
+        body: JSON.stringify({ category: select.value }),
+      });
+      current.textContent = `目前分類：${result.category || "未分類"}`;
+      showToast("醫療器材分類已儲存");
+    } catch (error) {
+      showToast("分類儲存失敗：" + error.message);
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  $("file-note-save").onclick = async () => {
+    const button = $("file-note-save");
+    button.disabled = true;
+    try {
+      await api(`/attachments/${attachmentId}/note`, {
+        method: "PUT",
+        body: JSON.stringify({ note: $("file-note").value.trim() }),
+      });
+      showToast("附屬記事已儲存");
+    } catch (error) {
+      showToast("記事儲存失敗：" + error.message);
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  $("file-normalize-name").onclick = async () => {
+    const button = $("file-normalize-name");
+    button.disabled = true;
+    button.textContent = "整理中…";
+    try {
+      const result = await api(`/attachments/${attachmentId}/normalize-name`, { method: "POST", body: "{}" });
+      showToast(result.renamed
+        ? "已更新中文檔名"
+        : result.incomplete_year
+          ? "尚未確認年份，請先擷取文字或深度處理"
+          : "檔名已是目前可確認的格式");
+      await refreshFolderView();
+      await openFileDetail(entryId, attachmentId);
+    } catch (error) {
+      showToast("整理檔名失敗：" + error.message);
+      button.disabled = false;
+      button.textContent = "🏷 整理中文檔名";
+    }
+  };
+
+  $("file-delete").onclick = () => {
+    removeOneFile(attachmentId, attachment.filename, true)
+      .catch((error) => showToast("刪除失敗：" + error.message));
+  };
+}
 
 function attHtml(a, siblings) {
   const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
@@ -1063,9 +1697,12 @@ function attHtml(a, siblings) {
   const tier2Bit = !isPdfAtt(a) || !TRANSCRIBE_ENABLED ? "" : tier2Count
     ? `<p class="att-tier2">🔬 深度頁面：${tier2Done} 頁完成／${tier2Count} 頁已建立 <a href="#" class="att-tier2-btn" data-id="${a.id}">檢查並接續</a></p>`
     : `<p class="att-tier2"><a href="#" class="att-tier2-btn" data-id="${a.id}" title="把這份 PDF 逐頁轉成圖片並跑 AI 辨識，補齊一般擷取抓不到的圖形化排版/圖表內容。手動觸發、只處理這一份，較耗時間與額度">🔬 深度處理（逐頁轉圖辨識）</a></p>`;
+  // PDF 塗鴉：實作在 pdf-editor.js（獨立載入，因為要動態抓 pdf-lib）。
+  // 那支檔案載入後會掛上 window.fieldlogOpenPdfEditor；還沒載入完就先不顯示這個入口。
+  const doodleBit = isPdfAtt(a) ? `<a href="#" class="att-pdf-doodle" data-id="${a.id}">✍️ 塗鴉</a>` : "";
   return `<div class="att-item" data-id="${a.id}" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
-      <a href="#" class="att-delete" data-id="${a.id}">刪除</a>
+      ${doodleBit}<a href="#" class="att-delete" data-id="${a.id}">刪除</a>
     </div>
     ${preview}${originalName}${ocrBit}${transcribeBit}${tier2Bit}
   </div>`;
@@ -1124,6 +1761,22 @@ function bindAttActions(entryId) {
         await api(`/attachments/${el.dataset.id}`, { method: "PUT", body: JSON.stringify({ [el.dataset.field]: true }) });
         openEntry(entryId);
       } catch (e) { showToast("設定失敗：" + e.message); }
+    };
+  });
+  // PDF 塗鴉：開啟 pdf-editor.js 提供的編輯器
+  document.querySelectorAll(".att-pdf-doodle").forEach((el) => {
+    el.onclick = async (ev) => {
+      ev.preventDefault();
+      if (typeof window.fieldlogOpenPdfEditor !== "function") {
+        showToast("PDF 塗鴉程式還在載入，請稍後再試");
+        return;
+      }
+      try {
+        const entry = await api(`/entries/${entryId}`);
+        const attachment = (entry.attachments || []).find((item) => String(item.id) === el.dataset.id);
+        if (!attachment) throw new Error("找不到 PDF 附件");
+        await window.fieldlogOpenPdfEditor(entryId, attachment);
+      } catch (e) { showToast("開啟塗鴉失敗：" + e.message); }
     };
   });
   // Tier 2 深度處理：手動觸發，一次只處理使用者點的這一份 PDF
@@ -1716,6 +2369,21 @@ function init() {
   $("btn-audio").onclick = () => startAudio(null);
   $("btn-quick-note").onclick = quickNote;
   $("btn-new-folder").onclick = newFolder;
+  $("btn-new-subfolder").onclick = newSubfolder;
+  $("btn-manage-categories").onclick = () => openCategoryManager("folder_type");
+  $("category-manager-close").onclick = closeCategoryManager;
+  $("category-manager-overlay").addEventListener("click", (e) => {
+    if (e.target === $("category-manager-overlay")) closeCategoryManager();
+  });
+  $("btn-cleanup-filenames").onclick = (e) => cleanupFilenames(e.currentTarget);
+  // 資料夾工具列的「＋ 上傳檔案」：直接把檔案丟進目前這個資料夾，
+  // 每個檔案自成一筆記事（標題＝去掉副檔名的檔名）
+  const folderUploadInput = $("folder-upload-file-input");
+  $("btn-folder-upload-file").onclick = () => {
+    if (!CURRENT_FOLDER) { showToast("請先進入要存放檔案的資料夾"); return; }
+    folderUploadInput.click();
+  };
+  folderUploadInput.onchange = () => uploadFilesToFolder(folderUploadInput);
   $("btn-folder-grid").onclick = () => setFolderView("grid");
   $("btn-folder-list").onclick = () => setFolderView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");

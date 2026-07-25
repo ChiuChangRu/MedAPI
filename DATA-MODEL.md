@@ -76,13 +76,33 @@
 
 ### 隨身記 `fieldlog`
 
-**`folders`（資料夾＝活動）**：`name`、`type`（參展/拜訪/實驗/上課，
-決定欄位模板）、`status`。
+**`folders`（資料夾）**：`name`、`type`（分類，決定欄位模板；選項來自
+`categories` 表）、`status`、`parent_id`（四層知識架構的上層資料夾）。
 **`entries`（紀錄）**：`folder_id`（空＝收件匣）、`title`、`body`（速記）、
 `fields_json`（模板欄位值）。
 **`attachments`（附件）**：跟參展系統幾乎一樣，差別是用 `entry_id`
 （屬於哪筆紀錄）、`kind`（photo/audio/file），同樣有 `transcript`／
-`ocr_text`／`transcribed_at`／`ocr_at`。
+`ocr_text`／`transcribed_at`／`ocr_at`；另有 `note`（只屬於這一份檔案的
+附屬記事，跟 `entries.body` 分開）與 `device_category`（醫材分類，
+存的是分類名稱文字）。
+**`categories`（分類字典）**：**使用者自己在前台「⚙️ 管理分類」增刪改**，
+不用改程式碼。
+| 欄位 | 說明 |
+|---|---|
+| `kind` | `folder_type`＝建資料夾時選的分類；`device`＝檔案的醫材分類 |
+| `level` | 只有 `folder_type` 用：1–4 對應四層架構第幾層；**0＝每一層都出現**（通用分類） |
+| `name` | 分類名稱。`folders.type` 與 `attachments.device_category` 存的就是這個字串 |
+| `icon`／`note` | 建資料夾對話框上顯示的圖示與用途說明 |
+| `fields_json` | 這個分類的記事欄位模板（JSON 字串陣列） |
+| `sort_order` | 同層排序 |
+
+分類的刪改規則（刻意這樣設計）：
+- **刪除**只拿掉「選項」，已經套用在資料夾／檔案上的分類文字**保留**，
+  回應會回報還有幾筆在沿用，不會靜默把資料的分類清空。
+- **改名**會同步更新既有資料的分類文字——那是同一個分類換個叫法。
+- 種子（預設分類）只在表完全空的時候寫入一次，用一筆 `kind='_seeded'`
+  的標記列記住。所以使用者刪掉預設分類之後，冷啟動不會又倒回來。
+
 **`history`**：歷程。
 
 ## 四、四種「整理狀態」怎麼由欄位決定
@@ -184,5 +204,7 @@ WHERE exhibitor_id='ex-0150' AND filename LIKE '%SurfCleanMD%';
 要改資料一律回前台；MCP 只讀不寫。
 
 ## 更新日誌
+- 2026-07-25｜新增 `categories` 分類字典表（資料夾層級分類＋醫材分類搬進
+  資料庫，使用者可自行增刪改）；`attachments` 補 `note`、`device_category`
 - 2026-07-19｜初版：資料兩層儲存（R2/D1）、附件生命週期、資料表結構、
   四種整理狀態、PDF 三種辨識差異、查證方式、MCP 讀取清洗

@@ -101,6 +101,48 @@
   的原因之一：git log 本身就是「這個論述何時、依據什麼素材寫下」的
   可稽核紀錄
 
+## 二之二、fieldlog 的程式碼結構（2026-07-25 整併後）
+
+整併前 fieldlog 是一條**八層 Worker 包裝鏈**：`worker-entry.js` → `worker-v49`
+→ `v46` → `v45` → `v43` → `v40` → `v37` → `worker.js`，每加一個功能就包一層新
+Worker，用 `previousWorker.fetch()` 轉呼叫下一層；前端行為則靠「把一大段 JS
+字串接在 `app.js` 後面、在瀏覽器執行期覆寫函式」實現。
+
+那樣疊出來的具體代價（都是實際發生過的，不是理論風險）：
+- 同一個功能散在多層，改一個行為要先讀懂八層才知道哪一層在管
+- **兩份標準檔名對照表互相打架**：批次整理與單檔改名各有一份，內容不一致，
+  同一份 PDF 走不同入口會得到不同結果
+- **字串比對式的 patch 會靜默失效**：v43 對 `app.js` 原始碼做字串替換，
+  `app.js` 一改字串就對不上，功能無聲消失、不報錯
+- 每個請求都要穿過八層 `fetch`，且 `/` 與 `/app.js` 都得先進 Worker 加工
+
+整併後只有一支入口，前端是 `public/` 裡的正常檔案：
+
+```
+fieldlog/
+├── src/
+│   ├── worker.js          唯一入口：PIN 驗證 + 路由 + 各端點
+│   ├── imageSkill.js      AI 擷取／原生文件文字擷取（與 cloudflare/ 共用，見下）
+│   └── lib/
+│       ├── schema.js      資料表、遷移、分類種子（CATEGORY_SEED）
+│       ├── categories.js  分類字典 CRUD（含改名同步、刪除保留既有資料）
+│       ├── standards.js   標準編號辨識與中文檔名（唯一一份對照表）
+│       ├── attachments.js 單檔搬移／刪除／改名、資料夾深度
+│       └── cleanup.js     批次檔名統一＋重複檔清除（預設不呼叫 AI）
+└── public/
+    ├── index.html         全部 UI 骨架（含管理分類對話框）
+    ├── app.js             全部前端邏輯（不再有執行期覆寫）
+    ├── style.css          全部樣式（不再有注入的 <style>）
+    ├── pdf-editor.js      PDF 塗鴉；只掛 window.fieldlogOpenPdfEditor
+    ├── home.js / home.css 首頁用量面板
+    └── wiki/              策略地圖 Markdown（git 版控）
+```
+
+`tests/fieldlog-consolidation.test.js` 有一組**結構性測試**擋住包裝鏈重新長回來：
+斷言沒有 `worker-vNN` 檔案、`worker.js` 裡沒有 `previousWorker`、沒有
+`String.raw` 注入區塊、`wrangler.jsonc` 不再把 `/` 與 `/app.js` 導進 Worker。
+要加新功能就直接改 `worker.js` 與 `public/`，不要再包一層。
+
 ## 三、已定案的設計決策（避免之後重新討論一遍）
 
 1. **三個（四個）系統不合併資料庫**。原因：使用情境形狀互斥——

@@ -3,121 +3,45 @@
  *
  * 定位：現場採集參展/拜訪/實驗/上課/會議/查廠的原始資料（錄音、照片、速記），
  * AI 事後彙整成報告送 Notion。本 Worker 只管 raw data 的存取：
- *   - folders：一個活動/工作項目＝一個資料夾（自帶欄位模板 type）
+ *   - folders：一個活動/工作項目＝一個資料夾（四層知識架構，type 來自 categories 表）
  *   - entries：一筆紀錄（folder_id 為空＝收件匣，之後再歸檔）
  *   - attachments：照片/錄音段/檔案（存 R2），offset_secs 記錄「錄音第幾秒拍的」
+ *   - categories：分類字典（資料夾層級分類＋醫材分類），使用者自己就能增刪改
  *   - history：append-only 歷程
  *   - /api/export/folder/:id：整個資料夾匯出成一份 Markdown 原料包，貼給 AI 彙整
  *
  * 驗證：所有 /api/* 需帶 x-pin header（或 ?pin=），與 FIELD_PIN（Secret）比對。
  * FIELD_PIN 未設定時一律拒絕（fail-closed）。raw data 只增不刪。
+ *
+ * 這支檔案是唯一入口。在此之前有一條 worker-entry → v49 → v46 → v45 → v43 → v40
+ * → v37 → worker.js 的包裝鏈：每加一個功能就包一層新 Worker，用 fetch 轉呼叫下一層，
+ * 前端行為靠「把 JS 字串接在 app.js 後面、在執行期覆寫函式」實現。這種疊法讓
+ * 同一個功能散在多層、兩份標準檔名對照表互相打架、字串比對式的 patch 會在
+ * app.js 一改就靜默失效。整併後全部落回這裡與 public/ 的正常程式碼。
  */
 
 import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
-
-const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS folders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    type TEXT DEFAULT '其他',
-    status TEXT DEFAULT '進行中',
-    created_at TEXT NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    folder_id INTEGER,
-    title TEXT DEFAULT '',
-    fields_json TEXT DEFAULT '{}',
-    body TEXT DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT
-  )`,
-  `CREATE TABLE IF NOT EXISTS attachments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    entry_id INTEGER NOT NULL,
-    kind TEXT DEFAULT 'file',
-    filename TEXT NOT NULL,
-    original_filename TEXT DEFAULT '',
-    key TEXT NOT NULL,
-    size INTEGER DEFAULT 0,
-    mime TEXT DEFAULT '',
-    transcript TEXT DEFAULT '',
-    offset_secs INTEGER,
-    category TEXT DEFAULT '',
-    content_hash TEXT DEFAULT '',
-    created_at TEXT NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    entry_id INTEGER,
-    folder_id INTEGER,
-    action TEXT,
-    detail TEXT,
-    created_at TEXT NOT NULL
-  )`,
-  `CREATE TABLE IF NOT EXISTS ai_usage_reservations (
-    attachment_id INTEGER PRIMARY KEY,
-    usage_date TEXT NOT NULL,
-    estimated_neurons REAL NOT NULL,
-    status TEXT DEFAULT 'reserved',
-    created_at TEXT NOT NULL
-  )`,
-  // 記事與記事之間的關聯（例：這次實驗引用了這份 ISO 標準、這份專利對照這家廠商的產品）。
-  // 刻意不分「主從」、也不限制 relation_type 的字典——用途橫跨標準/實驗/廠商/專利，
-  // 關係種類會一直長，寫死列表反而綁死用法。方向性用 relation_type 的文字本身表達
-  // （例："引用標準"／"被引用於"是同一件事的兩個方向，查詢時雙向都會找到）。
-  `CREATE TABLE IF NOT EXISTS relations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_entry_id INTEGER NOT NULL,
-    to_entry_id INTEGER NOT NULL,
-    relation_type TEXT NOT NULL,
-    note TEXT DEFAULT '',
-    created_at TEXT NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_entry_id)`,
-];
-
-// 舊表補欄位用（D1 沒有 ADD COLUMN IF NOT EXISTS，欄位已存在時失敗直接忽略即可）
-const MIGRATIONS = [
-  `ALTER TABLE folders ADD COLUMN parent_id INTEGER`,
-  `ALTER TABLE folders ADD COLUMN notion_page_id TEXT DEFAULT ''`,
-  `ALTER TABLE folders ADD COLUMN notion_last_entry_id INTEGER DEFAULT 0`,
-  `ALTER TABLE folders ADD COLUMN notion_synced_at TEXT DEFAULT ''`,
-  `ALTER TABLE attachments ADD COLUMN ocr_text TEXT DEFAULT ''`,
-  // 「處理過但結果是空的」（照片沒文字、錄音無語音）要跟「還沒處理」分開，
-  // 否則空結果的附件永遠被當成待整理，每按一次整理就重跑重扣一次費用
-  `ALTER TABLE attachments ADD COLUMN transcribed_at TEXT DEFAULT ''`,
-  `ALTER TABLE attachments ADD COLUMN ocr_at TEXT DEFAULT ''`,
-  // Tier 2 深度處理（手動指定，見 DATA-MODEL.md）：把來源 PDF 逐頁 render 成圖片，
-  // 存成一般照片附件、走既有 OCR 流程。source_pdf_id 指回來源 PDF 的 attachments.id，
-  // page_no 是第幾頁，兩者都空＝不是深度處理產生的附件。
-  `ALTER TABLE attachments ADD COLUMN source_pdf_id INTEGER`,
-  `ALTER TABLE attachments ADD COLUMN page_no INTEGER`,
-  `ALTER TABLE attachments ADD COLUMN duration_secs INTEGER`,
-  // 檔案內容 SHA-256：同一筆記事重複上傳完全相同的檔案時直接略過
-  `ALTER TABLE attachments ADD COLUMN content_hash TEXT DEFAULT ''`,
-  `ALTER TABLE attachments ADD COLUMN original_filename TEXT DEFAULT ''`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_att_entry_hash ON attachments(entry_id, content_hash) WHERE content_hash IS NOT NULL AND content_hash <> ''`,
-];
+import { MAX_FOLDER_DEPTH, ensureSchema } from "./lib/schema.js";
+import { cleanupStandardAttachments } from "./lib/cleanup.js";
+import {
+  deleteAttachmentDeep,
+  folderDepth,
+  moveAttachment,
+  normalizeAttachmentName,
+} from "./lib/attachments.js";
+import {
+  createCategory,
+  deleteCategory,
+  deviceCategoryNames,
+  listCategories,
+  updateCategory,
+} from "./lib/categories.js";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 const AI_AUTO_SAFE_NEURONS = 7000;
 const AI_MONTHLY_SOFT_USD = 4.5;
 const AI_MONTHLY_HARD_USD = 5;
 const AI_RATE_PER_1000_NEURONS = 0.011;
-
-let schemaReady = false;
-async function ensureSchema(db) {
-  if (schemaReady) return;
-  await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
-  for (const sql of MIGRATIONS) {
-    await db.prepare(sql).run().catch(() => {});
-  }
-  schemaReady = true;
-}
 
 function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
@@ -331,7 +255,7 @@ function parseNotionPageId(input) {
 
 async function handleApi(request, env, url) {
   const db = env.DB;
-  await ensureSchema(db);
+  await ensureSchema(db, now());
   const path = url.pathname.replace(/^\/api/, "");
   const method = request.method;
 
@@ -356,13 +280,49 @@ async function handleApi(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const name = (body.name || "").trim();
     if (!name) return bad("name 為必填");
-    const type = (body.type || "其他").trim();
+    const type = (body.type || "其他").trim() || "其他";
     const parentId = body.parent_id ? Number(body.parent_id) : null;
-    if (parentId && !await db.prepare("SELECT id FROM folders WHERE id = ?").bind(parentId).first()) return bad("找不到上層資料夾", 404);
+    // 四層知識架構：第 1 層產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
+    // 再深下去分類就失去意義（也會讓匯出與麵包屑難讀），所以擋在第 4 層。
+    let depth = 1;
+    if (parentId) {
+      const parentDepth = await folderDepth(db, parentId);
+      if (!parentDepth) return bad("找不到上層資料夾", 404);
+      if (parentDepth >= MAX_FOLDER_DEPTH) {
+        return bad(`資料夾最多 ${MAX_FOLDER_DEPTH} 層，不能再新增子資料夾`);
+      }
+      depth = parentDepth + 1;
+    }
     const r = await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
-      .bind(name, type, parentId, now()).run();
-    await logHistory(db, null, r.meta.last_row_id, "建立資料夾", `${name}（${type}）`);
-    return json({ id: r.meta.last_row_id, ok: true });
+      .bind(name.slice(0, 80), type.slice(0, 60), parentId, now()).run();
+    await logHistory(db, null, r.meta.last_row_id, "建立資料夾", `${name}（${type}，第 ${depth} 層）`);
+    return json({ id: r.meta.last_row_id, ok: true, depth, max_depth: MAX_FOLDER_DEPTH });
+  }
+
+  // ---- 分類字典（資料夾層級分類＋醫材分類，使用者自己增刪改）----
+  if (path === "/categories" && method === "GET") {
+    return json({
+      categories: await listCategories(db, {
+        kind: url.searchParams.get("kind") || undefined,
+        level: url.searchParams.get("level") ?? undefined,
+      }),
+      max_folder_depth: MAX_FOLDER_DEPTH,
+    });
+  }
+  if (path === "/categories" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const result = await createCategory(db, body, { logHistory, timestamp: now });
+    return json(result, result.status || 200);
+  }
+  const categoryMatch = path.match(/^\/categories\/(\d+)$/);
+  if (categoryMatch && method === "PUT") {
+    const body = await request.json().catch(() => ({}));
+    const result = await updateCategory(db, Number(categoryMatch[1]), body, { logHistory });
+    return json(result, result.status || 200);
+  }
+  if (categoryMatch && method === "DELETE") {
+    const result = await deleteCategory(db, Number(categoryMatch[1]), { logHistory });
+    return json(result, result.status || 200);
   }
   const folderMatch = path.match(/^\/folders\/(\d+)$/);
   if (folderMatch && method === "PUT") {
@@ -497,6 +457,27 @@ async function handleApi(request, env, url) {
     await db.prepare("DELETE FROM relations WHERE from_entry_id = ? OR to_entry_id = ?").bind(id, id).run();
     await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
     await logHistory(db, null, old.folder_id, "刪除紀錄", old.title);
+    return json({ ok: true });
+  }
+
+  // 錄音／錄影中「記一句」：在資料庫端直接把一行接到 body 後面。
+  // 刻意不做「讀出 body → 前端串接 → 整段寫回」——採集中連續記好幾句時，
+  // 那種做法只要有一次請求交錯就會把前一句蓋掉。這裡用一句 SQL 完成附加，
+  // 不管幾句同時進來都不會互相蓋掉。
+  const noteMatch = path.match(/^\/entries\/(\d+)\/notes$/);
+  if (noteMatch && method === "POST") {
+    const entryId = Number(noteMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const line = String(body.line || "").trim();
+    if (!line) return bad("line 為必填");
+    const old = await db.prepare("SELECT id, folder_id FROM entries WHERE id = ?").bind(entryId).first();
+    if (!old) return bad("找不到紀錄", 404);
+    const updatedAt = now();
+    const result = await db.prepare(
+      "UPDATE entries SET body = CASE WHEN body IS NULL OR body = '' THEN ? ELSE body || char(10) || ? END, updated_at = ? WHERE id = ?"
+    ).bind(line, line, updatedAt, entryId).run();
+    if (!result.meta.changes) return bad("找不到紀錄", 404);
+    await logHistory(db, entryId, old.folder_id ?? null, "記一句", line);
     return json({ ok: true });
   }
 
@@ -783,7 +764,42 @@ async function handleApi(request, env, url) {
       await logHistory(db, att.entry_id, null, "移除重複附件", `${att.filename}（保留相同內容的較早版本）`);
       duplicatesRemoved++;
     }
-    return json({ ok: true, checked: (results || []).length, renamed, duplicates_removed: duplicatesRemoved });
+    // 第二階段：標準文件專屬的整理——統一成「組織_編號_年份_中文標題.pdf」，
+    // 並清掉同一個資料夾裡同一份標準的重複檔（二進位相同、或內文幾乎相同）。
+    //
+    // 這一段會刪列，而 attachments 有一個 (entry_id, content_hash) 的唯一索引；
+    // 整理過程中會出現「暫時兩列同 hash」的中間狀態而撞索引，所以先卸索引、
+    // 做完再建回去。建不回來的話一定要讓呼叫端知道（資料庫少了防重索引），
+    // 不能默默成功。
+    const cleanupBody = await request.json().catch(() => ({}));
+    await db.prepare("DROP INDEX IF EXISTS idx_att_entry_hash").run();
+    let standardCleanup = null;
+    let cleanupError = null;
+    try {
+      standardCleanup = await cleanupStandardAttachments(env, db, {
+        logHistory,
+        // 預設不呼叫 AI：這支端點會在登入時自動跑，不能靜默扣額度
+        useAi: cleanupBody.use_ai === true,
+      });
+    } catch (err) {
+      cleanupError = err.message;
+    }
+    try {
+      await db.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_att_entry_hash ON attachments(entry_id, content_hash) WHERE content_hash IS NOT NULL AND content_hash <> ''"
+      ).run();
+    } catch (err) {
+      return bad(`重複檔整理後無法恢復資料庫索引：${err.message}`, 500);
+    }
+    if (cleanupError) return bad(`標準檔名整理失敗：${cleanupError}`, 500);
+
+    return json({
+      ok: true,
+      checked: (results || []).length,
+      renamed: renamed + standardCleanup.renamed,
+      pdf_compared: standardCleanup.pdf_compared,
+      duplicates_removed: duplicatesRemoved + standardCleanup.duplicates_removed,
+    });
   }
   const attMatch = path.match(/^\/attachments\/(\d+)$/);
   if (attMatch && method === "PUT") {
@@ -814,13 +830,65 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
   if (attMatch && method === "DELETE") {
-    const id = Number(attMatch[1]);
-    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
-    if (!old) return bad("找不到附件", 404);
-    if (env.FILES) await env.FILES.delete(old.key);
-    await db.prepare("DELETE FROM attachments WHERE id = ?").bind(id).run();
-    await logHistory(db, old.entry_id, null, "刪除附件", old.filename);
+    // 連同深度處理產生的逐頁圖片與 AI 用量預約一起清掉；若記事因此變成完全空的
+    // （沒檔案也沒文字），記事本身也收掉，不留下使用者看不懂的空殼
+    const result = await deleteAttachmentDeep(db, env.FILES, Number(attMatch[1]), { logHistory });
+    return json(result, result.status || 200);
+  }
+
+  // ---- 單一檔案的操作（搬移／附屬記事／檔名整理／醫材分類）----
+  const attMoveMatch = path.match(/^\/attachments\/(\d+)\/move$/);
+  if (attMoveMatch && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const folderId = Number(body.folder_id || 0);
+    if (!folderId) return bad("請指定目標資料夾");
+    const result = await moveAttachment(db, Number(attMoveMatch[1]), folderId, { logHistory, timestamp: now });
+    return json(result, result.status || 200);
+  }
+  const attNoteMatch = path.match(/^\/attachments\/(\d+)\/note$/);
+  if (attNoteMatch && method === "PUT") {
+    const id = Number(attNoteMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const note = String(body.note || "").trim().slice(0, 50000);
+    const attachment = await db.prepare("SELECT id, entry_id, filename FROM attachments WHERE id = ?").bind(id).first();
+    if (!attachment) return bad("找不到附件", 404);
+    await db.prepare("UPDATE attachments SET note = ? WHERE id = ?").bind(note, id).run();
+    await logHistory(db, attachment.entry_id, null, "更新附件記事", `${attachment.filename}：${note.slice(0, 120)}`);
     return json({ ok: true });
+  }
+  const attNormalizeMatch = path.match(/^\/attachments\/(\d+)\/normalize-name$/);
+  if (attNormalizeMatch && method === "POST") {
+    const result = await normalizeAttachmentName(db, Number(attNormalizeMatch[1]), { logHistory });
+    return json(result, result.status || 200);
+  }
+  const attCategoryMatch = path.match(/^\/attachments\/(\d+)\/category$/);
+  if (attCategoryMatch && (method === "GET" || method === "PUT")) {
+    const id = Number(attCategoryMatch[1]);
+    const attachment = await db.prepare(
+      "SELECT id, entry_id, filename, COALESCE(device_category, '') AS device_category FROM attachments WHERE id = ?"
+    ).bind(id).first();
+    if (!attachment) return bad("找不到附件", 404);
+    if (method === "GET") {
+      return json({
+        ok: true,
+        id: attachment.id,
+        filename: attachment.filename,
+        category: attachment.device_category || "",
+        categories: await deviceCategoryNames(db),
+      });
+    }
+    const body = await request.json().catch(() => ({}));
+    const category = String(body.category || "").trim();
+    // 空字串＝清掉分類，一律允許；非空的話要在分類字典裡（避免打錯字產生幽靈分類）
+    if (category) {
+      const names = await deviceCategoryNames(db);
+      if (!names.includes(category)) {
+        return bad(`「${category}」不在醫材分類清單裡——先到「管理分類」新增，或改選現有分類`);
+      }
+    }
+    await db.prepare("UPDATE attachments SET device_category = ? WHERE id = ?").bind(category, id).run();
+    await logHistory(db, attachment.entry_id, null, "更新醫材分類", `${attachment.filename}：${category || "未分類"}`);
+    return json({ ok: true, category });
   }
 
   // ---- 錄音轉文字（Workers AI Whisper）----
