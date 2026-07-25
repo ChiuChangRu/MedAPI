@@ -143,13 +143,23 @@ function renderAiUsage(item) {
     <div class="usage-bar"><i style="width:${Math.min(100, Number(value) / Number(limit) * 100)}%"></i></div>
     <small>${note}</small>
   </div>`;
+  // 三條額度各自獨立判斷是否超過 10%，只顯示真的有量的那幾條——
+  // 之前是「這個 AI 項目本身有沒有超過 10%」擋一次就三條全出，0% 的那條也會佔畫面
+  const rows = [
+    { pct: safeLimit ? used / safeLimit * 100 : 0, html: bar("① 今日自動安全額度", Math.min(used, safeLimit), safeLimit, "safe", used >= safeLimit ? "已停止自動轉錄" : "70% 安全門檻") },
+    { pct: freeLimit ? used / freeLimit * 100 : 0, html: bar("② 今日免費額度", Math.min(used, freeLimit), freeLimit, "daily", used > freeLimit ? "今日已進入按量計費" : "每日 00:00 UTC 重置") },
+    { pct: hardBudget ? paidCost / hardBudget * 100 : 0, html: bar("③ 本月付費 AI 預算（USD）", paidCost, hardBudget, "paid", paidCost >= softBudget ? `已達 USD ${softBudget.toFixed(2)}，Fieldlog AI 已軟停止` : `USD ${softBudget.toFixed(2)} 軟停止｜USD ${hardBudget.toFixed(2)} Gateway 硬停`, 4) },
+  ];
+  const visible = rows.filter((r) => r.pct >= 10);
+  const gridHtml = visible.length ? visible.map((r) => r.html).join("") : `<p class="usage-quiet">✓ 三項額度目前都低於 10%。</p>`;
+  // Cloudflare 帳單 API 本身有回報延遲（不是 fieldlog 沒去抓新資料）：
+  // 落後超過一天就明講，不然「今日」數字卡在幾天前，會被誤會是系統沒更新
+  const lagNote = Number(item.dataLagDays) >= 1
+    ? `<p class="ai-plan-note">⚠ Cloudflare 帳單資料本身落後 ${item.dataLagDays} 天更新（平台端限制，不是這裡沒去抓最新資料）；above 數字是「最新可查到的一天」，不一定是今天。</p>` : "";
   return `<div class="usage-limit ai-usage">
     <div><strong>${esc(item.label)}</strong><span>${fmtUsageNumber(used)} Neurons</span></div>
-    <div class="ai-budget-grid">
-      ${bar("① 今日自動安全額度", Math.min(used, safeLimit), safeLimit, "safe", used >= safeLimit ? "已停止自動轉錄" : "70% 安全門檻")}
-      ${bar("② 今日免費額度", Math.min(used, freeLimit), freeLimit, "daily", used > freeLimit ? "今日已進入按量計費" : "每日 00:00 UTC 重置")}
-      ${bar("③ 本月付費 AI 預算（USD）", paidCost, hardBudget, "paid", paidCost >= softBudget ? `已達 USD ${softBudget.toFixed(2)}，Fieldlog AI 已軟停止` : `USD ${softBudget.toFixed(2)} 軟停止｜USD ${hardBudget.toFixed(2)} Gateway 硬停`, 4)}
-    </div>
+    <div class="ai-budget-grid">${gridHtml}</div>
+    ${lagNote}
     <p class="ai-plan-note">${item.gatewayConfigured ? "✓ AI Gateway 已接入；請確認 Dashboard 的每月 USD 5 Spend Limit 已啟用。" : "⚠ 尚未設定 AI_GATEWAY_ID；USD 5 Gateway 硬停止尚未生效。"}</p>
   </div>`;
 }
@@ -167,7 +177,10 @@ function renderUsageLimit(item) {
 function usageReachedTenPercent(data) {
   return (data.limits || []).some((item) => {
     if (item.key === "ai") {
+      // 修正：之前漏檢查「② 今日免費額度」——如果今天單純轉錄量大、
+      // 但還沒碰到安全門檻或付費預算，整個面板會被誤判成「都低於 10%」而藏起來
       return Number(item.used || 0) / Number(item.safeLimit || 7000) >= 0.1
+        || Number(item.used || 0) / Number(item.limit || 10000) >= 0.1
         || Number(item.monthlyPaidCost || 0) / Number(item.hardBudget || 5) >= 0.1;
     }
     return Number(item.limit || 0) > 0 && Number(item.used || 0) / Number(item.limit) >= 0.1;

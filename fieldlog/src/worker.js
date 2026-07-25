@@ -178,13 +178,18 @@ async function cloudflareUsage(env) {
       .filter((r) => !latestAiDate || r.periodStart.startsWith(latestAiDate))
       .reduce((sum, r) => sum + r.quantity, 0);
     const aiMonthlyPaidCost = aiRows.reduce((sum, r) => sum + r.cost, 0);
+    // Cloudflare 帳單 API 本身有回報延遲（latestAiDate 常常不是今天，實測落後 1-3 天），
+    // 不是這支 Worker 沒去抓最新資料——把這個延遲天數算出來給前端顯示，
+    // 不然「今日」用量卡在幾天前的數字，使用者會誤以為是我們這邊沒更新
+    const today = now().slice(0, 10);
+    const aiDataLagDays = latestAiDate ? Math.round((new Date(today) - new Date(latestAiDate)) / 86400000) : null;
     const limits = [
       {
         key: "ai", label: `Workers AI Neurons${latestAiDate ? `（${latestAiDate}）` : ""}`,
         used: aiUsage, limit: AI_DAILY_FREE_NEURONS, safeLimit: AI_AUTO_SAFE_NEURONS,
         monthlyPaidCost: aiMonthlyPaidCost, softBudget: AI_MONTHLY_SOFT_USD,
         hardBudget: AI_MONTHLY_HARD_USD, paidRatePerThousand: AI_RATE_PER_1000_NEURONS,
-        gatewayConfigured: !!env.AI_GATEWAY_ID, unit: "／日",
+        gatewayConfigured: !!env.AI_GATEWAY_ID, unit: "／日", dataLagDays: aiDataLagDays,
       },
       { key: "d1-read", label: "D1 讀取列數", used: findUsage(/^D1$/i, /Rows Read/i), limit: 25e9, unit: "／月" },
       { key: "d1-write", label: "D1 寫入列數", used: findUsage(/^D1$/i, /Rows Written/i), limit: 50e6, unit: "／月" },
