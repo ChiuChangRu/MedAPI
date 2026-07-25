@@ -23,7 +23,18 @@
  *   MEDTEC_URL   — 參展系統網址（如 https://medtec-2026.xxx.workers.dev）
  */
 
-import { foldText, foldSnippet, stripPdfMetadata } from "./textFold.js";
+import { stripPdfMetadata } from "./textFold.js";
+import {
+  buildPlan,
+  runSearch,
+  isDegraded,
+  matchesPlan,
+  pickHitField,
+  planSnippet,
+  degradedNote,
+  expansionNote,
+  noHitMessage,
+} from "./search.js";
 
 const PROTOCOL_DEFAULT = "2025-03-26";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
@@ -71,16 +82,26 @@ function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
 }
 
-// 摺疊後比對：庫內文字與查詢字都轉成同一種簡繁/全半形形式再判斷是否包含。
-// 這是簡繁互通的核心——繁體查得到簡體庫、反之亦然。
-function foldIncludes(text, foldedQuery) {
-  return foldText(text).includes(foldedQuery);
-}
-
 function needQuery(args) {
   const q = (args.query || "").trim();
   if (!q) throw new Error("query 為必填");
   return q;
+}
+
+// 查詢計畫：斷詞 ＋ 同義詞展開（見 search.js）。五個 search_* 工具共用同一套，
+// 所以「多詞查詢」與「慣用語查得到正式名稱」在全部工具上行為一致。
+function needPlan(args) {
+  return buildPlan(needQuery(args));
+}
+
+// 把結果、降級提醒、展開說明組成最終回應
+function withSearchNotes(plan, result, body) {
+  const out = [];
+  if (result.degraded) out.push(degradedNote(plan), "");
+  out.push(body);
+  const note = expansionNote(plan);
+  if (note) out.push("", note);
+  return out.join("\n");
 }
 
 function capLimit(args, dflt = 10, max = 30) {
@@ -198,33 +219,56 @@ const TOOLS = [
   },
   {
     name: "search_wiki",
-    description: "以關鍵字全文搜尋所有 Wiki 條目，回傳每頁的命中行。簡繁通用（繁體查得到簡體、反之亦然）。適合「哪個條目講過 XX」這類跨頁定位。",
+    description: "以關鍵字全文搜尋所有 Wiki 條目，回傳每頁的命中行。簡繁通用（繁體查得到簡體、反之亦然）；多個關鍵字用空白隔開，慣用語自動對到正式名稱。適合「哪個條目講過 XX」這類跨頁定位。",
     inputSchema: {
       type: "object",
       properties: { query: { type: "string", description: "關鍵字" } },
       required: ["query"],
     },
     async handler(env, args) {
-      const q = needQuery(args);
-      const fq = foldText(q);
+      const plan = needPlan(args);
       const pages = await wikiPages(env);
-      const results = await Promise.all(
+      // Wiki 是逐行命中：整頁先算分決定要不要列，再挑出頁內命中的行
+      const pageResults = await Promise.all(
         pages.map(async (p) => {
           const res = await wikiFetch(env, p.file);
           if (!res.ok) return null;
           const text = await res.text();
-          const hits = [];
           const lines = text.split("\n");
+          const scored = runSearch([{ p, text, lines }], plan, (row) => row.text);
+          if (!scored.hits.length) return null;
+          const hits = [];
           for (let i = 0; i < lines.length && hits.length < 4; i++) {
-            if (foldIncludes(lines[i], fq)) {
-              hits.push(`  - L${i + 1}：${clip(lines[i], 160)}`);
+            if (matchesPlan(lines[i], plan)) hits.push(`  - L${i + 1}：${clip(lines[i], 160)}`);
+          }
+          // 整頁有命中但沒有單一行同時命中（多詞散落在不同行）→ 退回列出各詞的所在行
+          if (!hits.length) {
+            for (const token of plan.tokens) {
+              for (let i = 0; i < lines.length && hits.length < 4; i++) {
+                if (matchesPlan(lines[i], { ...plan, tokens: [token] })) {
+                  hits.push(`  - L${i + 1}：${clip(lines[i], 160)}`);
+                  break;
+                }
+              }
             }
           }
-          return hits.length ? `## ${p.title}（${p.file}）\n${hits.join("\n")}` : null;
+          return {
+            score: scored.hits[0],
+            text: `## ${p.title}（${p.file}）\n${hits.join("\n")}`,
+          };
         })
       );
-      const found = results.filter(Boolean);
-      return found.length ? found.join("\n\n") : `所有 Wiki 條目都沒有「${q}」。`;
+      const matched = pageResults.filter(Boolean);
+      if (!matched.length) return noHitMessage("所有 Wiki 條目", plan);
+      // 有整頁全詞命中的條目時只列這些（AND）；全部都只部分命中才降級把它們列出來
+      const full = matched.filter((item) => item.score.anyHits === plan.tokens.length);
+      const found = full.length ? full : matched;
+      found.sort((a, b) => b.score.origHits - a.score.origHits || b.score.anyHits - a.score.anyHits);
+      return withSearchNotes(
+        plan,
+        { degraded: isDegraded({ total: found.length, fullMatches: full.length }) },
+        found.map((item) => item.text).join("\n\n")
+      );
     },
   },
   {
@@ -263,11 +307,11 @@ const TOOLS = [
   },
   {
     name: "search_fieldlog",
-    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的檔名／錄音逐字稿／照片與 PDF 擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。可選 folder_id／folder_type 縮小到特定資料夾（例如專門歸檔標準規範、型錄的資料夾——先用 list_fieldlog_folders 查 id）。回傳命中片段與 entry/attachment id；附件命中後用 get_fieldlog_attachment 拉該附件完整未截斷的全文（例如查一份 ISO 標準的完整條文，不是只看片段）。找到 entry 後想看它跟哪些標準／實驗／廠商／專利有交叉關聯，改用 get_related(id)。",
+    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的檔名／錄音逐字稿／照片與 PDF 擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。多個關鍵字用空白隔開即可（例「7886 注射器」＝兩個詞都要出現）；慣用語會自動對到正式標準名（查「HD管」找得到「體外血液處理用導管」）。可選 folder_id／folder_type 縮小到特定資料夾（例如專門歸檔標準規範、型錄的資料夾——先用 list_fieldlog_folders 查 id）。回傳命中片段與 entry/attachment id；附件命中後用 get_fieldlog_attachment 拉該附件完整未截斷的全文（例如查一份 ISO 標準的完整條文，不是只看片段）。找到 entry 後想看它跟哪些標準／實驗／廠商／專利有交叉關聯，改用 get_related(id)。",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "關鍵字，簡繁不拘（例：ISO 7886-1、抗結痂）" },
+        query: { type: "string", description: "關鍵字，簡繁不拘。多個詞用空白隔開，預設全部都要命中；全部都要命中時查不到會自動放寬成任一詞命中並標示（例：ISO 7886-1、7886 注射器、抗結痂）" },
         limit: { type: "number", description: "每類最多回傳幾筆（預設 10，上限 30）" },
         folder_id: { type: "number", description: "選填：只搜這個資料夾與其子資料夾（先用 list_fieldlog_folders 查 id）" },
         folder_type: { type: "string", description: "選填：只搜這個類型的資料夾（例：參展、拜訪、實驗、上課、會議、查廠、其他）" },
@@ -275,8 +319,7 @@ const TOOLS = [
       required: ["query"],
     },
     async handler(env, args) {
-      const q = needQuery(args);
-      const fq = foldText(q);
+      const plan = needPlan(args);
       const limit = capLimit(args);
       const wantFolderType = (args.folder_type || "").trim();
       const wantFolderId = args.folder_id !== undefined && args.folder_id !== null && args.folder_id !== "" ? Number(args.folder_id) : null;
@@ -317,37 +360,44 @@ const TOOLS = [
       const inScope = (row) =>
         (!wantFolderType || row.folder_type === wantFolderType) &&
         (allowedFolderIds === null || allowedFolderIds.has(row.folder_id));
-      const entries = allEntries
-        .filter(inScope)
-        .filter((e) => foldIncludes(`${e.title}\n${e.body}\n${e.fields_json}`, fq))
-        .slice(0, limit);
       for (const a of allAtts) a._ocr = stripPdfMetadata(a.ocr_text || ""); // 即時剝 PDF metadata
-      const atts = allAtts
-        .filter(inScope)
-        .filter((a) => foldIncludes(`${a.transcript}\n${a._ocr}\n${a.filename}`, fq))
-        .slice(0, limit);
+      const entryHits = runSearch(
+        allEntries.filter(inScope),
+        plan,
+        (e) => `${e.title}\n${e.body}\n${e.fields_json}`,
+        limit
+      );
+      const attHits = runSearch(
+        allAtts.filter(inScope),
+        plan,
+        (a) => `${a.transcript}\n${a._ocr}\n${a.filename}`,
+        limit
+      );
       const out = [];
-      if (entries.length) {
+      if (entryHits.hits.length) {
         out.push("## 命中的紀錄");
-        for (const e of entries) {
+        for (const { row: e } of entryHits.hits) {
           const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "收件匣";
-          const hitText = [e.title, e.body, e.fields_json].find((t) => foldIncludes(t || "", fq)) || e.body;
-          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}\n  ${foldSnippet(hitText, fq)}`);
+          const hitText = pickHitField([e.title, e.body, e.fields_json], plan) || e.body;
+          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}\n  ${planSnippet(hitText, plan)}`);
         }
       }
-      if (atts.length) {
+      if (attHits.hits.length) {
         out.push("## 命中的附件（檔名／逐字稿／擷取文字，想看完整全文用 get_fieldlog_attachment(id)）");
-        for (const a of atts) {
-          const src = a.transcript && foldIncludes(a.transcript, fq) ? a.transcript : a._ocr || a.filename;
+        for (const { row: a } of attHits.hits) {
+          const src = pickHitField([a.transcript, a._ocr, a.filename], plan);
           const off = a.offset_secs !== null && a.offset_secs !== undefined ? `｜錄音 ${fmtSecs(a.offset_secs)}` : "";
-          out.push(`- [attachment ${a.att_id}／entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${foldSnippet(src, fq)}`);
+          out.push(`- [attachment ${a.att_id}／entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${planSnippet(src, plan)}`);
         }
       }
       if (!out.length) {
-        const scopeNote = (wantFolderType || wantFolderId !== null) ? "（在指定的資料夾範圍內；範圍設定得太窄的話試試拿掉 folder_id/folder_type 全庫查）" : "";
-        return `隨身記裡沒有「${q}」的相關內容${scopeNote}（簡繁已互通）。`;
+        const scopeNote = (wantFolderType || wantFolderId !== null)
+          ? "這次有限定資料夾範圍；範圍設定得太窄的話拿掉 folder_id／folder_type 再查一次全庫。"
+          : "";
+        return noHitMessage("隨身記", plan, scopeNote);
       }
-      return out.join("\n");
+      // 兩類結果只要有一類是全詞 AND 命中，就不算降級
+      return withSearchNotes(plan, { degraded: isDegraded(entryHits, attHits) }, out.join("\n"));
     },
   },
   {
@@ -523,32 +573,36 @@ const TOOLS = [
   },
   {
     name: "search_exhibitors",
-    description: "以關鍵字搜尋 Medtec China 2026 的 585 家展商（名稱／攤位／國家／產品／簡介／分類），並附上團隊共筆狀態（拜訪狀態、指派、部門標籤、紀錄數）。簡繁通用（繁體查得到簡體、反之亦然）。",
+    description: "以關鍵字搜尋 Medtec China 2026 的 585 家展商（名稱／攤位／國家／產品／簡介／分類），並附上團隊共筆狀態（拜訪狀態、指派、部門標籤、紀錄數）。簡繁通用（繁體查得到簡體、反之亦然）；多個關鍵字用空白隔開，慣用語自動對到正式名稱。",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "關鍵字（例：親水塗層、TPU、擠出）。簡繁不拘。" },
+        query: { type: "string", description: "關鍵字（例：親水塗層、TPU、擠出）。簡繁不拘，多個詞用空白隔開。" },
         limit: { type: "number", description: "最多回傳幾家（預設 10，上限 30）" },
       },
       required: ["query"],
     },
     async handler(env, args) {
-      const fq = foldText(needQuery(args));
+      const plan = needPlan(args);
       const limit = capLimit(args);
       const data = await exhibitorsData(env);
-      const hits = (data.exhibitors || []).filter((ex) => {
-        const hay = [
+      const found = runSearch(
+        data.exhibitors || [],
+        plan,
+        (ex) => [
           ex.name_zh, ex.name_en, ex.booth_no, ex.country, ex.description,
           categoryName(data, ex.category), ...(ex.products || []), ...(ex.tags || []),
-        ].join("\n");
-        return foldIncludes(hay, fq);
-      });
-      if (!hits.length) return `展商名單裡沒有符合「${args.query}」的廠商。`;
-      const top = hits.slice(0, limit);
+        ].join("\n"),
+        limit
+      );
+      if (!found.hits.length) return noHitMessage("展商名單", plan);
+      const top = found.hits.map((item) => item.row);
       const { states, noteCounts } = await medtecStates(env, top.map((h) => h.id));
       const body = top.map((ex) => fmtExhibitor(data, ex, states.get(ex.id), noteCounts.get(ex.id))).join("\n\n");
-      const more = hits.length > top.length ? `\n\n（共 ${hits.length} 家符合，只列前 ${top.length} 家——關鍵字再收斂一點可以更準）` : "";
-      return body + more;
+      const more = found.total > top.length
+        ? `\n\n（共 ${found.total} 家符合，只列前 ${top.length} 家——關鍵字再收斂一點可以更準）`
+        : "";
+      return withSearchNotes(plan, { degraded: isDegraded(found) }, body + more);
     },
   },
   {
@@ -616,39 +670,38 @@ const TOOLS = [
       required: ["query"],
     },
     async handler(env, args) {
-      const q = needQuery(args);
-      const fq = foldText(q);
+      const plan = needPlan(args);
       const limit = capLimit(args);
       const { results: all } = await env.DB_MEDTEC.prepare(
         `SELECT * FROM notes WHERE deleted = 0 ORDER BY id DESC LIMIT ${SCAN_CAP}`
       ).all();
-      const results = all.filter((n) => foldIncludes(n.content || "", fq)).slice(0, limit);
-      if (!results.length) return `拜訪紀錄裡沒有「${q}」（簡繁已互通）。`;
+      const found = runSearch(all, plan, (n) => n.content || "", limit);
+      if (!found.hits.length) return noHitMessage("拜訪紀錄", plan);
       let nameOf = (id) => id;
       try {
         const data = await exhibitorsData(env);
         const map = new Map((data.exhibitors || []).map((x) => [x.id, x.name_zh || x.name_en]));
         nameOf = (id) => map.get(id) || id;
       } catch { /* 展商主檔抓不到時退回顯示 id */ }
-      return results
-        .map((n) => `- ${n.created_at}｜${nameOf(n.exhibitor_id)}（${n.exhibitor_id}）｜${n.author}｜${n.type}\n  ${foldSnippet(n.content, fq)}`)
+      const body = found.hits
+        .map(({ row: n }) => `- ${n.created_at}｜${nameOf(n.exhibitor_id)}（${n.exhibitor_id}）｜${n.author}｜${n.type}\n  ${planSnippet(n.content, plan)}`)
         .join("\n");
+      return withSearchNotes(plan, { degraded: isDegraded(found) }, body);
     },
   },
   {
     name: "search_exhibitor_files",
-    description: "以關鍵字搜尋參展系統『附件內容』全文：現場錄音逐字稿、照片/PDF 擷取文字、檔名、說明。簡繁通用（繁體查得到簡體、反之亦然——廠商型錄多為簡體）。展商的型錄內容、現場對話都在這裡——問「某家廠商的塗層方案細節」這類問題時用這個。回傳命中片段與所屬展商。",
+    description: "以關鍵字搜尋參展系統『附件內容』全文：現場錄音逐字稿、照片/PDF 擷取文字、檔名、說明。簡繁通用（繁體查得到簡體、反之亦然——廠商型錄多為簡體）；多個關鍵字用空白隔開，慣用語自動對到正式名稱。展商的型錄內容、現場對話都在這裡——問「某家廠商的塗層方案細節」這類問題時用這個。回傳命中片段與所屬展商。",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "關鍵字（例：親水塗層、PTFE、肝素）。簡繁不拘。" },
+        query: { type: "string", description: "關鍵字（例：親水塗層、PTFE、肝素）。簡繁不拘，多個詞用空白隔開。" },
         limit: { type: "number", description: "最多回傳幾筆（預設 10，上限 30）" },
       },
       required: ["query"],
     },
     async handler(env, args) {
-      const q = needQuery(args);
-      const fq = foldText(q);
+      const plan = needPlan(args);
       const limit = capLimit(args);
       const { results: all } = await env.DB_MEDTEC.prepare(
         `SELECT id, exhibitor_id, filename, caption, author, created_at, transcript, ocr_text
@@ -656,24 +709,28 @@ const TOOLS = [
       ).all();
       // 即時剝掉 PDF metadata（現有髒資料不必重跑就乾淨）；檔名保留可搜
       for (const a of all) a._ocr = stripPdfMetadata(a.ocr_text || "");
-      const results = all
-        .filter((a) => foldIncludes(`${a.transcript}\n${a._ocr}\n${a.filename}\n${a.caption}`, fq))
-        .slice(0, limit);
-      if (!results.length) return `附件內容裡沒有「${q}」（簡繁已互通；提醒：附件要先在前台跑過「Cloudflare AI 整理」才有可搜尋的文字）。`;
+      const found = runSearch(
+        all,
+        plan,
+        (a) => `${a.transcript}\n${a._ocr}\n${a.filename}\n${a.caption}`,
+        limit
+      );
+      if (!found.hits.length) {
+        return noHitMessage("附件內容", plan, "附件要先在前台跑過「Cloudflare AI 整理」才有可搜尋的文字。");
+      }
       let nameOf = (id) => id;
       try {
         const data = await exhibitorsData(env);
         const map = new Map((data.exhibitors || []).map((x) => [x.id, x.name_zh || x.name_en]));
         nameOf = (id) => map.get(id) || id;
       } catch { /* 展商主檔抓不到時退回顯示 id */ }
-      return results
-        .map((a) => {
-          const src = foldIncludes(a.transcript || "", fq) ? a.transcript
-            : foldIncludes(a._ocr, fq) ? a._ocr
-            : a._ocr || a.transcript || a.caption || a.filename;
-          return `- ${nameOf(a.exhibitor_id)}（${a.exhibitor_id}）｜${a.filename}｜${a.author}｜${a.created_at}\n  ${foldSnippet(src, fq)}`;
+      const body = found.hits
+        .map(({ row: a }) => {
+          const src = pickHitField([a.transcript, a._ocr, a.caption, a.filename], plan);
+          return `- ${nameOf(a.exhibitor_id)}（${a.exhibitor_id}）｜${a.filename}｜${a.author}｜${a.created_at}\n  ${planSnippet(src, plan)}`;
         })
         .join("\n");
+      return withSearchNotes(plan, { degraded: isDegraded(found) }, body);
     },
   },
 ];

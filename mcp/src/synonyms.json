@@ -1,0 +1,117 @@
+{
+  "_說明": [
+    "搜尋用同義詞表——把「口語／慣用語／英文／標準編號」對應到文件實際使用的正式名稱。",
+    "為什麼需要：文件用正式標準名（體外血液處理用導管），人查的時候用慣用語（HD管、洗腎管），",
+    "字面完全不重疊，搜尋就會靜默漏掉。這張表把同一個概念的所有講法綁成一組，",
+    "查任何一個成員，就會一併去找同組其他成員。",
+    "",
+    "每一組欄位：",
+    "  canonical — 文件裡的正式名稱（通常是標準的中文標題）",
+    "  aliases   — 同一概念的其他講法：慣用語、口語、英文、公司內部代號都可以放",
+    "  codes     — 相關的標準編號（不含組織前綴，例：10555-8）",
+    "同一組內三個欄位一律互通，沒有方向性——查 aliases 找得到 canonical，反之亦然。",
+    "",
+    "要自己增修：直接改這個檔案。新增一組就在 synonyms 陣列裡加一個物件；",
+    "在既有組加一個講法就往那組的 aliases 加一個字串。改完不用動程式碼。",
+    "注意：詞太短會過度擴張（例如只寫「針」會把所有含針的組都拉進來），",
+    "建議 aliases 至少兩個字；單字詞只會做完全相同比對，不會做部分比對。"
+  ],
+  "synonyms": [
+    {
+      "canonical": "體外血液處理用導管",
+      "aliases": [
+        "HD管",
+        "HD導管",
+        "血液透析導管",
+        "洗腎管",
+        "透析導管",
+        "hemodialysis catheter",
+        "HD catheter"
+      ],
+      "codes": ["10555-8", "10555"]
+    },
+    {
+      "canonical": "無菌皮下注射器",
+      "aliases": ["針筒", "注射針筒", "注射器", "syringe", "hypodermic syringe"],
+      "codes": ["7886", "7886-1"]
+    },
+    {
+      "canonical": "血管內導管",
+      "aliases": ["IV導管", "血管導管", "intravascular catheter"],
+      "codes": ["10555", "10555-1"]
+    },
+    {
+      "canonical": "不鏽鋼針管",
+      "aliases": [
+        "不鏽鋼針頭",
+        "不鏽鋼針",
+        "針尖",
+        "針管",
+        "針頭",
+        "needle tubing",
+        "stainless steel needle"
+      ],
+      "codes": ["9626"]
+    },
+    {
+      "canonical": "中心靜脈導管",
+      "aliases": ["CVC", "central venous catheter", "中央靜脈導管"],
+      "codes": []
+    },
+    {
+      "canonical": "軟組織切片針",
+      "aliases": ["生檢針", "切片針", "biopsy needle", "BT-SBNS", "SBNS"],
+      "codes": []
+    },
+    {
+      "canonical": "生物相容性",
+      "aliases": ["生物性評估", "生物相容", "biocompatibility"],
+      "codes": ["10993"]
+    },
+    {
+      "canonical": "小口徑連接器",
+      "aliases": ["魯爾接頭", "Luer", "luer lock", "小孔徑連接器"],
+      "codes": ["80369", "594"]
+    },
+    {
+      "canonical": "輸液器具",
+      "aliases": ["輸血器", "點滴管", "輸液器", "infusion set"],
+      "codes": ["8536"]
+    },
+    {
+      "canonical": "環氧乙烷滅菌",
+      "aliases": ["EO滅菌", "EtO", "ethylene oxide"],
+      "codes": ["11135"]
+    },
+    {
+      "canonical": "輻射滅菌",
+      "aliases": ["伽瑪滅菌", "gamma", "radiation sterilization"],
+      "codes": ["11137"]
+    },
+    {
+      "canonical": "無菌屏障系統包裝",
+      "aliases": ["包裝確效", "無菌屏障", "packaging validation"],
+      "codes": ["11607"]
+    },
+    {
+      "canonical": "親水披膜",
+      "aliases": ["親水塗層", "潤滑塗層", "hydrophilic coating", "lubricious coating"],
+      "codes": []
+    },
+    {
+      "canonical": "抗結痂披膜",
+      "aliases": ["抗結痂", "抗結石", "抗鈣化", "anti-encrustation", "encrustation"],
+      "codes": []
+    },
+    {
+      "canonical": "抗菌披膜",
+      "aliases": ["抗菌塗層", "antimicrobial coating", "antibacterial coating"],
+      "codes": []
+    },
+    {
+      "canonical": "驗證",
+      "aliases": ["確效", "validation", "verification", "測試", "試驗"],
+      "codes": []
+    }
+  ]
+}

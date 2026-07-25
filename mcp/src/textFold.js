@@ -118,17 +118,37 @@ export function foldText(s) {
   return out.toLowerCase();
 }
 
-// 摺疊後的關鍵字前後文擷取：在摺疊文裡定位，回切「原文」（長度對齊，索引通用）
-export function foldSnippet(rawText, foldedQuery, ctx = 80) {
+/**
+ * 摺疊後的關鍵字前後文擷取：在摺疊文裡定位，回切「原文」（長度對齊，索引通用）。
+ *
+ * 多詞查詢與同義詞展開之後，一次查詢會有一組詞而不是單一個詞，所以定位改成
+ * 「依序試這組詞，切在第一個找到的詞上」。呼叫端把原詞排在展開詞前面，
+ * 片段就會優先切在使用者真正打的字上，而不是切在系統自己展開出來的同義詞上。
+ */
+export function foldSnippetAny(rawText, foldedTerms, ctx = 80) {
   const raw = String(rawText ?? "");
   const folded = foldText(raw);
-  const i = folded.indexOf(foldedQuery);
   const collapse = (x) => x.replace(/\s+/g, " ");
-  if (i < 0) {
+  let hit = -1;
+  let hitLength = 0;
+  for (const term of foldedTerms || []) {
+    if (!term) continue;
+    const at = folded.indexOf(term);
+    if (at < 0) continue;
+    hit = at;
+    hitLength = term.length;
+    break;
+  }
+  if (hit < 0) {
     const t = collapse(raw);
     return t.length > ctx * 2 ? t.slice(0, ctx * 2) + "…" : t;
   }
-  const start = Math.max(0, i - ctx);
-  const end = Math.min(raw.length, i + foldedQuery.length + ctx);
+  const start = Math.max(0, hit - ctx);
+  const end = Math.min(raw.length, hit + hitLength + ctx);
   return (start > 0 ? "…" : "") + collapse(raw.slice(start, end)) + (end < raw.length ? "…" : "");
+}
+
+// 單一關鍵字版本（保留給只有一個詞的呼叫端）
+export function foldSnippet(rawText, foldedQuery, ctx = 80) {
+  return foldSnippetAny(rawText, [foldedQuery], ctx);
 }
