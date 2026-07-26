@@ -286,10 +286,12 @@ test("N4 `SBNS` 查無時同樣展開軟組織切片針那一組", () => {
 });
 
 test("查無結果會明確區分「沒資料」與「沒查到」", () => {
-  // 詞不在同義詞表：要提示可以自行補一組對照，而不是只回一句查無
+  // 詞不在同義詞表：要提示用 add_synonym 當場補一組對照（同義詞表已入庫，
+  // 不再叫使用者去改 synonyms.json 原始碼），而不是只回一句查無
   const msg = noHitFor("聚氨酯");
   assert.match(msg, /不在同義詞表中/);
-  assert.match(msg, /synonyms\.json/);
+  assert.match(msg, /add_synonym/);
+  assert.doesNotMatch(msg, /synonyms\.json/, "不該再叫使用者改原始碼");
   assert.doesNotMatch(msg, /同義詞展開後實際查了/);
 });
 

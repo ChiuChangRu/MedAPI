@@ -38,6 +38,15 @@ test("只有頁面標題而沒有本文的 PDF 視為無內容", () => {
   assert.equal(stripImagePdfMetadata(input), "");
 });
 
+test("大綱式文件（每行都是標題、但標題本身有內容）不能被抹成空字串", () => {
+  // 2026-07-26 修正的偽陰性：舊判斷「沒有非 # 開頭的行＝無內容」會把目錄／章節
+  // 大綱整份丟掉，附件從此只剩檔名可搜，而且完全沒有提示（search_exhibitor_files
+  // 「只回大綱沒有正文」的實際成因）。只有 Contents／Page N 純骨架才算無內容。
+  const outline = "# spec.pdf\n## Metadata\n- Creator=Word\n\n## 第八章 無菌屏障系統\n### 8.1 適用範圍\n### 8.2 測試方法";
+  assert.match(stripMcpPdfMetadata(outline), /無菌屏障系統/);
+  assert.match(stripImagePdfMetadata(outline), /8\.2 測試方法/);
+});
+
 test("OCR 重複迴圈可偵測並搶救", () => {
   const repeated = Array(12).fill("加入導管測試液中").join("\n");
   assert.equal(detectRepetitionLoop(repeated), true);

@@ -4,16 +4,17 @@ import test from "node:test";
 
 import worker from "../mcp/src/worker.js";
 
-// medapi-mcp 預設唯讀，只有 create_fieldlog_entry／create_relation 兩支工具能寫入，
-// 而且只能 INSERT（新增），不能 UPDATE／DELETE。這份測試同時守兩件事：
+// medapi-mcp 預設唯讀，只有 create_fieldlog_entry／create_relation／add_synonym
+// 三支工具能寫入，而且只能 INSERT（新增），不能 UPDATE／DELETE。這份測試同時守兩件事：
 // (1) 原始碼層級的不變量——不管以後加多少工具都不該出現 UPDATE／DELETE
-// (2) 這兩支工具的實際行為——真的只新增、找不到既有資料就報錯，不會用猜的硬寫
+// (2) 寫入工具的實際行為——真的只新增、找不到既有資料就報錯，不會用猜的硬寫
 
-test("原始碼裡沒有任何 UPDATE 或 DELETE 語句（唯二寫入工具只能 INSERT）", async () => {
+test("原始碼裡沒有任何 UPDATE 或 DELETE 語句（寫入工具只能 INSERT）", async () => {
   const src = await readFile(new URL("../mcp/src/worker.js", import.meta.url), "utf8");
   assert.equal(/\bUPDATE\s+\w/i.test(src), false, "不應該出現 UPDATE 語句");
   assert.equal(/\bDELETE\s+FROM\b/i.test(src), false, "不應該出現 DELETE FROM 語句");
-  assert.equal((src.match(/INSERT INTO/g) || []).length, 4, "應該剛好 4 處 INSERT INTO（entries+history、relations+history）");
+  // entries+history、relations+history、synonyms 出廠 seed、add_synonym 各 1 處
+  assert.equal((src.match(/INSERT INTO/g) || []).length, 6, "應該剛好 6 處 INSERT INTO（entries+history、relations+history、synonyms seed、add_synonym）");
 });
 
 // 一顆會記狀態的假 D1，只實作這兩支工具真的會用到的查詢／寫入

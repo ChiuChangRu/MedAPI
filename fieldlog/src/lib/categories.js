@@ -36,9 +36,9 @@ function rowToCategory(row) {
   };
 }
 
-/** 讀分類清單。kind／level 可選；'_seeded' 那筆內部標記列永遠不會回傳。 */
+/** 讀分類清單。kind／level 可選；「_ 開頭」的內部標記列（_seeded／_sources_seeded）永遠不會回傳。 */
 export async function listCategories(db, { kind, level } = {}) {
-  const where = ["kind != '_seeded'"];
+  const where = ["kind NOT LIKE '\\_%' ESCAPE '\\'"];
   const binds = [];
   if (kind) {
     where.push("kind = ?");
@@ -107,7 +107,7 @@ export async function createCategory(db, body, { logHistory, timestamp }) {
 
 /** 改分類：改名時一併更新既有資料上的分類文字（同一個分類換叫法，不更新才是錯的） */
 export async function updateCategory(db, id, body, { logHistory }) {
-  const old = await db.prepare("SELECT * FROM categories WHERE id = ? AND kind != '_seeded'")
+  const old = await db.prepare("SELECT * FROM categories WHERE id = ? AND kind NOT LIKE '\\_%' ESCAPE '\\'")
     .bind(id).first();
   if (!old) return { error: "找不到這個分類", status: 404 };
 
@@ -163,7 +163,7 @@ export async function updateCategory(db, id, body, { logHistory }) {
  * 讓使用者知道刪完之後那些資料會變成「用著一個已經不在清單上的分類」。
  */
 export async function deleteCategory(db, id, { logHistory }) {
-  const category = await db.prepare("SELECT * FROM categories WHERE id = ? AND kind != '_seeded'")
+  const category = await db.prepare("SELECT * FROM categories WHERE id = ? AND kind NOT LIKE '\\_%' ESCAPE '\\'")
     .bind(id).first();
   if (!category) return { error: "找不到這個分類", status: 404 };
 

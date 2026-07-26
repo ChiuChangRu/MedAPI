@@ -84,6 +84,43 @@ export const SCHEMA = [
     sort_order INTEGER DEFAULT 0,
     created_at TEXT NOT NULL
   )`,
+  // 外部資料來源清單——「要同步哪些 JSON、陣列鍵叫什麼、進哪個資料夾」全是資料，
+  // 不寫死在程式碼裡。理由與 categories 表完全相同：來源是「會一直長」的東西
+  // （今天是 litdb 三個收藏，明天可能加市場分析），寫死等於每加一個就要改程式
+  // 重新部署。新增一個知識庫＝往這張表加一列，全程不碰 .js。
+  //
+  // items_path — 資料陣列在來源 JSON 裡的鍵名（litdb 叫 papers，別的來源可能叫
+  //              reports／items），這個欄位就是「不用為新格式改程式」的關鍵
+  // folder_parent — 目標資料夾的上層資料夾名稱（空＝放最上層）；沿用現有
+  //                 「LitDB 文獻庫」母資料夾＋各收藏子資料夾的結構
+  `CREATE TABLE IF NOT EXISTS sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    url TEXT NOT NULL,
+    items_path TEXT DEFAULT 'papers',
+    id_field TEXT DEFAULT 'id',
+    title_field TEXT DEFAULT 'title',
+    folder_parent TEXT DEFAULT '',
+    folder_type TEXT DEFAULT '文獻庫',
+    enabled INTEGER DEFAULT 1,
+    last_synced_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  // 同步紀錄——每跑一次同步（手動或排程）記一列，讓「資料庫是不是過時、
+  // 上次漏了什麼」變成查得到的事實，不用靠記憶（ALCOA 的可追溯精神）。
+  `CREATE TABLE IF NOT EXISTS sync_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    inserted INTEGER DEFAULT 0,
+    updated INTEGER DEFAULT 0,
+    skipped INTEGER DEFAULT 0,
+    orphaned INTEGER DEFAULT 0,
+    errors TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder_id)`,
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
@@ -117,6 +154,36 @@ export const MIGRATIONS = [
   // 刪掉分類選項時既有檔案上的分類文字仍然留著，不會靜默消失）
   `ALTER TABLE attachments ADD COLUMN device_category TEXT DEFAULT ''`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_att_entry_hash ON attachments(entry_id, content_hash) WHERE content_hash IS NOT NULL AND content_hash <> ''`,
+  // 深度解析欄位（規格書 II 項目 8）——AI 理解後的「結構化結論」與人工內容永久分離：
+  // 解析結果只進這幾欄，永不覆蓋 body／note，人的判斷是最終權威。
+  // analysis_at 沿用 ocr_at 的三態設計：''=未做／'skipped'=不做／'processing'／
+  // 'failed'／ISO 時間=完成。analysis_hash 存「被解析當下的來源內容 hash」，
+  // 內容沒變就不重跑——這是成本控制的核心。
+  `ALTER TABLE entries ADD COLUMN analysis_json TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN analysis_at TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN analysis_model TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN analysis_profile TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN analysis_hash TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN analysis_json TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN analysis_at TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN analysis_model TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN analysis_profile TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN analysis_hash TEXT DEFAULT ''`,
+];
+
+/**
+ * 外部來源的初始內容——litdb 的三個收藏。跟 CATEGORY_SEED 一樣只在第一次寫入，
+ * 之後使用者增刪改（含整列刪掉）都不會被倒回來。
+ *
+ * 真相來源考證（2026-07-26）：litdb 根目錄的 papers.json（107 筆）沒有被任何
+ * 頁面引用（root index.html 零個 fetch），是殘留檔；多出的 R01–R05 是五筆
+ * 一模一樣的空殼（同標題同連結、其餘欄位全空）。coating/index.html 實際讀的
+ * 是 coating/papers.json（102 筆），所以這裡以各子目錄的檔案為準。
+ */
+export const SOURCE_SEED = [
+  { key: "coating", label: "親水塗層文獻", url: "https://chiuchangru.github.io/litdb/coating/papers.json", folder_parent: "LitDB 文獻庫" },
+  { key: "biopsy", label: "活檢針機構", url: "https://chiuchangru.github.io/litdb/biopsy/biopsy_patents.json", folder_parent: "LitDB 文獻庫" },
+  { key: "packaging", label: "醫材包裝技術", url: "https://chiuchangru.github.io/litdb/packaging/papers.json", folder_parent: "LitDB 文獻庫" },
 ];
 
 /**
@@ -199,6 +266,7 @@ export async function ensureSchema(db, timestamp) {
     await db.prepare(sql).run().catch(() => {});
   }
   await seedCategories(db, timestamp);
+  await seedSources(db, timestamp);
   schemaReady = true;
 }
 
@@ -241,5 +309,43 @@ async function seedCategories(db, timestamp) {
       )
     );
   });
+  await db.batch(statements);
+}
+
+/**
+ * 只在第一次寫入外部來源種子。跟分類一樣用標記列記住「放過了」——
+ * 使用者刪掉某個來源（不想再同步）是合法狀態，冷啟動不能倒回來。
+ * 標記列借放 categories 表（kind='_sources_seeded'），不另開表。
+ */
+async function seedSources(db, timestamp) {
+  const seeded = await db
+    .prepare("SELECT id FROM categories WHERE kind = '_sources_seeded' LIMIT 1")
+    .first()
+    .catch(() => null);
+  if (seeded) return;
+
+  const statements = [
+    db.prepare(
+      "INSERT INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('_sources_seeded', 0, 'seeded', '', '', '[]', 0, ?)"
+    ).bind(timestamp),
+  ];
+  for (const s of SOURCE_SEED) {
+    statements.push(
+      db.prepare(
+        `INSERT OR IGNORE INTO sources (key, label, url, items_path, id_field, title_field, folder_parent, folder_type, enabled, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
+      ).bind(
+        s.key,
+        s.label,
+        s.url,
+        s.items_path || "papers",
+        s.id_field || "id",
+        s.title_field || "title",
+        s.folder_parent || "",
+        s.folder_type || "文獻庫",
+        timestamp
+      )
+    );
+  }
   await db.batch(statements);
 }

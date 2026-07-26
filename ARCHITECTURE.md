@@ -27,11 +27,12 @@
 
 四個系統**各自獨立**：不同 Worker（或完全在自己帳號外的 GitHub Pages）、
 不同 D1、不同 R2，互不影響、互不依賴。Wiki 是唯一的「匯流點」，靠人工＋AI
-協作把各源頭的原始資料編譯成有結構的知識條目。**沒有、也決定不做常態性的
-跨系統即時資料庫合併**——唯一的例外是 LitDB：2026-07-26 為了「產品單一化」，
-把 litdb 的 152 筆文字紀錄一次性匯入隨身記（見第四節），這是單向、
-一次性的文字快照，不是持續同步的資料庫合併；litdb repo 本身之後不會再
-收新資料，兩邊也不會再互相同步。
+協作把各源頭的原始資料編譯成有結構的知識條目。**沒有、也決定不做雙向的
+跨系統資料庫合併**——唯一的資料流入是「外部來源單向同步」：fieldlog 的
+sources 表登記了哪些公開 JSON（目前是 litdb 三個收藏），每天凌晨 cron
+單向拉文字進隨身記（content hash 判斷有沒有變，沒變不動、變了只改寫
+同步區、人工註記永不覆蓋），詳見第二節之 D 與 `fieldlog/src/lib/sync.js`。
+litdb 那邊照它自己的方式活著，隨身記永遠不寫回去。
 
 ## 二、各子系統詳細架構
 
@@ -95,25 +96,33 @@
 
 ### D. LitDB（文獻／專利閱讀）
 
-- **2026-07-26 更新（產品單一化）**：`chiuchangru/litdb` 原本是獨立運作
-  的系統（GitHub Pages 靜態網站＋JSON 資料檔），152 筆整理過的文獻/專利
-  （親水塗層 102 筆、活檢針機構 44 筆、醫材包裝 6 筆）。當天先做了 MCP
-  唯讀查詢（`list_litdb_collections`／`search_litdb`／`get_litdb_paper`，
-  即時 fetch litdb 的公開 JSON），但長儒的目標是「產品單一化」——不要
-  兩套資料來源並存，於是改成**一次性匯入隨身記**：`POST
-  /api/admin/import-litdb`（見 `fieldlog/src/worker.js`）把 152 筆全部
-  寫成 fieldlog 的 `entries`，歸檔在「LitDB 文獻庫」資料夾（母資料夾＋
-  親水塗層文獻／活檢針機構／醫材包裝技術三個子資料夾），只搬**文字**
-  （摘要、標籤、對專案的價值評估、專利分析摘要、原始連結字串）——
-  **刻意不下載任何 PDF、不建附件**，原始檔案/全文連結留在 litdb 那邊，
-  想看原文就點 body 裡的連結。匯入後拿掉了那三支 MCP 工具（`mcp/src/
-  litdb.js` 已刪除）：資料已經在隨身記裡，`search_fieldlog`／
-  `list_fieldlog_entries` 直接涵蓋，不需要再維護一條平行查詢路徑。
-  litdb 這個 repo **之後不會再有新資料**（一次性匯入，凍結），若之後
-  litdb 真的又新增內容，要嘛人工在隨身記补一筆，要嘛重新評估要不要
-  再跑一次匯入端點——不會回頭再幫 litdb 接即時查詢
+- **2026-07-26 更新（產品單一化，同日再依規格書 I/II 升級為自動同步）**：
+  `chiuchangru/litdb` 是獨立運作的系統（GitHub Pages 靜態網站＋JSON 資料
+  檔），152 筆整理過的文獻/專利（親水塗層 102、活檢針機構 44、醫材包裝 6）。
+  當天演進了三步：(1) 先做 MCP 即時查詢三工具 →(2) 為「產品單一化」改成
+  一次性匯入隨身記、拿掉那三支工具 →(3) 依「第二大腦架構改善規格書 I」
+  把一次性匯入升級成 **sources 表驅動的每日單向同步**：
+  - **來源是資料不是程式碼**：`sources` 表登記 key／url／items_path／
+    id_field 等（categories 表同一個判斷第三次套用）；新增一個知識庫＝
+    `POST /api/sources` 加一列，全程不碰 .js
+  - **通用渲染（黑名單制）**：`fieldlog/src/lib/render.js` 把任意 JSON 樹
+    展開成 Markdown 進 body，任何沒列舉過的新欄位自動可搜尋——修掉了
+    第一版白名單匯入「patentResults 的配方/FTO/迴避設計九成搜不到」的病灶
+  - **AI 產出與人工內容分離**：litdb 的 `patentResults`／`patent_core` 進
+    `entries.analysis_json`（`analysis_model='litdb-原生'`），MCP 呈現時
+    明確標示「AI 深度解析」段落；body 裡的同步區用 `<!-- sync:start/end -->`
+    標記，人工加註在標記外永不被同步覆蓋
+  - **content-hash upsert**：沒變跳過、變了更新（寫 history）、來源端消失
+    標 `_orphaned` 不刪除
+  - **每日 cron**（wrangler triggers `0 18 * * *`＝台灣 02:00）自動跑
+    `syncSources()`，每次寫 `sync_log`；MCP 的 `sync_status` 工具隨時可查
+    「最後同步是什麼時候、漏了什麼」
+  - 仍然**不下載任何 PDF、不建附件**，原始檔案/全文連結留在 litdb
+  - 真相來源考證：litdb 根目錄 `papers.json`（107 筆）沒有被任何頁面引用，
+    是殘留檔；多出的 R01–R05 是五筆同標題同連結、其餘全空的佔位資料。
+    同步以各子目錄的檔案（coating 102／biopsy 44／packaging 6）為準
 - **仍未建置的部分**：把讀完的文獻折進 A/B 技術條目本文的採集介面/
-  流程（下面「定位」那段講的東西），目前還是規劃，沒有實作——匯入
+  流程（下面「定位」那段講的東西），目前還是規劃，沒有實作——同步進
   隨身記只是「查得到」，不是「自動掛回 wiki 條目」
 - **定位**（已在對話中定案）：舊 LitDB 按「文獻」自身分類，新做法**不
   再獨立分類**，讀完直接掛回對應的 A/B 技術條目，C2 只留一行索引
@@ -170,17 +179,18 @@ fieldlog/
 1. **系統不常態性合併資料庫**。原因：使用情境形狀互斥——隨身記是單人
    移動採集，參展系統是多人即時協作，硬塞進同一張表只會讓每個場景都
    變彆扭，且參展系統是同事在用的共筆工具，改壞 schema 影響範圍大。
-   **LitDB 是唯一例外**：2026-07-26 把它的 152 筆文字紀錄一次性匯入
-   隨身記（「產品單一化」，見第二節之 D），但這是單向的一次性文字快照
-   （不搬 PDF、不建持續同步），跟這條決策的精神——不做常態性、雙向的
-   跨系統資料庫合併——並不衝突
+   **外部來源單向同步是唯一的資料流入**：sources 表登記的公開 JSON
+   （目前是 litdb 三收藏）每天單向拉文字進隨身記（「產品單一化」，見
+   第二節之 D），不搬 PDF、永不寫回來源——跟這條決策的精神——不做
+   雙向的跨系統資料庫合併——並不衝突
 2. **MCP 只當預設唯讀的問答層**（已實作於 `mcp/`）。獨立的 Cloudflare
-   Worker，絕大多數工具不動任何現有生產資料；唯二例外是
-   `create_fieldlog_entry`／`create_relation`，範圍鎖死在「只能新增」
-   （只 INSERT，沒有 UPDATE／DELETE）。對外開 wiki／隨身記／參展系統的查詢工具，
-   讓 claude.ai／Claude Code 可以跨三個來源做自然語言問答。這是「加一層
-   查詢介面」，不是「合併儲存」——前台 UI 怎麼改版都不影響 MCP，
-   只有 D1 資料表結構變動時要回頭同步 `mcp/src/worker.js` 的查詢
+   Worker，絕大多數工具不動任何現有生產資料；例外只有三支「只能新增」
+   的工具：`create_fieldlog_entry`／`create_relation`／`add_synonym`
+   （只 INSERT，沒有 UPDATE／DELETE 碰得到任何既有資料）。對外開 wiki／
+   隨身記／參展系統的查詢工具，讓 claude.ai／Claude Code 可以跨三個來源
+   做自然語言問答。這是「加一層查詢介面」，不是「合併儲存」——前台 UI
+   怎麼改版都不影響 MCP，只有 D1 資料表結構變動時要回頭同步
+   `mcp/src/worker.js` 的查詢
 3. **Wiki 內容單一權威來源＋連結，不重複寫**。判斷標準：這段內容對其他
    產品是否也成立——成立就歸到 B 頁寫一份，不成立（產品特有）才留在
    A 頁，兩邊用連結互通
@@ -188,24 +198,32 @@ fieldlog/
 
 ## 四、目前要改的方向與待解問題
 
-- [x] **LitDB 已一次性匯入隨身記，MCP 窗口方案已撤回（2026-07-26）**：
-  長儒獨立維護的另一個 repo（`chiuchangru/litdb`），純 GitHub Pages 靜態
-  網站，沒有自己的後端。當天原先在 `medapi-mcp` 加了三支即時查詢工具，
-  但為了「產品單一化」（不要兩套資料來源），改成透過 `POST
-  /api/admin/import-litdb` 把 152 筆全部匯入隨身記的「LitDB 文獻庫」
-  資料夾（只搬文字，不下載 PDF、不建附件），MCP 那三支工具已拿掉。
-  詳見上面第二節之 D。
+- [x] **LitDB 併入隨身記＋攝取層永續化（2026-07-26，規格書 I 全數落地）**：
+  sources 表（來源即資料）、通用黑名單渲染（任何欄位自動可搜尋）、
+  content-hash upsert（同步區標記保護人工註記、來源消失標 _orphaned）、
+  每日 cron 自動同步、sync_log 可追溯、同義詞入庫＋`add_synonym` 對話中
+  即補即用、SCAN_CAP 命中上限明確警示、stripPdfMetadata 大綱誤殺修正。
+  詳見上面第二節之 D。FTS5 全文索引刻意延後（資料量接近 3000 筆再做）。
+- [~] **深度解析層（規格書 II）進行中（2026-07-26）**：欄位已就緒——
+  entries／attachments 各加 analysis_json／analysis_at／analysis_model／
+  analysis_profile／analysis_hash 五欄，litdb 的 patentResults 已寫入
+  analysis_json（analysis_model='litdb-原生'），search_fieldlog 掃得到、
+  get_fieldlog_entry/attachment 呈現時明確標示「AI 產出，非現場紀錄」。
+  **尚未做**：analysis_profiles 模板表＋呼叫 Claude 的解析引擎（項目 9/10）
+  與跨件綜整 syntheses（項目 13）——卡在三個待長儒決策的問題：金鑰接法
+  （綁 litdb-worker 或 fieldlog 自持金鑰）、日常模型等級、舊資料回補範圍
 - [x] **MCP Server 已完成並上線（2026-07-18，持續加工具）**：`mcp/` 目錄，
-  獨立 Worker `medapi-mcp`，17 個工具跨三個來源（wiki 3 個、隨身記 9 個
+  獨立 Worker `medapi-mcp`，19 個工具跨三個來源（wiki 3 個、隨身記 9 個
   ——含資料夾階層、`list_fieldlog_entries`／`list_attachments` 目錄層
   （2026-07-25 補上：不用猜關鍵字就能看資料夾/附件實際有什麼）、
   folder_id/folder_type 篩選、附件全文（超長可用 offset/length 分段讀）、
   `get_related` 交叉比對、限定新增的 `create_fieldlog_entry`／
   `create_relation`、參展系統 5 個——含 `search_exhibitor_files`
-  搜附件逐字稿/OCR 全文、`list_exhibitor_files` 目錄層）。共綁兩個既有
+  搜附件逐字稿/OCR 全文、`list_exhibitor_files` 目錄層、跨域 2 個——
+  `sync_status` 查同步狀態、`add_synonym` 補同義詞）。共綁兩個既有
   D1、wiki 與展商主檔走 Service Binding。自有 `MCP_PIN` 驗證
   （fail-closed），claude.ai 自訂連接器已接通實測，另有
-  `mcp/CONNECT-GPT.md` 給 ChatGPT 接。預設唯讀，僅上述兩支新增工具例外
+  `mcp/CONNECT-GPT.md` 給 ChatGPT 接。預設唯讀，僅三支新增工具例外
 - [ ] **隨身記的 Notion 同步是半成品**：`notion_page_id` 等欄位跟
   `parseNotionPageId()` 已經寫好，但沒有任何 API 路徑真的呼叫它，
   現在還是人工把 AI 彙整完的報告貼進 Notion——要嘛補完自動同步，
@@ -226,3 +244,6 @@ fieldlog/
 ## 更新日誌
 - 2026-07-18｜初版：整理隨身記／參展系統／wiki／LitDB 現況與已定案決策
 - 2026-07-19｜加入 Tier 2 深度處理（PDF 逐頁 render + OCR，手動觸發）
+- 2026-07-26｜LitDB 併入隨身記；攝取層永續化（規格書 I：sources 表／通用
+  渲染／hash upsert／每日 cron／sync_log／同義詞入庫）；深度解析層（規格書
+  II）欄位就緒、引擎待三個決策

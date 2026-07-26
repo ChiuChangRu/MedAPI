@@ -45,6 +45,9 @@
     }
   ],
   "ai": { "binding": "AI" },
+  // 每天 UTC 18:00（台灣 02:00）自動同步 sources 表裡的外部來源（litdb 等）。
+  // 「記得手動跑同步」不是機制；handler 是 src/worker.js 的 scheduled()。
+  "triggers": { "crons": ["0 18 * * *"] },
   // 展商主檔（exhibitors.json）是靜態資料、不在 D1 裡，一樣是 Service Binding，
   // 只給匯入用的 admin endpoint 呼叫，跟 mcp/wrangler.jsonc 的作法相同。
   "services": [

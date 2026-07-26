@@ -73,12 +73,20 @@ export function stripPdfMetadata(md) {
     }
   }
   const body = lines.slice(i).join("\n").trim();
-  // 圖形型 PDF（無文字層，例：Affinity Designer 做的宣傳冊）：toMarkdown 只吐得出
-  // 頁面骨架（## Contents / ### Page N），每頁底下沒有真正的文字段落。這種「只有
-  // 標題、沒有內文」的結果對搜尋無意義（還會被「Page 3」誤命中），視為無內容回傳
-  // 空字串——前台會誠實顯示「已整理（沒有文字內容）」，使用者就知道要靠照片或重拍。
-  const hasProse = body.split("\n").some((l) => l.trim() && !l.trimStart().startsWith("#"));
-  return hasProse ? body : "";
+  if (!body) return "";
+  // 圖形型 PDF（無文字層）：toMarkdown 只吐得出頁面骨架（## Contents / ### Page N），
+  // 每頁底下沒有真正的文字段落，這種結果對搜尋無意義（還會被「Page 3」誤命中），
+  // 視為無內容回傳空字串。骨架的判準是「每一行都是 Contents／Page N 這類版面標題」。
+  // 2026-07-26 修正：舊判斷是「沒有任何非 # 開頭的行＝無內容」，會把大綱式文件
+  // （目錄、章節清單——每行都是標題、但標題文字本身就是有價值的內容）整份抹掉，
+  // 附件從此只剩檔名可搜、而且完全沒有提示。現在只有純版面骨架才會被判為無內容。
+  const contentLines = body.split("\n").filter((l) => l.trim());
+  const skeletonOnly = contentLines.every((l) => {
+    const t = l.trim();
+    if (!t.startsWith("#")) return false;
+    return /^(contents?|page\s*\d*|metadata)$/i.test(t.replace(/^#+\s*/, "").trim());
+  });
+  return skeletonOnly ? "" : body;
 }
 
 // 偵測模型輸出是否卡進重複迴圈：行級（同一行反覆出現）＋

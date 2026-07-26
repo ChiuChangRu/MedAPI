@@ -26,17 +26,35 @@ import { foldText, foldSnippetAny } from "./textFold.js";
 // 否則一個字會把所有含這個字的同義詞組全部拉進來，展開到失去意義。
 const MIN_PARTIAL_LEN = 2;
 
-// 把 synonyms.json 攤平成比對用索引：每組成員都預先算好摺疊形（省得每次查詢重算），
+// 把同義詞組攤平成比對用索引：每組成員都預先算好摺疊形（省得每次查詢重算），
 // 同時留著原始寫法，查無結果時要用原始寫法告訴使用者「我試過這些詞」。
-const GROUPS = (SYNONYMS.synonyms || []).map((group) => ({
-  canonical: group.canonical,
-  words: [group.canonical, ...(group.aliases || [])]
-    .filter(Boolean)
-    .map((raw) => ({ raw: String(raw), folded: foldText(raw) })),
-  codes: (group.codes || [])
-    .filter(Boolean)
-    .map((raw) => ({ raw: String(raw), folded: foldText(raw) })),
-}));
+function buildGroups(rawGroups) {
+  return (rawGroups || []).map((group) => ({
+    canonical: group.canonical,
+    words: [group.canonical, ...(group.aliases || [])]
+      .filter(Boolean)
+      .map((raw) => ({ raw: String(raw), folded: foldText(raw) })),
+    codes: (group.codes || [])
+      .filter(Boolean)
+      .map((raw) => ({ raw: String(raw), folded: foldText(raw) })),
+  }));
+}
+
+// synonyms.json 是「出廠預設值」——正式環境的同義詞表在 fieldlog D1 的 synonyms
+// 表裡（用 add_synonym 工具在對話中就能補，不用改程式碼重新部署），worker 啟動後
+// 由 setSynonymGroups() 換上資料庫的版本；D1 讀不到時退回這份預設值，搜尋不會壞。
+export const SYNONYM_SEED = SYNONYMS.synonyms || [];
+
+let GROUPS = buildGroups(SYNONYM_SEED);
+
+/**
+ * 換上新的同義詞組（來自 D1）。rawGroups 格式與 synonyms.json 相同：
+ * [{ canonical, aliases: [], codes: [] }, ...]。同一個 canonical 出現多列時
+ * 由呼叫端先合併好再傳進來。傳 null＝退回出廠預設值。
+ */
+export function setSynonymGroups(rawGroups) {
+  GROUPS = buildGroups(rawGroups || SYNONYM_SEED);
+}
 
 /** 以空白斷詞（半形空白、tab、換行、全形空白 U+3000，連續多個算一個） */
 export function tokenizeQuery(raw) {
@@ -236,7 +254,7 @@ export function noHitMessage(subject, plan, extraNote = "") {
   if (unmapped.length) {
     lines.push(
       `· 「${unmapped.join("、")}」不在同義詞表中。若這是慣用語或公司內部代號，` +
-        "在 mcp/src/synonyms.json 補一組對照（canonical／aliases／codes），之後就查得到。"
+        "直接用 add_synonym 工具補一組對照（canonical＋aliases／codes），補完立刻生效，不用改程式碼。"
     );
   }
 

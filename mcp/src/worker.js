@@ -6,11 +6,13 @@
  *   - 隨身記 fieldlog（共綁同一個 D1，只下 SELECT）
  *   - Medtec 參展系統（共綁同一個 D1 ＋ runtime 抓公開的 exhibitors.json）
  *
- * 鐵律：預設唯讀——程式碼裡絕大多數是 SELECT 與 fetch。唯二例外是
- * create_fieldlog_entry／create_relation 兩支工具，範圍鎖得很窄：只能
- * INSERT 一筆全新的記事或一筆全新的關聯，程式碼裡沒有任何 UPDATE／DELETE
- * 語句碰得到 entries／attachments／folders／relations。改內容、刪東西、
- * wiki 收錄一律要回各自的前台／git 人審，MCP 這邊永遠做不到。
+ * 鐵律：預設唯讀——程式碼裡絕大多數是 SELECT 與 fetch。例外只有三支
+ * 「只能新增」的工具：create_fieldlog_entry（INSERT 一筆記事）、
+ * create_relation（INSERT 一筆關聯）、add_synonym（INSERT 一列同義詞對照）。
+ * 程式碼裡沒有任何 UPDATE／DELETE 語句碰得到 entries／attachments／folders／
+ * relations／synonyms。改內容、刪東西、wiki 收錄一律要回各自的前台／git
+ * 人審，MCP 這邊永遠做不到。（外部來源的同步更新走 fieldlog worker 內部的
+ * cron，不經過 MCP——MCP 對既有資料永遠沒有修改權。）
  *
  * 驗證：POST /mcp 需帶 ?pin=（或 x-pin header／Authorization: Bearer），
  * 與 MCP_PIN（Secret）比對，未設定時一律拒絕（fail-closed）。
@@ -34,7 +36,12 @@ import {
   degradedNote,
   expansionNote,
   noHitMessage,
+  setSynonymGroups,
+  SYNONYM_SEED,
 } from "./search.js";
+// 通用 JSON→Markdown 渲染器與 fieldlog 共用同一份（單一真相來源）：
+// analysis_json 在這裡怎麼呈現、在 fieldlog 端怎麼進 body，規則永遠一致
+import { renderTree } from "../../fieldlog/src/lib/render.js";
 
 const PROTOCOL_DEFAULT = "2025-03-26";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
@@ -147,6 +154,93 @@ async function exhibitorsData(env) {
 function categoryName(data, id) {
   const c = (data.categories || []).find((c) => c.id === id);
   return c ? c.name_zh : id || "";
+}
+
+// ---------- 同義詞表（fieldlog D1 的 synonyms 表，5 分鐘記憶體快取）----------
+//
+// 檢索品質高度依賴這張表（「HD管」查得到「體外血液處理用導管」全靠它），而它是
+// 最需要天天長大的東西——原本卻寫死在 synonyms.json 裡，補一組就要改程式重新部署，
+// noHitMessage 甚至叫使用者去改原始碼。搬進 D1 之後：查不到的當下用 add_synonym
+// 在對話裡補一組，下一次查詢立刻生效。synonyms.json 降級為「出廠預設值」：
+// 第一次使用時 seed 進資料表，之後 D1 讀不到（表還沒建、查詢失敗）就退回它，
+// 搜尋永遠不會因為同義詞表壞掉而跟著壞。
+
+let SYN_CACHE = { at: 0 };
+
+function synonymRowsToGroups(rows) {
+  // 同一個 canonical 允許多列（add_synonym 只 INSERT 不 UPDATE——見該工具的說明），
+  // 載入時合併成一組
+  const byCanonical = new Map();
+  for (const row of rows) {
+    let aliases = [];
+    let codes = [];
+    try { aliases = JSON.parse(row.aliases_json || "[]"); } catch { /* 壞 JSON 當空 */ }
+    try { codes = JSON.parse(row.codes_json || "[]"); } catch { /* 壞 JSON 當空 */ }
+    const group = byCanonical.get(row.canonical) || { canonical: row.canonical, aliases: [], codes: [] };
+    for (const a of aliases) if (a && !group.aliases.includes(a)) group.aliases.push(a);
+    for (const c of codes) if (c && !group.codes.includes(c)) group.codes.push(c);
+    byCanonical.set(row.canonical, group);
+  }
+  return [...byCanonical.values()];
+}
+
+async function ensureSynonyms(env) {
+  if (Date.now() - SYN_CACHE.at < 5 * 60 * 1000) return;
+  try {
+    let rows;
+    try {
+      ({ results: rows } = await env.DB_FIELDLOG.prepare("SELECT canonical, aliases_json, codes_json FROM synonyms ORDER BY id").all());
+    } catch {
+      // 表還沒建：建表＋把出廠預設值 seed 進去（只會發生一次）
+      await env.DB_FIELDLOG.prepare(
+        `CREATE TABLE IF NOT EXISTS synonyms (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          canonical TEXT NOT NULL,
+          aliases_json TEXT DEFAULT '[]',
+          codes_json TEXT DEFAULT '[]',
+          created_at TEXT NOT NULL
+        )`
+      ).run();
+      for (const g of SYNONYM_SEED) {
+        await env.DB_FIELDLOG.prepare(
+          "INSERT INTO synonyms (canonical, aliases_json, codes_json, created_at) VALUES (?, ?, ?, ?)"
+        ).bind(g.canonical, JSON.stringify(g.aliases || []), JSON.stringify(g.codes || []), now()).run();
+      }
+      ({ results: rows } = await env.DB_FIELDLOG.prepare("SELECT canonical, aliases_json, codes_json FROM synonyms ORDER BY id").all());
+    }
+    setSynonymGroups(rows.length ? synonymRowsToGroups(rows) : null);
+    SYN_CACHE = { at: Date.now() };
+  } catch {
+    // D1 整個讀不到：退回出廠預設值，五分鐘後再試——搜尋不能因為同義詞表掛掉而跟著掛
+    setSynonymGroups(null);
+    SYN_CACHE = { at: Date.now() };
+  }
+}
+
+// 測試用：清掉快取，讓下一次 tools/call 重新讀 D1
+export function resetSynonymCacheForTests() {
+  SYN_CACHE = { at: 0 };
+  setSynonymGroups(null);
+}
+
+// ---------- AI 深度解析段落的統一呈現 ----------
+//
+// MCP 回應裡凡是 AI 產出的內容一定要明講——否則下次對話會把 AI 的推論
+// 當成現場證據引用，這是整個系統最危險的失效模式。
+function analysisSection(row) {
+  if (!row || !row.analysis_json) return "";
+  let parsed;
+  try { parsed = JSON.parse(row.analysis_json); } catch { return ""; }
+  const meta = [
+    row.analysis_profile ? `模板：${row.analysis_profile}` : "",
+    row.analysis_model ? `模型：${row.analysis_model}` : "",
+    row.analysis_at && !["skipped", "processing", "failed"].includes(row.analysis_at) ? `時間：${row.analysis_at}` : "",
+  ].filter(Boolean).join("｜");
+  return [
+    `## AI 深度解析（${meta || "來源未標示"}）`,
+    "> 以下為 AI 產出的整理／推論，不是現場原始紀錄——引用前回上面的原始內容或來源連結確認。",
+    renderTree(parsed),
+  ].join("\n");
 }
 
 // 團隊共筆的 D1 表由 medtec Worker 首次啟動時建立；還沒建表時查詢會炸，
@@ -461,20 +555,24 @@ const TOOLS = [
         collect(wantFolderId);
       }
       // 簡繁摺疊沒辦法交給 SQL LIKE（byte 硬比），改成撈候選列後在 JS 端摺疊比對。
-      // 掃描上限 SCAN_CAP 純為記憶體保險；現階段資料量遠低於此。
-      const [{ results: allEntries }, { results: allAtts }] = await Promise.all([
+      // 掃描上限 SCAN_CAP 純為記憶體保險；命中上限時會在結果裡明確警示（見下方），
+      // 不做靜默截斷。analysis_json（AI 深度解析結果）也在掃描範圍——這是規格書 II
+      // 項目 11 的硬要求：解析出來的配方、FTO 風險、待辦若搜不到，等於白做。
+      // fieldlog 那邊還沒跑 migration、欄位不存在時退回舊欄位集，查詢不能整個炸掉。
+      const queryBoth = async (withAnalysis) => Promise.all([
         env.DB_FIELDLOG.prepare(
-          `SELECT e.id, e.folder_id, e.title, e.body, e.fields_json, e.created_at, f.name AS folder_name, f.type AS folder_type
+          `SELECT e.id, e.folder_id, e.title, e.body, e.fields_json, e.created_at,${withAnalysis ? " e.analysis_json," : ""} f.name AS folder_name, f.type AS folder_type
            FROM entries e LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY e.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
         env.DB_FIELDLOG.prepare(
-          `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,
+          `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,${withAnalysis ? " a.analysis_json," : ""}
                   e.id AS entry_id, e.folder_id, e.title, f.name AS folder_name, f.type AS folder_type
            FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY a.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
       ]);
+      const [{ results: allEntries }, { results: allAtts }] = await queryBoth(true).catch(() => queryBoth(false));
       const inScope = (row) =>
         (!wantFolderType || row.folder_type === wantFolderType) &&
         (allowedFolderIds === null || allowedFolderIds.has(row.folder_id));
@@ -482,13 +580,13 @@ const TOOLS = [
       const entryHits = runSearch(
         allEntries.filter(inScope),
         plan,
-        (e) => `${e.title}\n${e.body}\n${e.fields_json}`,
+        (e) => `${e.title}\n${e.body}\n${e.fields_json}\n${e.analysis_json || ""}`,
         limit
       );
       const attHits = runSearch(
         allAtts.filter(inScope),
         plan,
-        (a) => `${a.transcript}\n${a._ocr}\n${a.filename}`,
+        (a) => `${a.transcript}\n${a._ocr}\n${a.filename}\n${a.analysis_json || ""}`,
         limit
       );
       const out = [];
@@ -496,14 +594,15 @@ const TOOLS = [
         out.push("## 命中的紀錄");
         for (const { row: e } of entryHits.hits) {
           const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "收件匣";
-          const hitText = pickHitField([e.title, e.body, e.fields_json], plan) || e.body;
-          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}\n  ${planSnippet(hitText, plan)}`);
+          const hitText = pickHitField([e.title, e.body, e.fields_json, e.analysis_json], plan) || e.body;
+          const aiMark = e.analysis_json && !matchesPlan(`${e.title}\n${e.body}\n${e.fields_json}`, plan) ? "｜⚠ 命中在 AI 解析段（非原始紀錄）" : "";
+          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}${aiMark}\n  ${planSnippet(hitText, plan)}`);
         }
       }
       if (attHits.hits.length) {
         out.push("## 命中的附件（檔名／逐字稿／擷取文字，想看完整全文用 get_fieldlog_attachment(id)）");
         for (const { row: a } of attHits.hits) {
-          const src = pickHitField([a.transcript, a._ocr, a.filename], plan);
+          const src = pickHitField([a.transcript, a._ocr, a.filename, a.analysis_json], plan);
           const off = a.offset_secs !== null && a.offset_secs !== undefined ? `｜錄音 ${fmtSecs(a.offset_secs)}` : "";
           out.push(`- [attachment ${a.att_id}／entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${planSnippet(src, plan)}`);
         }
@@ -513,6 +612,11 @@ const TOOLS = [
           ? "這次有限定資料夾範圍；範圍設定得太窄的話拿掉 folder_id／folder_type 再查一次全庫。"
           : "";
         return noHitMessage("隨身記", plan, scopeNote);
+      }
+      // 掃描達到上限＝有更舊的資料根本沒進比對——一定要講，不能讓「沒搜到」
+      // 被誤讀成「資料庫裡沒有」（規格書 I 項目 7 的短期修法；中期換 FTS5）
+      if (allEntries.length >= SCAN_CAP || allAtts.length >= SCAN_CAP) {
+        out.push("", `⚠ 資料量已達單次掃描上限 ${SCAN_CAP} 筆，較舊的資料未納入本次比對——用 folder_id 縮小範圍再查，或提醒維護者該換 FTS5 全文索引了。`);
       }
       // 兩類結果只要有一類是全詞 AND 命中，就不算降級
       return withSearchNotes(plan, { degraded: isDegraded(entryHits, attHits) }, out.join("\n"));
@@ -533,9 +637,16 @@ const TOOLS = [
       if (!e) throw new Error(`找不到 entry ${id}`);
       const { results: atts } = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all();
       const lines = [`# ${e.title || "（未命名紀錄）"}`, `建立：${e.created_at}${e.updated_at ? `｜更新：${e.updated_at}` : ""}`];
-      const fields = Object.entries(JSON.parse(e.fields_json || "{}")).filter(([, v]) => v && String(v).trim());
+      const allFields = JSON.parse(e.fields_json || "{}");
+      if (allFields._orphaned) lines.push("⚠ 此筆的來源資料已從外部知識庫移除——記事保留，但之後不會再更新。");
+      // _ 開頭是同步機制的內部欄位（_sid／_content_hash…），對讀者是雜訊
+      const fields = Object.entries(allFields).filter(([k, v]) => !k.startsWith("_") && v && String(v).trim());
       for (const [k, v] of fields) lines.push(`- **${k}**：${v}`);
-      if (e.body) lines.push("", e.body);
+      // 來源同步區的 HTML 註解標記只給同步引擎認位置用，顯示時拿掉
+      const bodyText = (e.body || "").replace(/^<!-- sync:(start|end)[^\n]*-->$/gm, "").trim();
+      if (bodyText) lines.push("", bodyText);
+      const analysis = analysisSection(e);
+      if (analysis) lines.push("", analysis);
       // 單筆紀錄常見多個附件，每個給預覽長度上限（避免一次撈爆整個回應）；
       // 完整全文（例如一份幾千字的 ISO 標準 PDF）用 get_fieldlog_attachment(id) 單獨拉
       const PREVIEW_CAP = 6000;
@@ -581,10 +692,13 @@ const TOOLS = [
       ];
       const ocrBody = stripPdfMetadata(a.ocr_text || "");
       // 罕見情況下一份附件可能兩者都有值（例如手動編輯過擷取文字又補了逐字稿）；
-      // 兩段都合進同一份全文再分頁，不能只挑一段，否則另一段會靜默消失
+      // 兩段都合進同一份全文再分頁，不能只挑一段，否則另一段會靜默消失。
+      // AI 深度解析（若有）也是一段，跟著同一套 offset 分頁，並且明確標示是 AI 產出
       const sections = [];
       if (a.transcript) sections.push(`## 逐字稿\n${a.transcript}`);
       if (ocrBody) sections.push(`## 擷取文字\n${ocrBody}`);
+      const analysis = analysisSection(a);
+      if (analysis) sections.push(analysis);
       const fullText = sections.join("\n\n");
 
       if (!fullText) {
@@ -827,7 +941,8 @@ const TOOLS = [
       const body = found.hits
         .map(({ row: n }) => `- ${n.created_at}｜${nameOf(n.exhibitor_id)}（${n.exhibitor_id}）｜${n.author}｜${n.type}\n  ${planSnippet(n.content, plan)}`)
         .join("\n");
-      return withSearchNotes(plan, { degraded: isDegraded(found) }, body);
+      const capNote = all.length >= SCAN_CAP ? `\n\n⚠ 資料量已達單次掃描上限 ${SCAN_CAP} 筆，較舊的紀錄未納入本次比對。` : "";
+      return withSearchNotes(plan, { degraded: isDegraded(found) }, body) + capNote;
     },
   },
   {
@@ -871,7 +986,8 @@ const TOOLS = [
           return `- ${nameOf(a.exhibitor_id)}（${a.exhibitor_id}）｜${a.filename}｜${a.author}｜${a.created_at}\n  ${planSnippet(src, plan)}`;
         })
         .join("\n");
-      return withSearchNotes(plan, { degraded: isDegraded(found) }, body);
+      const capNote = all.length >= SCAN_CAP ? `\n\n⚠ 資料量已達單次掃描上限 ${SCAN_CAP} 筆，較舊的附件未納入本次比對。` : "";
+      return withSearchNotes(plan, { degraded: isDegraded(found) }, body) + capNote;
     },
   },
   {
@@ -915,6 +1031,65 @@ const TOOLS = [
       return [header, ...lines].join("\n");
     },
   },
+  {
+    name: "sync_status",
+    description: "查外部知識庫（litdb 等 sources 表裡的來源）的同步狀態：每個來源最後同步時間、最近幾次同步的新增／更新／跳過筆數與錯誤。用途：懷疑「資料是不是過時」時直接查事實，不用靠記憶。同步本身由 fieldlog 每天凌晨的排程自動跑，這個工具只讀不寫。",
+    inputSchema: { type: "object", properties: {} },
+    async handler(env) {
+      let sources = [];
+      let logs = [];
+      try {
+        ({ results: sources } = await env.DB_FIELDLOG.prepare("SELECT key, label, url, enabled, last_synced_at FROM sources ORDER BY id").all());
+        ({ results: logs } = await env.DB_FIELDLOG.prepare("SELECT * FROM sync_log ORDER BY id DESC LIMIT 10").all());
+      } catch {
+        return "還沒有任何同步紀錄（sources／sync_log 表要等 fieldlog 部署新版並跑過第一次同步才會出現）。";
+      }
+      if (!sources.length) return "sources 表是空的——目前沒有設定任何外部來源。";
+      const lines = ["## 來源清單"];
+      for (const s of sources) {
+        lines.push(`- ${s.key}（${s.label}）｜${s.enabled ? "啟用" : "停用"}｜最後同步：${s.last_synced_at || "從未同步"}`);
+      }
+      if (logs.length) {
+        lines.push("", "## 最近 10 次同步");
+        for (const l of logs) {
+          const stats = `新增 ${l.inserted}、更新 ${l.updated}、跳過 ${l.skipped}${l.orphaned ? `、來源已移除 ${l.orphaned}` : ""}`;
+          lines.push(`- ${l.finished_at}｜${l.source_key}｜${stats}${l.errors ? `｜⚠ ${l.errors}` : ""}`);
+        }
+      } else {
+        lines.push("", "（還沒有同步紀錄——每天台灣時間 02:00 自動跑，或在 fieldlog 手動 POST /api/admin/sync-sources）");
+      }
+      return lines.join("\n");
+    },
+  },
+  {
+    // 第三支可寫入工具，寫入範圍一樣鎖死在「只能新增」：只 INSERT 一列新的同義詞
+    // 對照，沒有 UPDATE／DELETE。要「幫既有的組補一個講法」就再插一列同 canonical
+    // 的資料，載入時會自動合併成一組——這樣既有資料永遠不會被改掉或刪掉。
+    name: "add_synonym",
+    description: "在同義詞表新增一組對照（只能新增，不會修改或刪除既有對照）。用途：search_* 查不到、但你知道那只是「用詞沒對上」時（例如公司內部代號、慣用語），當場補一組，下一次查詢立刻生效——不用改程式碼、不用重新部署。要幫既有的組補新講法：canonical 填同一個正式名稱再加新的 aliases 即可，載入時自動合併。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        canonical: { type: "string", description: "正式名稱（例：體外血液處理用導管、抗結痂披膜）" },
+        aliases: { type: "array", items: { type: "string" }, description: "慣用講法（例：[\"HD管\",\"洗腎管\"]、內部代號）" },
+        codes: { type: "array", items: { type: "string" }, description: "選填：標準編號等「必須完全相同才算命中」的短代號（例：[\"10555-1\"]）" },
+      },
+      required: ["canonical", "aliases"],
+    },
+    async handler(env, args) {
+      const canonical = (args.canonical || "").trim();
+      const aliases = (Array.isArray(args.aliases) ? args.aliases : []).map((a) => String(a).trim()).filter(Boolean);
+      const codes = (Array.isArray(args.codes) ? args.codes : []).map((c) => String(c).trim()).filter(Boolean);
+      if (!canonical) throw new Error("canonical 為必填");
+      if (!aliases.length && !codes.length) throw new Error("至少要給一個 alias 或 code，不然這組對照沒有作用");
+      await ensureSynonyms(env); // 確保表已建好（第一次會順便 seed 出廠預設值）
+      await env.DB_FIELDLOG.prepare(
+        "INSERT INTO synonyms (canonical, aliases_json, codes_json, created_at) VALUES (?, ?, ?, ?)"
+      ).bind(canonical, JSON.stringify(aliases), JSON.stringify(codes), now()).run();
+      SYN_CACHE = { at: 0 }; // 讓下一次查詢立刻重新載入
+      return `已新增同義詞組：「${canonical}」←→ ${[...aliases, ...codes].join("、")}。下一次 search_* 查詢立刻生效。`;
+    },
+  },
 ];
 
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
@@ -944,8 +1119,9 @@ async function handleMcp(request, env) {
       capabilities: { tools: {} },
       serverInfo: { name: "medapi-mcp", version: "1.0.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增一筆記事）與 create_relation（建立兩筆記事的關聯）例外，且都只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
-        " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞。",
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增記事）、create_relation（建立關聯）、add_synonym（新增同義詞對照）三支例外，且全部只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
+        " 引用紀律：回應裡標示「AI 深度解析」的段落是 AI 產出的整理／推論，不是現場原始紀錄，引用前要回原始內容或來源連結確認；懷疑外部知識庫資料過時就先用 sync_status 查最後同步時間。",
     });
   }
   if (method.startsWith("notifications/")) return new Response(null, { status: 202, headers: CORS_HEADERS });
@@ -959,6 +1135,7 @@ async function handleMcp(request, env) {
     const tool = TOOLS_BY_NAME[params?.name];
     if (!tool) return rpcError(id, -32602, `未知工具：${params?.name}`);
     try {
+      await ensureSynonyms(env); // 換上 D1 版同義詞表（5 分鐘快取；讀不到就退回出廠預設值）
       const text = await tool.handler(env, params?.arguments || {});
       return rpcResult(id, { content: [{ type: "text", text }] });
     } catch (err) {

@@ -21,9 +21,9 @@ import { CATEGORY_SEED, resetSchemaCacheForTests } from "../fieldlog/src/lib/sch
 
 function makeDB() {
   const tables = {
-    folders: [], entries: [], attachments: [], categories: [], history: [], relations: [],
+    folders: [], entries: [], attachments: [], categories: [], history: [], relations: [], sources: [],
   };
-  const nextId = { folders: 1, entries: 1, attachments: 1, categories: 1, history: 1, relations: 1 };
+  const nextId = { folders: 1, entries: 1, attachments: 1, categories: 1, history: 1, relations: 1, sources: 1 };
   const unhandled = [];
 
   function insert(table, row) {
@@ -43,18 +43,31 @@ function makeDB() {
       const row = tables.categories.find((c) => c.kind === "_seeded");
       return { results: row ? [row] : [], changes: 0 };
     }
+    if (q === "SELECT id FROM categories WHERE kind = '_sources_seeded' LIMIT 1") {
+      const row = tables.categories.find((c) => c.kind === "_sources_seeded");
+      return { results: row ? [row] : [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO categories") || q.startsWith("INSERT OR IGNORE INTO categories")) {
       const [kind, level, name, icon, note, fields_json, sort_order, created_at] =
         q.includes("VALUES ('_seeded'")
           ? ["_seeded", 0, "seeded", "", "", "[]", 0, args[0]]
-          : args;
+          : q.includes("VALUES ('_sources_seeded'")
+            ? ["_sources_seeded", 0, "seeded", "", "", "[]", 0, args[0]]
+            : args;
       const clash = tables.categories.some((c) => c.kind === kind && c.level === level && c.name === name);
       if (clash && q.startsWith("INSERT OR IGNORE")) return none;
       const id = insert("categories", { kind, level, name, icon, note, fields_json, sort_order, created_at });
       return { results: [], lastRowId: id, changes: 1 };
     }
+    // ---- sources（外部來源種子；同步引擎本身的行為在 fieldlog-sync-sources.test.js）----
+    if (q.startsWith("INSERT OR IGNORE INTO sources")) {
+      const [key, label, url, items_path, id_field, title_field, folder_parent, folder_type, created_at] = args;
+      if (tables.sources.some((s) => s.key === key)) return none;
+      const id = insert("sources", { key, label, url, items_path, id_field, title_field, folder_parent, folder_type, enabled: 1, last_synced_at: "", created_at });
+      return { results: [], lastRowId: id, changes: 1 };
+    }
     if (q.startsWith("SELECT * FROM categories WHERE") && q.includes("ORDER BY kind, level, sort_order, id")) {
-      let rows = tables.categories.filter((c) => c.kind !== "_seeded");
+      let rows = tables.categories.filter((c) => !String(c.kind).startsWith("_"));
       let i = 0;
       if (q.includes("kind = ?")) { const k = args[i++]; rows = rows.filter((c) => c.kind === k); }
       if (q.includes("(level = ? OR level = 0)")) {
@@ -78,8 +91,8 @@ function makeDB() {
       const rows = tables.categories.filter((c) => c.kind === args[0] && c.level === args[1]);
       return { results: [{ max_order: rows.reduce((m, c) => Math.max(m, c.sort_order || 0), 0) }], changes: 0 };
     }
-    if (q === "SELECT * FROM categories WHERE id = ? AND kind != '_seeded'") {
-      const row = tables.categories.find((c) => c.id === args[0] && c.kind !== "_seeded");
+    if (q === "SELECT * FROM categories WHERE id = ? AND kind NOT LIKE '\\_%' ESCAPE '\\'") {
+      const row = tables.categories.find((c) => c.id === args[0] && !String(c.kind).startsWith("_"));
       return { results: row ? [row] : [], changes: 0 };
     }
     if (q === "UPDATE categories SET name = ?, level = ?, icon = ?, note = ?, fields_json = ? WHERE id = ?") {

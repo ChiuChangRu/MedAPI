@@ -160,12 +160,18 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 - **隨身記 Notion 自動同步**：`folders` 表有 `notion_*` 欄位、
   `parseNotionPageId()` 也寫好了，但**沒有 API 路徑真的呼叫**，等於死代碼；
   目前是人工把 AI 彙整報告貼進 Notion。要嘛補完、要嘛清掉。
-- **LitDB（文獻／專利）**：2026-07-26 已把 `chiuchangru/litdb` 的 152 筆
-  文字紀錄一次性匯入隨身記（`POST /api/admin/import-litdb`，「LitDB 文獻庫」
-  資料夾），只搬文字/標籤，不下載 PDF。litdb repo 之後不再收新資料。
-  曾經短暫在 MCP 加過三支即時查詢工具，因「產品單一化」已拿掉——資料現在
-  就在隨身記裡，直接用 `search_fieldlog`／`list_fieldlog_entries` 查。
+- **LitDB（文獻／專利）→ 外部來源同步**：2026-07-26 依「第二大腦架構改善
+  規格書 I」把一次性匯入升級成 sources 表驅動的每日單向同步（台灣 02:00
+  cron，引擎在 `fieldlog/src/lib/sync.js`）：通用黑名單渲染讓任何欄位自動
+  可搜尋、patentResults 進 analysis_json（MCP 呈現時標示 AI 產出）、
+  content-hash upsert（人工註記在 `<!-- sync:start/end -->` 標記外永不被
+  覆蓋、來源消失標 _orphaned 不刪）。新增知識庫＝`POST /api/sources` 加一列，
+  不改程式碼；同步狀態用 MCP 的 `sync_status` 查。仍然不下載 PDF、不建附件。
   把讀完的文獻折進 wiki A/B 技術條目本文，仍只是待讀清單，還沒做。
+- **深度解析層（規格書 II）**：entries/attachments 的 analysis_* 五欄已就緒
+  並接上搜尋/呈現；解析引擎（analysis_profiles 模板表＋呼叫 Claude）與跨件
+  綜整還沒做，卡在三個待決策：金鑰接法（litdb-worker 綁定 vs fieldlog 自持）、
+  日常模型等級、舊資料回補範圍。
 - **參展系統既有待辦**：`docs/app.js` 的 `TEAM_EMAIL` 還是佔位字串；
   GitHub Pages 靜態版部署未開；`app/` FastAPI 版後台無登入驗證。
 
@@ -180,7 +186,10 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
    現在會以空白斷詞（含全形空白），預設全詞都要命中（AND）；AND 掛零才
    降級成 OR 並在回應開頭標示「以下為部分符合」。
 2. **慣用語查不到正式標準名**。文件寫「體外血液處理用導管」，人查「HD管」，
-   字面零重疊就靜默漏掉。現在比對前會過一層 `mcp/src/synonyms.json` 展開。
+   字面零重疊就靜默漏掉。現在比對前會過一層同義詞展開。**2026-07-26 起
+   同義詞表存在 fieldlog D1 的 `synonyms` 表**（`mcp/src/synonyms.json`
+   降級為出廠預設值＋讀不到 D1 時的 fallback）：查不到的當下用 MCP 的
+   `add_synonym` 工具在對話裡補一組，立刻生效，不用改程式碼重新部署。
 
 ⚠️ 關於同義詞表：**這份交接文件先前記載「使用者明確反對手寫同義詞字典」，
 該決定已於 2026-07-25 由使用者本人推翻**（依其提供的《MyWiki 搜尋功能改善

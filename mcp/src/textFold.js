@@ -92,10 +92,20 @@ export function stripPdfMetadata(md) {
     }
   }
   const body = lines.slice(i).join("\n").trim();
+  if (!body) return "";
   // 圖形型 PDF（無文字層）：toMarkdown 只吐得出頁面骨架（## Contents / ### Page N），
-  // 沒有真正的內文段落。這種「只有標題、沒有內文」的結果對搜尋無意義，視為無內容。
-  const hasProse = body.split("\n").some((l) => l.trim() && !l.trimStart().startsWith("#"));
-  return hasProse ? body : "";
+  // 每頁底下沒有真正的文字段落，這種結果對搜尋無意義（還會被「Page 3」誤命中），
+  // 視為無內容回傳空字串。骨架的判準是「每一行都是 Contents／Page N 這類版面標題」。
+  // 2026-07-26 修正：舊判斷是「沒有任何非 # 開頭的行＝無內容」，會把大綱式文件
+  // （目錄、章節清單——每行都是標題、但標題文字本身就是有價值的內容）整份抹掉，
+  // 附件從此只剩檔名可搜、而且完全沒有提示。現在只有純版面骨架才會被判為無內容。
+  const contentLines = body.split("\n").filter((l) => l.trim());
+  const skeletonOnly = contentLines.every((l) => {
+    const t = l.trim();
+    if (!t.startsWith("#")) return false;
+    return /^(contents?|page\s*\d*|metadata)$/i.test(t.replace(/^#+\s*/, "").trim());
+  });
+  return skeletonOnly ? "" : body;
 }
 
 // 全形 ASCII（！～ 區段，含全形數字字母標點）→ 半形，全形空格 → 半形空格

@@ -22,6 +22,7 @@
 
 import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
 import { MAX_FOLDER_DEPTH, ensureSchema } from "./lib/schema.js";
+import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import {
   deleteAttachmentDeep,
@@ -465,7 +466,15 @@ async function handleApi(request, env, url) {
     if (!old) return bad("找不到紀錄", 404);
     const title = body.title !== undefined ? (body.title || "").trim() : old.title;
     const bodyText = body.body !== undefined ? (body.body || "").trim() : old.body;
-    const fields = body.fields !== undefined ? JSON.stringify(body.fields) : old.fields_json;
+    // fields 用合併不用取代：前端只送「模板欄位」，取代會把沒顯示在表單上的鍵
+    // 全部抹掉——包括同步機制的 _sid／_content_hash／litdb_id。那些鍵一被抹掉，
+    // 每天的來源同步就認不得這筆記事，整批重複匯入。要清空某個欄位送空字串即可。
+    let fields = old.fields_json;
+    if (body.fields !== undefined && body.fields && typeof body.fields === "object") {
+      let oldFields = {};
+      try { oldFields = JSON.parse(old.fields_json || "{}"); } catch { /* 壞 JSON 當空 */ }
+      fields = JSON.stringify({ ...oldFields, ...body.fields });
+    }
     const folderId = body.folder_id !== undefined ? (body.folder_id ? Number(body.folder_id) : null) : old.folder_id;
     await db.prepare("UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, updated_at = ? WHERE id = ?")
       .bind(title, bodyText, fields, folderId, now(), id).run();
@@ -658,110 +667,71 @@ async function handleApi(request, env, url) {
     return json({ ok: true, processed: batch.length, imported, skipped, total: allExhibitors.length, next_offset: nextOffset });
   }
 
-  // 一次性匯入：把 chiuchangru/litdb（獨立的 GitHub Pages 文獻/專利知識庫，
-  // 152 筆親水塗層／活檢針機構／醫材包裝資料）併進隨身記，成為單一產品的
-  // 一部分。刻意只搬「文字紀錄」，不下載任何 PDF——不建立附件，原始檔案／
-  // 連結留在 litdb 那邊自己看，這裡只要摘要、標籤、對專案的價值評估這些
-  // 可搜尋的文字進得了 search_fieldlog 就夠了。litdb 之後不會再有新資料，
-  // 這支端點是跑一次就不會再用的（比照 import-exhibitors 的模式）。
-  if (path === "/admin/import-litdb" && method === "POST") {
-    const LITDB_COLLECTIONS = [
-      { key: "coating", url: "https://chiuchangru.github.io/litdb/coating/papers.json", folderName: "親水塗層文獻" },
-      { key: "biopsy", url: "https://chiuchangru.github.io/litdb/biopsy/biopsy_patents.json", folderName: "活檢針機構" },
-      { key: "packaging", url: "https://chiuchangru.github.io/litdb/packaging/papers.json", folderName: "醫材包裝技術" },
-    ];
-    const limit = Math.min(Number(url.searchParams.get("limit") || 50) || 50, 200);
-    const offset = Math.max(Number(url.searchParams.get("offset") || 0) || 0, 0);
+  // ---- 外部來源同步（sources 表驅動；手動觸發端點，cron 每天也會自動跑）----
+  // 前身是一次性的 /admin/import-litdb（來源寫死三個 litdb 收藏、欄位白名單、
+  // 只 INSERT 不 UPDATE）。現在來源清單在 sources 表、body 用通用渲染器展開
+  // 任何欄位都可搜尋、content hash 判斷該不該更新，引擎在 lib/sync.js。
+  // 舊路徑留作別名，之前教過的 curl 指令照樣能用。
+  if ((path === "/admin/sync-sources" || path === "/admin/import-litdb") && method === "POST") {
+    const only = (url.searchParams.get("source") || "").trim() || null;
+    const outcome = await syncSources(db, { only });
+    return json(outcome, outcome.ok ? 200 : 502);
+  }
 
-    const fetched = await Promise.all(LITDB_COLLECTIONS.map(async (c) => {
-      const res = await fetch(c.url);
-      if (!res.ok) return { ...c, error: `HTTP ${res.status}` };
-      const data = await res.json();
-      return { ...c, papers: data.papers || [] };
-    }));
-    const failed = fetched.filter((c) => c.error);
-    if (failed.length === LITDB_COLLECTIONS.length) {
-      return bad(`litdb 三個收藏全部讀取失敗：${failed.map((c) => `${c.key}（${c.error}）`).join("；")}`, 502);
-    }
-    // 攤平成一個總表分頁，跟 import-exhibitors 同樣的模式；收藏順序固定
-    // （coating→biopsy→packaging），offset 是這個總表裡的位置
-    const allPapers = fetched.flatMap((c) => (c.papers || []).map((p) => ({ ...p, _collection: c })));
-    const batch = allPapers.slice(offset, offset + limit);
-    if (!batch.length) {
-      return json({
-        ok: true, processed: 0, imported: 0, skipped: 0, total: allPapers.length, next_offset: null,
-        collections_failed: failed.map((c) => ({ key: c.key, error: c.error })),
-      });
-    }
-
-    // 分類字典：「文獻庫」是新分類，第一次跑這支端點時補進 categories 表，
-    // 之後手動在同一個母資料夾底下加新子資料夾時也選得到這個類型
+  // ---- 外部來源管理（新增一個知識庫＝往 sources 表加一列，不用改程式碼）----
+  // key 建立後不可改：它是同步進來的每筆記事的內部識別碼前綴（_sid = key:id），
+  // 改了會讓既有記事全部變成孤兒、下次同步整批重複匯入。
+  if (path === "/sources" && method === "GET") {
+    const { results } = await db.prepare("SELECT * FROM sources ORDER BY id").all();
+    return json({ sources: results });
+  }
+  if (path === "/sources" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const key = (body.key || "").trim();
+    const label = (body.label || "").trim();
+    const sourceUrl = (body.url || "").trim();
+    if (!key || !label || !sourceUrl) return bad("key、label、url 為必填");
+    if (!/^[a-z0-9_-]+$/i.test(key)) return bad("key 只能用英數、底線、連字號（會當作資料的內部識別碼前綴）");
+    const clash = await db.prepare("SELECT id FROM sources WHERE key = ?").bind(key).first();
+    if (clash) return bad(`來源「${key}」已經存在`, 409);
+    const r = await db.prepare(
+      `INSERT INTO sources (key, label, url, items_path, id_field, title_field, folder_parent, folder_type, enabled, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      key, label, sourceUrl,
+      String(body.items_path || "papers").trim(), String(body.id_field || "id").trim(), String(body.title_field || "title").trim(),
+      String(body.folder_parent || "").trim(), String(body.folder_type || "文獻庫").trim(),
+      body.enabled === false || body.enabled === 0 ? 0 : 1, now()
+    ).run();
+    return json({ id: r.meta.last_row_id, ok: true });
+  }
+  const sourceMatch = path.match(/^\/sources\/(\d+)$/);
+  if (sourceMatch && method === "PUT") {
+    const id = Number(sourceMatch[1]);
+    const old = await db.prepare("SELECT * FROM sources WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到來源", 404);
+    const body = await request.json().catch(() => ({}));
+    const next = {
+      label: body.label !== undefined ? String(body.label).trim() : old.label,
+      url: body.url !== undefined ? String(body.url).trim() : old.url,
+      items_path: body.items_path !== undefined ? String(body.items_path).trim() : old.items_path,
+      id_field: body.id_field !== undefined ? String(body.id_field).trim() : old.id_field,
+      title_field: body.title_field !== undefined ? String(body.title_field).trim() : old.title_field,
+      folder_parent: body.folder_parent !== undefined ? String(body.folder_parent).trim() : old.folder_parent,
+      folder_type: body.folder_type !== undefined ? String(body.folder_type).trim() : old.folder_type,
+      enabled: body.enabled !== undefined ? (body.enabled ? 1 : 0) : old.enabled,
+    };
+    if (!next.label || !next.url) return bad("label 與 url 不可空白");
     await db.prepare(
-      `INSERT OR IGNORE INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at)
-       VALUES ('folder_type', 1, '文獻庫', '📚', '文獻／專利資料庫', '[]', 999, ?)`
-    ).bind(now()).run();
-
-    let rootFolder = await db.prepare(
-      "SELECT id FROM folders WHERE type = '文獻庫' AND parent_id IS NULL AND name = ?"
-    ).bind("LitDB 文獻庫").first();
-    const rootFolderId = rootFolder
-      ? rootFolder.id
-      : (await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
-          .bind("LitDB 文獻庫", "文獻庫", null, now()).run()).meta.last_row_id;
-
-    const collectionFolderIds = new Map(); // collection key -> 子資料夾 id（懶建立，用到才建）
-    async function collectionFolderId(collection) {
-      if (collectionFolderIds.has(collection.key)) return collectionFolderIds.get(collection.key);
-      const existing = await db.prepare(
-        "SELECT id FROM folders WHERE type = '文獻庫' AND parent_id = ? AND name = ?"
-      ).bind(rootFolderId, collection.folderName).first();
-      if (existing) { collectionFolderIds.set(collection.key, existing.id); return existing.id; }
-      const r = await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
-        .bind(collection.folderName, "文獻庫", rootFolderId, now()).run();
-      collectionFolderIds.set(collection.key, r.meta.last_row_id);
-      return r.meta.last_row_id;
-    }
-
-    let imported = 0, skipped = 0;
-    for (const paper of batch) {
-      const litdbId = `${paper._collection.key}:${paper.id}`;
-      const already = await db.prepare(
-        "SELECT id FROM entries WHERE json_extract(fields_json, '$.litdb_id') = ?"
-      ).bind(litdbId).first();
-      if (already) { skipped++; continue; }
-      const folderId = await collectionFolderId(paper._collection);
-
-      const bodyParts = [];
-      if (paper.purpose) bodyParts.push(`**用途**：${paper.purpose}`);
-      if (paper.value_to_project) bodyParts.push(`**對專案的價值**：${paper.value_to_project}`);
-      if (paper.abstract_note) bodyParts.push(`## 摘要\n${paper.abstract_note}`);
-      const patentSummary = paper.patentResults?.full?.summary;
-      if (patentSummary) bodyParts.push(`## 專利分析摘要\n${patentSummary}`);
-      if (paper.patent_notes) bodyParts.push(`## 專利備註\n${paper.patent_notes}`);
-      if (paper.links && typeof paper.links === "object") {
-        const linkLines = Object.entries(paper.links).filter(([, v]) => v).map(([k, v]) => `- ${k}：${v}`);
-        if (linkLines.length) bodyParts.push(`## 連結（原始檔案／全文在此，本次匯入不下載 PDF）\n${linkLines.join("\n")}`);
-      }
-
-      const fields = {
-        "作者": paper.authors || "",
-        "年份": paper.year || "",
-        "來源": paper.venue || "",
-        "文件類型": paper.doc_type || "",
-        "標籤": Array.isArray(paper.tags) ? paper.tags.join("、") : "",
-        litdb_id: litdbId,
-      };
-      const r = await db.prepare(
-        "INSERT INTO entries (folder_id, title, fields_json, body, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).bind(folderId, paper.title || paper.id, JSON.stringify(fields), bodyParts.join("\n\n"), now()).run();
-      await logHistory(db, r.meta.last_row_id, folderId, "匯入文獻", `來自 litdb／${paper._collection.key}：${paper.title || paper.id}`);
-      imported++;
-    }
-    const nextOffset = offset + batch.length < allPapers.length ? offset + batch.length : null;
-    return json({
-      ok: true, processed: batch.length, imported, skipped, total: allPapers.length, next_offset: nextOffset,
-      collections_failed: failed.map((c) => ({ key: c.key, error: c.error })),
-    });
+      "UPDATE sources SET label = ?, url = ?, items_path = ?, id_field = ?, title_field = ?, folder_parent = ?, folder_type = ?, enabled = ? WHERE id = ?"
+    ).bind(next.label, next.url, next.items_path, next.id_field, next.title_field, next.folder_parent, next.folder_type, next.enabled, id).run();
+    return json({ ok: true });
+  }
+  if (sourceMatch && method === "DELETE") {
+    const old = await db.prepare("SELECT id, key FROM sources WHERE id = ?").bind(Number(sourceMatch[1])).first();
+    if (!old) return bad("找不到來源", 404);
+    await db.prepare("DELETE FROM sources WHERE id = ?").bind(old.id).run();
+    return json({ ok: true, note: `來源「${old.key}」已移除；已同步進來的記事保留不動` });
   }
 
   // ---- 附件上傳（R2）----
@@ -1271,5 +1241,14 @@ export default {
       }
     }
     return env.ASSETS.fetch(request);
+  },
+
+  // 每天自動同步 sources 表裡的外部來源（cron 排程見 wrangler.jsonc 的 triggers；
+  // 0 18 * * * UTC＝台灣時間 02:00）。「記得手動跑同步」不是機制——沒人記得跑，
+  // 資料就永遠停在最後一次手動的那天。錯誤處理在 syncSources 裡：單一來源失敗
+  // 不中斷其他來源，結果一律記進 sync_log，事後用 MCP 的 sync_status 就查得到。
+  async scheduled(_event, env) {
+    await ensureSchema(env.DB, now());
+    await syncSources(env.DB, {});
   },
 };
