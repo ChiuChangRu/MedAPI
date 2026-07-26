@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=56" />
+<link rel="stylesheet" href="style.css?v=57" />
 <link rel="stylesheet" href="home.css" />
 </head>
 <body>
@@ -57,7 +57,6 @@
               <button class="btn small" id="btn-folder-list" type="button" title="清單模式">☷ 清單</button>
             </div>
             <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
-            <button class="btn small" id="btn-import-litdb" type="button" title="一次性把 litdb（另一個文獻/專利知識庫）152 筆資料匯入這裡，只搬文字不下載 PDF；重複按不會重複匯入">📚 匯入LitDB</button>
             <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
           </div>
           <div id="folder-list" class="folder-list"></div>
@@ -294,8 +293,8 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=56"></script>
+<script src="app.js?v=57"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=56"></script>
+<script src="pdf-editor.js?v=57"></script>
 </body>
 </html>
