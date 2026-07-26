@@ -658,6 +658,112 @@ async function handleApi(request, env, url) {
     return json({ ok: true, processed: batch.length, imported, skipped, total: allExhibitors.length, next_offset: nextOffset });
   }
 
+  // 一次性匯入：把 chiuchangru/litdb（獨立的 GitHub Pages 文獻/專利知識庫，
+  // 152 筆親水塗層／活檢針機構／醫材包裝資料）併進隨身記，成為單一產品的
+  // 一部分。刻意只搬「文字紀錄」，不下載任何 PDF——不建立附件，原始檔案／
+  // 連結留在 litdb 那邊自己看，這裡只要摘要、標籤、對專案的價值評估這些
+  // 可搜尋的文字進得了 search_fieldlog 就夠了。litdb 之後不會再有新資料，
+  // 這支端點是跑一次就不會再用的（比照 import-exhibitors 的模式）。
+  if (path === "/admin/import-litdb" && method === "POST") {
+    const LITDB_COLLECTIONS = [
+      { key: "coating", url: "https://chiuchangru.github.io/litdb/coating/papers.json", folderName: "親水塗層文獻" },
+      { key: "biopsy", url: "https://chiuchangru.github.io/litdb/biopsy/biopsy_patents.json", folderName: "活檢針機構" },
+      { key: "packaging", url: "https://chiuchangru.github.io/litdb/packaging/papers.json", folderName: "醫材包裝技術" },
+    ];
+    const limit = Math.min(Number(url.searchParams.get("limit") || 50) || 50, 200);
+    const offset = Math.max(Number(url.searchParams.get("offset") || 0) || 0, 0);
+
+    const fetched = await Promise.all(LITDB_COLLECTIONS.map(async (c) => {
+      const res = await fetch(c.url);
+      if (!res.ok) return { ...c, error: `HTTP ${res.status}` };
+      const data = await res.json();
+      return { ...c, papers: data.papers || [] };
+    }));
+    const failed = fetched.filter((c) => c.error);
+    if (failed.length === LITDB_COLLECTIONS.length) {
+      return bad(`litdb 三個收藏全部讀取失敗：${failed.map((c) => `${c.key}（${c.error}）`).join("；")}`, 502);
+    }
+    // 攤平成一個總表分頁，跟 import-exhibitors 同樣的模式；收藏順序固定
+    // （coating→biopsy→packaging），offset 是這個總表裡的位置
+    const allPapers = fetched.flatMap((c) => (c.papers || []).map((p) => ({ ...p, _collection: c })));
+    const batch = allPapers.slice(offset, offset + limit);
+    if (!batch.length) {
+      return json({
+        ok: true, processed: 0, imported: 0, skipped: 0, total: allPapers.length, next_offset: null,
+        collections_failed: failed.map((c) => ({ key: c.key, error: c.error })),
+      });
+    }
+
+    // 分類字典：「文獻庫」是新分類，第一次跑這支端點時補進 categories 表，
+    // 之後手動在同一個母資料夾底下加新子資料夾時也選得到這個類型
+    await db.prepare(
+      `INSERT OR IGNORE INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at)
+       VALUES ('folder_type', 1, '文獻庫', '📚', '文獻／專利資料庫', '[]', 999, ?)`
+    ).bind(now()).run();
+
+    let rootFolder = await db.prepare(
+      "SELECT id FROM folders WHERE type = '文獻庫' AND parent_id IS NULL AND name = ?"
+    ).bind("LitDB 文獻庫").first();
+    const rootFolderId = rootFolder
+      ? rootFolder.id
+      : (await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
+          .bind("LitDB 文獻庫", "文獻庫", null, now()).run()).meta.last_row_id;
+
+    const collectionFolderIds = new Map(); // collection key -> 子資料夾 id（懶建立，用到才建）
+    async function collectionFolderId(collection) {
+      if (collectionFolderIds.has(collection.key)) return collectionFolderIds.get(collection.key);
+      const existing = await db.prepare(
+        "SELECT id FROM folders WHERE type = '文獻庫' AND parent_id = ? AND name = ?"
+      ).bind(rootFolderId, collection.folderName).first();
+      if (existing) { collectionFolderIds.set(collection.key, existing.id); return existing.id; }
+      const r = await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
+        .bind(collection.folderName, "文獻庫", rootFolderId, now()).run();
+      collectionFolderIds.set(collection.key, r.meta.last_row_id);
+      return r.meta.last_row_id;
+    }
+
+    let imported = 0, skipped = 0;
+    for (const paper of batch) {
+      const litdbId = `${paper._collection.key}:${paper.id}`;
+      const already = await db.prepare(
+        "SELECT id FROM entries WHERE json_extract(fields_json, '$.litdb_id') = ?"
+      ).bind(litdbId).first();
+      if (already) { skipped++; continue; }
+      const folderId = await collectionFolderId(paper._collection);
+
+      const bodyParts = [];
+      if (paper.purpose) bodyParts.push(`**用途**：${paper.purpose}`);
+      if (paper.value_to_project) bodyParts.push(`**對專案的價值**：${paper.value_to_project}`);
+      if (paper.abstract_note) bodyParts.push(`## 摘要\n${paper.abstract_note}`);
+      const patentSummary = paper.patentResults?.full?.summary;
+      if (patentSummary) bodyParts.push(`## 專利分析摘要\n${patentSummary}`);
+      if (paper.patent_notes) bodyParts.push(`## 專利備註\n${paper.patent_notes}`);
+      if (paper.links && typeof paper.links === "object") {
+        const linkLines = Object.entries(paper.links).filter(([, v]) => v).map(([k, v]) => `- ${k}：${v}`);
+        if (linkLines.length) bodyParts.push(`## 連結（原始檔案／全文在此，本次匯入不下載 PDF）\n${linkLines.join("\n")}`);
+      }
+
+      const fields = {
+        "作者": paper.authors || "",
+        "年份": paper.year || "",
+        "來源": paper.venue || "",
+        "文件類型": paper.doc_type || "",
+        "標籤": Array.isArray(paper.tags) ? paper.tags.join("、") : "",
+        litdb_id: litdbId,
+      };
+      const r = await db.prepare(
+        "INSERT INTO entries (folder_id, title, fields_json, body, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(folderId, paper.title || paper.id, JSON.stringify(fields), bodyParts.join("\n\n"), now()).run();
+      await logHistory(db, r.meta.last_row_id, folderId, "匯入文獻", `來自 litdb／${paper._collection.key}：${paper.title || paper.id}`);
+      imported++;
+    }
+    const nextOffset = offset + batch.length < allPapers.length ? offset + batch.length : null;
+    return json({
+      ok: true, processed: batch.length, imported, skipped, total: allPapers.length, next_offset: nextOffset,
+      collections_failed: failed.map((c) => ({ key: c.key, error: c.error })),
+    });
+  }
+
   // ---- 附件上傳（R2）----
   if (path === "/upload" && method === "POST") {
     if (!env.FILES) return bad("尚未設定 R2 檔案儲存（見 fieldlog/README.md）", 501);

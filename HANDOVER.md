@@ -160,7 +160,12 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 - **隨身記 Notion 自動同步**：`folders` 表有 `notion_*` 欄位、
   `parseNotionPageId()` 也寫好了，但**沒有 API 路徑真的呼叫**，等於死代碼；
   目前是人工把 AI 彙整報告貼進 Notion。要嘛補完、要嘛清掉。
-- **LitDB（文獻／專利）**：尚未建置，只在 wiki `C2` 條目當待讀清單。
+- **LitDB（文獻／專利）**：2026-07-26 已把 `chiuchangru/litdb` 的 152 筆
+  文字紀錄一次性匯入隨身記（`POST /api/admin/import-litdb`，「LitDB 文獻庫」
+  資料夾），只搬文字/標籤，不下載 PDF。litdb repo 之後不再收新資料。
+  曾經短暫在 MCP 加過三支即時查詢工具，因「產品單一化」已拿掉——資料現在
+  就在隨身記裡，直接用 `search_fieldlog`／`list_fieldlog_entries` 查。
+  把讀完的文獻折進 wiki A/B 技術條目本文，仍只是待讀清單，還沒做。
 - **參展系統既有待辦**：`docs/app.js` 的 `TEAM_EMAIL` 還是佔位字串；
   GitHub Pages 靜態版部署未開；`app/` FastAPI 版後台無登入驗證。
 

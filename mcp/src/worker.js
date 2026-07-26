@@ -24,7 +24,6 @@
  */
 
 import { stripPdfMetadata } from "./textFold.js";
-import { litdbAllPapers, litdbPaper, litdbSearchText, litdbSummaries } from "./litdb.js";
 import {
   buildPlan,
   runSearch,
@@ -914,90 +913,6 @@ const TOOLS = [
       const hasMore = shown < total;
       const header = `共 ${total} 筆，目前顯示第 ${offset + 1}–${shown} 筆${hasMore ? `（還有更多，加 offset: ${shown} 繼續拉）` : "（已到底）"}`;
       return [header, ...lines].join("\n");
-    },
-  },
-  {
-    name: "list_litdb_collections",
-    description: "列出 LitDB（長儒另一個獨立文獻/專利知識庫，chiuchangru/litdb）目前有哪些收藏、各自的範圍與筆數。用途跟 list_fieldlog_folders 一樣：查 search_litdb 之前先看架上有什麼，不用猜。資料即時讀自 GitHub Pages 上的公開 JSON，litdb 那邊更新後這裡會自動看到最新版。",
-    inputSchema: { type: "object", properties: {} },
-    async handler() {
-      const summaries = await litdbSummaries();
-      return summaries.map((s) => {
-        if (s.error) return `## ${s.label}（${s.key}）\n⚠ 讀取失敗：${s.error}`;
-        const stats = s.stats ? `｜${Object.entries(s.stats).map(([k, v]) => `${k}: ${v}`).join("、")}` : "";
-        return `## ${s.label}（${s.key}）\n共 ${s.total} 筆${stats}\n範圍：${s.scope}\n${s.focus_note ? `聚焦：${s.focus_note}\n` : ""}最後更新：${s.last_updated || "未知"}`;
-      }).join("\n\n");
-    },
-  },
-  {
-    name: "search_litdb",
-    description: "以關鍵字搜尋 LitDB 的文獻／專利收藏（標題／作者／標籤／摘要／專利內容摘要）。簡繁通用，多個關鍵字用空白隔開，慣用語自動對到正式名稱——跟其他 search_* 工具共用同一套比對邏輯。可選 collection 縮小到單一收藏（先用 list_litdb_collections 查有哪些）。回傳命中片段；找到候選後用 get_litdb_paper(collection, id) 拉完整摘要與專利分析全文。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "關鍵字，簡繁不拘，多個詞用空白隔開（例：親水塗層、TPU 光固化、活檢針擊發機構）" },
-        collection: { type: "string", description: "選填：只搜這個收藏（coating／biopsy／packaging），先用 list_litdb_collections 查" },
-        limit: { type: "number", description: "最多回傳幾筆（預設 10，上限 30）" },
-      },
-      required: ["query"],
-    },
-    async handler(env, args) {
-      const plan = needPlan(args);
-      const limit = capLimit(args);
-      const wantCollection = (args.collection || "").trim();
-      const { papers, failed } = await litdbAllPapers();
-      const scoped = wantCollection ? papers.filter((p) => p.collection === wantCollection) : papers;
-      const found = runSearch(scoped, plan, litdbSearchText, limit);
-      const failedNote = failed.length ? `\n\n⚠ 以下收藏這次讀取失敗，不在搜尋範圍內：${failed.map((f) => `${f.key}（${f.error}）`).join("、")}` : "";
-      if (!found.hits.length) {
-        return noHitMessage("LitDB", plan, wantCollection ? `這次限定 collection=${wantCollection}，拿掉試試全庫查。` : "") + failedNote;
-      }
-      const body = found.hits.map(({ row: p }) => {
-        const tags = Array.isArray(p.tags) ? p.tags.slice(0, 6).join("、") : "";
-        const src = pickHitField([p.title, p.abstract_note, p.purpose, p.value_to_project], plan) || p.title;
-        return `- [${p.collection}/${p.id}] ${p.title}｜${p.doc_type}｜${p.year}${tags ? `｜${tags}` : ""}\n  ${planSnippet(src, plan)}`;
-      }).join("\n");
-      return withSearchNotes(plan, { degraded: isDegraded(found) }, body) + failedNote;
-    },
-  },
-  {
-    name: "get_litdb_paper",
-    description: "讀取 LitDB 單一文獻／專利的完整內容：摘要全文、對專案的價值評估、專利分析摘要、相關連結。search_litdb 找到候選後用這個拉沒有被截斷的全文。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        collection: { type: "string", description: "收藏名稱（coating／biopsy／packaging），來自 search_litdb 回傳的 [collection/id]" },
-        id: { type: "string", description: "文獻/專利 id（例：P01、B03、PK02），來自 search_litdb 回傳的 [collection/id]" },
-      },
-      required: ["collection", "id"],
-    },
-    async handler(env, args) {
-      const collection = (args.collection || "").trim();
-      const id = (args.id || "").trim();
-      if (!collection || !id) throw new Error("collection 與 id 皆為必填");
-      let paper;
-      try {
-        paper = await litdbPaper(collection, id);
-      } catch (error) {
-        throw new Error(`讀取 LitDB／${collection} 失敗：${error.message}`);
-      }
-      if (!paper) throw new Error(`在 ${collection} 收藏裡找不到 ${id}——先用 search_litdb 或 list_litdb_collections 確認`);
-      const lines = [
-        `# ${paper.title}`,
-        `${paper.doc_type || ""}｜${paper.authors || ""}｜${paper.year || ""}｜${paper.venue || ""}`,
-      ];
-      if (Array.isArray(paper.tags) && paper.tags.length) lines.push(`標籤：${paper.tags.join("、")}`);
-      if (paper.purpose) lines.push("", `**用途**：${paper.purpose}`);
-      if (paper.value_to_project) lines.push(`**對專案的價值**：${paper.value_to_project}`);
-      if (paper.abstract_note) lines.push("", "## 摘要", paper.abstract_note);
-      const patentSummary = paper.patentResults?.full?.summary;
-      if (patentSummary) lines.push("", "## 專利分析摘要", patentSummary);
-      if (paper.patent_notes) lines.push("", "## 專利備註", paper.patent_notes);
-      if (paper.links && typeof paper.links === "object") {
-        const linkLines = Object.entries(paper.links).filter(([, v]) => v).map(([k, v]) => `- ${k}：${v}`);
-        if (linkLines.length) lines.push("", "## 連結", ...linkLines);
-      }
-      return lines.join("\n");
     },
   },
 ];
