@@ -827,7 +827,7 @@ test("App 殼檔案強制 no-store，不會被瀏覽器／CDN 快取住舊版本
   // 對得上、100% 流量），前台卻還是舊介面。原因是這幾個檔案原本沒有被
   // wrangler.jsonc 的 run_worker_first 導進 Worker，Cloudflare Assets 直接
   // 回應、Worker 完全不會執行，就沒機會蓋掉 Assets 預設的快取表頭。
-  const shellPaths = ["/", "/index.html", "/app.js", "/style.css", "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json"];
+  const shellPaths = ["/", "/index.html", "/app.js", "/style.css", "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json", "/help.html"];
 
   let requestedPath = null;
   const env = {

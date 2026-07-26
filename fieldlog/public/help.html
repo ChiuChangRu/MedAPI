@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>使用說明｜隨身記</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📖</text></svg>" />
+<meta name="theme-color" content="#0f766e" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<style>
+  :root {
+    --accent: #0f766e; --bg: #f4f5f4; --card: #fff;
+    --text: #1b1d1c; --muted: #6b7280; --border: #e2e4e3;
+    --warn-bg: #fff7ed; --warn-border: #fdba74;
+    --ok-bg: #ecfdf5; --ok-border: #6ee7b7;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.8 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    padding-bottom: calc(40px + env(safe-area-inset-bottom));
+  }
+  header {
+    background: var(--accent); color: #fff; position: sticky; top: 0; z-index: 10;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header a {
+    color: #fff; text-decoration: none; font-size: 13px; background: rgba(255,255,255,.18);
+    border-radius: 8px; padding: 5px 10px; margin-left: auto; white-space: nowrap;
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 14px; }
+  section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  h2 {
+    font-size: 17px; margin: 0 0 10px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent); color: var(--accent);
+  }
+  h3 { font-size: 15px; margin: 16px 0 6px; }
+  h3:first-of-type { margin-top: 4px; }
+  p, li { font-size: 14.5px; }
+  ul, ol { padding-left: 22px; margin: 6px 0; }
+  li { margin: 3px 0; }
+  code {
+    background: #eef2f1; padding: 1px 5px; border-radius: 4px;
+    font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; word-break: break-all;
+  }
+  pre {
+    background: #1b1d1c; color: #e8eae9; padding: 10px 12px; border-radius: 8px;
+    overflow-x: auto; margin: 8px 0;
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: 12.5px; }
+  .note, .warn {
+    border-left: 3px solid var(--accent); background: var(--ok-bg);
+    padding: 9px 12px; border-radius: 0 8px 8px 0; margin: 10px 0; font-size: 14px;
+  }
+  .warn { border-left-color: var(--warn-border); background: var(--warn-bg); }
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13.5px; display: block; overflow-x: auto; }
+  th, td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #eef2f1; font-weight: 600; white-space: nowrap; }
+  .btn-name { font-weight: 600; white-space: nowrap; }
+  footer { text-align: center; color: var(--muted); font-size: 12.5px; padding: 16px 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📖 使用說明</h1>
+  <a href="index.html">‹ 回隨身記</a>
+</header>
+
+<main>
+
+<div class="toc">
+  <strong>目錄</strong>
+  <ol>
+    <li><a href="#what">這套系統是什麼</a></li>
+    <li><a href="#daily">日常操作：採集 → 整理 → 歸檔</a></li>
+    <li><a href="#files">檔案與文字擷取</a></li>
+    <li><a href="#folders">資料夾架構與分類</a></li>
+    <li><a href="#sync">外部知識庫自動同步</a></li>
+    <li><a href="#ask">用 claude.ai 問問題（MCP）</a></li>
+    <li><a href="#cost">AI 額度與成本</a></li>
+    <li><a href="#trouble">疑難排解</a></li>
+    <li><a href="#ops">維運速查</a></li>
+  </ol>
+</div>
+
+<section id="what">
+<h2>1. 這套系統是什麼</h2>
+
+<p>三個各自獨立的系統，加上一層問答窗口：</p>
+
+<table>
+  <tr><th>系統</th><th>做什麼</th><th>網址</th></tr>
+  <tr>
+    <td><strong>隨身記</strong><br>fieldlog</td>
+    <td>你一個人的現場採集：錄影、拍照、錄音、速記。就是你現在開著的這個。</td>
+    <td><code>fieldlog.gogoyankee.workers.dev</code></td>
+  </tr>
+  <tr>
+    <td><strong>參展系統</strong><br>medtec-2026</td>
+    <td>8 人團隊共筆：585 家展商名單、拜訪狀態、部門標籤。</td>
+    <td><code>medtec-2026.gogoyankee.workers.dev</code></td>
+  </tr>
+  <tr>
+    <td><strong>策略地圖 Wiki</strong></td>
+    <td>知識沉澱層，純 Markdown＋git 版控。AI 只能提案，你看 git diff 才收錄。</td>
+    <td>隨身記裡的 <code>/wiki.html</code></td>
+  </tr>
+  <tr>
+    <td><strong>MCP 問答窗口</strong><br>medapi-mcp</td>
+    <td>讓 claude.ai／ChatGPT 用自然語言一次查上面三個來源。</td>
+    <td>不是給人看的網頁</td>
+  </tr>
+</table>
+
+<div class="note">
+<strong>核心分工：</strong>隨身記與參展系統負責「採集原始素材」，Wiki 負責「沉澱成論述」，
+MCP 負責「查得到」。原始素材只增不刪，論述一律人審。
+</div>
+
+<h3>LitDB 已經併進來了</h3>
+<p>
+你另一個文獻／專利知識庫（<code>chiuchangru/litdb</code>）的 152 筆資料已經在隨身記的
+<strong>「LitDB 文獻庫」</strong>資料夾裡（親水塗層 102、活檢針機構 44、醫材包裝 6），
+而且<strong>每天凌晨 2 點自動同步</strong>。只搬文字和標籤，不下載 PDF——想看原文
+點記事裡的連結。
+</p>
+</section>
+
+<section id="daily">
+<h2>2. 日常操作：採集 → 整理 → 歸檔</h2>
+
+<h3>A. 現場採集（不用中斷手上的事）</h3>
+<p>首頁四顆大按鈕，按了就開始：</p>
+<ul>
+  <li><span class="btn-name">🎥 錄影</span>／<span class="btn-name">📷 拍照</span>／<span class="btn-name">🎙 錄音</span>／<span class="btn-name">✏️ 記事</span></li>
+</ul>
+<ul>
+  <li>錄音每 10 分鐘自動分段上傳，斷網會先存在手機、有訊號再補傳</li>
+  <li>錄音中拍的照片會自動標記「錄音第幾分幾秒拍的」，事後對得回逐字稿</li>
+  <li>採集的東西先進<strong>收件匣</strong>，不用當場分類</li>
+</ul>
+
+<div class="note">
+現場專心看展、做實驗就好。<strong>先採集，事後整理</strong>——這是這個 App 唯一的設計原則。
+</div>
+
+<h3>B. 一鍵整理（把聲音和圖變成文字）</h3>
+<p>有空時打開那筆紀錄，按 <span class="btn-name">🪄 Cloudflare AI 整理</span>：</p>
+<ul>
+  <li>會把「還沒轉文字的錄音」全部轉、「還沒擷取文字的照片」全部擷取</li>
+  <li><strong>已經處理過的不會重跑</strong>，不浪費額度</li>
+  <li>按鈕旁顯示「⏳ N 筆待整理」；顯示「✓ 已全部整理」而且反灰時，代表沒事可做，不用按</li>
+  <li>docx／xlsx／pptx／txt／csv 這類檔案<strong>不經過 AI</strong>，後端直接解出文字，不扣額度</li>
+</ul>
+
+<h3>C. 歸檔</h3>
+<p>打開收件匣裡的紀錄，選「歸檔到」某個資料夾；也可以當場「＋ 建立新資料夾並歸檔」。</p>
+
+<h3>D. 匯出給 AI 寫報告</h3>
+<p>
+資料夾右上角 <span class="btn-name">📄 匯出給 AI</span> → 產出一份 Markdown 原料包
+（含所有逐字稿、擷取文字、欄位）→ 貼給 Claude 說「彙整成報告」→ 存進 Notion。
+</p>
+<div class="warn">
+Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通），目前這一步是人工貼上。
+</div>
+
+<h3>E. 記一句</h3>
+<p>
+紀錄詳情裡可以一句一句往下加，每句獨立寫入、不會互相蓋掉，適合邊聽邊記重點。
+</p>
+</section>
+
+<section id="files">
+<h2>3. 檔案與文字擷取</h2>
+
+<h3>上傳</h3>
+<p>
+資料夾工具列 <span class="btn-name">＋ 上傳檔案</span> 可一次選多個檔，
+每個檔自成一筆紀錄（標題＝去掉副檔名的檔名）。同一個資料夾裡內容完全相同的檔案會自動去重。
+</p>
+
+<h3>🔬 深度處理（圖形型 PDF 專用）</h3>
+<p>
+有些 PDF 是圖檔排版、沒有文字層（例如廠商用 Illustrator 做的型錄），
+一般整理抽不到本文。這時用深度處理：瀏覽器把 PDF 逐頁轉成圖片，再走照片 OCR。
+</p>
+<div class="warn">
+這個<strong>只能手動一份一份指定</strong>，刻意不做背景批次——很吃 AI 額度。
+</div>
+
+<h3>🏷 整理檔名</h3>
+<p>
+把標準文件的檔名統一成 <code>組織_編號_年份_中文標題</code>（例
+<code>ISO_10555-8_2024_體外血液處理用導管.pdf</code>），並移除內容完全相同的重複檔。
+<strong>不會呼叫 AI</strong>，用既有的 OCR 與檔名資訊推。年份推不出來時不會硬猜，
+會保持原檔名不動。
+</p>
+
+<h3>醫材分類</h3>
+<p>
+單一檔案可以掛醫材分類（CVC／HD／Pigtail／高壓注射筒組…），選項來自分類字典。
+打錯字不會產生幽靈分類——存檔時會驗證。
+</p>
+
+<h3>🔗 關聯</h3>
+<p>
+兩筆記事之間可以建立關聯，例如「這次實驗引用了這份 ISO 標準」「這家廠商對照這篇專利」。
+關聯是<strong>雙向</strong>的，而且必須手動建立過才查得到——系統不會自己猜。
+</p>
+</section>
+
+<section id="folders">
+<h2>4. 資料夾架構與分類</h2>
+
+<h3>四層架構</h3>
+<table>
+  <tr><th>層級</th><th>放什麼</th><th>例子</th></tr>
+  <tr><td>第 1 層</td><td>產品／專案</td><td>中央靜脈導管（CVC）、血液透析導管（HD）</td></tr>
+  <tr><td>第 2 層</td><td>文件類型</td><td>法規與標準、驗證與確效、風險管理</td></tr>
+  <tr><td>第 3 層</td><td>主題／試驗</td><td>標準系列、試驗項目、國家／市場</td></tr>
+  <tr><td>第 4 層</td><td>年份／版本</td><td>年份／版本、單一標準文件、送件版本</td></tr>
+</table>
+<p><strong>最多四層</strong>，想建第五層會被擋下來。</p>
+
+<h3>⚙️ 管理分類</h3>
+<p>
+首頁「已歸檔資料夾」旁邊。分類存在資料庫裡，<strong>在這裡改完立刻生效，
+不用改程式、不用重新部署</strong>。
+</p>
+<ul>
+  <li><strong>改名</strong>：既有資料夾上的分類文字會一起更新（同一個分類換叫法）</li>
+  <li><strong>刪除</strong>：只拿掉選項，既有資料上的分類文字保留不動，並告訴你還有幾筆在用</li>
+</ul>
+</section>
+
+<section id="sync">
+<h2>5. 外部知識庫自動同步</h2>
+
+<p>
+隨身記可以每天自動去外部的公開 JSON 抓資料進來（目前設定了 litdb 的三個收藏）。
+<strong>台灣時間每天凌晨 02:00 自動跑</strong>，你不用做任何事。
+</p>
+
+<h3>它是怎麼運作的</h3>
+<ul>
+  <li><strong>內容沒變就完全不動</strong>（比對內容指紋），只有真的改過的才更新</li>
+  <li><strong>你自己加的註記永遠不會被蓋掉</strong>：同步只改寫記事裡被
+      <code>&lt;!-- sync:start --&gt;</code> 與 <code>&lt;!-- sync:end --&gt;</code>
+      框住的那一段，你在這之後寫的東西不會被動到</li>
+  <li><strong>來源端刪掉的資料不會跟著刪</strong>，只會標記起來，要不要刪由你決定</li>
+  <li>來源的專利分析內容（配方、FTO 風險、迴避設計）會存進「AI 深度解析」欄位，
+      搜尋查得到，而且看的時候會明確標示<strong>那是 AI 產出、不是你現場記的</strong></li>
+</ul>
+
+<h3>要加一個新的知識庫</h3>
+<p>
+<strong>不用改程式碼</strong>，往來源清單加一列就好。三個關鍵欄位：
+</p>
+<table>
+  <tr><th>欄位</th><th>意思</th></tr>
+  <tr><td><code>url</code></td><td>公開 JSON 的網址</td></tr>
+  <tr><td><code>items_path</code></td><td>資料陣列在 JSON 裡叫什麼（<code>papers</code>／<code>reports</code>／<code>items</code>…）</td></tr>
+  <tr><td><code>id_field</code></td><td>每筆資料的唯一鍵欄位名（<code>id</code>／<code>code</code>…）</td></tr>
+</table>
+<pre><code>curl -X POST "https://fieldlog.gogoyankee.workers.dev/api/sources" \
+  -H "x-pin: 你的FIELD_PIN" -H "content-type: application/json" \
+  -d '{"key":"market","label":"市場分析",
+       "url":"https://.../reports.json",
+       "items_path":"reports","id_field":"code",
+       "folder_parent":"LitDB 文獻庫"}'</code></pre>
+
+<h3>想立刻同步、不等半夜</h3>
+<pre><code>curl -X POST "https://fieldlog.gogoyankee.workers.dev/api/admin/sync-sources" \
+  -H "x-pin: 你的FIELD_PIN"</code></pre>
+<p>一次跑完全部來源，不用自己翻頁。加 <code>?source=coating</code> 可以只跑其中一個。</p>
+
+<div class="note">
+想知道「資料是不是過時了」，直接在 claude.ai 對話裡問，它會用 <code>sync_status</code>
+工具告訴你每個來源最後同步的時間和筆數——不用靠記憶。
+</div>
+</section>
+
+<section id="ask">
+<h2>6. 用 claude.ai 問問題（MCP）</h2>
+
+<p>
+在 claude.ai 設定好 MyWiki 連接器之後，直接用講話的方式問就好，
+它會自己決定要查哪裡。例如：
+</p>
+<ul>
+  <li>「幫我查展商裡做親水塗層的」</li>
+  <li>「上次實驗紀錄裡提到的固化溫度是多少」</li>
+  <li>「litdb 裡有沒有講活檢針擊發機構的文獻」</li>
+  <li>「wiki 的抗結痂條目現在寫到哪」</li>
+</ul>
+
+<h3>三個讓查詢變準的技巧</h3>
+
+<p><strong>① 查不到 ≠ 沒有這筆資料</strong></p>
+<p>
+最常見的失敗不是資料不存在，是<strong>關鍵字沒猜對</strong>。
+叫它「先列出那個資料夾底下有什麼」，看檔名通常就知道要不要細看，
+比反覆猜關鍵字有效得多。
+</p>
+
+<p><strong>② 內部代號查不到就當場補</strong></p>
+<p>
+公司內部代號、料號、慣用語（例如「BaClear」對應「抗結痂披膜」）只有你知道。
+查不到的時候直接說「把 BaClear 加到抗結痂披膜的同義詞」，
+它會用 <code>add_synonym</code> 補進去，<strong>下一次查詢立刻生效</strong>，不用改程式。
+</p>
+
+<p><strong>③ 看到「AI 深度解析」要留意</strong></p>
+<p>
+標示「AI 深度解析」的段落是 AI 整理／推論出來的，<strong>不是你現場記的原始證據</strong>。
+要拿去寫報告或做決策前，回頭看原始內容或來源連結確認一次。
+</p>
+
+<h3>MCP 能改資料嗎？</h3>
+<div class="warn">
+<strong>只能新增，不能修改或刪除。</strong>19 個工具裡只有三支會寫入：新增一筆記事、
+建立一個關聯、補一組同義詞。程式碼裡<strong>沒有任何一行</strong>能改掉或刪掉既有資料——
+就算你在對話裡叫它刪，它也做不到。要改內容、刪東西，一律回這個 App 自己操作。
+</div>
+</section>
+
+<section id="cost">
+<h2>7. AI 額度與成本</h2>
+
+<ul>
+  <li>轉文字／OCR 用 Cloudflare Workers AI，每天約 <strong>10,000 Neurons 免費額度</strong>，
+      隨身記與參展系統<strong>共用同一份</strong></li>
+  <li>自動處理只會用到 70% 安全額度（7,000），留餘裕給你手動觸發</li>
+  <li>月付費有軟上限 USD 4.5，達到就停，不會靜默扣費</li>
+  <li>首頁「Cloudflare 用量」區塊可以看目前狀況</li>
+</ul>
+
+<div class="warn">
+用量數字是 Cloudflare 那邊回報的，<strong>可能落後一到數天</strong>。
+看到「今日」數字沒動不代表沒在跑。
+</div>
+</section>
+
+<section id="trouble">
+<h2>8. 疑難排解</h2>
+
+<h3>畫面好像是舊版的</h3>
+<p>
+首頁標題旁邊有版本號（例 <code>v57</code>）。如果伺服器上是更新的版本，
+畫面會<strong>直接跳出橘色警告</strong>並提供「一鍵清除快取」——按它就會解除
+service worker、清掉所有快取、重新載入。
+</p>
+<p>
+沒跳警告就代表你載到的確實是最新版，問題在別的地方。
+</p>
+
+<h3>查詢說「查無資料」但你確定有</h3>
+<ol>
+  <li>先確認關鍵字沒打錯字</li>
+  <li>拿掉資料夾範圍限制，改成全庫查</li>
+  <li>叫 AI 先「列出資料夾底下有什麼」，用看的比用猜的準</li>
+  <li>確定只是用詞沒對上 → 用 <code>add_synonym</code> 補一組</li>
+</ol>
+<p>
+系統查不到的時候會<strong>誠實告訴你它試過哪些詞</strong>，不會只回一句「查無」——
+就是要讓你分得出「真的沒有」和「有但沒對上」。
+</p>
+
+<h3>litdb 的新內容沒出現</h3>
+<p>
+問 claude.ai「查一下同步狀態」（<code>sync_status</code>），看最後同步時間。
+還沒跑就等當晚 02:00，或手動打第 5 節那條 curl。
+</p>
+
+<h3>PDF 上傳後沒有文字</h3>
+<p>
+可能是圖形型 PDF（沒有文字層）。用 <span class="btn-name">🔬 深度處理</span> 逐頁轉圖再 OCR。
+</p>
+
+<h3>連 MCP 失敗／工具叫不出來</h3>
+<ul>
+  <li>401：PIN 沒帶或帶錯，確認網址結尾是完整的 <code>?pin=...</code></li>
+  <li>新工具沒出現：連接器快取了舊的工具清單，去 Settings → Connectors 關掉再開</li>
+</ul>
+</section>
+
+<section id="ops">
+<h2>9. 維運速查</h2>
+
+<h3>改完程式碼怎麼上線</h3>
+<p>
+三個 Worker 都接 GitHub 自動部署——<strong>push 到分支就會自動重新部署</strong>，
+不用手動觸發。到 Cloudflare Dashboard 對應 Worker 的 <strong>Deployments</strong> 看狀態。
+</p>
+<div class="warn">
+<strong>不要用 Dashboard 的「Edit code」直接改線上程式碼。</strong>
+那會產生一個「Manually deployed」版本蓋掉 git 部署，之後 git 推上去的東西可能不會生效，
+而且很難察覺。
+</div>
+
+<h3>Secret 放哪裡</h3>
+<table>
+  <tr><th>Worker</th><th>需要的 Secret</th></tr>
+  <tr><td><code>fieldlog</code></td><td><code>FIELD_PIN</code></td></tr>
+  <tr><td><code>medtec-2026</code></td><td><code>TEAM_PIN</code>（LINE 相關為選用）</td></tr>
+  <tr><td><code>medapi-mcp</code></td><td><code>MCP_PIN</code>、<code>FIELD_PIN</code>（與 fieldlog 同值）</td></tr>
+</table>
+<p>都在該 Worker 的 <strong>Settings → Variables and Secrets</strong>。</p>
+
+<h3>排程</h3>
+<p>
+fieldlog 有一個 cron：<code>0 18 * * *</code>（UTC）＝台灣時間每天 02:00，
+自動同步所有啟用中的外部來源。
+</p>
+
+<h3>目前還沒做的事</h3>
+<ul>
+  <li><strong>Notion 自動同步</strong>：欄位有了但沒接通，目前人工貼上</li>
+  <li><strong>AI 深度解析引擎</strong>：欄位與呈現都好了，但「自動呼叫 Claude 分析新資料」
+      那一段決定先不做。之後要做的話前提已經定案：fieldlog 自持金鑰、一律用 Sonnet、
+      只解析新資料＋提供手動按鈕，不做全量回補</li>
+  <li><strong>文獻折進 Wiki 條目</strong>：目前 litdb 的內容查得到，但還沒有「讀完自動掛回
+      A/B 技術條目」的流程</li>
+</ul>
+</section>
+
+<footer>
+隨身記使用說明｜最後更新 2026-07-26<br>
+更完整的工程筆記見 repo 裡的 <code>ARCHITECTURE.md</code> 與 <code>HANDOVER.md</code>
+</footer>
+
+</main>
+</body>
+</html>
