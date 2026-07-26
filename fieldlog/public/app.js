@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "55";
+const APP_VERSION = "56";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -798,6 +798,38 @@ async function cleanupFilenames(button) {
     if (CURRENT_FOLDER) await openFolder(CURRENT_FOLDER.id);
   } catch (err) {
     showToast("整理失敗：" + err.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+// 一次性把 litdb（chiuchangru/litdb，另一個獨立文獻/專利知識庫）152 筆
+// 資料匯入隨身記——只在手機/瀏覽器上按這顆鍵就能觸發，不用叫使用者裝
+// curl 或另一支 App。後端 /admin/import-litdb 一次只處理 limit 筆（預設
+// 50），這裡自動用回傳的 next_offset 接著打，直到打完為止；已匯入過的
+// 資料後端會用 litdb_id 認出來跳過，所以重複按這顆鍵也不會匯入兩次。
+async function importLitdb(button) {
+  if (!confirm("把 litdb（親水塗層/活檢針機構/醫材包裝，共 152 筆）匯入「LitDB 文獻庫」資料夾？只搬文字/標籤，不下載 PDF。已經匯入過的不會重複。")) return;
+  button.disabled = true;
+  const label = button.textContent;
+  let imported = 0, skipped = 0, offset = 0, failedNote = "";
+  try {
+    for (;;) {
+      button.textContent = `匯入中…（已處理 ${imported + skipped} 筆）`;
+      const result = await api(`/admin/import-litdb?limit=50&offset=${offset}`, { method: "POST", body: "{}" });
+      imported += result.imported || 0;
+      skipped += result.skipped || 0;
+      if (result.collections_failed?.length) {
+        failedNote = `；⚠ 讀取失敗：${result.collections_failed.map((c) => `${c.key}（${c.error}）`).join("、")}`;
+      }
+      if (result.next_offset === null || result.next_offset === undefined) break;
+      offset = result.next_offset;
+    }
+    showToast(`LitDB 匯入完成：新增 ${imported} 筆、已存在跳過 ${skipped} 筆${failedNote}`);
+    await refreshFolderView();
+  } catch (err) {
+    showToast("LitDB 匯入失敗：" + err.message);
   } finally {
     button.disabled = false;
     button.textContent = label;
@@ -2500,6 +2532,7 @@ function init() {
   $("btn-new-folder").onclick = newFolder;
   $("btn-new-subfolder").onclick = newSubfolder;
   $("btn-manage-categories").onclick = () => openCategoryManager("folder_type");
+  $("btn-import-litdb").onclick = (e) => importLitdb(e.currentTarget);
   $("category-manager-close").onclick = closeCategoryManager;
   $("category-manager-overlay").addEventListener("click", (e) => {
     if (e.target === $("category-manager-overlay")) closeCategoryManager();
