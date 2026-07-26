@@ -6,12 +6,18 @@
 | 工具 | 查什麼 | 資料來源 |
 |---|---|---|
 | `list_wiki_pages`／`read_wiki_page`／`search_wiki` | 策略地圖 Wiki 條目 | fieldlog Worker 的 `/wiki/*`（Service Binding＋PIN） |
-| `list_fieldlog_folders`／`search_fieldlog`／`get_fieldlog_entry`／`get_fieldlog_attachment` | 隨身記紀錄、逐字稿、照片文字、附件完整全文 | fieldlog D1（共綁，只下 SELECT） |
+| `list_fieldlog_folders`／`list_fieldlog_entries`／`list_attachments` | 目錄層：資料夾、資料夾底下的紀錄與附件檔名清單，不用猜關鍵字 | fieldlog D1（共綁，只下 SELECT） |
+| `search_fieldlog`／`get_fieldlog_entry`／`get_fieldlog_attachment` | 隨身記紀錄、逐字稿、照片文字、附件全文（超長時可分段讀） | fieldlog D1（共綁，只下 SELECT） |
 | `get_related` | 兩筆記事之間的關聯（交叉比對） | fieldlog D1 的 `relations` 表 |
 | `create_fieldlog_entry`／`create_relation` | **唯二能寫入的工具**：新增一筆記事／建立兩筆記事的關聯 | fieldlog D1（只 INSERT，見下方說明） |
-| `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR） | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
+| `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files`／`list_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR）＋不用猜關鍵字的附件目錄 | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
 
-**鐵律：預設唯讀，兩個例外都鎖死在「只能新增」。** 其餘 12 個工具程式碼裡
+> **先列目錄、再決定要不要細看，別一開始就猜關鍵字。** `search_*` 查不到不代表
+> 沒有這份資料，可能只是關鍵字沒猜對——2026-07-25 實測發現的最大瓶頸正是
+> AI 沒有「看得見架上有什麼」的工具，只能反覆猜詞，猜不中就誤判成「沒有資料」。
+> `list_fieldlog_entries`／`list_attachments`／`list_exhibitor_files` 就是為此而加。
+
+**鐵律：預設唯讀，兩個例外都鎖死在「只能新增」。** 其餘 15 個工具程式碼裡
 只有 SELECT 與 fetch；`create_fieldlog_entry`／`create_relation` 是唯二會
 寫入的工具，各自只做一次 `INSERT INTO entries` 或 `INSERT INTO relations`，
 程式碼裡沒有任何 `UPDATE`／`DELETE` 語句碰得到 entries／attachments／

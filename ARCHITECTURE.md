@@ -166,13 +166,16 @@ fieldlog/
 - [ ] **LitDB 窗口未建置**：需要決定採集介面長什麼樣（獨立系統？還是
   隨身記加一個「文獻」資料夾類型就夠？）
 - [x] **MCP Server 已完成並上線（2026-07-18，持續加工具）**：`mcp/` 目錄，
-  獨立 Worker `medapi-mcp`，14 個工具跨三來源（wiki 3 個、隨身記 7 個
-  ——含資料夾階層、folder_id/folder_type 篩選、附件完整全文、
+  獨立 Worker `medapi-mcp`，17 個工具跨三來源（wiki 3 個、隨身記 8 個
+  ——含資料夾階層、`list_fieldlog_entries`／`list_attachments` 目錄層
+  （2026-07-25 補上：不用猜關鍵字就能看資料夾/附件實際有什麼）、
+  folder_id/folder_type 篩選、附件全文（超長可用 offset/length 分段讀）、
   `get_related` 交叉比對、限定新增的 `create_fieldlog_entry`／
-  `create_relation`、參展系統 4 個——含 `search_exhibitor_files`
-  搜附件逐字稿/OCR 全文）。共綁兩個既有 D1、wiki 與展商主檔走
-  Service Binding。自有 `MCP_PIN` 驗證（fail-closed），claude.ai
-  自訂連接器已接通實測。預設唯讀，僅上述兩支新增工具例外
+  `create_relation`、參展系統 5 個——含 `search_exhibitor_files`
+  搜附件逐字稿/OCR 全文、`list_exhibitor_files` 目錄層）。共綁兩個既有
+  D1、wiki 與展商主檔走 Service Binding。自有 `MCP_PIN` 驗證
+  （fail-closed），claude.ai 自訂連接器已接通實測，另有
+  `mcp/CONNECT-GPT.md` 給 ChatGPT 接。預設唯讀，僅上述兩支新增工具例外
 - [ ] **隨身記的 Notion 同步是半成品**：`notion_page_id` 等欄位跟
   `parseNotionPageId()` 已經寫好，但沒有任何 API 路徑真的呼叫它，
   現在還是人工把 AI 彙整完的報告貼進 Notion——要嘛補完自動同步，

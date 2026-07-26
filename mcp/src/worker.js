@@ -43,6 +43,11 @@ const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 // 避免未來資料爆量時把 Worker 記憶體撐爆（超出時只掃最新這麼多列）
 const SCAN_CAP = 5000;
 
+// get_fieldlog_attachment 單次回傳的字元上限。超長文件（例如整份 ISO 標準的 OCR
+// 全文）一次回傳可能塞爆呼叫端的 context；用 offset/length 分段讀，並在回應裡
+// 明確標示「總長度 N、目前顯示第 X–Y 字」，不能讓截斷發生卻不講。
+const ATTACHMENT_CHUNK_CAP = 20000;
+
 // ---------- 小工具 ----------
 
 // claude.ai 的自訂連接器是瀏覽器直接呼叫，跨網域一定會先送 CORS 預檢（OPTIONS），
@@ -306,6 +311,119 @@ const TOOLS = [
     },
   },
   {
+    name: "list_fieldlog_entries",
+    description: "列出隨身記的紀錄清單（含每筆紀錄底下的附件檔名）。用途：檔名本身通常就承載了大部分判斷資訊（例如 ISO_10555-8_2024_血管內導管-無菌及單次使用導管-第8部_體外血液處理用導管.pdf，光看檔名就知道要不要讀），與其對 search_fieldlog 反覆猜關鍵字、猜不中就誤判成「沒有這份資料」，不如先用這個看資料夾裡實際有什麼。folder_id 用 list_fieldlog_folders 查。回傳有分頁，total 是總筆數，has_more 是否還有更多。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        folder_id: { type: "number", description: "選填：只列這個資料夾（不含子資料夾）；不給就列全庫，建議先用 list_fieldlog_folders 查 id" },
+        limit: { type: "number", description: "每頁最多幾筆（預設 30，上限 100）" },
+        offset: { type: "number", description: "分頁位移，預設 0" },
+      },
+    },
+    async handler(env, args) {
+      const folderId = args.folder_id !== undefined && args.folder_id !== null && args.folder_id !== ""
+        ? Number(args.folder_id) : null;
+      const limit = Math.min(100, Math.max(1, Number(args.limit) || 30));
+      const offset = Math.max(0, Number(args.offset) || 0);
+
+      const where = folderId !== null ? "WHERE e.folder_id = ?" : "";
+      const binds = folderId !== null ? [folderId] : [];
+      const totalRow = await env.DB_FIELDLOG.prepare(
+        `SELECT COUNT(*) AS c FROM entries e ${where}`
+      ).bind(...binds).first();
+      const total = Number(totalRow?.c || 0);
+      if (!total) {
+        return folderId !== null
+          ? `資料夾 ${folderId} 裡沒有任何紀錄（folder_id 存在的話代表是空資料夾；不存在就是查無此資料夾，先用 list_fieldlog_folders 確認）。`
+          : "隨身記目前沒有任何紀錄。";
+      }
+
+      const { results: entries } = await env.DB_FIELDLOG.prepare(
+        `SELECT e.id, e.title, e.created_at, e.updated_at, e.folder_id, f.name AS folder_name, f.type AS folder_type
+         FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+         ${where}
+         ORDER BY e.id DESC LIMIT ? OFFSET ?`
+      ).bind(...binds, limit, offset).all();
+
+      const ids = entries.map((e) => e.id);
+      const attMap = new Map(ids.map((id) => [id, []]));
+      if (ids.length) {
+        const placeholders = ids.map(() => "?").join(",");
+        const { results: atts } = await env.DB_FIELDLOG.prepare(
+          `SELECT entry_id, id, filename, kind FROM attachments WHERE entry_id IN (${placeholders}) AND source_pdf_id IS NULL ORDER BY id`
+        ).bind(...ids).all();
+        for (const a of atts) attMap.get(a.entry_id)?.push(a);
+      }
+
+      const lines = entries.map((e) => {
+        const where2 = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "收件匣";
+        const files = attMap.get(e.id) || [];
+        // 檔名是主要判斷依據，不截斷；用逐行列出而不是逗號接成一串，長檔名才不會混在一起看不清
+        const fileLines = files.length
+          ? files.map((a) => `    - [attachment ${a.id}] ${a.kind}｜${a.filename}`).join("\n")
+          : "    （沒有附件）";
+        return `- [entry ${e.id}] ${e.title || "（未命名）"}｜${where2}｜建立 ${e.created_at}${e.updated_at ? `｜更新 ${e.updated_at}` : ""}\n${fileLines}`;
+      });
+
+      const shown = offset + entries.length;
+      const hasMore = shown < total;
+      const header = `共 ${total} 筆，目前顯示第 ${offset + 1}–${shown} 筆${hasMore ? `（還有更多，加 offset: ${shown} 繼續拉）` : "（已到底）"}`;
+      return [header, ...lines].join("\n");
+    },
+  },
+  {
+    name: "list_attachments",
+    description: "列出隨身記的附件清單（不用先猜關鍵字）。可用 entry_id 只看某一筆紀錄底下的附件，或 folder_id 看整個資料夾的附件；都不給就列全庫。每筆會附內容長度（逐字稿或擷取文字的字元數），用來判斷這份附件夠不夠短可以直接讀、還是要用 get_fieldlog_attachment 的 offset/length 分段拉。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entry_id: { type: "number", description: "選填：只列這一筆紀錄的附件" },
+        folder_id: { type: "number", description: "選填：只列這個資料夾（不含子資料夾）的附件" },
+        limit: { type: "number", description: "每頁最多幾筆（預設 30，上限 100）" },
+        offset: { type: "number", description: "分頁位移，預設 0" },
+      },
+    },
+    async handler(env, args) {
+      const entryId = args.entry_id !== undefined && args.entry_id !== null && args.entry_id !== ""
+        ? Number(args.entry_id) : null;
+      const folderId = args.folder_id !== undefined && args.folder_id !== null && args.folder_id !== ""
+        ? Number(args.folder_id) : null;
+      const limit = Math.min(100, Math.max(1, Number(args.limit) || 30));
+      const offset = Math.max(0, Number(args.offset) || 0);
+
+      const clauses = ["a.source_pdf_id IS NULL"]; // 深度處理逐頁圖片不算獨立附件，列出來只會洗版
+      const binds = [];
+      if (entryId !== null) { clauses.push("a.entry_id = ?"); binds.push(entryId); }
+      if (folderId !== null) { clauses.push("e.folder_id = ?"); binds.push(folderId); }
+      const where = `WHERE ${clauses.join(" AND ")}`;
+
+      const totalRow = await env.DB_FIELDLOG.prepare(
+        `SELECT COUNT(*) AS c FROM attachments a JOIN entries e ON e.id = a.entry_id ${where}`
+      ).bind(...binds).first();
+      const total = Number(totalRow?.c || 0);
+      if (!total) return "沒有符合條件的附件（entry_id／folder_id 存在的話代表底下沒有附件；不存在就是查無）。";
+
+      const { results: atts } = await env.DB_FIELDLOG.prepare(
+        `SELECT a.id, a.filename, a.kind, a.entry_id, a.transcript, a.ocr_text, e.title AS entry_title
+         FROM attachments a JOIN entries e ON e.id = a.entry_id
+         ${where}
+         ORDER BY a.id DESC LIMIT ? OFFSET ?`
+      ).bind(...binds, limit, offset).all();
+
+      const lines = atts.map((a) => {
+        const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
+        const lenNote = text ? `內容長度 ${text.length} 字` : "尚未轉文字／擷取";
+        return `- [attachment ${a.id}] ${a.kind}｜${a.filename}｜所屬 [entry ${a.entry_id}] ${a.entry_title || "（未命名）"}｜${lenNote}`;
+      });
+
+      const shown = offset + atts.length;
+      const hasMore = shown < total;
+      const header = `共 ${total} 筆，目前顯示第 ${offset + 1}–${shown} 筆${hasMore ? `（還有更多，加 offset: ${shown} 繼續拉）` : "（已到底）"}`;
+      return [header, ...lines].join("\n");
+    },
+  },
+  {
     name: "search_fieldlog",
     description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的檔名／錄音逐字稿／照片與 PDF 擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。多個關鍵字用空白隔開即可（例「7886 注射器」＝兩個詞都要出現）；慣用語會自動對到正式標準名（查「HD管」找得到「體外血液處理用導管」）。可選 folder_id／folder_type 縮小到特定資料夾（例如專門歸檔標準規範、型錄的資料夾——先用 list_fieldlog_folders 查 id）。回傳命中片段與 entry/attachment id；附件命中後用 get_fieldlog_attachment 拉該附件完整未截斷的全文（例如查一份 ISO 標準的完整條文，不是只看片段）。找到 entry 後想看它跟哪些標準／實驗／廠商／專利有交叉關聯，改用 get_related(id)。",
     inputSchema: {
@@ -440,10 +558,14 @@ const TOOLS = [
   },
   {
     name: "get_fieldlog_attachment",
-    description: "讀取隨身記單一附件的『完整、未截斷』文字內容（逐字稿或擷取文字），PDF 已自動剝除檔案 metadata 雜訊。用途：search_fieldlog 或 get_fieldlog_entry 找到候選附件、內容被截斷時，用這個拉出完整全文——例如查一份 ISO/ASTM 標準 PDF 的完整條文、或一段完整的會議逐字稿，不是只看片段摘要。",
+    description: "讀取隨身記單一附件的文字內容（逐字稿或擷取文字），PDF 已自動剝除檔案 metadata 雜訊。用途：search_fieldlog 或 get_fieldlog_entry 找到候選附件、內容被截斷時，用這個拉出完整全文——例如查一份 ISO/ASTM 標準 PDF 的完整條文、或一段完整的會議逐字稿，不是只看片段摘要。單次最多回傳 20000 字；超過這個長度時回應會明確標示總長度與目前顯示範圍，並可用 offset／length 分段接續讀完全文，段落間不會遺漏。",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "number", description: "attachment id（search_fieldlog 回傳的 attachment id，或 get_fieldlog_entry 附件標題旁的 [id]）" } },
+      properties: {
+        id: { type: "number", description: "attachment id（search_fieldlog 回傳的 attachment id，或 get_fieldlog_entry 附件標題旁的 [id]）" },
+        offset: { type: "number", description: "選填：從全文第幾個字元開始讀（預設 0）。內容超過 20000 字時，用上一次回應告訴你的「下一段 offset」接續讀，讀到「已到全文末尾」為止" },
+        length: { type: "number", description: "選填：這次最多讀幾個字元（預設 20000，上限 20000）" },
+      },
       required: ["id"],
     },
     async handler(env, args) {
@@ -458,9 +580,28 @@ const TOOLS = [
         `類型：${a.kind}｜所屬紀錄：${e ? `[entry ${e.id}] ${e.title || "（未命名）"}` : `entry ${a.entry_id}`}${off}｜上傳：${a.created_at}`,
       ];
       const ocrBody = stripPdfMetadata(a.ocr_text || "");
-      if (a.transcript) lines.push("", "## 逐字稿（完整）", a.transcript);
-      if (ocrBody) lines.push("", "## 擷取文字（完整）", ocrBody);
-      if (!a.transcript && !ocrBody) lines.push("", "（這個附件還沒轉文字/擷取，或該檔案本身沒有可擷取的文字內容——PDF 若是圖形排版、沒有文字層，一般擷取抓不到，需要 Tier 2 深度處理）");
+      // 罕見情況下一份附件可能兩者都有值（例如手動編輯過擷取文字又補了逐字稿）；
+      // 兩段都合進同一份全文再分頁，不能只挑一段，否則另一段會靜默消失
+      const sections = [];
+      if (a.transcript) sections.push(`## 逐字稿\n${a.transcript}`);
+      if (ocrBody) sections.push(`## 擷取文字\n${ocrBody}`);
+      const fullText = sections.join("\n\n");
+
+      if (!fullText) {
+        lines.push("", "（這個附件還沒轉文字/擷取，或該檔案本身沒有可擷取的文字內容——PDF 若是圖形排版、沒有文字層，一般擷取抓不到，需要 Tier 2 深度處理）");
+        return lines.join("\n");
+      }
+
+      const start = Math.max(0, Number(args.offset) || 0);
+      const chunkLength = Math.min(ATTACHMENT_CHUNK_CAP, Math.max(1, Number(args.length) || ATTACHMENT_CHUNK_CAP));
+      const chunk = fullText.slice(start, start + chunkLength);
+      const end = start + chunk.length;
+      const truncated = end < fullText.length;
+
+      lines.push("", start > 0 || truncated ? `（第 ${start + 1}–${end} 字，共 ${fullText.length} 字）` : "（完整全文）", chunk);
+      if (truncated) {
+        lines.push("", `（還有 ${fullText.length - end} 字未顯示——用 offset: ${end} 再呼叫一次這個工具接續讀，讀到「完整全文」或沒有這行提示為止）`);
+      }
       return lines.join("\n");
     },
   },
@@ -733,6 +874,47 @@ const TOOLS = [
       return withSearchNotes(plan, { degraded: isDegraded(found) }, body);
     },
   },
+  {
+    name: "list_exhibitor_files",
+    description: "列出某一家展商的全部附件（不用先猜關鍵字）——檔名與說明通常就足以判斷要不要細看，跟 search_exhibitor_files 要先猜對關鍵字比起來，這個直接看清單。每筆附內容長度，用來判斷夠不夠短可以直接讀。先用 search_exhibitors 或 get_exhibitor 查 exhibitor id。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        exhibitor_id: { type: "string", description: "展商 id（例：ex-0001），先用 search_exhibitors 查" },
+        limit: { type: "number", description: "每頁最多幾筆（預設 30，上限 100）" },
+        offset: { type: "number", description: "分頁位移，預設 0" },
+      },
+      required: ["exhibitor_id"],
+    },
+    async handler(env, args) {
+      const exhibitorId = (args.exhibitor_id || "").trim();
+      if (!exhibitorId) throw new Error("exhibitor_id 為必填");
+      const limit = Math.min(100, Math.max(1, Number(args.limit) || 30));
+      const offset = Math.max(0, Number(args.offset) || 0);
+
+      const totalRow = await env.DB_MEDTEC.prepare(
+        "SELECT COUNT(*) AS c FROM attachments WHERE exhibitor_id = ?"
+      ).bind(exhibitorId).first();
+      const total = Number(totalRow?.c || 0);
+      if (!total) return `展商 ${exhibitorId} 底下沒有任何附件（id 存在的話代表還沒上傳；不存在就是查無此展商，先用 search_exhibitors 確認）。`;
+
+      const { results: atts } = await env.DB_MEDTEC.prepare(
+        `SELECT id, filename, caption, author, created_at, transcript, ocr_text
+         FROM attachments WHERE exhibitor_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`
+      ).bind(exhibitorId, limit, offset).all();
+
+      const lines = atts.map((a) => {
+        const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
+        const lenNote = text ? `內容長度 ${text.length} 字` : "尚未擷取文字";
+        return `- [attachment ${a.id}] ${a.filename}${a.caption ? `｜${a.caption}` : ""}｜${a.author}｜${a.created_at}｜${lenNote}`;
+      });
+
+      const shown = offset + atts.length;
+      const hasMore = shown < total;
+      const header = `共 ${total} 筆，目前顯示第 ${offset + 1}–${shown} 筆${hasMore ? `（還有更多，加 offset: ${shown} 繼續拉）` : "（已到底）"}`;
+      return [header, ...lines].join("\n");
+    },
+  },
 ];
 
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
@@ -762,7 +944,8 @@ async function handleMcp(request, env) {
       capabilities: { tools: {} },
       serverInfo: { name: "medapi-mcp", version: "1.0.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增一筆記事）與 create_relation（建立兩筆記事的關聯）例外，且都只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。",
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增一筆記事）與 create_relation（建立兩筆記事的關聯）例外，且都只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞。",
     });
   }
   if (method.startsWith("notifications/")) return new Response(null, { status: 202, headers: CORS_HEADERS });
