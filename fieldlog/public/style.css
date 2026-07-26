@@ -322,6 +322,53 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
   pointer-events: auto;
 }
+/* 「這筆資料的來歷」面板：這筆哪來的、誰改過、AI 動過哪裡、還跟來源同步嗎 */
+.prov-box {
+  background: #f8faf9; border: 1px solid var(--border, #e2e4e3);
+  border-radius: 10px; padding: 12px 14px; font-size: 13.5px;
+}
+.prov-line {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 4px 0; border-bottom: 1px dashed #e8ebea;
+}
+.prov-line:last-of-type { border-bottom: none; }
+.prov-key {
+  flex: 0 0 auto; min-width: 92px; max-width: 45%;
+  color: var(--text-muted, #6b7280); font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.prov-detail { margin: 4px 0 10px; line-height: 1.6; }
+.prov-mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px; overflow-wrap: anywhere;
+}
+.prov-sub {
+  margin: 16px 0 6px; font-size: 13.5px;
+  color: var(--accent, #0f766e); font-weight: 700;
+}
+.prov-ok { color: #047857; }
+.prov-skip { color: #6b7280; }
+.prov-pending { color: #b45309; }
+.prov-warn { color: #b91c1c; font-weight: 600; }
+.prov-orphan {
+  margin: 6px 0 10px; padding: 8px 10px;
+  background: #fff7ed; border-left: 3px solid #fdba74;
+  border-radius: 0 6px 6px 0; color: #9a3412; font-size: 13px;
+}
+.prov-history { margin: 4px 0 0; padding-left: 18px; }
+.prov-history li { margin: 3px 0; line-height: 1.65; overflow-wrap: anywhere; }
+.prov-history .prov-mono { color: var(--text-muted, #6b7280); }
+.prov-raw { margin-top: 14px; }
+.prov-raw summary {
+  cursor: pointer; font-weight: 600; color: var(--accent, #0f766e);
+  padding: 6px 0; min-height: 32px;
+}
+.prov-raw pre {
+  background: #1b1d1c; color: #e8eae9; padding: 10px 12px;
+  border-radius: 8px; overflow-x: auto; margin: 8px 0;
+  font-size: 12px; line-height: 1.6;
+}
+
 .entry-danger-zone {
   margin-top: 28px; padding-top: 18px;
   border-top: 1px solid #fecaca;

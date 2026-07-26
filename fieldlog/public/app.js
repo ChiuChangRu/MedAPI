@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "58";
+const APP_VERSION = "59";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -991,6 +991,9 @@ async function openEntry(id) {
     <hr/>
     <h3 class="section-title">關聯 <button class="btn small" id="e-add-relation" type="button" title="關聯到另一筆記事，例如這次實驗引用的標準、對照的廠商產品">🔗 新增關聯</button></h3>
     <div id="e-relations"><p class="sub">載入中…</p></div>
+    <hr/>
+    <h3 class="section-title">🔍 這筆資料的來歷</h3>
+    <div id="e-provenance"><p class="sub">載入中…</p></div>
     <div class="entry-danger-zone">
       <button class="btn entry-delete" id="e-delete" type="button">🗑 刪除整筆記事</button>
       <p class="sub">刪除後無法復原，附件也會一併刪除。</p>
@@ -1052,6 +1055,7 @@ async function openEntry(id) {
   };
   bindAttActions(id);
   loadRelations(id);
+  loadProvenance(e);
   $("e-add-relation").onclick = () => openRelationPicker(id, () => loadRelations(id));
   api(`/entries/${id}/auto-transcribe`, { method: "POST", body: "{}" }).then((r) => {
     if (r.processed) {
@@ -1276,6 +1280,157 @@ function debounce(fn, ms) {
 
 // 關聯：這筆記事跟另一筆記事的關係（例：實驗引用標準、專利對照廠商產品）。
 // 雙向都查得到——本記事是起點時箭頭朝右，是別人關聯過來的終點時箭頭朝左。
+// ---------- 「這筆資料的來歷」面板 ----------
+//
+// 為什麼不是直接把 D1 的資料列倒出來：raw row 有一半是雜訊（key 是 R2 內部
+// 路徑、content_hash 是 64 字 hex），看了不會更懂這筆資料。真正要回答的是
+// 四個具體問題——這筆哪來的、誰改過、AI 動過哪裡、還跟外部來源同步嗎。
+// 所以先用人看得懂的話講這四件事，真的想看原始欄位再展開最底下那一段。
+//
+// history 表從第一版就在寫，但一直沒有任何地方讀得到（等於白記）。這個面板
+// 是它第一個讀取端——對專利／法規場景要的證據鏈來說，「誰在何時做了什麼」
+// 是最基本的一環。
+
+// 同步機制與匯入器寫在 fields_json 裡的內部欄位（前面加 _ 或是舊版識別碼）
+const PROVENANCE_FIELD_LABELS = {
+  _sid: "同步識別碼",
+  _source_key: "來源代號",
+  _content_hash: "內容指紋",
+  _orphaned: "來源已移除",
+  litdb_id: "舊版 litdb 識別碼",
+  medtec_exhibitor_id: "Medtec 展商 id",
+};
+
+// 三態時間戳（transcribed_at／ocr_at／analysis_at）翻成人看得懂的狀態
+function stateLabel(value) {
+  if (!value) return { text: "尚未處理", cls: "prov-pending" };
+  if (value === "skipped") return { text: "已判定不需處理", cls: "prov-skip" };
+  if (value === "processing") return { text: "處理中", cls: "prov-pending" };
+  if (value === "failed" || value === "auto_failed") return { text: "處理失敗", cls: "prov-warn" };
+  return { text: `已完成 ${value}`, cls: "prov-ok" };
+}
+
+function provenanceOrigin(fields, history) {
+  const sid = fields._sid || fields.litdb_id;
+  if (sid) {
+    const source = fields._source_key || String(sid).split(":")[0];
+    return {
+      title: `外部知識庫自動同步（來源：${source}）`,
+      detail: "這筆的內容由每日排程從外部公開資料同步進來。同步只會改寫內文裡"
+        + "「同步區」那一段，你自己在同步區之外加的註記不會被覆蓋。",
+      warn: fields._orphaned
+        ? "⚠ 這筆的原始資料已經從外部來源移除，之後不會再更新。記事本身保留，要不要刪由你決定。"
+        : "",
+    };
+  }
+  if (fields.medtec_exhibitor_id) {
+    return { title: "從 Medtec 參展系統匯入", detail: "一次性匯入，之後不會自動更新。", warn: "" };
+  }
+  if (history.some((h) => (h.detail || "").includes("透過 MCP"))) {
+    return { title: "透過 claude.ai／MCP 新增", detail: "在對話裡建立的，不是在 App 現場採集的。", warn: "" };
+  }
+  return { title: "在 App 裡建立", detail: "現場採集或手動新增。", warn: "" };
+}
+
+// raw 檢視用：超長的文字欄位只留開頭，否則一份 ISO 標準的 OCR 全文會把
+// 整個面板撐爆。截斷一律明講長度，不靜默砍掉
+function clipForRaw(row) {
+  const LONG_KEYS = ["body", "transcript", "ocr_text", "analysis_json", "fields_json"];
+  const out = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (k === "attachments") continue;
+    if (LONG_KEYS.includes(k) && typeof v === "string" && v.length > 400) {
+      out[k] = `${v.slice(0, 400)}…（共 ${v.length} 字，此處僅顯示開頭）`;
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+async function loadProvenance(entry) {
+  const box = $("e-provenance");
+  if (!box) return; // modal 可能已經關閉（切換太快）
+
+  let history = [];
+  let historyError = "";
+  try {
+    history = (await api(`/entries/${entry.id}/history`)).history || [];
+  } catch (err) {
+    historyError = err.message;
+  }
+
+  let fields = {};
+  try { fields = JSON.parse(entry.fields_json || "{}"); } catch { /* 壞 JSON 當空 */ }
+  const internal = Object.entries(fields).filter(([k]) => PROVENANCE_FIELD_LABELS[k] !== undefined);
+  const origin = provenanceOrigin(fields, history);
+  const atts = entry.attachments || [];
+
+  const rows = [];
+  rows.push(`<div class="prov-line"><span class="prov-key">來源</span><span>${esc(origin.title)}</span></div>`);
+  rows.push(`<p class="sub prov-detail">${esc(origin.detail)}</p>`);
+  if (origin.warn) rows.push(`<p class="prov-orphan">${esc(origin.warn)}</p>`);
+
+  rows.push(`<div class="prov-line"><span class="prov-key">資料庫編號</span><span>entry ${entry.id}${entry.folder_id ? `／folder ${entry.folder_id}` : "（收件匣）"}</span></div>`);
+  rows.push(`<div class="prov-line"><span class="prov-key">建立</span><span>${esc(entry.created_at || "—")}</span></div>`);
+  rows.push(`<div class="prov-line"><span class="prov-key">最後更新</span><span>${esc(entry.updated_at || "未曾更新")}</span></div>`);
+
+  for (const [k, v] of internal) {
+    const shown = k === "_content_hash" ? `${String(v).slice(0, 12)}…` : String(v);
+    rows.push(`<div class="prov-line"><span class="prov-key">${esc(PROVENANCE_FIELD_LABELS[k])}</span><span class="prov-mono">${esc(shown)}</span></div>`);
+  }
+
+  // AI 動過哪些地方——人工內容與 AI 產出必須分得清楚
+  const aiRows = [];
+  if (entry.analysis_at || entry.analysis_json) {
+    const st = stateLabel(entry.analysis_at);
+    aiRows.push(`<div class="prov-line"><span class="prov-key">深度解析</span><span class="${st.cls}">${esc(st.text)}${entry.analysis_model ? `｜模型 ${esc(entry.analysis_model)}` : ""}</span></div>`);
+  }
+  for (const a of atts) {
+    const parts = [];
+    if (a.kind === "audio" || a.transcript || a.transcribed_at) {
+      const st = stateLabel(a.transcribed_at);
+      parts.push(`轉文字：<span class="${st.cls}">${esc(st.text)}</span>`);
+    }
+    if (a.kind !== "audio" || a.ocr_text || a.ocr_at) {
+      const st = stateLabel(a.ocr_at);
+      parts.push(`擷取文字：<span class="${st.cls}">${esc(st.text)}</span>`);
+    }
+    if (a.analysis_at) {
+      const st = stateLabel(a.analysis_at);
+      parts.push(`深度解析：<span class="${st.cls}">${esc(st.text)}</span>`);
+    }
+    if (parts.length) {
+      aiRows.push(`<div class="prov-line"><span class="prov-key">${esc(a.filename)}</span><span>${parts.join("｜")}</span></div>`);
+    }
+  }
+  const aiBlock = aiRows.length
+    ? `<h4 class="prov-sub">AI 對這筆做過什麼</h4>${aiRows.join("")}
+       <p class="sub prov-detail">「已判定不需處理」代表跑過但沒有可擷取的內容（例如照片裡沒有文字），不是漏掉——所以不會被重複扣費。</p>`
+    : `<h4 class="prov-sub">AI 對這筆做過什麼</h4><p class="sub">還沒有任何 AI 處理紀錄。</p>`;
+
+  const historyBlock = historyError
+    ? `<h4 class="prov-sub">操作履歷</h4><p class="sub">載入失敗：${esc(historyError)}</p>`
+    : history.length
+      ? `<h4 class="prov-sub">操作履歷（新到舊，只增不刪）</h4>
+         <ul class="prov-history">${history.map((h) =>
+           `<li><span class="prov-mono">${esc(h.created_at)}</span> <strong>${esc(h.action)}</strong>${h.detail ? `：${esc(h.detail)}` : ""}</li>`
+         ).join("")}</ul>`
+      : `<h4 class="prov-sub">操作履歷</h4><p class="sub">沒有履歷紀錄（這筆可能建立於履歷功能之前）。</p>`;
+
+  const rawBlock = `
+    <details class="prov-raw">
+      <summary>原始資料列（Cloudflare D1 實際存的欄位）</summary>
+      <p class="sub">超長的文字欄位只顯示開頭並標示總長度，避免整份 OCR 全文塞爆畫面。</p>
+      <pre>entries：
+${esc(JSON.stringify(clipForRaw(entry), null, 2))}</pre>
+      ${atts.length ? `<pre>attachments（${atts.length} 筆）：
+${esc(JSON.stringify(atts.map(clipForRaw), null, 2))}</pre>` : ""}
+    </details>`;
+
+  box.innerHTML = `<div class="prov-box">${rows.join("")}${aiBlock}${historyBlock}${rawBlock}</div>`;
+}
+
 async function loadRelations(entryId) {
   const box = $("e-relations");
   if (!box) return; // modal 可能已經關閉（切換太快）

@@ -42,7 +42,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "58";
+const UI_VERSION = "59";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 const AI_AUTO_SAFE_NEURONS = 7000;
@@ -458,6 +458,21 @@ async function handleApi(request, env, url) {
     if (!entry) return bad("找不到紀錄", 404);
     const { results: atts } = await db.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all();
     return json({ ...entry, attachments: atts });
+  }
+  // 一筆記事的操作履歷（history 表是 append-only 的稽核軌跡）。
+  // 這張表從第一版就在寫，但一直沒有任何地方讀得到——等於白記。前台的
+  // 「這筆資料的來歷」面板用它回答「誰在何時對這筆做了什麼」，對專利／
+  // 法規場景要的證據鏈來說，這是最基本的一環。
+  const entryHistoryMatch = path.match(/^\/entries\/(\d+)\/history$/);
+  if (entryHistoryMatch && method === "GET") {
+    const id = Number(entryHistoryMatch[1]);
+    const entry = await db.prepare("SELECT id FROM entries WHERE id = ?").bind(id).first();
+    if (!entry) return bad("找不到紀錄", 404);
+    const limit = Math.min(Number(url.searchParams.get("limit") || 50) || 50, 200);
+    const { results } = await db.prepare(
+      "SELECT id, action, detail, folder_id, created_at FROM history WHERE entry_id = ? ORDER BY id DESC LIMIT ?"
+    ).bind(id, limit).all();
+    return json({ history: results });
   }
   if (entryMatch && method === "PUT") {
     const id = Number(entryMatch[1]);

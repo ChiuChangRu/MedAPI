@@ -186,6 +186,19 @@ function makeDB() {
       return { results: [], changes: 1 };
     }
 
+    // ---- 來歷面板：履歷讀取 ----
+    if (q === "SELECT id FROM entries WHERE id = ?") {
+      const row = tables.entries.find((e) => e.id === args[0]);
+      return { results: row ? [{ id: row.id }] : [], changes: 0 };
+    }
+    if (q === "SELECT id, action, detail, folder_id, created_at FROM history WHERE entry_id = ? ORDER BY id DESC LIMIT ?") {
+      const rows = tables.history
+        .filter((h) => h.entry_id === args[0])
+        .sort((a, b) => b.id - a.id)
+        .slice(0, args[1]);
+      return { results: rows, changes: 0 };
+    }
+
     // ---- PUT /entries/:id 的欄位合併測試用 ----
     if (q === "SELECT * FROM entries WHERE id = ?") {
       const row = tables.entries.find((e) => e.id === args[0]);
@@ -497,4 +510,52 @@ test("renderTree：巢狀物件／陣列展開、鍵名可搜、黑名單鍵排�
   const long = renderTree({ a: "x".repeat(70000) });
   assert.ok(long.length < 61000);
   assert.match(long, /已截斷/);
+});
+
+// ---------- 「這筆資料的來歷」面板 ----------
+
+test("GET /entries/:id/history 讀得到操作履歷（history 表原本只寫不讀）", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  db.tables.entries.push({ id: 5, folder_id: 1, title: "有履歷的記事", fields_json: "{}", body: "" });
+  db.tables.history.push({ id: 1, entry_id: 5, folder_id: 1, action: "新增紀錄", detail: "現場採集", created_at: "2026-07-20 10:00:00Z" });
+  db.tables.history.push({ id: 2, entry_id: 5, folder_id: 1, action: "來源同步更新", detail: "coating：親水塗層配方", created_at: "2026-07-26 02:00:00Z" });
+  db.tables.history.push({ id: 3, entry_id: 99, folder_id: 1, action: "別人的履歷", detail: "", created_at: "2026-07-26 03:00:00Z" });
+
+  const res = await call(env, "/entries/5/history");
+  assert.equal(res.status, 200);
+  assert.equal(res.data.history.length, 2, "只回這筆的履歷");
+  assert.equal(res.data.history[0].action, "來源同步更新", "新到舊排序");
+  assert.deepEqual(db.unhandled, [], "不該下出預期外的 SQL");
+});
+
+test("GET /entries/:id/history 查無此記事回 404，不是回空陣列", async () => {
+  const env = makeEnv();
+  const res = await call(env, "/entries/9999/history");
+  assert.equal(res.status, 404);
+});
+
+test("來歷面板：raw 檢視會截斷超長欄位並標示總長度，不靜默砍掉", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
+  const fn = app.match(/function clipForRaw\(row\)[\s\S]*?\n}/)[0];
+  assert.match(fn, /共 \$\{v\.length\} 字/, "截斷要講總長度");
+  for (const key of ["body", "transcript", "ocr_text", "analysis_json"]) {
+    assert.match(fn, new RegExp(`"${key}"`), `${key} 是可能超長的欄位，要納入截斷`);
+  }
+});
+
+test("來歷面板：同步來的資料要標示來源，孤兒要警示，AI 產出與人工內容分得清楚", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
+  const origin = app.match(/function provenanceOrigin\(fields, history\)[\s\S]*?\n}/)[0];
+  assert.match(origin, /_sid \|\| fields\.litdb_id/, "新舊兩種同步識別碼都要認");
+  assert.match(origin, /_orphaned/, "來源已移除要警示");
+  assert.match(origin, /透過 MCP/, "要分得出是對話裡建立的");
+  // 三態時間戳一定要翻成人看得懂的話，不能直接把 'skipped' 丟到畫面上
+  const state = app.match(/function stateLabel\(value\)[\s\S]*?\n}/)[0];
+  for (const s of ["skipped", "processing", "failed"]) {
+    assert.match(state, new RegExp(`"${s}"`), `${s} 狀態要有對應說明`);
+  }
+  assert.match(app, /AI 對這筆做過什麼/, "AI 動過哪裡要獨立一段");
 });
