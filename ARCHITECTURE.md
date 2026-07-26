@@ -204,14 +204,26 @@ fieldlog/
   每日 cron 自動同步、sync_log 可追溯、同義詞入庫＋`add_synonym` 對話中
   即補即用、SCAN_CAP 命中上限明確警示、stripPdfMetadata 大綱誤殺修正。
   詳見上面第二節之 D。FTS5 全文索引刻意延後（資料量接近 3000 筆再做）。
-- [~] **深度解析層（規格書 II）進行中（2026-07-26）**：欄位已就緒——
-  entries／attachments 各加 analysis_json／analysis_at／analysis_model／
-  analysis_profile／analysis_hash 五欄，litdb 的 patentResults 已寫入
-  analysis_json（analysis_model='litdb-原生'），search_fieldlog 掃得到、
-  get_fieldlog_entry/attachment 呈現時明確標示「AI 產出，非現場紀錄」。
-  **尚未做**：analysis_profiles 模板表＋呼叫 Claude 的解析引擎（項目 9/10）
-  與跨件綜整 syntheses（項目 13）——卡在三個待長儒決策的問題：金鑰接法
-  （綁 litdb-worker 或 fieldlog 自持金鑰）、日常模型等級、舊資料回補範圍
+- [~] **深度解析層（規格書 II）：欄位層已就緒，解析引擎決議暫緩（2026-07-26）**
+  - **已完成**：entries／attachments 各加 analysis_json／analysis_at／
+    analysis_model／analysis_profile／analysis_hash 五欄；litdb 的
+    patentResults 已寫入 analysis_json（`analysis_model='litdb-原生'`），
+    `search_fieldlog` 掃得到、`get_fieldlog_entry`／`get_fieldlog_attachment`
+    呈現時明確標示「AI 產出，非現場紀錄」。也就是說：**已經有的分析查得到、
+    看得到、而且不會被誤當成現場證據**——這一段的價值不依賴解析引擎
+  - **暫緩**：analysis_profiles 模板表＋呼叫 Claude 的解析引擎（項目 9／10）、
+    跨件綜整 syntheses（項目 13）。長儒 2026-07-26 決議先不做
+  - **決議前提（之後要做時直接照這個做，不用重新討論）**：
+    1. **金鑰**：規格書建議「Service Binding 綁 litdb-worker（它已是 Claude
+       API proxy）」——**這個前提不成立**：查證過 `chiuchangru/litdb` 是純
+       GitHub Pages 靜態網站，沒有任何 Cloudflare Worker、沒有後端。所以
+       只剩「fieldlog 自持 `ANTHROPIC_API_KEY` secret 直接打
+       api.anthropic.com」一條路，要做時就走這條
+    2. **模型**：一律 Sonnet（不做 Opus 分級）。模型名存進 analysis_profiles
+       表，之後隨時可改，不寫死在程式碼
+    3. **範圍**：**只解析新資料，舊資料一律不動**；另外提供手動按鈕，讓長儒
+       針對單筆重要的型錄／標準當下解析。不做全量回補（避免一次燒完預算才
+       發現 prompt 模板要改）
 - [x] **MCP Server 已完成並上線（2026-07-18，持續加工具）**：`mcp/` 目錄，
   獨立 Worker `medapi-mcp`，19 個工具跨三個來源（wiki 3 個、隨身記 9 個
   ——含資料夾階層、`list_fieldlog_entries`／`list_attachments` 目錄層

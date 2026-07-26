@@ -169,9 +169,13 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
   不改程式碼；同步狀態用 MCP 的 `sync_status` 查。仍然不下載 PDF、不建附件。
   把讀完的文獻折進 wiki A/B 技術條目本文，仍只是待讀清單，還沒做。
 - **深度解析層（規格書 II）**：entries/attachments 的 analysis_* 五欄已就緒
-  並接上搜尋/呈現；解析引擎（analysis_profiles 模板表＋呼叫 Claude）與跨件
-  綜整還沒做，卡在三個待決策：金鑰接法（litdb-worker 綁定 vs fieldlog 自持）、
-  日常模型等級、舊資料回補範圍。
+  並接上搜尋/呈現（litdb 既有的專利分析查得到、且標示為 AI 產出）。**解析
+  引擎本身長儒決議暫緩**，之後要做時三個前提已定案，不用重新討論：
+  (1) 金鑰走 fieldlog 自持 `ANTHROPIC_API_KEY`——規格書原本建議綁
+  litdb-worker 當 proxy，但查證後 `chiuchangru/litdb` 是純 GitHub Pages
+  靜態站、根本沒有 Worker，那個前提不成立；(2) 一律 Sonnet，不做 Opus
+  分級，模型名放 analysis_profiles 表可隨時改；(3) 只解析新資料、舊資料
+  不動，另給手動按鈕逐筆解析——不做全量回補。
 - **參展系統既有待辦**：`docs/app.js` 的 `TEAM_EMAIL` 還是佔位字串；
   GitHub Pages 靜態版部署未開；`app/` FastAPI 版後台無登入驗證。
 
