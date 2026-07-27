@@ -400,6 +400,8 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 
 /* Tier 2 深度處理狀態列（PDF 專用，手動觸發） */
 .att-tier2 { font-size: 12px; margin-top: 4px; color: var(--text-muted); }
+/* 節錄版偵測警示（頁數跟目錄推算不符／來源是已知預覽站） */
+.tier2-warn { font-size: 12px; margin-top: 2px; color: #b91c1c; font-weight: 600; }
 
 /* AI 整理狀態摺疊列：預設收合只露一行狀態，附件多時頁面不會被文字撐爆 */
 .att-ai summary {

@@ -42,7 +42,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "63";
+const UI_VERSION = "64";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -783,6 +783,9 @@ async function handleApi(request, env, url) {
     const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
     const sourcePdfRaw = request.headers.get("x-source-pdf-id");
     const sourcePdfId = sourcePdfRaw !== null && sourcePdfRaw !== "" ? Number(sourcePdfRaw) : null;
+    // 節錄版偵測用：只在頂層檔案（不是深度處理拆出來的頁面圖）記來源網址
+    const sourceUrlRaw = request.headers.get("x-source-url");
+    const sourceUrl = !sourcePdfId && sourceUrlRaw ? decodeURIComponent(sourceUrlRaw).trim().slice(0, 500) : "";
     const entry = await db.prepare("SELECT folder_id FROM entries WHERE id = ?").bind(entryId).first();
     if (!entry) return bad("找不到附件所屬記事", 404);
     // 新檔直接比 SHA-256；舊檔尚無 hash 時，只針對同檔名同大小者讀 R2 補算一次，
@@ -821,8 +824,8 @@ async function handleApi(request, env, url) {
     const durationRaw = request.headers.get("x-duration-secs");
     const durationSecs = durationRaw !== null && durationRaw !== "" ? Math.max(0, Math.round(Number(durationRaw))) : null;
     const r = await db.prepare(
-      "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, offset_secs, source_pdf_id, page_no, duration_secs, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(entryId, kind, filename, filename, key, body.byteLength, mime, offsetSecs, sourcePdfId, pageNo, durationSecs, contentHash, now()).run();
+      "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, offset_secs, source_pdf_id, page_no, duration_secs, content_hash, source_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(entryId, kind, filename, filename, key, body.byteLength, mime, offsetSecs, sourcePdfId, pageNo, durationSecs, contentHash, sourceUrl, now()).run();
     const attachmentId = r.meta.last_row_id;
     if (!sourcePdfId) {
       await autoRenameAttachment(db, {
@@ -962,6 +965,13 @@ async function handleApi(request, env, url) {
     if (body.skip_ocr) {
       await db.prepare("UPDATE attachments SET ocr_at = 'skipped' WHERE id = ?").bind(id).run();
       await logHistory(db, old.entry_id, null, "設為不整理", `${old.filename}（不擷取文字）`);
+      return json({ ok: true });
+    }
+    // Tier 2 深度處理時前端用 pdf.js 讀到這份 PDF「實際」有幾頁，存起來跟目錄
+    // 推算的頁數比對，抓節錄版（見 schema.js total_pages 欄位註解）
+    if (body.total_pages !== undefined) {
+      const totalPages = Number(body.total_pages) || null;
+      await db.prepare("UPDATE attachments SET total_pages = ? WHERE id = ?").bind(totalPages, id).run();
       return json({ ok: true });
     }
     const category = (body.category !== undefined ? body.category : old.category) || "";

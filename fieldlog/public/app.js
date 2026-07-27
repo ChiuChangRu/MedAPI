@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "63";
+const APP_VERSION = "64";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -125,6 +125,32 @@ function isPdfAtt(a) {
 // 的 detectNativeTextKind），前端只需要知道「這種檔案也可以按擷取文字」
 function isNativeDocAtt(a) {
   return /\.(docx|xlsx|pptx|txt|md|csv|json|log)$/i.test(a.filename || "");
+}
+
+// 標準文件節錄版偵測（2026-07-27 長儒回報：ISO 10555-8 只到 p6、缺 Annex A/B）。
+// 已知只提供節錄頁數的標準預覽站——這份清單會一直長，遇到新的直接加進來即可
+const PREVIEW_SOURCE_DOMAINS = ["standards.iteh.ai", "sai-global.com", "webstore.ansi.org"];
+function matchPreviewDomain(url) {
+  if (!url) return null;
+  const lower = url.toLowerCase();
+  return PREVIEW_SOURCE_DOMAINS.find((d) => lower.includes(d)) || null;
+}
+
+// 從目錄文字 best-effort 推算「這份標準應該有幾頁」：目錄常見「Annex A ... 3」
+// 這種章節名稱後面跟著頁碼（不論用點狀引導線還是純空白對齊），取抓到的最大
+// 頁碼。抓不到就回 null——這只是提示用的粗略推算，不是精確剖析，不能保證每份
+// 文件的目錄格式都吃得到，抓錯或抓不到都不該讓人以為「系統說沒問題」。
+function deriveExpectedPages(text) {
+  if (!text) return null;
+  let max = null;
+  for (const line of text.split(/\n+/)) {
+    if (!/\b(Annex|Bibliography|Appendix)\b/i.test(line)) continue;
+    const m = line.match(/(\d{1,4})\s*$/);
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (n > 0 && n < 2000 && (max === null || n > max)) max = n;
+  }
+  return max;
 }
 
 // 長文（PDF 全文可達數萬字）在清單裡只顯示開頭
@@ -1645,10 +1671,17 @@ async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
     if (!fileRes.ok) throw new Error(`下載 PDF 失敗（HTTP ${fileRes.status}）`);
     const pdf = await pdfjsLib.getDocument({ data: await fileRes.arrayBuffer() }).promise;
     const total = pdf.numPages;
+    // 記下這份 PDF「實際」有幾頁（pdf.js 讀出來的真數字），用來跟目錄推算的
+    // 頁數比對、抓節錄版——即使這次沒有新頁面要處理也要記，不然永遠沒機會存到
+    if (Number(pdfAtt.total_pages) !== total) {
+      await api(`/attachments/${pdfAtt.id}`, { method: "PUT", body: JSON.stringify({ total_pages: total }) }).catch(() => {});
+      pdfAtt.total_pages = total;
+    }
     const completedPageNos = new Set(existingPages.filter((a) => a.ocr_at).map((a) => Number(a.page_no)));
     const pendingCount = Math.max(0, total - completedPageNos.size);
     if (!pendingCount) {
       showToast(`深度處理已完成：${total} 頁都已有結果，不會重複扣額度`);
+      openEntry(entryId); // total_pages 可能剛補上，重繪才會秀出節錄版偵測結果
       return;
     }
     if (total > 40 && !confirm(`這份 PDF 有 ${total} 頁，已有 ${completedPageNos.size} 頁完成，尚有 ${pendingCount} 頁。接續處理只會執行未完成頁面，確定繼續嗎？`)) {
@@ -1998,9 +2031,28 @@ function attHtml(a, siblings) {
   const tier2Pages = (siblings || []).filter((x) => x.source_pdf_id === a.id);
   const tier2Count = tier2Pages.length;
   const tier2Done = new Set(tier2Pages.filter((x) => x.ocr_at).map((x) => Number(x.page_no))).size;
-  const tier2Bit = !isPdfAtt(a) || !TRANSCRIBE_ENABLED ? "" : tier2Count
+  // 節錄版偵測：實際頁數優先用 total_pages（pdf.js 讀到的真數字），還沒跑過深度
+  // 處理、拿不到真數字時，退回用「已建立的深度頁面數」頂著用
+  const actualPages = a.total_pages || tier2Count || null;
+  const tocText = tier2Pages
+    .slice().sort((x, y) => Number(x.page_no) - Number(y.page_no))
+    .slice(0, 5)
+    .map((x) => x.ocr_text || "")
+    .join("\n");
+  const expectedPages = deriveExpectedPages(tocText);
+  const previewDomain = matchPreviewDomain(a.source_url);
+  const tier2Warnings = [];
+  if (expectedPages && actualPages && expectedPages > actualPages) {
+    tier2Warnings.push(`⚠️ 依目錄推算原始文件應有 ${expectedPages} 頁，這份只有 ${actualPages} 頁，可能是節錄版`);
+  }
+  if (previewDomain) {
+    tier2Warnings.push(`⚠️ 來源網址含「${esc(previewDomain)}」，這類預覽站常只提供節錄頁數，建議人工確認`);
+  }
+  const tier2Warn = tier2Warnings.length ? `<p class="tier2-warn">${tier2Warnings.join("；")}</p>` : "";
+  const tier2Core = tier2Count
     ? `<p class="att-tier2">🔬 深度頁面：${tier2Done} 頁完成／${tier2Count} 頁已建立 <a href="#" class="att-tier2-btn" data-id="${a.id}">檢查並接續</a></p>`
     : `<p class="att-tier2"><a href="#" class="att-tier2-btn" data-id="${a.id}" title="把這份 PDF 逐頁轉成圖片並跑 AI 辨識，補齊一般擷取抓不到的圖形化排版/圖表內容。手動觸發、只處理這一份，較耗時間與額度">🔬 深度處理（逐頁轉圖辨識）</a></p>`;
+  const tier2Bit = !isPdfAtt(a) || !TRANSCRIBE_ENABLED ? "" : `${tier2Core}${tier2Warn}`;
   // PDF 塗鴉：實作在 pdf-editor.js（獨立載入，因為要動態抓 pdf-lib）。
   // 那支檔案載入後會掛上 window.fieldlogOpenPdfEditor；還沒載入完就先不顯示這個入口。
   const doodleBit = isPdfAtt(a) ? `<a href="#" class="att-pdf-doodle" data-id="${a.id}">✍️ 塗鴉</a>` : "";
@@ -2110,6 +2162,7 @@ async function putFile(entryId, blob, filename, offsetSecs, meta) {
   // Tier 2 深度處理：PDF 逐頁 render 成圖片時，帶回來源 PDF id 與頁碼
   if (meta && meta.sourcePdfId !== undefined && meta.sourcePdfId !== null) headers["x-source-pdf-id"] = String(meta.sourcePdfId);
   if (meta && meta.pageNo !== undefined && meta.pageNo !== null) headers["x-page-no"] = String(meta.pageNo);
+  if (meta && meta.sourceUrl) headers["x-source-url"] = encodeURIComponent(meta.sourceUrl);
   const res = await fetch("/api/upload", { method: "POST", headers, body: blob });
   const responseBody = await res.json().catch(() => ({}));
   if (res.status === 409 && responseBody.duplicate) {
@@ -2121,18 +2174,29 @@ async function putFile(entryId, blob, filename, offsetSecs, meta) {
   return responseBody;
 }
 
+// 標準文件常是從網路下載，之後可能發現只是節錄／預覽版（見 deriveExpectedPages
+// 與 PREVIEW_SOURCE_DOMAINS）。上傳時順手問一句來源網址，選填、不擋流程，之後
+// 才有辦法自動標「這可能是預覽站抓下來的」，不用靠人記住每份文件的來歷。
+function isDocLikeFile(f) {
+  return /\.(pdf|docx?|xlsx?|pptx?)$/i.test(f.name || "");
+}
+
 async function uploadFiles(entryId, input) {
   const files = input.files ? Array.from(input.files) : [];
   if (!files.length) return;
   input.value = "";
   const status = $("e-upload-status");
+  const sourceUrl = files.some(isDocLikeFile)
+    ? (prompt("這份文件的來源網址（選填，例如標準官網的下載頁；之後可用來提醒可能是節錄版）：") || "").trim()
+    : "";
   let done = 0;
   let duplicates = 0;
   for (const f of files) {
     if (f.size > 50 * 1024 * 1024) { showToast(`${f.name} 超過 50MB，略過`); continue; }
     status.textContent = `上傳中…（${done + 1}/${files.length}）`;
+    const meta = sourceUrl && isDocLikeFile(f) ? { sourceUrl } : null;
     try {
-      const uploaded = await putFile(entryId, f, f.name, null);
+      const uploaded = await putFile(entryId, f, f.name, null, meta);
       if (uploaded.duplicate) duplicates++; else done++;
     }
     catch { await queueFile(entryId, f, f.name, null); done++; }

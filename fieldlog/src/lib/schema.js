@@ -169,6 +169,14 @@ export const MIGRATIONS = [
   `ALTER TABLE attachments ADD COLUMN analysis_model TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN analysis_profile TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN analysis_hash TEXT DEFAULT ''`,
+  // 標準文件可能只是節錄／預覽版（例如從 standards.iteh.ai 等預覽站下載，
+  // 官方全文其實更長）。source_url 讓上傳時選填記下下載來源，用來比對已知
+  // 預覽站網域；total_pages 存 Tier 2 深度處理時 pdf.js 讀到的「這個檔案實際
+  // 有幾頁」，用來跟目錄推算的頁數互相比對，抓出頁數不夠的節錄版（2026-07-27
+  // 長儒回報：ISO 10555-8 只到 p6、缺 Annex A/B，之後這種情況要能自動標警示，
+  // 不要靠人記）。
+  `ALTER TABLE attachments ADD COLUMN source_url TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN total_pages INTEGER`,
 ];
 
 /**
