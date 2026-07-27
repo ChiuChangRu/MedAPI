@@ -42,7 +42,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "59";
+const UI_VERSION = "60";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 const AI_AUTO_SAFE_NEURONS = 7000;
@@ -1045,6 +1045,7 @@ async function handleApi(request, env, url) {
     let reserved = Number(reservedRow?.total || 0);
     let processed = 0;
     const transcripts = [];
+    const failed = [];
     for (const audio of candidates) {
       const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
       if (cloudUsed + reserved + estimate > 7000) {
@@ -1063,12 +1064,21 @@ async function handleApi(request, env, url) {
         transcripts.push({ attachmentId: audio.id, offsetSecs: Number(audio.offset_secs || 0), text });
         processed++;
       } catch (err) {
+        // 只讓「這一段」失敗，不中斷整批：舊寫法一遇到單一段落轉錄出錯就整批
+        // return，還把 stopped:true 一起回給前端。前端看到 stopped 會把
+        // AUDIO.liveTranscriptionStopped 設成 true，永久關掉這次錄音剩下所有
+        // 段落的即時轉錄——結果是一次偶發的轉錄錯誤（例如 Whisper 短暫故障），
+        // 讓使用者往後每一段都卡在「⏳ 未整理」，看起來像「錄音完全壞掉」，
+        // 其實只是這支端點把「單段失敗」跟「額度保護，該停下來」混為一談。
+        // 兩者分開：額度保護還是提早 return＋stopped:true（上面那個 if），
+        // 這裡單純繼續跑下一個候選段落。
         await db.prepare("UPDATE attachments SET transcribed_at = 'auto_failed' WHERE id = ?").bind(audio.id).run();
         await db.prepare("UPDATE ai_usage_reservations SET status = 'failed' WHERE attachment_id = ?").bind(audio.id).run();
-        return json({ processed, stopped: true, reason: `自動轉錄失敗，未自動重試：${err.message}`, transcripts });
+        await logHistory(db, entryId, null, "自動轉錄失敗", `${audio.filename}：${err.message}（不會自動重試，可在附件上手動重試）`);
+        failed.push({ attachmentId: audio.id, reason: err.message });
       }
     }
-    return json({ processed, stopped: false, cloudUsed, reserved, transcripts });
+    return json({ processed, stopped: false, cloudUsed, reserved, transcripts, failed });
   }
 
   // ---- 照片擷取文字（影像 skill，與 Medtec 共用同一份模組）----

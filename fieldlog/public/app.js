@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "59";
+const APP_VERSION = "60";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1031,9 +1031,14 @@ async function openEntry(id) {
     closeEntry();
     if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadInbox(); loadFolders(); }
   };
+  // 錄影／拍照要開全螢幕鏡頭預覽，跟詳情頁沒辦法同時顯示，關掉合理
+  // （結束後 finishPhoto／onVideoSegmentStop 會自動 openEntry 帶你回來）。
+  // 錄音不需要畫面、只是背景跑的浮動小工具（z-index 高於詳情頁），
+  // 沒有理由把整頁關掉——按下去卻整個畫面跳走，讓人搞不清楚錄音到底
+  // 有沒有接對這一筆，也是這次要修的「除了打叉不要自動關掉」。
   $("e-video").onclick = () => { closeEntry(); startVideo(id); };
   $("e-photo").onclick = () => { closeEntry(); startPhoto(id); };
-  $("e-audio").onclick = () => { closeEntry(); startAudio(id); };
+  $("e-audio").onclick = () => startAudio(id);
   const fileInput = $("e-file");
   fileInput.onchange = () => uploadFiles(id, fileInput);
   const processBtn = $("e-process");

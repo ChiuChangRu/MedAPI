@@ -943,3 +943,15 @@ test("分類種子的內容與程式碼裡的預設清單一致（避免只改�
     assert.ok(Array.isArray(item.fields), `${item.name} 的 fields 要是陣列`);
   }
 });
+
+test("記事詳情頁按🎙錄音不會自動關掉整頁——錄音不需要畫面，只是浮動小工具（2026-07-27 回報）", async () => {
+  // 使用者反應「按下錄音鍵後畫面跳走，很亂」：e-audio 原本跟 e-video/e-photo
+  // 一樣，onclick 先 closeEntry() 才 startAudio()。但錄影/拍照要開全螢幕鏡頭，
+  // 關掉合理；錄音只是背景跑的浮動列（z-index 高於詳情頁），沒有理由把整頁關掉，
+  // 而且錄音可能持續好幾分鐘，這段時間畫面全跳走比錄影/拍照的短暫跳走更擾民。
+  const { readFile } = await import("node:fs/promises");
+  const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
+  assert.match(app, /\$\("e-audio"\)\.onclick = \(\) => startAudio\(id\);/, "錄音鍵不該再呼叫 closeEntry()");
+  assert.match(app, /\$\("e-video"\)\.onclick = \(\) => \{ closeEntry\(\); startVideo\(id\); \};/, "錄影開全螢幕鏡頭，關閉詳情頁維持不變");
+  assert.match(app, /\$\("e-photo"\)\.onclick = \(\) => \{ closeEntry\(\); startPhoto\(id\); \};/, "拍照開全螢幕鏡頭，關閉詳情頁維持不變");
+});
