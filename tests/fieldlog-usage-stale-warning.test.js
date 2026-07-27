@@ -96,3 +96,20 @@ test("isLive 用嚴格比較（=== 0），不會把 null 誤判成今天（Numbe
   const fn = src.match(/function renderAiUsage\(item, overallLagDays\)[\s\S]*?\n}/)[0];
   assert.match(fn, /item\.dataLagDays === 0/, "要用嚴格比較，Number(item.dataLagDays) === 0 會把 null 也算進去");
 });
+
+test("安全門檻拉到跟免費上限一樣時（2026-07-27 起的新預設），不再顯示過時的『70%』字樣", async () => {
+  // 長儒確認這一層完全不花錢，把 AI_AUTO_SAFE_NEURONS 從 7,000 拉到跟
+  // AI_DAILY_FREE_NEURONS 一樣（10,000）。畫面文字要跟著算，不能留著
+  // 「70% 安全門檻」這種寫死的舊字面——那正是上一輪「① 今日」誤導使用者的
+  // 同一種病灶（畫面斷言沒有跟著背後的數字變動）。
+  const renderAiUsage = await loadRenderAiUsage();
+  const html = renderAiUsage(baseItem({ dataLagDays: 0, used: 1500, safeLimit: 10000 }), 0);
+  assert.doesNotMatch(html, /70% 安全門檻/, "安全門檻已經不是免費額度的 70%，不該再講 70%");
+  assert.match(html, /用完免費額度才停/, "門檻等於免費上限時要講清楚『用完才停』，不是講一個假的百分比");
+});
+
+test("worker.js 的額度保護訊息從常數算門檻數字，不寫死百分比字面", async () => {
+  const src = await readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /預估將超過 70% 安全門檻/, "訊息不該再寫死『70%』——上次調整常數後這句話沒跟著改，變成講假話");
+  assert.match(src, /預估將超過安全門檻（\$\{AI_AUTO_SAFE_NEURONS/, "改成從常數算，之後調整額度不會再漏改這句話");
+});

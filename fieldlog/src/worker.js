@@ -42,10 +42,13 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "61";
+const UI_VERSION = "62";
 
 const AI_DAILY_FREE_NEURONS = 10000;
-const AI_AUTO_SAFE_NEURONS = 7000;
+// 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
+// 免費上限一樣沒有額外風險，改成不再留 30% 緩衝。真的會花錢的月付費上限
+// （AI_MONTHLY_SOFT_USD／HARD_USD）維持原值，那層才需要另外評估要不要調。
+const AI_AUTO_SAFE_NEURONS = 10000;
 const AI_MONTHLY_SOFT_USD = 4.5;
 const AI_MONTHLY_HARD_USD = 5;
 const AI_RATE_PER_1000_NEURONS = 0.011;
@@ -1049,7 +1052,9 @@ async function handleApi(request, env, url) {
     for (const audio of candidates) {
       const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
       if (cloudUsed + reserved + estimate > 7000) {
-        return json({ processed, stopped: true, reason: "預估將超過 70% 安全門檻", cloudUsed, reserved, transcripts });
+        // 訊息裡的門檻數字直接讀常數，不寫死百分比字面——上次改 AI_AUTO_SAFE_NEURONS
+        // 沒跟著改這裡的文字，畫面一直講「70%」，即使門檻早就不是免費額度的 70% 了
+        return json({ processed, stopped: true, reason: `預估將超過安全門檻（${AI_AUTO_SAFE_NEURONS.toLocaleString()} Neurons）`, cloudUsed, reserved, transcripts });
       }
       const claim = await db.prepare(
         "INSERT OR IGNORE INTO ai_usage_reservations (attachment_id, usage_date, estimated_neurons, status, created_at) VALUES (?, ?, ?, 'reserved', ?)"

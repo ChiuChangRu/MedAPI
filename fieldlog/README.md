@@ -24,8 +24,10 @@ D1、不同 R2，互不影響。
    「加入主畫面」變成 App
 
 > Workers AI（錄音轉文字）不用另外開通，`wrangler.jsonc` 已含 AI
-> binding。免費額度每天 10,000 Neurons；Fieldlog 在 7,000 停止自動轉錄，
-> 本月實際 AI 付費達 USD 4.50 時停止新的 AI 處理（錄音與記事仍正常）。
+> binding。免費額度每天 10,000 Neurons；Fieldlog 自動轉錄用完當天免費額度
+> 就停（這一層完全在免費範圍內，不會產生費用），本月實際 AI 付費（USD，
+> 是 Cloudflare 帳單的計價單位，跟其他平台的計費幣別無關）達 USD 4.50 時
+> 停止新的 AI 處理（錄音與記事仍正常）。
 
 ## AI 費用雙層保護
 

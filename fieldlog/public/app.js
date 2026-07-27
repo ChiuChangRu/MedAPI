@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "61";
+const APP_VERSION = "62";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -221,8 +221,13 @@ function renderAiUsage(item, overallLagDays) {
     : `這是 ${fmtUsageNumber(item.dataLagDays)} 天前的數字（帳單回報延遲），不代表今天已經被擋——系統只認「當天」的帳單資料才會暫停自動轉錄`;
   // 三條額度各自獨立判斷是否超過 10%，只顯示真的有量的那幾條——
   // 之前是「這個 AI 項目本身有沒有超過 10%」擋一次就三條全出，0% 的那條也會佔畫面
+  // 安全門檻是「免費額度的幾成」用算的，不寫死百分比字面——上次
+  // AI_AUTO_SAFE_NEURONS 從 7000 調到 10000（等於免費上限本身，因為這一層
+  // 完全不花錢，拉滿也沒風險）之後，畫面若還寫死「70% 安全門檻」就會變成
+  // 誤導：其實已經是 100%、用完免費額度才停，不再是留 30% 緩衝。
+  const safePct = freeLimit ? Math.round(safeLimit / freeLimit * 100) : 100;
   const rows = [
-    { pct: safeLimit ? used / safeLimit * 100 : 0, html: bar("① 自動安全額度", Math.min(used, safeLimit), safeLimit, "safe", isLive ? (used >= safeLimit ? "今日已停止自動轉錄" : "70% 安全門檻") : staleNote) },
+    { pct: safeLimit ? used / safeLimit * 100 : 0, html: bar("① 自動安全額度", Math.min(used, safeLimit), safeLimit, "safe", isLive ? (used >= safeLimit ? "今日已停止自動轉錄" : safePct >= 100 ? "用完免費額度才停" : `${safePct}% 安全門檻`) : staleNote) },
     { pct: freeLimit ? used / freeLimit * 100 : 0, html: bar("② 免費額度", Math.min(used, freeLimit), freeLimit, "daily", isLive ? (used > freeLimit ? "今日已進入按量計費" : "每日 00:00 UTC 重置") : staleNote) },
     { pct: hardBudget ? paidCost / hardBudget * 100 : 0, html: bar("③ 本月付費 AI 預算（USD）", paidCost, hardBudget, "paid", paidCost >= softBudget ? `已達 USD ${softBudget.toFixed(2)}，Fieldlog AI 已軟停止` : `USD ${softBudget.toFixed(2)} 軟停止｜USD ${hardBudget.toFixed(2)} Gateway 硬停`, 4) },
   ];
@@ -975,7 +980,7 @@ async function openEntry(id) {
     <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "📥 收件匣"}</p>
     <section class="merged-transcript ${mergedTranscript ? "" : "empty"}">
       <div><strong>📝 合併逐字稿</strong><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>複製</button></div>
-      ${mergedTranscript ? `<pre>${esc(mergedTranscript)}</pre>` : `<p class="sub" id="e-auto-status">新錄音會在 70% 安全額度內自動轉錄並合併；舊錄音請使用下方「Cloudflare AI 整理」。</p>`}
+      ${mergedTranscript ? `<pre>${esc(mergedTranscript)}</pre>` : `<p class="sub" id="e-auto-status">新錄音會在每日免費額度內自動轉錄並合併；舊錄音請使用下方「Cloudflare AI 整理」。</p>`}
       ${mergedTranscript ? `<p class="sub" id="e-auto-status">正在檢查是否有新的安全轉錄項目…</p>` : ""}
     </section>
     ${!folder ? `<div class="archive-row"><label>歸檔到：</label><select id="e-folder">
