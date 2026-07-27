@@ -70,6 +70,10 @@ function makeDB({ attachments = [] } = {}) {
       if (row) { row.transcript = args[0]; row.transcribed_at = args[1]; }
       return { results: [], changes: row ? 1 : 0 };
     }
+    if (q === "SELECT * FROM attachments WHERE id = ?") {
+      const row = tables.attachments.find((a) => a.id === args[0]);
+      return { results: row ? [{ ...row }] : [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO history")) {
       tables.history.push({ id: nextHistoryId++, entry_id: args[0], folder_id: args[1], action: args[2], detail: args[3], created_at: args[4] });
       return { results: [], changes: 1 };
@@ -128,6 +132,14 @@ function makeEnv(db, { transcribeResults = {} } = {}) {
 
 async function callAutoTranscribe(env, entryId) {
   const req = new Request(`https://x/api/entries/${entryId}/auto-transcribe`, {
+    method: "POST", headers: { "x-pin": "pin", "content-type": "application/json" }, body: "{}",
+  });
+  const res = await fieldlogWorker.fetch(req, env);
+  return { status: res.status, data: await res.json() };
+}
+
+async function callManualTranscribe(env, attachmentId) {
+  const req = new Request(`https://x/api/attachments/${attachmentId}/transcribe`, {
     method: "POST", headers: { "x-pin": "pin", "content-type": "application/json" }, body: "{}",
   });
   const res = await fieldlogWorker.fetch(req, env);
@@ -203,4 +215,63 @@ test("沒有可轉錄的候選時，直接回報原因，不呼叫 AI 也不動�
   assert.equal(res.data.processed, 0);
   assert.match(res.data.reason, /沒有可安全自動轉錄/);
   assert.equal(aiCalled, false);
+});
+
+// ---------- 手動重試（/attachments/:id/transcribe）：2026-07-27 截圖回報 ----------
+//
+// 使用者按附件上的「手動重試」，跳出「伺服器錯誤：2001: Please configure AI
+// Gateway in the Cloudflare dashboard」——這支端點原本沒接住 transcribeAttachment
+// 的錯誤，會直接洩漏到最外層的通用 500 handler，附件不會被標記、也不會留下
+// 任何履歷，使用者只看得到一句不知所云的訊息，猜不出下一步要做什麼。
+
+test("手動重試失敗時：標記附件、留下履歷，回傳 502 而不是洩漏成通用『伺服器錯誤：500』", async () => {
+  const db = makeDB({ attachments: [audioAttachment({ id: 7, entry_id: 40, filename: "錄音-段1.webm" })] });
+  const env = makeEnv(db);
+  env.AI = { async run() { throw new Error("暫時性錯誤"); } };
+
+  const res = await callManualTranscribe(env, 7);
+  assert.equal(res.status, 502, "不該是通用的 500，且要真的回傳，不是被外層 catch 吃掉");
+  assert.doesNotMatch(res.data.error, /^伺服器錯誤：/, "不該再洩漏成最外層那句通用文字");
+  assert.match(res.data.error, /暫時性錯誤/);
+
+  const att = db.tables.attachments.find((a) => a.id === 7);
+  assert.equal(att.transcribed_at, "auto_failed", "失敗要標記，附件上才會出現『手動重試』連結");
+
+  const entry = db.tables.history.find((h) => h.entry_id === 40);
+  assert.ok(entry, "手動重試失敗也要留履歷，不能悄悄發生");
+  assert.equal(entry.action, "手動轉錄失敗");
+  assert.match(entry.detail, /暫時性錯誤/);
+});
+
+test("手動重試成功時行為不變：回傳轉出來的文字，附件正常標記完成", async () => {
+  const db = makeDB({ attachments: [audioAttachment({ id: 8, entry_id: 41 })] });
+  const env = makeEnv(db);
+  env.AI = { async run() { return { text: "逐字稿內容" }; } };
+
+  const res = await callManualTranscribe(env, 8);
+  assert.equal(res.status, 200);
+  assert.equal(res.data.text, "逐字稿內容");
+  const att = db.tables.attachments.find((a) => a.id === 8);
+  assert.equal(att.transcript, "逐字稿內容");
+});
+
+test("AI Gateway 設定錯誤（Cloudflare 錯誤碼 2001）會被翻成清楚的中文修法，不是留一句英文代碼", async () => {
+  // 這是實測遇到、而且會讓「所有」AI 呼叫都失敗的已知案例（不是額度問題）：
+  // AI_GATEWAY_ID 指到一個 Cloudflare Dashboard 裡其實不存在的 Gateway。
+  const db = makeDB({ attachments: [audioAttachment({ id: 9, entry_id: 42 })] });
+  const env = makeEnv(db);
+  env.AI = { async run() { throw new Error("2001: Please configure AI Gateway in the Cloudflare dashboard"); } };
+
+  const res = await callManualTranscribe(env, 9);
+  assert.equal(res.status, 502);
+  assert.match(res.data.error, /AI_GATEWAY_ID/, "要點名是哪個設定值有問題");
+  assert.match(res.data.error, /不存在的 Gateway/, "要講清楚成因，不是額度用完");
+  assert.match(res.data.error, /2001/, "原始錯誤碼還是要保留，方便對照 Cloudflare 文件");
+
+  // 同一個翻譯邏輯在自動批次轉錄那條路徑也要生效
+  const db2 = makeDB({ attachments: [audioAttachment({ id: 10, entry_id: 43 })] });
+  const env2 = makeEnv(db2);
+  env2.AI = { async run() { throw new Error("2001: Please configure AI Gateway in the Cloudflare dashboard"); } };
+  const batchRes = await callAutoTranscribe(env2, 43);
+  assert.match(batchRes.data.failed[0].reason, /AI_GATEWAY_ID/);
 });

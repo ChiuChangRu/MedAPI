@@ -42,7 +42,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "62";
+const UI_VERSION = "63";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -194,6 +194,20 @@ function budgetedAi(env) {
       });
     },
   };
+}
+
+// Cloudflare 回的原始錯誤常是英文技術代碼，使用者看了不知道要做什麼、也
+// 容易誤以為是額度問題。目前唯一遇過、而且會讓「所有」AI 呼叫都失敗（不是
+// 只有某一段、也跟額度無關）的已知案例：AI_GATEWAY_ID 指到一個 Cloudflare
+// Dashboard 裡其實不存在的 Gateway（2026-07-27 使用者截圖：「2001: Please
+// configure AI Gateway in the Cloudflare dashboard」）。遇到就直接把修法
+// 講清楚，不要留一句英文代碼讓人不知所措。
+function friendlyAiError(err) {
+  const msg = err?.message || String(err);
+  if (/2001/.test(msg) && /AI Gateway/i.test(msg)) {
+    return `AI Gateway 設定有誤：Worker 的 AI_GATEWAY_ID 指到一個 Cloudflare Dashboard 裡不存在的 Gateway，導致「所有」AI 呼叫都會失敗，這不是額度用完。修法二選一：(1) 到 Cloudflare Dashboard → AI → AI Gateway 建立同名 Gateway（見 fieldlog/README.md「AI 費用雙層保護」）；(2) 先移除 Worker 的 AI_GATEWAY_ID 變數讓功能立刻恢復，之後再補設定。原始錯誤：${msg}`;
+  }
+  return msg;
 }
 
 async function transcribeAttachment(env, db, old) {
@@ -1026,8 +1040,19 @@ async function handleApi(request, env, url) {
     if (old.kind !== "audio") return bad("只有錄音檔可以轉文字");
     try { await enforceAiSoftBudget(env); }
     catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
-    const text = await transcribeAttachment(env, db, old);
-    return json({ text });
+    try {
+      const text = await transcribeAttachment(env, db, old);
+      return json({ text });
+    } catch (err) {
+      // 附件上的「手動重試」／「重抄」連結呼叫的就是這支端點，原本沒有接住
+      // transcribeAttachment 的錯誤，會直接洩漏到最外層變成一句不知所云的
+      // 「伺服器錯誤：500」，既不會標記這筆附件、也不會留下任何紀錄可查，
+      // 使用者只會看到同一顆按鈕一直失敗、猜不出原因。
+      const message = friendlyAiError(err);
+      await db.prepare("UPDATE attachments SET transcribed_at = 'auto_failed' WHERE id = ?").bind(id).run();
+      await logHistory(db, old.entry_id, null, "手動轉錄失敗", `${old.filename}：${message}`);
+      return bad(message, 502);
+    }
   }
 
   const autoTranscribeMatch = path.match(/^\/entries\/(\d+)\/auto-transcribe$/);
@@ -1077,10 +1102,11 @@ async function handleApi(request, env, url) {
         // 其實只是這支端點把「單段失敗」跟「額度保護，該停下來」混為一談。
         // 兩者分開：額度保護還是提早 return＋stopped:true（上面那個 if），
         // 這裡單純繼續跑下一個候選段落。
+        const message = friendlyAiError(err);
         await db.prepare("UPDATE attachments SET transcribed_at = 'auto_failed' WHERE id = ?").bind(audio.id).run();
         await db.prepare("UPDATE ai_usage_reservations SET status = 'failed' WHERE attachment_id = ?").bind(audio.id).run();
-        await logHistory(db, entryId, null, "自動轉錄失敗", `${audio.filename}：${err.message}（不會自動重試，可在附件上手動重試）`);
-        failed.push({ attachmentId: audio.id, reason: err.message });
+        await logHistory(db, entryId, null, "自動轉錄失敗", `${audio.filename}：${message}（不會自動重試，可在附件上手動重試）`);
+        failed.push({ attachmentId: audio.id, reason: message });
       }
     }
     return json({ processed, stopped: false, cloudUsed, reserved, transcripts, failed });
