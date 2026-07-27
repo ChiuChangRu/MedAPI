@@ -10,7 +10,7 @@
 | 團隊共筆 | ✅ 拜訪狀態、部門標籤、索取資料、紀錄共筆（D1），含修改歷程 | ❌ 只能寄 Email | ✅ SQLite 後台 |
 | 特色 | 部門視角＋邦特產品線視角、交叉檢索、口袋名單、CSV 匯出、PIN 登入 | 最簡單 | 內部主機用 |
 
-**給 8 位同事一起用，請部署 `cloudflare/` 團隊版，步驟見 [`cloudflare/README.md`](cloudflare/README.md)。**
+**給 9 位同事一起用，請部署 `cloudflare/` 團隊版，步驟見 [`cloudflare/README.md`](cloudflare/README.md)。**
 
 ## 🚀 取得公開網址：開啟 GitHub Pages（一次性設定，30 秒）
 

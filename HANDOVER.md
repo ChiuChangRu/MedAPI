@@ -14,7 +14,7 @@ Worker ＋一個 git 版控的知識庫：
 | 子系統 | 是什麼 | 目錄 | 線上網址 |
 |---|---|---|---|
 | **fieldlog（隨身記）** | 個人現場採集：錄影/拍照/錄音/速記，AI 轉文字 | `fieldlog/` | `https://fieldlog.gogoyankee.workers.dev` |
-| **medtec-2026（參展系統）** | 8 人團隊共筆：585 家展商名單、拜訪紀錄、附件 | `cloudflare/` | `https://medtec-2026.gogoyankee.workers.dev` |
+| **medtec-2026（參展系統）** | 9 人團隊共筆：585 家展商名單、拜訪紀錄、附件 | `cloudflare/` | `https://medtec-2026.gogoyankee.workers.dev` |
 | **medapi-mcp（MCP 問答層）** | 預設唯讀（僅 create_fieldlog_entry／create_relation 例外，只能新增），讓 claude.ai 跨三來源自然語言查詢 | `mcp/` | `https://medapi-mcp.gogoyankee.workers.dev` |
 | **策略地圖 Wiki（知識層）** | 純 Markdown、git 版控的技術知識條目 | `fieldlog/public/wiki/` | `.../wiki.html`（隨身記內，PIN 保護） |
 
