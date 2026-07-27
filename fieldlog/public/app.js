@@ -608,14 +608,18 @@ async function startPhoto(entryId) {
       video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
     });
   } catch (err) { showToast("無法開啟相機：" + err.message); return; }
+  // 錄音進行中若沒指定 entryId（例如直接按首頁「📷 拍照」），併入正在錄音的那筆紀錄，
+  // 而不是另外開一筆——不然錄音和拍照就會被拆到兩個地方，事後還要自己對照時間點合併
+  const linkedAudio = !entryId && AUDIO ? AUDIO : null;
   let ref;
-  try { ref = await ensureEntryForCapture(entryId, "拍照"); }
+  try { ref = await ensureEntryForCapture(entryId || (linkedAudio ? linkedAudio.entryId : null), "拍照"); }
   catch (err) { stream.getTracks().forEach((t) => t.stop()); showToast("無法建立紀錄：" + err.message); return; }
   $("photo-video").srcObject = stream;
   PHOTO = { stream, startedAt: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId };
   $("photo-count").textContent = "";
   $("photo-folder-chip").textContent = folderChipLabel(PHOTO.folderId);
   $("photo-overlay").style.display = "flex";
+  if (linkedAudio) showToast("拍照將併入正在進行的錄音紀錄");
 }
 
 async function photoSnap() {
@@ -632,10 +636,13 @@ async function photoSnap() {
   PHOTO.photos++;
   $("photo-count").textContent = `📷 ${PHOTO.photos}`;
   const { entryId } = PHOTO;
+  // 跟正在錄音的那段對上號才有 offset_secs，才能標「錄音第幾分幾秒拍的」、
+  // 也才能在擷取文字時跟逐字稿做【對話關聯】
+  const offset = AUDIO && AUDIO.entryId === entryId ? segOffset(AUDIO) : null;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
-  const filename = `照片-${Date.now()}.jpg`;
-  try { await putFile(entryId, blob, filename, null); }
-  catch { await queueFile(entryId, blob, filename, null); showToast("網路不穩，照片先存手機"); }
+  const filename = offset !== null ? `照片-${fmtSecs(offset).replace(":", "")}.jpg` : `照片-${Date.now()}.jpg`;
+  try { await putFile(entryId, blob, filename, offset); }
+  catch { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); }
 }
 
 function finishPhoto() {
