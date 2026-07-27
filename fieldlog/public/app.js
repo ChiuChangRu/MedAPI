@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "60";
+const APP_VERSION = "61";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -203,16 +203,27 @@ function renderAiUsage(item, overallLagDays) {
   const paidCost = Number(item.monthlyPaidCost || 0);
   const softBudget = Number(item.softBudget || 4.5);
   const hardBudget = Number(item.hardBudget || 5);
+  // 帳單資料本來就有回報延遲（幾乎每天都有）。後端判斷「今天要不要暫停自動
+  // 轉錄」時，只認「日期正好是今天」的帳單數字，差一天都當成 0（見 worker.js
+  // 的 cloudUsed = aiLimit?.label.includes(today) ? aiLimit.used : 0）。這裡
+  // 的 used／limit 顯示的卻是「目前拿得到的最新一天」，只要有延遲就不是
+  // 「今天」的數字——「已停止自動轉錄」這種斷言只能在資料確實是今天時講，
+  // 不然只是拿舊數字嚇人，讓人誤以為今天已經被擋住了（2026-07-27 使用者
+  // 回報：面板連續四天顯示「已停止」，但那其實是回報延遲那一天的舊數字）。
+  const isLive = item.dataLagDays === 0; // 嚴格比較：null（沒有日期資訊）不算「今天」
   const bar = (label, value, limit, tone, note, digits = 0) => `<div class="ai-budget-row ${tone}">
     <div><b>${label}</b><span>${digits ? Number(value).toFixed(digits) : fmtUsageNumber(value)} / ${digits ? Number(limit).toFixed(digits) : fmtUsageNumber(limit)}</span></div>
     <div class="usage-bar"><i style="width:${Math.min(100, Number(value) / Number(limit) * 100)}%"></i></div>
     <small>${note}</small>
   </div>`;
+  const staleNote = item.dataLagDays === null
+    ? "尚無帳單資料可判斷——不代表今天已經被擋，系統只認「當天」的帳單資料才會暫停自動轉錄"
+    : `這是 ${fmtUsageNumber(item.dataLagDays)} 天前的數字（帳單回報延遲），不代表今天已經被擋——系統只認「當天」的帳單資料才會暫停自動轉錄`;
   // 三條額度各自獨立判斷是否超過 10%，只顯示真的有量的那幾條——
   // 之前是「這個 AI 項目本身有沒有超過 10%」擋一次就三條全出，0% 的那條也會佔畫面
   const rows = [
-    { pct: safeLimit ? used / safeLimit * 100 : 0, html: bar("① 今日自動安全額度", Math.min(used, safeLimit), safeLimit, "safe", used >= safeLimit ? "已停止自動轉錄" : "70% 安全門檻") },
-    { pct: freeLimit ? used / freeLimit * 100 : 0, html: bar("② 今日免費額度", Math.min(used, freeLimit), freeLimit, "daily", used > freeLimit ? "今日已進入按量計費" : "每日 00:00 UTC 重置") },
+    { pct: safeLimit ? used / safeLimit * 100 : 0, html: bar("① 自動安全額度", Math.min(used, safeLimit), safeLimit, "safe", isLive ? (used >= safeLimit ? "今日已停止自動轉錄" : "70% 安全門檻") : staleNote) },
+    { pct: freeLimit ? used / freeLimit * 100 : 0, html: bar("② 免費額度", Math.min(used, freeLimit), freeLimit, "daily", isLive ? (used > freeLimit ? "今日已進入按量計費" : "每日 00:00 UTC 重置") : staleNote) },
     { pct: hardBudget ? paidCost / hardBudget * 100 : 0, html: bar("③ 本月付費 AI 預算（USD）", paidCost, hardBudget, "paid", paidCost >= softBudget ? `已達 USD ${softBudget.toFixed(2)}，Fieldlog AI 已軟停止` : `USD ${softBudget.toFixed(2)} 軟停止｜USD ${hardBudget.toFixed(2)} Gateway 硬停`, 4) },
   ];
   const visible = rows.filter((r) => r.pct >= 10);
