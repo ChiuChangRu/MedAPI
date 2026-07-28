@@ -190,8 +190,15 @@ body {
   .folders-toolbar { flex-wrap: wrap; }
   .folder-list.grid-view { display: flex; }
   .folder-list.grid-view .folder-card { min-height: 0; align-items: center; }
+  /* 這裡本來是 3 欄的 grid（類型｜名稱｜筆數）。類型 chip 跟筆數文字都是
+     auto 寬、不換行，遇到「其他專案」這種較長的類型、或「N 筆記事｜N 個
+     子資料夾」這種較長的筆數文字時，兩邊都變寬，名稱那欄（僅剩的彈性欄）
+     就被壓到只剩幾像素，中文名稱變成一個字一行。改成 flex-wrap，用 order
+     讓名稱永遠自己獨佔一行，類型／筆數換到下一行一起顯示。 */
   .folder-list.grid-view .folder-card-main,
-  .list-view .folder-card-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
+  .list-view .folder-card-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px; }
+  .folder-list.grid-view .folder-name,
+  .list-view .folder-name { order: -1; flex: 1 1 100%; }
   .folder-date { display: none; }
   .folder-drag, .folder-trash-zone, .entry-new-folder-zone { display: none; }
   .inner-view-toggle { display: none; }
