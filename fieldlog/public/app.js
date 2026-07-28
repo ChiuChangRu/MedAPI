@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "69";
+const APP_VERSION = "70";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -83,6 +83,7 @@ let MERGE_SOURCE_ID = null;
 let MERGE_ENTRY_SOURCE_ID = null;
 let MOVE_ENTRY_ID = null;
 let MOVE_ENTRY_TITLE = "";
+let MOVE_ENTRY_PREV_FOLDER = null;
 let CREATE_FOLDER_RESOLVE = null;
 // 開啟「單一檔案」詳情時記住是哪一份，這樣整理完重新開啟仍停在同一個檔案上
 let FOCUSED_FILE = null;
@@ -160,12 +161,21 @@ function clipText(s, n) {
   return s.length > n ? s.slice(0, n) + `…（共 ${s.length} 字）` : s;
 }
 
-function showToast(text) {
+function showToast(text, { actionLabel, onAction } = {}) {
   const t = $("toast");
-  t.textContent = text;
+  t.innerHTML = `<span>${esc(text)}</span>`;
+  t.classList.toggle("has-action", !!actionLabel);
+  if (actionLabel) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toast-action";
+    btn.textContent = actionLabel;
+    btn.onclick = () => { t.classList.remove("show"); onAction(); };
+    t.appendChild(btn);
+  }
   t.classList.add("show");
   clearTimeout(showToast._timer);
-  showToast._timer = setTimeout(() => t.classList.remove("show"), 2600);
+  showToast._timer = setTimeout(() => t.classList.remove("show"), actionLabel ? 6000 : 2600);
 }
 
 // 全螢幕編輯框：轉文字稿／擷取文字（PDF 全文可達數萬字）用瀏覽器原生 prompt()
@@ -476,7 +486,11 @@ function renderFolders() {
       el.classList.remove("drop-target");
       const targetId = Number(el.dataset.id);
       const entryId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
-      if (entryId) { moveInboxEntry(entryId, targetId); return; }
+      if (entryId) {
+        const prevFolder = ev.dataTransfer.getData("application/x-fieldlog-entry-folder");
+        moveInboxEntry(entryId, targetId, prevFolder ? Number(prevFolder) : null);
+        return;
+      }
       const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-folder"));
       if (sourceId && sourceId !== targetId) mergeFolder(sourceId, targetId);
     };
@@ -548,7 +562,7 @@ async function loadInbox() {
 }
 
 function entryRowHtml(e) {
-  return `<div class="entry-row" data-id="${e.id}">
+  return `<div class="entry-row" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
     <span class="entry-meta">${esc(e.created_at.slice(5, 16))}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
@@ -605,6 +619,7 @@ function bindEntryRows(wrap) {
       ev.dataTransfer.effectAllowed = "move";
       ev.dataTransfer.setData("application/x-fieldlog-entry", drag.closest(".entry-row").dataset.id);
       ev.dataTransfer.setData("application/x-fieldlog-entry-title", drag.closest(".entry-row").querySelector(".entry-title")?.textContent || "新資料夾");
+      ev.dataTransfer.setData("application/x-fieldlog-entry-folder", drag.closest(".entry-row").dataset.folderId || "");
       drag.closest(".entry-row").classList.add("dragging");
       document.body.classList.add("entry-dragging");
     };
@@ -617,9 +632,10 @@ function bindEntryRows(wrap) {
 }
 
 function openMoveEntryDialog(entryId) {
-  const row = $("inbox-list").querySelector(`.entry-row[data-id="${entryId}"]`);
+  const row = document.querySelector(`.entry-row[data-id="${entryId}"]`);
   MOVE_ENTRY_ID = entryId;
   MOVE_ENTRY_TITLE = row?.querySelector(".entry-title")?.textContent || "這筆記事";
+  MOVE_ENTRY_PREV_FOLDER = row?.dataset.folderId ? Number(row.dataset.folderId) : null;
   $("move-entry-desc").textContent = `將「${MOVE_ENTRY_TITLE}」移出收件匣；也可以直接建立新資料夾。`;
   $("move-entry-target").innerHTML = `<option value="__new__">＋ 建立新資料夾並歸檔</option>${FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("")}`;
   $("move-entry-overlay").classList.add("open");
@@ -628,6 +644,7 @@ function openMoveEntryDialog(entryId) {
 function closeMoveEntryDialog() {
   MOVE_ENTRY_ID = null;
   MOVE_ENTRY_TITLE = "";
+  MOVE_ENTRY_PREV_FOLDER = null;
   $("move-entry-overlay").classList.remove("open");
 }
 
@@ -750,13 +767,22 @@ async function createFolderAndMoveEntry(entryId, title) {
   await Promise.all([loadFolders(), loadInbox()]);
 }
 
-async function moveInboxEntry(entryId, folderId) {
+// previousFolderId：搬移前所在的資料夾（收件匣是 null）。拖曳偶爾會手滑歸檔錯
+// 資料夾，這裡記住原本位置，讓 toast 上的「上一動」能一鍵搬回去，不用重新找。
+async function moveInboxEntry(entryId, folderId, previousFolderId = null) {
   const folder = FOLDERS.find((f) => f.id === folderId);
   if (!folder) return;
   await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: folderId }) });
   closeMoveEntryDialog();
-  showToast(`已移至「${folder.name}」`);
-  await Promise.all([loadFolders(), loadInbox()]);
+  showToast(`已移至「${folder.name}」`, {
+    actionLabel: "上一動",
+    onAction: async () => {
+      await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: previousFolderId }) });
+      showToast(previousFolderId ? "已復原" : "已復原至收件匣");
+      await refreshFolderView();
+    },
+  });
+  await refreshFolderView();
 }
 
 async function newFolder() {
@@ -858,20 +884,26 @@ async function openFolder(id) {
   const entries = await Promise.all(summaries.map((e) =>
     e.att_count ? api(`/entries/${e.id}`) : Promise.resolve({ ...e, attachments: [] })
   ));
-  const files = entries.flatMap((e) =>
-    (e.attachments || []).filter((a) => !a.source_pdf_id).map((a) => ({ attachment: a, entryId: e.id }))
+  const visibleAtts = (e) => (e.attachments || []).filter((a) => !a.source_pdf_id);
+  // 只有「單一檔案」的記事才拆成單檔瀏覽；多檔案的記事（分段錄音、一次錄音夾
+  // 幾張照片…）要整筆一起顯示，不能把附件拆散成互不相干的檔案列——按檔名
+  // 全域排序會把同一次錄音的分段跟別筆記事的檔案混在一起，看起來像是資料被打散了。
+  const singleFileEntries = entries.filter((e) => visibleAtts(e).length === 1);
+  const multiFileEntries = entries.filter((e) => visibleAtts(e).length > 1);
+  const notes = entries.filter((e) => visibleAtts(e).length === 0);
+  const files = singleFileEntries.flatMap((e) =>
+    visibleAtts(e).map((a) => ({ attachment: a, entryId: e.id }))
   ).sort((a, b) => String(a.attachment.filename || "").localeCompare(
     String(b.attachment.filename || ""),
     "zh-Hant",
     { numeric: true, sensitivity: "base" },
   ));
-  // 有附件的記事只是上傳容器，不再另外列成一筆「筆記」——檔案已經在上面列過了。
-  // 真正的筆記＝完全沒有附件的記事。
-  const notes = entries.filter((e) => !(e.attachments || []).length);
   $("folder-entries").className = `entry-list inner-entry-list ${INNER_FOLDER_VIEW}-view`;
-  $("folder-entries").innerHTML = files.length || notes.length
+  $("folder-entries").innerHTML = files.length || multiFileEntries.length || notes.length
     ? `${files.length ? `<div class="archive-section-label">已歸檔檔案</div>
         <div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
+       ${multiFileEntries.length ? `<div class="archive-section-label">已歸檔紀錄（多檔案，例如分段錄音）</div>
+        <div class="archive-note-list">${multiFileEntries.map((e) => entryRowHtml({ ...e, att_count: visibleAtts(e).length })).join("")}</div>` : ""}
        ${notes.length ? `<div class="archive-section-label">已歸檔筆記</div>
         <div class="archive-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
@@ -2862,7 +2894,7 @@ function init() {
     const target = $("move-entry-target").value;
     if (!MOVE_ENTRY_ID) return;
     if (target === "__new__") createFolderAndMoveEntry(MOVE_ENTRY_ID, MOVE_ENTRY_TITLE).catch((err) => showToast("建立並歸檔失敗：" + err.message));
-    else if (Number(target)) moveInboxEntry(MOVE_ENTRY_ID, Number(target));
+    else if (Number(target)) moveInboxEntry(MOVE_ENTRY_ID, Number(target), MOVE_ENTRY_PREV_FOLDER);
   };
   $("move-entry-overlay").addEventListener("click", (e) => { if (e.target === $("move-entry-overlay")) closeMoveEntryDialog(); });
   $("merge-entry-cancel").onclick = closeMergeEntryDialog;
