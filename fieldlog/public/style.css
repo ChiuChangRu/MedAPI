@@ -156,6 +156,40 @@ body {
 .child-folder-list.list-view { display: flex; flex-direction: column; }
 .child-folder-list.list-view .child-folder-card,
 .child-folder-list.list-view .record-group-card { min-height: 62px; }
+/* 卡片模式：跟首頁採集按鈕（錄影／拍照／錄音／記事）同一套漸層光澤正方形
+   磚，子資料夾／已歸檔的多檔案紀錄看起來像一疊有質感的磚塊。只在夠寬的
+   螢幕上套用——手機版本來就沒有卡片／清單切換鈕（見下面的手機 media
+   query），會直接落回上面那組緊湊橫向列樣式，不用另外寫「復原」規則。 */
+@media (min-width: 720px) {
+  .child-folder-list.grid-view .child-folder-card,
+  .child-folder-list.grid-view .record-group-card {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; gap: 6px; padding: 16px;
+    border: none; border-radius: 14px; color: #fff;
+    background: linear-gradient(135deg, var(--accent), #14907f);
+    box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
+  }
+  .child-folder-list.grid-view .child-folder-card:hover,
+  .child-folder-list.grid-view .record-group-card:hover {
+    background: linear-gradient(135deg, var(--accent), #14907f);
+    box-shadow: 0 6px 18px rgba(15, 118, 110, 0.45);
+  }
+  .child-folder-list.grid-view .child-folder-card > span,
+  .child-folder-list.grid-view .record-group-card > span { font-size: 34px; }
+  .child-folder-list.grid-view .child-folder-card strong,
+  .child-folder-list.grid-view .record-group-card strong {
+    font-size: 14px; white-space: normal; word-break: break-all; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .child-folder-list.grid-view .child-folder-card small,
+  .child-folder-list.grid-view .record-group-card small { color: rgba(255, 255, 255, 0.85); }
+  .child-folder-list.grid-view .folder-level-chip { background: rgba(255, 255, 255, 0.25); color: #fff; }
+  .child-folder-list.grid-view .record-group-card { padding-right: 16px; }
+  .child-folder-list.grid-view .record-group-del {
+    color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.15); border-radius: 50%;
+  }
+  .child-folder-list.grid-view .record-group-del:hover { background: rgba(255, 255, 255, 0.32); opacity: 1; }
+}
 .inner-entry-list.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .inner-entry-list.grid-view .entry-row { position: relative; min-height: 130px; padding: 16px; align-items: flex-start; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(27,29,28,.06); }
 .inner-entry-list.grid-view .entry-title { flex-basis: calc(100% - 40px); font-size: 15px; font-weight: 650; line-height: 1.45; }
