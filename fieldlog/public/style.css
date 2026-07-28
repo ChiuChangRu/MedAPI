@@ -217,12 +217,13 @@ body {
   border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 18px;
 }
 .entry-drag:active { cursor: grabbing; }
+/* 原本桌機隱藏、只靠拖曳歸檔，但視窗夠寬、目標資料夾卻在捲動範圍外時，
+   滑鼠根本拖不到、拖曳中也沒有自動捲動——這種時候完全卡住。跟 .entry-merge
+   一樣桌機／手機都要看得到，拖曳只是這顆按鈕以外的另一種捷徑，不是唯一路徑。 */
 .entry-move {
-  display: none; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
   color: var(--accent-dark); background: #fff; cursor: pointer; font-size: 12px;
 }
-/* 合併沒有對應的拖曳操作可以取代，桌機／手機都要看得到，跟 .entry-move
-   不同（.entry-move 桌機隱藏是因為桌機用拖曳） */
 .entry-merge {
   padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
   color: var(--accent-dark); background: #fff; cursor: pointer; font-size: 12px;
@@ -257,7 +258,6 @@ body {
 .entry-del:hover { opacity: 1; }
 @media (max-width: 719px) {
   .entry-drag { display: none; }
-  .entry-move { display: inline-block; }
   /* 標題現在要跟時間、附件數、移動／合併／刪除三顆按鈕擠在同一行，窄螢幕
      可用寬度不夠時標題會被壓到只剩幾像素，中文字就會變成一字一行。讓標題
      自己獨佔一行，時間／按鈕換到下一行 */
