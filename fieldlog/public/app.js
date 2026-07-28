@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "64";
+const APP_VERSION = "65";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -80,6 +80,7 @@ let TRANSCRIBE_ENABLED = false;
 let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 let MERGE_SOURCE_ID = null;
+let MERGE_ENTRY_SOURCE_ID = null;
 let MOVE_ENTRY_ID = null;
 let MOVE_ENTRY_TITLE = "";
 let CREATE_FOLDER_RESOLVE = null;
@@ -534,6 +535,7 @@ function entryRowHtml(e) {
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
     <span class="entry-meta">${esc(e.created_at.slice(5, 16))}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
     <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
+    <button class="entry-merge" data-id="${e.id}" type="button" title="合併到另一筆記事">合併</button>
     <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄">🗑</button>
   </div>`;
 }
@@ -556,6 +558,9 @@ function bindEntryRows(wrap) {
   });
   wrap.querySelectorAll(".entry-move").forEach((btn) => {
     btn.onclick = (ev) => { ev.stopPropagation(); openMoveEntryDialog(Number(btn.dataset.id)); };
+  });
+  wrap.querySelectorAll(".entry-merge").forEach((btn) => {
+    btn.onclick = (ev) => { ev.stopPropagation(); openMergeEntryDialog(Number(btn.dataset.id), wrap); };
   });
   wrap.querySelectorAll(".entry-drag").forEach((drag) => {
     drag.onclick = (ev) => ev.stopPropagation();
@@ -588,6 +593,35 @@ function closeMoveEntryDialog() {
   MOVE_ENTRY_ID = null;
   MOVE_ENTRY_TITLE = "";
   $("move-entry-overlay").classList.remove("open");
+}
+
+// 合併目標直接從同一個列表容器（收件匣或資料夾內頁）現有的 .entry-row 讀，
+// 不用另外呼叫 API——候選名單自動只列出「目前畫面上看得到的」那些記事
+function openMergeEntryDialog(sourceId, wrap) {
+  const rows = [...wrap.querySelectorAll(".entry-row[data-id]")].filter((el) => Number(el.dataset.id) !== sourceId);
+  if (!rows.length) { showToast("沒有其他記事可以合併"); return; }
+  const sourceTitle = wrap.querySelector(`.entry-row[data-id="${sourceId}"] .entry-title`)?.textContent || "這筆記事";
+  MERGE_ENTRY_SOURCE_ID = sourceId;
+  $("merge-entry-desc").textContent = `將「${sourceTitle}」合併進另一筆記事；合併後這筆會被刪除，無法復原。`;
+  $("merge-entry-target").innerHTML = rows.map((el) =>
+    `<option value="${el.dataset.id}">${esc(el.querySelector(".entry-title")?.textContent || "（未命名）")}</option>`
+  ).join("");
+  $("merge-entry-overlay").classList.add("open");
+}
+
+function closeMergeEntryDialog() {
+  MERGE_ENTRY_SOURCE_ID = null;
+  $("merge-entry-overlay").classList.remove("open");
+}
+
+async function mergeEntry(sourceId, targetId) {
+  if (!confirm("確定合併這兩筆記事？來源記事會被刪除，無法復原。")) return;
+  try {
+    const result = await api(`/entries/${sourceId}/merge`, { method: "POST", body: JSON.stringify({ target_id: targetId }) });
+    closeMergeEntryDialog();
+    showToast(`已合併，移動 ${result.moved} 個附件${result.duplicates_removed ? `，略過 ${result.duplicates_removed} 個重複檔` : ""}`);
+    if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadInbox(); loadFolders(); }
+  } catch (err) { showToast("合併失敗：" + err.message); }
 }
 
 function closeCreateFolderDialog(result = null) {
@@ -2264,6 +2298,10 @@ function segOffset(session) { return Math.floor((Date.now() - session.startedAt)
 
 async function ensureEntryForCapture(entryId, titlePrefix) {
   if (entryId) return { entryId, folderId: CURRENT_FOLDER ? CURRENT_FOLDER.id : null };
+  // 沒指定 entryId 時，若已有進行中的錄音／錄影，併入同一次採集——例如
+  // 錄音中誤按主畫面較顯眼的「📷 拍照」，而不是浮動列裡的小相機鈕
+  const active = AUDIO || VIDEO;
+  if (active) return { entryId: active.entryId, folderId: active.folderId };
   const folderId = CURRENT_FOLDER ? CURRENT_FOLDER.id : null;
   const d = new Date();
   const title = `${titlePrefix} ${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -2473,10 +2511,15 @@ async function photoSnap() {
   PHOTO.photos++;
   $("photo-count").textContent = `📷 ${PHOTO.photos}`;
   const { entryId } = PHOTO;
+  // 若這筆紀事剛好是進行中的錄音／錄影，offset 要照它的時間軸算，跟
+  // audioPhotoSnap／videoSnap 的既有作法一致，逐字稿才能對得上這張照片
+  const session = (AUDIO && AUDIO.entryId === entryId) ? AUDIO
+    : (VIDEO && VIDEO.entryId === entryId) ? VIDEO : null;
+  const offset = session ? segOffset(session) : null;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
   const filename = `照片-${Date.now()}.jpg`;
-  try { await putFile(entryId, blob, filename, null); }
-  catch { await queueFile(entryId, blob, filename, null); showToast("網路不穩，照片先存手機"); }
+  try { await putFile(entryId, blob, filename, offset); }
+  catch { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); }
 }
 
 function finishPhoto() {
@@ -2771,6 +2814,12 @@ function init() {
     else if (Number(target)) moveInboxEntry(MOVE_ENTRY_ID, Number(target));
   };
   $("move-entry-overlay").addEventListener("click", (e) => { if (e.target === $("move-entry-overlay")) closeMoveEntryDialog(); });
+  $("merge-entry-cancel").onclick = closeMergeEntryDialog;
+  $("merge-entry-confirm").onclick = () => {
+    const targetId = Number($("merge-entry-target").value);
+    if (MERGE_ENTRY_SOURCE_ID && targetId) mergeEntry(MERGE_ENTRY_SOURCE_ID, targetId);
+  };
+  $("merge-entry-overlay").addEventListener("click", (e) => { if (e.target === $("merge-entry-overlay")) closeMergeEntryDialog(); });
   $("create-folder-cancel").onclick = () => closeCreateFolderDialog(null);
   $("create-folder-overlay").addEventListener("click", (e) => { if (e.target === $("create-folder-overlay")) closeCreateFolderDialog(null); });
   $("create-folder-form").onsubmit = (e) => {

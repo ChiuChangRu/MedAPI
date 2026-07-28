@@ -42,7 +42,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "64";
+const UI_VERSION = "65";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -530,6 +530,72 @@ async function handleApi(request, env, url) {
     await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
     await logHistory(db, null, old.folder_id, "刪除紀錄", old.title);
     return json({ ok: true });
+  }
+
+  // ---- 合併：把來源記事併入目標記事（附件搬過去，來源記事之後刪除）----
+  // 給拖放在觸控裝置上用不了的情況用（手機是這個 App 的主要使用場景）：
+  // 例如錄音中誤按了獨立的「📷 拍照」而不是浮動列裡的相機鈕，拆成兩筆
+  // 記事，事後用這支端點手動合併回去。
+  const entryMergeMatch = path.match(/^\/entries\/(\d+)\/merge$/);
+  if (entryMergeMatch && method === "POST") {
+    const sourceId = Number(entryMergeMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const targetId = Number(body.target_id || 0);
+    if (!targetId || targetId === sourceId) return bad("合併目標不正確");
+    const [source, target] = await Promise.all([
+      db.prepare("SELECT * FROM entries WHERE id = ?").bind(sourceId).first(),
+      db.prepare("SELECT * FROM entries WHERE id = ?").bind(targetId).first(),
+    ]);
+    if (!source || !target) return bad("找不到來源或目標紀錄", 404);
+
+    let sourceFields = {};
+    let targetFields = {};
+    try { sourceFields = JSON.parse(source.fields_json || "{}"); } catch { /* 壞 JSON 當空 */ }
+    try { targetFields = JSON.parse(target.fields_json || "{}"); } catch { /* 壞 JSON 當空 */ }
+    // 外部來源同步（sync.js）用 fields_json._sid／litdb_id 認記事；兩邊都有的話
+    // 合併只會留一組鍵，下次同步就把「消失」的那筆當新資料重複匯入一份。
+    if ((sourceFields._sid || sourceFields.litdb_id) && (targetFields._sid || targetFields.litdb_id)) {
+      return bad("兩筆都是外部來源同步管理的記事，合併會弄亂同步追蹤，請改用刪除或調整來源設定");
+    }
+
+    // 附件逐筆搬（不是整批一次 UPDATE）：attachments 有 (entry_id, content_hash)
+    // 的唯一索引，來源目標剛好有位元組完全相同的檔案時整批搬會直接撞索引失敗。
+    // 撞到就當成重複檔，比照既有「移除重複附件」邏輯處理掉。
+    const { results: sourceAtts } = await db.prepare("SELECT * FROM attachments WHERE entry_id = ?").bind(sourceId).all();
+    let moved = 0;
+    let duplicatesRemoved = 0;
+    for (const att of sourceAtts || []) {
+      try {
+        await db.prepare("UPDATE attachments SET entry_id = ? WHERE id = ?").bind(targetId, att.id).run();
+        moved++;
+      } catch {
+        const { results: pages } = await db.prepare("SELECT id, key FROM attachments WHERE source_pdf_id = ?").bind(att.id).all();
+        if (env.FILES) {
+          for (const page of pages || []) await env.FILES.delete(page.key).catch(() => {});
+          await env.FILES.delete(att.key).catch(() => {});
+        }
+        await db.prepare("DELETE FROM attachments WHERE source_pdf_id = ?").bind(att.id).run();
+        await db.prepare("DELETE FROM attachments WHERE id = ?").bind(att.id).run();
+        duplicatesRemoved++;
+      }
+    }
+
+    // relations 雙向重新指向目標，再清掉合併後產生的自我關聯
+    await db.prepare("UPDATE relations SET from_entry_id = ? WHERE from_entry_id = ?").bind(targetId, sourceId).run();
+    await db.prepare("UPDATE relations SET to_entry_id = ? WHERE to_entry_id = ?").bind(targetId, sourceId).run();
+    await db.prepare("DELETE FROM relations WHERE from_entry_id = to_entry_id").run();
+
+    // body 接起來，留下來源標題當分隔線；fields 合併不取代（目標優先），
+    // 跟上面 PUT 紀錄的既有規則一致
+    const sourcePart = [source.title ? `【併入：${source.title}】` : "", (source.body || "").trim()].filter(Boolean).join("\n");
+    const mergedBody = [(target.body || "").trim(), sourcePart].filter(Boolean).join("\n\n");
+    const mergedFields = JSON.stringify({ ...sourceFields, ...targetFields });
+    await db.prepare("UPDATE entries SET body = ?, fields_json = ?, updated_at = ? WHERE id = ?")
+      .bind(mergedBody, mergedFields, now(), targetId).run();
+    await db.prepare("DELETE FROM entries WHERE id = ?").bind(sourceId).run();
+    await logHistory(db, targetId, target.folder_id, "合併紀錄",
+      `${source.title || "（未命名）"} → ${target.title || "（未命名）"}；移動 ${moved} 個附件${duplicatesRemoved ? `，略過 ${duplicatesRemoved} 個重複檔` : ""}`);
+    return json({ ok: true, moved, duplicates_removed: duplicatesRemoved, target_id: targetId });
   }
 
   // 錄音／錄影中「記一句」：在資料庫端直接把一行接到 body 後面。
