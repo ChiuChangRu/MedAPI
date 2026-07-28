@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "65";
+const APP_VERSION = "66";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -543,6 +543,24 @@ function entryRowHtml(e) {
 function bindEntryRows(wrap) {
   wrap.querySelectorAll(".entry-row").forEach((el) => {
     el.onclick = () => openEntry(Number(el.dataset.id));
+    // 拖一筆記事到另一筆記事上面＝合併（跟拖到資料夾卡片上＝歸檔是同一組
+    // dataTransfer payload，.entry-row 本身當 drop target，直接呼叫既有的
+    // mergeEntry()，不用另外走對話框）
+    el.ondragover = (ev) => {
+      if (!ev.dataTransfer.types.includes("application/x-fieldlog-entry")) return;
+      ev.preventDefault();
+      el.classList.add("merge-target");
+      ev.dataTransfer.dropEffect = "move";
+    };
+    el.ondragleave = () => el.classList.remove("merge-target");
+    el.ondrop = (ev) => {
+      if (!ev.dataTransfer.types.includes("application/x-fieldlog-entry")) return;
+      ev.preventDefault();
+      el.classList.remove("merge-target");
+      const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
+      const targetId = Number(el.dataset.id);
+      if (sourceId && targetId && sourceId !== targetId) mergeEntry(sourceId, targetId);
+    };
   });
   wrap.querySelectorAll(".entry-del").forEach((btn) => {
     btn.onclick = async (ev) => {

@@ -206,6 +206,7 @@ body {
 }
 .entry-row:hover { border-color: var(--accent); }
 .entry-row.dragging { opacity: 0.4; }
+.entry-row.merge-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
 .entry-title { min-width: 0; flex: 1; }
 .entry-drag {
   flex: none; width: 28px; height: 36px; padding: 0;
