@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "74";
+const APP_VERSION = "75";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -79,6 +79,9 @@ let CURRENT_FOLDER = null; // 開啟中的資料夾物件
 let TRANSCRIBE_ENABLED = false;
 let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
+// 收件匣預設清單模式（本來就是待處理的草稿，清單本來就夠緊湊），卡片模式
+// 是給想要一眼看縮圖式排版的人選的，不像資料夾內頁的卡片那麼大張。
+let INBOX_VIEW = localStorage.getItem("fieldlog_inbox_view") || "list";
 let MERGE_SOURCE_ID = null;
 let MERGE_ENTRY_SOURCE_ID = null;
 let MOVE_ENTRY_ID = null;
@@ -553,10 +556,19 @@ async function mergeFolder(sourceId, targetId) {
   await Promise.all([loadFolders(), loadInbox()]);
 }
 
+function setInboxView(view) {
+  INBOX_VIEW = view;
+  localStorage.setItem("fieldlog_inbox_view", view);
+  loadInbox();
+}
+
 async function loadInbox() {
   const entries = await api("/entries?inbox=1");
   $("inbox-count").textContent = entries.length ? `（${entries.length}）` : "";
   $("inbox-panel").style.display = entries.length ? "block" : "none";
+  $("btn-inbox-grid").classList.toggle("active", INBOX_VIEW === "grid");
+  $("btn-inbox-list").classList.toggle("active", INBOX_VIEW === "list");
+  $("inbox-list").className = `entry-list ${INBOX_VIEW}-view`;
   $("inbox-list").innerHTML = entries.map(entryRowHtml).join("");
   bindEntryRows($("inbox-list"));
 }
@@ -2917,6 +2929,8 @@ function init() {
   folderUploadInput.onchange = () => uploadFilesToFolder(folderUploadInput);
   $("btn-folder-grid").onclick = () => setFolderView("grid");
   $("btn-folder-list").onclick = () => setFolderView("list");
+  $("btn-inbox-grid").onclick = () => setInboxView("grid");
+  $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
   $("btn-inner-list").onclick = () => setInnerFolderView("list");
   $("merge-folder-cancel").onclick = closeMergeFolderDialog;

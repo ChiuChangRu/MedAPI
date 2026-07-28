@@ -203,6 +203,19 @@ body {
 }
 
 .entry-list { display: flex; flex-direction: column; gap: 4px; }
+/* 收件匣卡片模式：跟資料夾內頁那種大卡片（min-height 130px）不是同一組樣式，
+   草稿本來就一堆，卡片故意做小一點，不要佔掉太多畫面。 */
+#inbox-list.grid-view {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px;
+}
+#inbox-list.grid-view .entry-row {
+  flex-wrap: wrap; align-items: flex-start; gap: 6px; padding: 10px;
+}
+#inbox-list.grid-view .entry-drag { display: none; } /* 卡片模式改靠「移動」按鈕，省掉抓手圖示佔位 */
+#inbox-list.grid-view .entry-title { flex: 1 1 100%; font-size: 13px; font-weight: 600; white-space: normal; }
+#inbox-list.grid-view .entry-meta { white-space: normal; }
+#inbox-list.grid-view .entry-move,
+#inbox-list.grid-view .entry-merge { padding: 4px 7px; font-size: 11px; }
 .entry-row {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);

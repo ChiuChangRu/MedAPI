@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=74" />
+<link rel="stylesheet" href="style.css?v=75" />
 <link rel="stylesheet" href="home.css" />
 </head>
 <body>
@@ -39,7 +39,13 @@
       </div>
 
       <section class="panel home-inbox-panel" id="inbox-panel">
-        <h2>📥 收件匣｜待整理 <span id="inbox-count" class="count"></span></h2>
+        <div class="folders-toolbar">
+          <h2>📥 收件匣｜待整理 <span id="inbox-count" class="count"></span></h2>
+          <div class="folder-view-toggle" aria-label="收件匣顯示模式">
+            <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">▦ 卡片</button>
+            <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
+          </div>
+        </div>
         <div id="inbox-list" class="entry-list"></div>
       </section>
     </section>
@@ -311,8 +317,8 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=74"></script>
+<script src="app.js?v=75"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=74"></script>
+<script src="pdf-editor.js?v=75"></script>
 </body>
 </html>
