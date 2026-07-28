@@ -42,7 +42,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "77";
+const UI_VERSION = "78";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -973,22 +973,19 @@ async function handleApi(request, env, url) {
       duplicatesRemoved++;
     }
     // 第二階段：標準文件專屬的整理——統一成「組織_編號_年份_中文標題.pdf」，
-    // 並清掉同一個資料夾裡同一份標準的重複檔（二進位相同、或內文幾乎相同）。
+    // 並清掉同一個資料夾裡同一份標準的重複檔（僅二進位完全相同才刪，見
+    // cleanup.js 開頭的說明：原本還有一層「內文幾乎相同」的模糊比對，
+    // 因為會誤刪 ISO 這類本來就大量共用樣板文字的文件，已經拿掉）。
     //
     // 這一段會刪列，而 attachments 有一個 (entry_id, content_hash) 的唯一索引；
     // 整理過程中會出現「暫時兩列同 hash」的中間狀態而撞索引，所以先卸索引、
     // 做完再建回去。建不回來的話一定要讓呼叫端知道（資料庫少了防重索引），
     // 不能默默成功。
-    const cleanupBody = await request.json().catch(() => ({}));
     await db.prepare("DROP INDEX IF EXISTS idx_att_entry_hash").run();
     let standardCleanup = null;
     let cleanupError = null;
     try {
-      standardCleanup = await cleanupStandardAttachments(env, db, {
-        logHistory,
-        // 預設不呼叫 AI：這支端點會在登入時自動跑，不能靜默扣額度
-        useAi: cleanupBody.use_ai === true,
-      });
+      standardCleanup = await cleanupStandardAttachments(env, db, { logHistory });
     } catch (err) {
       cleanupError = err.message;
     }
@@ -1005,7 +1002,6 @@ async function handleApi(request, env, url) {
       ok: true,
       checked: (results || []).length,
       renamed: renamed + standardCleanup.renamed,
-      pdf_compared: standardCleanup.pdf_compared,
       duplicates_removed: duplicatesRemoved + standardCleanup.duplicates_removed,
     });
   }
