@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "70";
+const APP_VERSION = "71";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -903,7 +903,7 @@ async function openFolder(id) {
     ? `${files.length ? `<div class="archive-section-label">已歸檔檔案</div>
         <div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
        ${multiFileEntries.length ? `<div class="archive-section-label">已歸檔紀錄（多檔案，例如分段錄音）</div>
-        <div class="archive-note-list">${multiFileEntries.map((e) => entryRowHtml({ ...e, att_count: visibleAtts(e).length })).join("")}</div>` : ""}
+        <div class="archive-record-list">${multiFileEntries.map((e) => entryRowHtml({ ...e, att_count: visibleAtts(e).length })).join("")}</div>` : ""}
        ${notes.length ? `<div class="archive-section-label">已歸檔筆記</div>
         <div class="archive-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;

@@ -641,6 +641,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .archive-note-list .entry-del { display: none; }
 .archive-note-list .entry-row::before { content: '📝'; font-size: 18px; }
 
+/* 多檔案記事（分段錄音、錄音夾照片…）歸檔後整筆顯示成一張卡片，看起來像
+   資料夾一樣把附件包在裡面，而不是被拆散成一堆各自獨立的檔案列。
+   跟純文字筆記不同，這裡仍保留拖曳／移動／合併／刪除，因為整筆搬動、
+   誤觸復原都還用得到。 */
+.archive-record-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.archive-record-list .entry-row { background: #f8fbfa; border-color: #cbe9e2; }
+.archive-record-list .entry-row::before { content: '📁'; font-size: 20px; }
+
 /* ===== 資料夾內的檔案列（一列＝一份檔案，可拖曳搬移）===== */
 .folder-file-row {
   display: grid; grid-template-columns: 28px minmax(0, 1fr) auto 40px 40px;
