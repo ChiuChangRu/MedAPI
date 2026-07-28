@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "71";
+const APP_VERSION = "72";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -2968,7 +2968,8 @@ function init() {
   $("audio-photo-cancel").onclick = closeAudioPhotoPopup;
   $("audio-photo-snap").onclick = audioPhotoSnap;
 
-  $("entry-overlay").addEventListener("click", (e) => { if (e.target === $("entry-overlay")) closeEntry(); });
+  // 記事詳情裡有可編輯的內文／欄位，點暗色背景就關掉太容易在選字、拖曳
+  // textarea 捲軸時手滑關掉整頁、白打的東西沒存到——只留右上角 ✕ 這條路。
   $("image-viewer-close").onclick = closeImageViewer;
   // 點圖片以外的暗色區域也關掉（手機上比瞄準右上角的 ✕ 好按）
   $("image-viewer-overlay").addEventListener("click", (e) => {
