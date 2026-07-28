@@ -568,7 +568,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   position: fixed; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 70;
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   background: rgba(20, 22, 21, 0.9); color: #fff;
-  padding: 8px 11px; border-radius: 999px; font-size: 13px;
+  padding: 8px 11px; border-radius: 20px; font-size: 13px;
   box-shadow: 0 3px 10px rgba(0,0,0,0.3);
   font-variant-numeric: tabular-nums;
 }
