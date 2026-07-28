@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "72";
+const APP_VERSION = "73";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -903,12 +903,48 @@ async function openFolder(id) {
     ? `${files.length ? `<div class="archive-section-label">已歸檔檔案</div>
         <div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
        ${multiFileEntries.length ? `<div class="archive-section-label">已歸檔紀錄（多檔案，例如分段錄音）</div>
-        <div class="archive-record-list">${multiFileEntries.map((e) => entryRowHtml({ ...e, att_count: visibleAtts(e).length })).join("")}</div>` : ""}
+        <div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${multiFileEntries.map((e) => recordGroupCardHtml(e, visibleAtts(e))).join("")}</div>` : ""}
        ${notes.length ? `<div class="archive-section-label">已歸檔筆記</div>
         <div class="archive-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
   bindEntryRows($("folder-entries"));
   bindFileRows();
+  bindRecordGroupCards();
+}
+
+// 多檔案記事（分段錄音等）歸檔後的卡片：跟子資料夾用同一套 .child-folder-card
+// 樣式，看起來就是資料夾把附件包在裡面，不是攤平成一堆檔案列（也不是借用
+// note 那組會被 grid-view 的 min-height/flex-wrap 撐得歪七扭八的 entry-row 樣式）。
+function recordGroupCardHtml(e, atts) {
+  const kindLabel = { audio: "🎙️ 錄音", photo: "🖼️ 照片", video: "🎥 影片" };
+  const counts = atts.reduce((acc, a) => { acc[a.kind] = (acc[a.kind] || 0) + 1; return acc; }, {});
+  const summary = Object.entries(counts).map(([k, n]) => `${kindLabel[k] || k} ×${n}`).join("、");
+  // 刻意不共用 .child-folder-card 這個 class 名稱：bindFolderDropTargets() 用
+  // ".child-folder-card[data-id]" 當拖曳檔案的落點，抓的是真正的資料夾 id；
+  // 這張卡片的 data-id 其實是記事 id，混進同一個 class 會讓拖檔案誤觸到這裡，
+  // 把檔案搬去一個根本不存在的資料夾。視覺樣式另外在 CSS 裡共用選取器套用。
+  return `<div class="record-group-card" data-id="${e.id}">
+    <span>📁</span><strong>${esc(e.title || "（未命名）")}</strong>
+    <small>${esc((e.created_at || "").slice(5, 16))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
+    <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>
+  </div>`;
+}
+
+function bindRecordGroupCards() {
+  document.querySelectorAll(".record-group-card[data-id]").forEach((card) => {
+    card.onclick = (ev) => { if (!ev.target.closest(".record-group-del")) openEntry(Number(card.dataset.id)); };
+    const del = card.querySelector(".record-group-del");
+    del.onclick = async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!confirm("確定刪除這筆紀錄？裡面的附件也會一起刪除，無法復原。")) return;
+      try {
+        await api(`/entries/${card.dataset.id}`, { method: "DELETE" });
+        showToast("已刪除");
+        await refreshFolderView();
+      } catch (err) { showToast("刪除失敗：" + err.message); }
+    };
+  });
 }
 
 /**
