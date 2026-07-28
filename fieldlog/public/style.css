@@ -254,6 +254,11 @@ body {
 @media (max-width: 719px) {
   .entry-drag { display: none; }
   .entry-move { display: inline-block; }
+  /* 標題現在要跟時間、附件數、移動／合併／刪除三顆按鈕擠在同一行，窄螢幕
+     可用寬度不夠時標題會被壓到只剩幾像素，中文字就會變成一字一行。讓標題
+     自己獨佔一行，時間／按鈕換到下一行 */
+  .entry-row { flex-wrap: wrap; }
+  .entry-title { flex: 1 1 100%; }
   .folder-file-list.grid-view { display: flex; }
   .folder-file-list.grid-view .folder-file-row,
   .folder-file-row { min-height: 0; grid-template-columns: 26px minmax(0, 1fr) auto; }
