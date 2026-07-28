@@ -314,6 +314,8 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 }
 .edit-modal .modal-actions { flex-shrink: 0; align-items: center; }
 .edit-modal .modal-actions .sub { margin-right: auto; }
+.font-size-stepper { display: flex; gap: 4px; margin-right: 8px; }
+.font-size-stepper .btn { padding: 6px 10px; font-weight: 700; }
 @media (min-width: 720px) {
   .edit-overlay { padding: 30px; align-items: center; }
   .edit-modal { max-width: 900px; height: 90vh; border-radius: 10px; border: 1px solid var(--border); }
@@ -441,6 +443,9 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
 }
 .modal textarea { min-height: 90px; resize: vertical; }
+#e-body { min-height: 200px; font-size: 15px; line-height: 1.6; }
+.field-label-row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 4px; }
+.field-label-row label { margin: 0; }
 .modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
 .modal .sub { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
 .create-folder-modal { max-width: 620px; margin-top: 5vh; padding: 24px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }

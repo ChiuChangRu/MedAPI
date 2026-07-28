@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "68";
+const APP_VERSION = "69";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -170,10 +170,20 @@ function showToast(text) {
 
 // 全螢幕編輯框：轉文字稿／擷取文字（PDF 全文可達數萬字）用瀏覽器原生 prompt()
 // 編輯區太小根本編不動，改用這個大文字框＋明確的儲存/取消按鈕
+const EDIT_MODAL_FONT_SIZES = [15, 17, 19, 21, 24, 28];
+function editModalFontSize() {
+  const saved = Number(localStorage.getItem("editModalFontSize") || 15);
+  return EDIT_MODAL_FONT_SIZES.includes(saved) ? saved : 15;
+}
+function setEditModalFontSize(px) {
+  localStorage.setItem("editModalFontSize", String(px));
+  $("edit-modal-textarea").style.fontSize = `${px}px`;
+}
 function openEditModal({ title, value, onSave }) {
   $("edit-modal-title").textContent = title;
   const ta = $("edit-modal-textarea");
   ta.value = value || "";
+  setEditModalFontSize(editModalFontSize());
   const countEl = $("edit-modal-count");
   const updateCount = () => { countEl.textContent = `${ta.value.length} 字`; };
   updateCount();
@@ -184,6 +194,14 @@ function openEditModal({ title, value, onSave }) {
   const close = () => { overlay.classList.remove("open"); ta.oninput = null; };
   $("edit-modal-close").onclick = close;
   $("edit-modal-cancel").onclick = close;
+  $("edit-modal-font-smaller").onclick = () => {
+    const i = EDIT_MODAL_FONT_SIZES.indexOf(editModalFontSize());
+    if (i > 0) setEditModalFontSize(EDIT_MODAL_FONT_SIZES[i - 1]);
+  };
+  $("edit-modal-font-bigger").onclick = () => {
+    const i = EDIT_MODAL_FONT_SIZES.indexOf(editModalFontSize());
+    if (i < EDIT_MODAL_FONT_SIZES.length - 1) setEditModalFontSize(EDIT_MODAL_FONT_SIZES[i + 1]);
+  };
   $("edit-modal-save").onclick = async () => {
     const saveBtn = $("edit-modal-save");
     saveBtn.disabled = true;
@@ -1022,12 +1040,17 @@ async function createEntry(folderId, title) {
   return r.id;
 }
 
-async function quickNote() {
-  const text = prompt("快速備忘（先進收件匣，之後歸檔）：");
-  if (!text || !text.trim()) return;
-  await api("/entries", { method: "POST", body: JSON.stringify({ folder_id: null, title: text.trim().slice(0, 30), body: text.trim() }) });
-  showToast("已存入收件匣");
-  loadInbox();
+function quickNote() {
+  openEditModal({
+    title: "快速備忘（先進收件匣，之後歸檔）",
+    value: "",
+    onSave: async (text) => {
+      if (!text) return;
+      await api("/entries", { method: "POST", body: JSON.stringify({ folder_id: null, title: text.slice(0, 30), body: text }) });
+      showToast("已存入收件匣");
+      loadInbox();
+    },
+  });
 }
 
 async function openEntry(id) {
@@ -1067,7 +1090,10 @@ async function openEntry(id) {
       ${FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("")}
     </select></div>` : ""}
     ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
-    <label>內文／速記</label>
+    <div class="field-label-row">
+      <label for="e-body">內文／速記</label>
+      <button class="btn small ghost" id="e-body-expand" type="button" title="全螢幕編輯，字體大小可調">⤢ 展開編輯</button>
+    </div>
     <textarea id="e-body">${esc(e.body)}</textarea>
     <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button></div>
     <hr/>
@@ -1109,6 +1135,13 @@ async function openEntry(id) {
       closeEntry();
       if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadInbox(); loadFolders(); }
     } catch (err) { showToast("刪除失敗：" + err.message); }
+  };
+  $("e-body-expand").onclick = () => {
+    openEditModal({
+      title: "內文／速記",
+      value: $("e-body").value,
+      onSave: async (text) => { $("e-body").value = text; },
+    });
   };
   $("e-save").onclick = async () => {
     const newFields = {};
