@@ -372,6 +372,8 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 }
 .edit-modal .modal-actions { flex-shrink: 0; align-items: center; }
 .edit-modal .modal-actions .sub { margin-right: auto; }
+/* 從桌面拖檔案／照片進來時的落點提示（entry-modal、資料夾內頁都用得到） */
+.file-drag-over { outline: 3px dashed #14b8a6; outline-offset: -3px; }
 .font-size-stepper { display: flex; gap: 4px; margin-right: 8px; }
 .font-size-stepper .btn { padding: 6px 10px; font-weight: 700; }
 @media (min-width: 720px) {

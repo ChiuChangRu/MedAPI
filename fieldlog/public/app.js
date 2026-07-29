@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "78";
+const APP_VERSION = "79";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1247,7 +1247,12 @@ async function openEntry(id) {
   $("e-photo").onclick = () => { closeEntry(); startPhoto(id); };
   $("e-audio").onclick = () => startAudio(id);
   const fileInput = $("e-file");
-  fileInput.onchange = () => uploadFiles(id, fileInput);
+  fileInput.onchange = () => {
+    const files = Array.from(fileInput.files || []);
+    fileInput.value = "";
+    uploadFiles(id, files);
+  };
+  setupFileDropZone($("entry-modal"), (files) => uploadFiles(id, files));
   const processBtn = $("e-process");
   if (processBtn) processBtn.onclick = () => processEntryAttachments(id, processBtn);
   const renameBtn = $("e-rename-files");
@@ -1288,10 +1293,8 @@ async function openEntry(id) {
  * 重複檔（後端以 SHA-256 判定）會被略過，並把剛建的空記事收掉，
  * 不留下「有記事但沒檔案」的殘骸。
  */
-async function uploadFilesToFolder(input) {
-  const files = Array.from(input.files || []);
-  input.value = "";
-  if (!files.length || !CURRENT_FOLDER) return;
+async function uploadFilesToFolder(files) {
+  if (!files || !files.length || !CURRENT_FOLDER) return;
 
   const folderId = Number(CURRENT_FOLDER.id);
   const button = $("btn-folder-upload-file");
@@ -2050,6 +2053,7 @@ async function openFileDetail(entryId, attachmentId) {
   $("file-detail-close").onclick = closeEntry;
   bindAttActions(entryId);
   bindImageLinks(modal);
+  setupFileDropZone(modal, (files) => uploadFiles(entryId, files));
 
   const panel = $("file-category-panel");
   const select = $("file-device-category");
@@ -2346,10 +2350,32 @@ function isDocLikeFile(f) {
   return /\.(pdf|docx?|xlsx?|pptx?)$/i.test(f.name || "");
 }
 
-async function uploadFiles(entryId, input) {
-  const files = input.files ? Array.from(input.files) : [];
-  if (!files.length) return;
-  input.value = "";
+// 從桌面拖檔案／照片進來直接上傳，不用先點「上傳」再選檔。用
+// dataTransfer.types 判斷是不是真的在拖 OS 檔案，避免跟站內自己的拖曳
+// （拖記事去合併、拖檔案去搬資料夾…那些用的是自訂 MIME type）互相干擾。
+function setupFileDropZone(el, onFiles) {
+  if (!el) return;
+  const isFileDrag = (ev) => Array.from(ev.dataTransfer?.types || []).includes("Files");
+  el.ondragover = (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "copy";
+    el.classList.add("file-drag-over");
+  };
+  el.ondragleave = (ev) => {
+    if (ev.target === el) el.classList.remove("file-drag-over");
+  };
+  el.ondrop = (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    el.classList.remove("file-drag-over");
+    const files = Array.from(ev.dataTransfer.files || []);
+    if (files.length) onFiles(files);
+  };
+}
+
+async function uploadFiles(entryId, files) {
+  if (!files || !files.length) return;
   const status = $("e-upload-status");
   const sourceUrl = files.some(isDocLikeFile)
     ? (prompt("這份文件的來源網址（選填，例如標準官網的下載頁；之後可用來提醒可能是節錄版）：") || "").trim()
@@ -2905,6 +2931,14 @@ function exportFolder() {
 
 // ---------- init ----------
 function init() {
+  // 沒接住的檔案拖放，瀏覽器預設行為是直接開啟該檔案、整頁跳走——不管拖去哪
+  // 都先擋掉這個預設行為，實際上傳邏輯交給各自的 setupFileDropZone。
+  window.addEventListener("dragover", (ev) => {
+    if (Array.from(ev.dataTransfer?.types || []).includes("Files")) ev.preventDefault();
+  });
+  window.addEventListener("drop", (ev) => {
+    if (Array.from(ev.dataTransfer?.types || []).includes("Files")) ev.preventDefault();
+  });
   $("btn-login").onclick = doLogin;
   $("login-pin").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
   $("btn-video").onclick = () => startVideo(null);
@@ -2926,7 +2960,15 @@ function init() {
     if (!CURRENT_FOLDER) { showToast("請先進入要存放檔案的資料夾"); return; }
     folderUploadInput.click();
   };
-  folderUploadInput.onchange = () => uploadFilesToFolder(folderUploadInput);
+  folderUploadInput.onchange = () => {
+    const files = Array.from(folderUploadInput.files || []);
+    folderUploadInput.value = "";
+    uploadFilesToFolder(files);
+  };
+  setupFileDropZone($("view-folder"), (files) => {
+    if (!CURRENT_FOLDER) { showToast("請先進入要存放檔案的資料夾"); return; }
+    uploadFilesToFolder(files);
+  });
   $("btn-folder-grid").onclick = () => setFolderView("grid");
   $("btn-folder-list").onclick = () => setFolderView("list");
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
