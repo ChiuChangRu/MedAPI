@@ -100,13 +100,9 @@ function makeFieldlogDB({ extraAttachments = [] } = {}) {
       const e = entries.find((x) => x.id === args[0]);
       return { results: e ? [e] : [] };
     }
-    // 深度處理子頁面彙總（get_fieldlog_attachment 併全文、list_attachments 算完成度）
+    // 深度處理子頁面彙總（loadDeepProcessingPages：get_fieldlog_attachment 併全文、list_attachments 算完成度）
     if (q === "SELECT * FROM attachments WHERE source_pdf_id = ? ORDER BY page_no") {
       const rows = attachments.filter((a) => a.source_pdf_id === args[0]).sort((a, b) => (a.page_no || 0) - (b.page_no || 0));
-      return { results: rows };
-    }
-    if (q === "SELECT ocr_at FROM attachments WHERE source_pdf_id = ?") {
-      const rows = attachments.filter((a) => a.source_pdf_id === args[0]).map((a) => ({ ocr_at: a.ocr_at || null }));
       return { results: rows };
     }
 
