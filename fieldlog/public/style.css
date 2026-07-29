@@ -148,6 +148,11 @@ body {
   display: grid; grid-template-columns: auto 1fr; gap: 3px 9px; align-items: center;
   padding: 13px; border: 1px solid var(--border); border-radius: var(--radius);
   background: #fff; color: var(--text); text-align: left; cursor: pointer;
+  /* 沒有這行，網格／彈性容器的子項目預設 min-width:auto，寬度會被內容裡
+     最長的「不可斷行片段」頂住（例如附件摘要裡的英數字、emoji）。同一排的
+     卡片內容長度不一時，兩個 .child-folder-list 各自算出的欄寬可能因此對
+     不齊，卡片位置跟著跑掉。 */
+  min-width: 0;
 }
 .child-folder-card:hover, .record-group-card:hover { border-color: var(--accent); background: #f0fdfa; }
 .child-folder-card > span, .record-group-card > span { grid-row: 1 / 3; font-size: 24px; }
@@ -182,7 +187,9 @@ body {
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   }
   .child-folder-list.grid-view .child-folder-card small,
-  .child-folder-list.grid-view .record-group-card small { color: rgba(255, 255, 255, 0.85); }
+  .child-folder-list.grid-view .record-group-card small {
+    color: rgba(255, 255, 255, 0.85); white-space: normal; word-break: break-all; overflow: hidden;
+  }
   .child-folder-list.grid-view .folder-level-chip { background: rgba(255, 255, 255, 0.25); color: #fff; }
   .child-folder-list.grid-view .record-group-card { padding-right: 16px; }
   .child-folder-list.grid-view .record-group-del {
