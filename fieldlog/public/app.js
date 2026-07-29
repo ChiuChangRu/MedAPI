@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "79";
+const APP_VERSION = "80";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -409,7 +409,25 @@ function showVersion(serverVersion) {
 }
 
 // ---------- 首頁 ----------
+// 開啟 App 到畫面填滿內容之間，要打好幾支 API（設定／分類／資料夾／收件匣），
+// 資料夾、記事、附件越多這幾支就越慢；空白畫面撐久了容易被誤會當機，用
+// 百分比讓使用者知道還在跑。
+function showBootProgress() {
+  $("boot-loading-overlay")?.classList.add("open");
+  setBootProgress(0);
+}
+function setBootProgress(pct) {
+  const fill = $("boot-loading-bar-fill");
+  const label = $("boot-loading-pct");
+  if (fill) fill.style.width = `${pct}%`;
+  if (label) label.textContent = `${pct}%`;
+}
+function hideBootProgress() {
+  $("boot-loading-overlay")?.classList.remove("open");
+}
+
 async function boot() {
+  showBootProgress();
   try {
     const cfg = await api("/config");
     TRANSCRIBE_ENABLED = cfg.transcribe;
@@ -421,11 +439,16 @@ async function boot() {
     TRANSCRIBE_ENABLED = !!JSON.parse(localStorage.getItem("fieldlog_config") || "{}").transcribe;
     showVersion(null);
   }
+  setBootProgress(20);
   // 分類清單要先載入：建資料夾的對話框、資料夾排序、記事欄位模板都靠它
   await loadCategories();
+  setBootProgress(45);
   await Promise.all([loadFolders(), loadInbox()]);
+  setBootProgress(90);
   loadUsage();
   syncPendingFiles();
+  setBootProgress(100);
+  hideBootProgress();
 }
 
 async function loadFolders() {
@@ -892,10 +915,9 @@ async function openFolder(id) {
   syncSubfolderButton();
   renderChildFolders(id);
   await runLegacyCleanupOnce();
-  const summaries = await api(`/entries?folder_id=${id}`);
-  const entries = await Promise.all(summaries.map((e) =>
-    e.att_count ? api(`/entries/${e.id}`) : Promise.resolve({ ...e, attachments: [] })
-  ));
+  // 一次帶附件回來，不要每筆有附件的記事各發一支 /entries/:id——資料夾裡
+  // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
+  const entries = await api(`/entries?folder_id=${id}&include=attachments`);
   const visibleAtts = (e) => (e.attachments || []).filter((a) => !a.source_pdf_id);
   // 只有「單一檔案」的記事才拆成單檔瀏覽；多檔案的記事（分段錄音、一次錄音夾
   // 幾張照片…）要整筆一起顯示，不能把附件拆散成互不相干的檔案列——按檔名
@@ -3081,7 +3103,9 @@ function init() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
   if (!pin()) { showLogin(); } else {
-    api("/folders").then(() => boot()).catch(() => showLogin());
+    showBootProgress();
+    setBootProgress(8);
+    api("/folders").then(() => boot()).catch(() => { hideBootProgress(); showLogin(); });
   }
 }
 

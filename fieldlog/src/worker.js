@@ -42,7 +42,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "79";
+const UI_VERSION = "80";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -457,6 +457,21 @@ async function handleApi(request, env, url) {
       return bad("需指定 folder_id 或 inbox=1");
     }
     const { results } = await q.all();
+    // include=attachments：資料夾內頁本來是先拿這份摘要，再對每一筆有附件的
+    // 記事各發一支 /entries/:id（N+1，資料夾裡記事越多、附件越多就越慢）。
+    // 這裡一次用 IN 查完全部附件塞回去，資料夾內頁改成一支 API 打完收工。
+    if (url.searchParams.get("include") === "attachments" && results.length) {
+      const ids = results.map((e) => e.id);
+      const { results: atts } = await db.prepare(
+        `SELECT * FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
+      ).bind(...ids).all();
+      const byEntry = new Map();
+      for (const a of atts || []) {
+        if (!byEntry.has(a.entry_id)) byEntry.set(a.entry_id, []);
+        byEntry.get(a.entry_id).push(a);
+      }
+      return json(results.map((e) => ({ ...e, attachments: byEntry.get(e.id) || [] })));
+    }
     return json(results);
   }
   if (path === "/entries" && method === "POST") {

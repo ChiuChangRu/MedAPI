@@ -491,6 +491,11 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   width: 100%; max-width: 560px;
 }
 .modal.narrow { max-width: 340px; margin-top: 12vh; }
+.boot-loading-box { text-align: center; }
+.boot-loading-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+.boot-loading-bar { height: 10px; }
+.boot-loading-bar i { transition: width 0.25s ease; }
+#boot-loading-pct { margin: 8px 0 0; font-variant-numeric: tabular-nums; }
 .modal h2 { margin-top: 0; }
 .modal label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
 .modal input, .modal textarea, .modal select {

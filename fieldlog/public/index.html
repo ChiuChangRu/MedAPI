@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=79" />
+<link rel="stylesheet" href="style.css?v=80" />
 <link rel="stylesheet" href="home.css" />
 </head>
 <body>
@@ -224,6 +224,16 @@
 <div class="folder-trash-zone" id="folder-trash-zone" aria-hidden="true">🗑 放開以刪除資料夾分類</div>
 <div class="entry-new-folder-zone" id="entry-new-folder-zone" aria-hidden="true">📁 放開以建立新資料夾並歸檔</div>
 
+<!-- 開啟 App 時的載入進度：資料夾／記事／附件變多，boot() 要打的 API 陸續
+     跑完前畫面會空白一段時間，容易讓人以為當機。用百分比讓使用者知道還在動。 -->
+<div class="overlay boot-loading-overlay" id="boot-loading-overlay">
+  <div class="modal narrow boot-loading-box">
+    <div class="boot-loading-title">🎒 載入中…</div>
+    <div class="usage-bar boot-loading-bar"><i id="boot-loading-bar-fill" style="width:0%"></i></div>
+    <p class="sub" id="boot-loading-pct">0%</p>
+  </div>
+</div>
+
 <!-- 登入 -->
 <div class="overlay" id="login-overlay">
   <div class="modal narrow">
@@ -317,8 +327,8 @@
 <!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="app.js?v=79"></script>
+<script src="app.js?v=80"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=79"></script>
+<script src="pdf-editor.js?v=80"></script>
 </body>
 </html>
