@@ -16,7 +16,7 @@ import worker from "../mcp/src/worker.js";
 
 // ---------- 假的 D1（fieldlog）----------
 
-function makeFieldlogDB() {
+function makeFieldlogDB({ extraAttachments = [] } = {}) {
   const folders = [
     { id: 7, name: "ISO 標準", type: "標準", parent_id: null },
     { id: 8, name: "空資料夾", type: "標準", parent_id: null },
@@ -30,6 +30,7 @@ function makeFieldlogDB() {
     { id: 101, entry_id: 21, filename: "ISO_7886-1_2017_無菌皮下注射器.pdf", kind: "file", source_pdf_id: null, transcript: "", ocr_text: "第一部：手動使用注射器" },
     { id: 102, entry_id: 22, filename: "ISO_10555-8_2024_血管內導管-無菌及單次使用導管-第8部_體外血液處理用導管.pdf", kind: "file", source_pdf_id: null, transcript: "", ocr_text: "x".repeat(45000) },
     { id: 103, entry_id: 22, filename: "page1.png", kind: "photo", source_pdf_id: 102, transcript: "", ocr_text: "深度處理頁面，不該被列出" },
+    ...extraAttachments,
   ];
 
   function normalize(sql) { return sql.replace(/\s+/g, " ").trim(); }
@@ -98,6 +99,15 @@ function makeFieldlogDB() {
     if (q === "SELECT id, title FROM entries WHERE id = ?") {
       const e = entries.find((x) => x.id === args[0]);
       return { results: e ? [e] : [] };
+    }
+    // 深度處理子頁面彙總（get_fieldlog_attachment 併全文、list_attachments 算完成度）
+    if (q === "SELECT * FROM attachments WHERE source_pdf_id = ? ORDER BY page_no") {
+      const rows = attachments.filter((a) => a.source_pdf_id === args[0]).sort((a, b) => (a.page_no || 0) - (b.page_no || 0));
+      return { results: rows };
+    }
+    if (q === "SELECT ocr_at FROM attachments WHERE source_pdf_id = ?") {
+      const rows = attachments.filter((a) => a.source_pdf_id === args[0]).map((a) => ({ ocr_at: a.ocr_at || null }));
+      return { results: rows };
     }
 
     return { results: [] };
@@ -233,6 +243,89 @@ test("get_fieldlog_attachment 沒超過上限時標示「完整全文」，不�
 test("get_fieldlog_attachment 找不到附件時報錯，不是回一段空文字", async () => {
   const env = { MCP_PIN: "testpin", DB_FIELDLOG: makeFieldlogDB() };
   await assert.rejects(() => callTool(env, "get_fieldlog_attachment", { id: 9999 }));
+});
+
+// ---------- Tier 2 深度處理：父 PDF 自己沒內容，內容在子頁面附件上 ----------
+// 背景：深度處理把 PDF 逐頁轉成圖片各自 OCR，結果寫在子頁面附件（source_pdf_id
+// 指到父 PDF）自己的 ocr_text，不會回寫到父附件本身。get_fieldlog_entry 因為列出
+// 全部附件（含子頁面）所以看得到內容，但 get_fieldlog_attachment／list_attachments
+// 原本只看父附件自己的欄位，會誤判成「尚未擷取」。
+
+test("get_fieldlog_attachment 對深度處理過的父 PDF：父附件自己沒內容，要併入子頁面的擷取文字", async () => {
+  const env = {
+    MCP_PIN: "testpin",
+    DB_FIELDLOG: makeFieldlogDB({
+      extraAttachments: [
+        { id: 104, entry_id: 22, filename: "LOCTITE-EA-E-30CL.pdf", kind: "file", source_pdf_id: null, transcript: "", ocr_text: "" },
+        { id: 105, entry_id: 22, filename: "LOCTITE-EA-E-30CL-p1.png", kind: "photo", source_pdf_id: 104, page_no: 1, ocr_at: "2026-07-29T00:00:00Z", transcript: "", ocr_text: "第一頁擷取內容" },
+        { id: 106, entry_id: 22, filename: "LOCTITE-EA-E-30CL-p2.png", kind: "photo", source_pdf_id: 104, page_no: 2, ocr_at: "2026-07-29T00:01:00Z", transcript: "", ocr_text: "第二頁擷取內容" },
+      ],
+    }),
+  };
+  const text = await callTool(env, "get_fieldlog_attachment", { id: 104 });
+  assert.doesNotMatch(text, /尚未轉文字\/擷取/, "父附件自己沒內容，但子頁面有，不該說沒擷取");
+  assert.match(text, /第一頁擷取內容/);
+  assert.match(text, /第二頁擷取內容/);
+  assert.match(text, /深度處理，共 2 頁，2 頁已完成/);
+});
+
+test("get_fieldlog_attachment 對深度處理中（部分頁面還沒跑完）的父 PDF：只併入已完成的頁面", async () => {
+  const env = {
+    MCP_PIN: "testpin",
+    DB_FIELDLOG: makeFieldlogDB({
+      extraAttachments: [
+        { id: 104, entry_id: 22, filename: "部分完成.pdf", kind: "file", source_pdf_id: null, transcript: "", ocr_text: "" },
+        { id: 105, entry_id: 22, filename: "部分完成-p1.png", kind: "photo", source_pdf_id: 104, page_no: 1, ocr_at: "2026-07-29T00:00:00Z", transcript: "", ocr_text: "第一頁擷取內容" },
+        { id: 106, entry_id: 22, filename: "部分完成-p2.png", kind: "photo", source_pdf_id: 104, page_no: 2, ocr_at: null, transcript: "", ocr_text: "" },
+      ],
+    }),
+  };
+  const text = await callTool(env, "get_fieldlog_attachment", { id: 104 });
+  assert.match(text, /第一頁擷取內容/);
+  assert.match(text, /深度處理，共 2 頁，1 頁已完成/);
+});
+
+test("get_fieldlog_attachment 對完全沒有子頁面、自己也沒內容的附件：維持原本「尚未擷取」訊息", async () => {
+  const env = {
+    MCP_PIN: "testpin",
+    DB_FIELDLOG: makeFieldlogDB({
+      extraAttachments: [
+        { id: 104, entry_id: 22, filename: "空白檔.pdf", kind: "file", source_pdf_id: null, transcript: "", ocr_text: "" },
+      ],
+    }),
+  };
+  const text = await callTool(env, "get_fieldlog_attachment", { id: 104 });
+  assert.match(text, /還沒轉文字\/擷取/);
+});
+
+test("list_attachments 對深度處理中的父 PDF：顯示頁面完成度，不是「尚未轉文字／擷取」", async () => {
+  const env = {
+    MCP_PIN: "testpin",
+    DB_FIELDLOG: makeFieldlogDB({
+      extraAttachments: [
+        { id: 104, entry_id: 22, filename: "深度處理文件.pdf", kind: "file", source_pdf_id: null, transcript: "", ocr_text: "" },
+        { id: 105, entry_id: 22, filename: "深度處理文件-p1.png", kind: "photo", source_pdf_id: 104, page_no: 1, ocr_at: "2026-07-29T00:00:00Z", transcript: "", ocr_text: "第一頁" },
+        { id: 106, entry_id: 22, filename: "深度處理文件-p2.png", kind: "photo", source_pdf_id: 104, page_no: 2, ocr_at: null, transcript: "", ocr_text: "" },
+      ],
+    }),
+  };
+  const text = await callTool(env, "list_attachments", { entry_id: 22 });
+  assert.match(text, /attachment 104[^\n]*深度處理中：1\/2 頁已擷取/);
+  assert.doesNotMatch(text, /attachment 104[^\n]*尚未轉文字／擷取/);
+});
+
+test("list_attachments 對深度處理已建立但還沒開始擷取任何一頁的父 PDF", async () => {
+  const env = {
+    MCP_PIN: "testpin",
+    DB_FIELDLOG: makeFieldlogDB({
+      extraAttachments: [
+        { id: 104, entry_id: 22, filename: "剛建立的深度處理.pdf", kind: "file", source_pdf_id: null, transcript: "", ocr_text: "" },
+        { id: 105, entry_id: 22, filename: "剛建立的深度處理-p1.png", kind: "photo", source_pdf_id: 104, page_no: 1, ocr_at: null, transcript: "", ocr_text: "" },
+      ],
+    }),
+  };
+  const text = await callTool(env, "list_attachments", { entry_id: 22 });
+  assert.match(text, /attachment 104[^\n]*深度處理已建立 1 頁，尚未擷取/);
 });
 
 // ---------- 展商側延伸：list_exhibitor_files ----------

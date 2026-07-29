@@ -505,11 +505,26 @@ const TOOLS = [
          ORDER BY a.id DESC LIMIT ? OFFSET ?`
       ).bind(...binds, limit, offset).all();
 
-      const lines = atts.map((a) => {
+      // Tier 2 深度處理的 PDF 本身沒有 transcript／ocr_text（結果寫在子頁面
+      // 附件上，見 get_fieldlog_attachment 同樣的註解），只看這兩個欄位會把
+      // 已經處理完的 PDF 標成「尚未轉文字／擷取」。父附件自己沒內容時才多
+      // 查一次子頁面的完成度彙總，不用抓子頁面全文，成本低。
+      const lines = await Promise.all(atts.map(async (a) => {
         const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
-        const lenNote = text ? `內容長度 ${text.length} 字` : "尚未轉文字／擷取";
+        let lenNote = text ? `內容長度 ${text.length} 字` : "尚未轉文字／擷取";
+        if (!text) {
+          const { results: pages } = await env.DB_FIELDLOG.prepare(
+            "SELECT ocr_at FROM attachments WHERE source_pdf_id = ?"
+          ).bind(a.id).all();
+          if (pages && pages.length) {
+            const done = pages.filter((p) => p.ocr_at).length;
+            lenNote = done
+              ? `深度處理中：${done}/${pages.length} 頁已擷取`
+              : `深度處理已建立 ${pages.length} 頁，尚未擷取`;
+          }
+        }
         return `- [attachment ${a.id}] ${a.kind}｜${a.filename}｜所屬 [entry ${a.entry_id}] ${a.entry_title || "（未命名）"}｜${lenNote}`;
-      });
+      }));
 
       const shown = offset + atts.length;
       const hasMore = shown < total;
@@ -697,6 +712,24 @@ const TOOLS = [
       const sections = [];
       if (a.transcript) sections.push(`## 逐字稿\n${a.transcript}`);
       if (ocrBody) sections.push(`## 擷取文字\n${ocrBody}`);
+      // Tier 2 深度處理：PDF 逐頁轉成圖片各自 OCR，結果寫在「子頁面」附件
+      // （source_pdf_id 指到這份 PDF）自己的 ocr_text，不會回寫到這份 PDF
+      // 本身的欄位——只看 a.ocr_text 會誤判「還沒擷取」，即使子頁面內容其實
+      // 都在（get_fieldlog_entry 因為列出全部附件、看得到子頁面，才會兩邊
+      // 矛盾）。這裡把子頁面已完成的內容併進來，兩支工具讀同一份最終狀態。
+      if (!a.source_pdf_id) {
+        const { results: pages } = await env.DB_FIELDLOG.prepare(
+          "SELECT * FROM attachments WHERE source_pdf_id = ? ORDER BY page_no"
+        ).bind(id).all();
+        const doneTexts = (pages || [])
+          .filter((p) => p.ocr_at)
+          .map((p) => stripPdfMetadata(p.ocr_text || "").trim())
+          .filter(Boolean);
+        if (doneTexts.length) {
+          const doneCount = (pages || []).filter((p) => p.ocr_at).length;
+          sections.push(`## 逐頁擷取文字（深度處理，共 ${pages.length} 頁，${doneCount} 頁已完成）\n${doneTexts.join("\n\n---\n\n")}`);
+        }
+      }
       const analysis = analysisSection(a);
       if (analysis) sections.push(analysis);
       const fullText = sections.join("\n\n");
