@@ -81,3 +81,43 @@ Everything in this project is Traditional Chinese (UI strings, commit messages, 
 **MCP 前端**：待在 Mywiki MCP server 端添加工具定義 `get_fieldlog_attachment_raw(id, mode?)`
 
 **安全性**：簽名網址限定單一附件、10 分鐘失效、沿用既有 FIELD_PIN 驗證機制（fail-closed）
+
+### 批次自動轉文字（2026-07-31）
+
+**端點**：`POST /api/batch/process-attachments`
+
+**用途**：自動為資料夾或單筆紀錄內未處理的附件觸發 OCR（照片）和語音轉文字（錄音），無需逐一手動點擊。
+
+**請求**：
+```json
+{
+  "folder_id": 123  // 或 "entry_id": 456（二選一）
+}
+```
+
+**回傳**：
+```json
+{
+  "processed": 5,
+  "results": [
+    {"attachment_id": 1, "kind": "audio", "filename": "rec.m4a", "success": true, "message": "轉文字成功，2847 字"},
+    {"attachment_id": 2, "kind": "photo", "filename": "pic.jpg", "success": true, "message": "擷取文字成功，156 字"}
+  ]
+}
+```
+
+**特性**：
+- 批次掃描所有「尚未處理」的附件（transcript 或 ocr_text 為空）
+- 照片：同時執行 OCR + 對話關聯判斷（若存在同時段錄音逐字稿）
+- 錄音：使用 Workers AI Whisper 轉文字
+- 失敗時回傳錯誤訊息但繼續處理其他附件
+
+### PDF 分頁提取（2026-07-31，框架預留）
+
+**參數**：`GET /api/attachments/:id/raw?page=2`
+
+**現況**：
+- Worker 端接受並驗證 `page` 參數（僅限 PDF）
+- 實際 PDF 分頁轉圖片需在 MCP server 端用 `pdf.js` 或 `pdftoppm` 處理
+- Cloudflare Workers 執行環境無法直接跑重型 PDF 處理，故決策延後到 MCP 層實作
+- 回傳會包含 `page_requested` 和 `page_note` 字段提醒用戶

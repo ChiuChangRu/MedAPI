@@ -323,6 +323,8 @@ async function handleApi(request, env, url) {
     const att = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
     if (!att) return bad("找不到附件", 404);
     const mode = url.searchParams.get("mode") || "url";
+    const page = url.searchParams.get("page") ? Number(url.searchParams.get("page")) : null;
+    if (page && att.mime !== "application/pdf") return bad("page 參數僅適用 PDF", 400);
     const obj = await env.FILES.get(att.key);
     if (!obj) return bad("找不到檔案內容", 404);
     const bytes = new Uint8Array(await obj.arrayBuffer());
@@ -330,14 +332,19 @@ async function handleApi(request, env, url) {
       const base64 = btoa(String.fromCharCode(...bytes));
       return json({
         id, filename: att.filename, mime_type: att.mime,
-        encoding: "base64", data: base64,
+        encoding: "base64", data: base64, page: page || null,
       });
     }
     const signed = await createSignedFileUrl(att.key, env.FIELD_PIN);
-    return json({
+    const resp = {
       id, filename: att.filename, mime_type: att.mime,
       url: signed.url, expires_at: signed.expires_at, size_bytes: bytes.byteLength,
-    });
+    };
+    if (page) {
+      resp.page_requested = page;
+      resp.page_note = "PDF 分頁提取需在 MCP server 端用 pdf.js 或 pdftoppm 處理（Cloudflare Workers 不支援 PDF 轉圖）";
+    }
+    return json(resp);
   }
 
   // ---- 錄音轉文字（Workers AI Whisper）----
@@ -397,6 +404,92 @@ async function handleApi(request, env, url) {
     await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(text, id).run();
     await logHistory(db, old.entry_id, null, "照片擷取文字", `${old.filename}：${text.slice(0, 60)}`);
     return json({ ocr_text: text });
+  }
+
+  // ---- 批次處理：自動轉文字（OCR + 錄音轉字幕）----
+  if (path === "/batch/process-attachments" && method === "POST") {
+    if (!env.AI || !env.FILES) return bad("尚未啟用 Workers AI 與 R2", 501);
+    const body = await request.json().catch(() => ({}));
+    const folderId = body.folder_id ? Number(body.folder_id) : null;
+    const entryId = body.entry_id ? Number(body.entry_id) : null;
+    if (!folderId && !entryId) return bad("需指定 folder_id 或 entry_id");
+    let q;
+    if (folderId) {
+      q = db.prepare(
+        `SELECT DISTINCT a.id, a.entry_id, a.kind, a.filename, a.key, a.mime, a.offset_secs
+         FROM attachments a
+         JOIN entries e ON a.entry_id = e.id
+         WHERE e.folder_id = ? AND (
+           (a.kind = 'audio' AND TRIM(a.transcript) = '') OR
+           (a.kind = 'photo' AND TRIM(a.ocr_text) = '')
+         )
+         ORDER BY a.id`
+      ).bind(folderId);
+    } else {
+      q = db.prepare(
+        `SELECT a.id, a.entry_id, a.kind, a.filename, a.key, a.mime, a.offset_secs
+         FROM attachments a
+         WHERE a.entry_id = ? AND (
+           (a.kind = 'audio' AND TRIM(a.transcript) = '') OR
+           (a.kind = 'photo' AND TRIM(a.ocr_text) = '')
+         )
+         ORDER BY a.id`
+      ).bind(entryId);
+    }
+    const { results: toProcess } = await q.all();
+    const results = [];
+    for (const a of toProcess) {
+      const attId = a.id;
+      const obj = await env.FILES.get(a.key).catch(() => null);
+      if (!obj) continue;
+      const bytes = new Uint8Array(await obj.arrayBuffer());
+      let success = false, msg = "";
+      if (a.kind === "audio") {
+        try {
+          let binary = "";
+          for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          }
+          const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
+            audio: btoa(binary), task: "transcribe",
+          });
+          const text = (result?.text || "").trim();
+          await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(text, attId).run();
+          success = true;
+          msg = `轉文字成功，${text.length} 字`;
+        } catch (e) {
+          msg = `轉文字失敗：${e.message}`;
+        }
+      } else if (a.kind === "photo") {
+        try {
+          const r = await extractImageText(env.AI, bytes);
+          if (!r.ok) { msg = r.error; } else {
+            let text = r.text;
+            if (a.offset_secs !== null && a.offset_secs !== undefined) {
+              const { results: siblings } = await db
+                .prepare("SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND offset_secs IS NOT NULL ORDER BY offset_secs ASC")
+                .bind(a.entry_id).all();
+              let seg = null;
+              for (const b of siblings) if (b.offset_secs <= a.offset_secs) seg = b;
+              const transcript = seg ? (seg.transcript || "").trim() : "";
+              if (transcript) {
+                const relation = await judgeRelation(env.AI, transcript, text);
+                if (relation && !relation.includes("看不出明顯關聯")) {
+                  text += `\n\n【對話關聯】${relation}（錄音 ${fmtSecs(a.offset_secs)} 時拍攝）`;
+                }
+              }
+            }
+            await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(text, attId).run();
+            success = true;
+            msg = `擷取文字成功，${text.length} 字`;
+          }
+        } catch (e) {
+          msg = `擷取文字失敗：${e.message}`;
+        }
+      }
+      results.push({ attachment_id: attId, kind: a.kind, filename: a.filename, success, message: msg });
+    }
+    return json({ processed: results.length, results });
   }
 
   // ---- 匯出：整個資料夾 → Markdown 原料包（給 AI 彙整用）----
