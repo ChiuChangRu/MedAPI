@@ -111,6 +111,21 @@ function parseNotionPageId(input) {
   return `${id32.slice(0, 8)}-${id32.slice(8, 12)}-${id32.slice(12, 16)}-${id32.slice(16, 20)}-${id32.slice(20)}`;
 }
 
+// 產生帶時效的檔案簽名（簡易實現）
+async function createSignedFileUrl(fileKey, fieldPin, expiryMinutes = 10) {
+  const expiry = Math.floor(Date.now() / 1000) + expiryMinutes * 60;
+  const payload = `${fileKey}:${expiry}`;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(payload);
+  const keyData = encoder.encode(fieldPin || "default-key");
+  const signature = await crypto.subtle.sign("HMAC",
+    await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]),
+    data
+  );
+  const sig = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return { url: `/api/file/${fileKey}?expires=${expiry}&sig=${sig}`, expires_at: new Date(expiry * 1000).toISOString() };
+}
+
 async function handleApi(request, env, url) {
   const db = env.DB;
   await ensureSchema(db);
@@ -247,7 +262,25 @@ async function handleApi(request, env, url) {
   const fileMatch = path.match(/^\/file\/(.+)$/);
   if (fileMatch && method === "GET") {
     if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
-    const obj = await env.FILES.get(decodeURIComponent(fileMatch[1]));
+    const key = decodeURIComponent(fileMatch[1]);
+    const expires = url.searchParams.get("expires");
+    const sig = url.searchParams.get("sig");
+    // 簽名驗證（若帶有 expires 參數，必須驗證簽名和時效）
+    if (expires && sig) {
+      const expiry = Number(expires);
+      if (expiry * 1000 < Date.now()) return bad("簽名已過期", 403);
+      const payload = `${key}:${expiry}`;
+      const encoder = new TextEncoder();
+      const data = encoder.encode(payload);
+      const keyData = encoder.encode(env.FIELD_PIN || "default-key");
+      const signature = await crypto.subtle.sign("HMAC",
+        await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]),
+        data
+      );
+      const expected = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+      if (sig !== expected) return bad("簽名無效", 403);
+    }
+    const obj = await env.FILES.get(key);
     if (!obj) return bad("找不到檔案", 404);
     return new Response(obj.body, {
       headers: {
@@ -280,6 +313,31 @@ async function handleApi(request, env, url) {
     await db.prepare("DELETE FROM attachments WHERE id = ?").bind(id).run();
     await logHistory(db, old.entry_id, null, "刪除附件", old.filename);
     return json({ ok: true });
+  }
+
+  // ---- 原始附件存取（圖片／PDF）----
+  const rawMatch = path.match(/^\/attachments\/(\d+)\/raw$/);
+  if (rawMatch && method === "GET") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const id = Number(rawMatch[1]);
+    const att = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    if (!att) return bad("找不到附件", 404);
+    const mode = url.searchParams.get("mode") || "url";
+    const obj = await env.FILES.get(att.key);
+    if (!obj) return bad("找不到檔案內容", 404);
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+    if (mode === "inline" && bytes.byteLength <= 2 * 1024 * 1024) {
+      const base64 = btoa(String.fromCharCode(...bytes));
+      return json({
+        id, filename: att.filename, mime_type: att.mime,
+        encoding: "base64", data: base64,
+      });
+    }
+    const signed = await createSignedFileUrl(att.key, env.FIELD_PIN);
+    return json({
+      id, filename: att.filename, mime_type: att.mime,
+      url: signed.url, expires_at: signed.expires_at, size_bytes: bytes.byteLength,
+    });
   }
 
   // ---- 錄音轉文字（Workers AI Whisper）----

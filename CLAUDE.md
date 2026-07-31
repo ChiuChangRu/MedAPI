@@ -44,3 +44,40 @@ Bindings (`fieldlog/wrangler.jsonc`): `DB` (D1, database name `fieldlog`), `FILE
 No automated test suite exists in this repo — changes are validated by deploying and exercising the PWA manually (see `fieldlog/README.md` for the deploy walkthrough and the end-to-end usage flow: capture → transcribe/OCR → file into folder → export → hand off to an LLM → paste into Notion).
 
 Everything in this project is Traditional Chinese (UI strings, commit messages, comments) — match that when editing user-facing text or writing commits for this repo.
+
+## 新增功能：原始附件存取 API（2026-07-31）
+
+**背景**：為支持 MyWiki MCP 取得原始圖片和 PDF 檔案（而非只有提取後的文字），新增統一的附件存取端點。
+
+**API 端點**：`GET /api/attachments/:id/raw?mode=url|inline`
+
+**行為**：
+- 圖片 ≤2MB：預設 `mode=inline`，直接回傳 base64，無需簽名網址
+- 大檔案/PDF：`mode=url`，回傳 R2 簽名網址（有效期 10 分鐘）
+
+**回傳格式**（mode=inline）：
+```json
+{
+  "id": 266,
+  "filename": "photo.jpg",
+  "mime_type": "image/jpeg",
+  "encoding": "base64",
+  "data": "<base64 string>"
+}
+```
+
+**回傳格式**（mode=url）：
+```json
+{
+  "id": 266,
+  "filename": "large.pdf",
+  "mime_type": "application/pdf",
+  "url": "https://...(signed)",
+  "expires_at": "2026-07-31T12:10:00Z",
+  "size_bytes": 842213
+}
+```
+
+**MCP 前端**：待在 Mywiki MCP server 端添加工具定義 `get_fieldlog_attachment_raw(id, mode?)`
+
+**安全性**：簽名網址限定單一附件、10 分鐘失效、沿用既有 FIELD_PIN 驗證機制（fail-closed）
