@@ -74,6 +74,14 @@ function json(data, status = 200) {
   });
 }
 
+// 工具 handler 一律回傳字串（會被包成 text content）；需要回傳圖片等非文字內容時，
+// 直接回傳 { content: [...] } 形狀的物件，這裡原樣透傳——MCP ImageContent
+// （get_fieldlog_image／image_probe）就是靠這條路出去的，不能被 String() 壓扁。
+function wrapToolOutput(out) {
+  if (out && typeof out === "object" && Array.isArray(out.content)) return out;
+  return { content: [{ type: "text", text: String(out) }] };
+}
+
 function rpcResult(id, result) {
   return json({ jsonrpc: "2.0", id, result });
 }
@@ -1207,7 +1215,80 @@ const TOOLS = [
       return `已新增同義詞組：「${canonical}」←→ ${[...aliases, ...codes].join("、")}。下一次 search_* 查詢立刻生效。`;
     },
   },
+  {
+    name: "get_fieldlog_image",
+    description: "讀取隨身記照片附件的『圖片本身』（不是擷取文字），讓 Claude 直接看圖判讀——用在斷面形貌、外觀不良、塗層剝離、設備現場照這類必須以視覺判斷的場景。型錄、文件、白板照片要查『內容』請優先用 get_fieldlog_attachment 讀擷取文字（省 token 也更準）。id 用 search_fieldlog／list_attachments／get_fieldlog_entry 查到的 attachment id。僅支援 4MB 以內的 JPEG/PNG/GIF/WebP（HEIC 不支援）。第一次使用前建議先呼叫 image_probe 確認目前 client 支援 MCP 圖片顯示。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "attachment id（search_fieldlog／list_attachments／get_fieldlog_entry 查到的編號）" },
+      },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const a = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+      if (!a) throw new Error(`找不到附件 ${id}——請先用 search_fieldlog 或 list_attachments 查編號`);
+      const mime = String(a.mime || "").toLowerCase().split(";")[0].trim();
+      if (!mime.startsWith("image/")) {
+        throw new Error(`附件 ${id}（${a.filename}）不是圖片（${a.mime || "未知類型"}）——文件內容請改用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      // Claude API 的圖片內容只收這四種；HEIC（iPhone 相簿原檔常見）進不去，
+      // Worker 端也沒有可靠的轉檔手段，據實回報請改走文字路線或以 JPEG 重傳
+      const SUPPORTED_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      if (!SUPPORTED_IMAGE_MIMES.includes(mime)) {
+        throw new Error(`附件 ${id} 的格式 ${mime} 不在支援清單（JPEG/PNG/GIF/WebP）內——HEIC 等格式請在手機端以 JPEG 重傳，或用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      // 與 fieldlog 端 INLINE_RAW_MAX_BYTES 一致。超過就不硬塞：base64 膨脹約 4/3，
+      // 對 client 的 context 也是災難，直接指路
+      const INLINE_CAP = 4 * 1024 * 1024;
+      const size = Number(a.size || 0);
+      if (size > INLINE_CAP) {
+        throw new Error(`附件 ${id}（${a.filename}）為 ${(size / 1024 / 1024).toFixed(1)}MB，超過 inline 上限 4MB——請在隨身記 App 壓縮後重傳，或改用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const u = new URL(`https://fieldlog.internal/api/attachments/${id}/raw`);
+      u.searchParams.set("mode", "inline");
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString());
+      if (!res.ok) {
+        throw new Error(`讀取原始檔失敗（HTTP ${res.status}）——檢查 FIELD_PIN 是否一致，以及 fieldlog 部署版本是否已含 /attachments/:id/raw 端點（commit 5c784dd 之後）`);
+      }
+      const payload = await res.json();
+      if (!payload || !payload.data) throw new Error("raw 端點回應缺少 base64 資料——fieldlog 部署版本可能過舊");
+      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(a.entry_id).first();
+      const meta = [
+        `檔名：${a.filename}｜${(Number(payload.size_bytes || size) / 1024).toFixed(0)}KB｜${mime}`,
+        `所屬紀錄：${e ? `[entry ${e.id}] ${e.title || "（未命名）"}` : `entry ${a.entry_id}`}｜上傳：${a.created_at}`,
+      ].join("\n");
+      return {
+        content: [
+          { type: "image", data: payload.data, mimeType: payload.mime_type || mime },
+          { type: "text", text: meta },
+        ],
+      };
+    },
+  },
+  {
+    name: "image_probe",
+    description: "診斷用：回傳一張內建的 96×96 測試圖（四象限色塊），驗證目前 client（claude.ai 等）是否支援顯示 MCP 圖片內容。Claude 若能正確說出四個色塊的顏色與位置，代表圖片通道可用，get_fieldlog_image 才值得使用；若只看到 base64 亂碼或 token 超限錯誤，代表 client 尚未支援，照片請改走 get_fieldlog_attachment 的擷取文字路線。此工具不讀任何使用者資料。",
+    inputSchema: { type: "object", properties: {} },
+    async handler() {
+      return {
+        content: [
+          { type: "image", data: IMAGE_PROBE_PNG_BASE64, mimeType: "image/png" },
+          { type: "text", text: "測試圖已送出：96×96 PNG，四象限色塊。請 Claude 描述所見的顏色配置（哪個角落是什麼顏色）以驗證通道。" },
+        ],
+      };
+    },
+  },
 ];
+
+// image_probe 的內建測試圖：96×96 PNG 四象限色塊（左上紅、右上綠、左下藍、右下黃）。
+// 寫死在程式裡、不碰 R2 也不碰 D1——通道測試要把變因減到只剩「client 支不支援」一項。
+const IMAGE_PROBE_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAAAq0lEQVR42u3TQQ3AIBBFQUoqgTPn1cEZVdWEiIpATDVw2ybzFPxMdq8dUTI1n5ZqTy0CBAgQIECAAAESIECAAAECBAiQAAECBAgQIECAACEABAgQIECAAAESIECAAAECBAiQAAECBAjQL7pnrFSD3j5ckBcDBEiAAAECBAgQIECABAgQIECAAAECJECAAAECBAgQIAECBAgQIECAAAESIECAAAECBAiQAJ33AWJqBSAeWKJeAAAAAElFTkSuQmCC";
 
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 
@@ -1253,8 +1334,8 @@ async function handleMcp(request, env) {
     if (!tool) return rpcError(id, -32602, `未知工具：${params?.name}`);
     try {
       await ensureSynonyms(env); // 換上 D1 版同義詞表（5 分鐘快取；讀不到就退回出廠預設值）
-      const text = await tool.handler(env, params?.arguments || {});
-      return rpcResult(id, { content: [{ type: "text", text }] });
+      const out = await tool.handler(env, params?.arguments || {});
+      return rpcResult(id, wrapToolOutput(out));
     } catch (err) {
       // 欄位不存在＝fieldlog 的 migration 還沒跑過（見 triggerFieldlogSchemaMigration
       // 上方說明）。戳一下讓它補 schema，然後重試一次；成功的話使用者根本不會
@@ -1263,8 +1344,8 @@ async function handleMcp(request, env) {
         const migrated = await triggerFieldlogSchemaMigration(env).catch(() => false);
         if (migrated) {
           try {
-            const text = await tool.handler(env, params?.arguments || {});
-            return rpcResult(id, { content: [{ type: "text", text }] });
+            const out = await tool.handler(env, params?.arguments || {});
+            return rpcResult(id, wrapToolOutput(out));
           } catch (retryErr) {
             // 補過 schema 還是同一個錯：代表這個欄位 fieldlog 那邊也沒有
             // （查詢寫錯欄位名，或 MCP 部署得比 fieldlog 新）。講清楚，不要
