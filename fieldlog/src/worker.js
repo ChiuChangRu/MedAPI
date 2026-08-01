@@ -111,8 +111,21 @@ function parseNotionPageId(input) {
   return `${id32.slice(0, 8)}-${id32.slice(8, 12)}-${id32.slice(12, 16)}-${id32.slice(16, 20)}-${id32.slice(20)}`;
 }
 
+// bytes → base64。要分段餵給 String.fromCharCode：一次展開整個陣列會爆呼叫堆疊
+// （實測 100KB 以上就 Maximum call stack size exceeded），而 inline 模式本來就是
+// 專門服務 2MB 以內的照片，正好落在會爆的範圍
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
 // 產生帶時效的檔案簽名（簡易實現）
-async function createSignedFileUrl(fileKey, fieldPin, expiryMinutes = 10) {
+// origin 要帶進來組成完整網址：呼叫端（MCP server）拿到後是直接當連結用的，
+// 只給相對路徑會變成連不到的死連結
+async function createSignedFileUrl(fileKey, fieldPin, origin = "", expiryMinutes = 10) {
   const expiry = Math.floor(Date.now() / 1000) + expiryMinutes * 60;
   const payload = `${fileKey}:${expiry}`;
   const encoder = new TextEncoder();
@@ -123,7 +136,8 @@ async function createSignedFileUrl(fileKey, fieldPin, expiryMinutes = 10) {
     data
   );
   const sig = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
-  return { url: `/api/file/${fileKey}?expires=${expiry}&sig=${sig}`, expires_at: new Date(expiry * 1000).toISOString() };
+  const path = `/api/file/${fileKey.split("/").map(encodeURIComponent).join("/")}?expires=${expiry}&sig=${sig}`;
+  return { url: `${origin}${path}`, expires_at: new Date(expiry * 1000).toISOString() };
 }
 
 async function handleApi(request, env, url) {
@@ -329,13 +343,13 @@ async function handleApi(request, env, url) {
     if (!obj) return bad("找不到檔案內容", 404);
     const bytes = new Uint8Array(await obj.arrayBuffer());
     if (mode === "inline" && bytes.byteLength <= 2 * 1024 * 1024) {
-      const base64 = btoa(String.fromCharCode(...bytes));
+      const base64 = bytesToBase64(bytes);
       return json({
         id, filename: att.filename, mime_type: att.mime,
         encoding: "base64", data: base64, page: page || null,
       });
     }
-    const signed = await createSignedFileUrl(att.key, env.FIELD_PIN);
+    const signed = await createSignedFileUrl(att.key, env.FIELD_PIN, url.origin);
     const resp = {
       id, filename: att.filename, mime_type: att.mime,
       url: signed.url, expires_at: signed.expires_at, size_bytes: bytes.byteLength,
@@ -358,9 +372,7 @@ async function handleApi(request, env, url) {
     const obj = await env.FILES.get(old.key);
     if (!obj) return bad("找不到檔案內容", 404);
     const bytes = new Uint8Array(await obj.arrayBuffer());
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
+    const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(bytes), task: "transcribe" });
     const text = (result?.text || "").trim();
     await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(text, id).run();
     await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60)}`);
@@ -441,17 +453,17 @@ async function handleApi(request, env, url) {
     for (const a of toProcess) {
       const attId = a.id;
       const obj = await env.FILES.get(a.key).catch(() => null);
-      if (!obj) continue;
+      if (!obj) {
+        // 檔案在 R2 找不到也要據實回報，不能默默跳過——否則呼叫端會以為這張根本不存在
+        results.push({ attachment_id: attId, kind: a.kind, filename: a.filename, success: false, message: "找不到檔案內容（R2 無此物件）" });
+        continue;
+      }
       const bytes = new Uint8Array(await obj.arrayBuffer());
       let success = false, msg = "";
       if (a.kind === "audio") {
         try {
-          let binary = "";
-          for (let i = 0; i < bytes.length; i += 0x8000) {
-            binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          }
           const result = await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
-            audio: btoa(binary), task: "transcribe",
+            audio: bytesToBase64(bytes), task: "transcribe",
           });
           const text = (result?.text || "").trim();
           await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(text, attId).run();
