@@ -54,6 +54,10 @@ const AI_MONTHLY_SOFT_USD = 4.5;
 const AI_MONTHLY_HARD_USD = 5;
 const AI_RATE_PER_1000_NEURONS = 0.011;
 
+// /attachments/:id/raw?mode=inline 直接回 base64 的大小上限。base64 會膨脹約 4/3，
+// 再大就讓呼叫端改走簽名網址。手機照片多半落在 1～4MB，抓 4MB 才涵蓋得住常見情況。
+const INLINE_RAW_MAX_BYTES = 4 * 1024 * 1024;
+
 function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
 }
@@ -211,13 +215,51 @@ function friendlyAiError(err) {
   return msg;
 }
 
+// bytes → base64。一定要分段餵給 String.fromCharCode：一次把整個陣列展開成參數，
+// 100KB 上下就會 Maximum call stack size exceeded（照片幾乎都超過這個大小）。
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+// 帶時效的檔案簽名。origin 要帶進來組完整網址——呼叫端（MCP server）拿到是直接
+// 當連結用的，只給相對路徑會是死連結。key 逐段編碼，中文檔名才不會壞。
+// 注意：這不是「免驗證的對外分享連結」——/api/* 的 FIELD_PIN 閘門在簽名檢查
+// 之前，沒有 PIN 的人拿到簽名網址一樣是 401。簽名的作用是把持有 PIN 的呼叫端
+// 再限縮到「這一個 key、這 10 分鐘」。
+async function createSignedFileUrl(fileKey, fieldPin, origin = "", expiryMinutes = 10) {
+  const expiry = Math.floor(Date.now() / 1000) + expiryMinutes * 60;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", encoder.encode(fieldPin || "default-key"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`${fileKey}:${expiry}`));
+  const sig = Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const path = `/api/file/${fileKey.split("/").map(encodeURIComponent).join("/")}?expires=${expiry}&sig=${sig}`;
+  return { url: `${origin}${path}`, expires_at: new Date(expiry * 1000).toISOString() };
+}
+
+async function verifyFileSignature(fileKey, fieldPin, expires, sig) {
+  const expiry = Number(expires);
+  if (!Number.isFinite(expiry)) return "簽名無效";
+  if (expiry * 1000 < Date.now()) return "簽名已過期";
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", encoder.encode(fieldPin || "default-key"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`${fileKey}:${expiry}`));
+  const expected = Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return sig === expected ? null : "簽名無效";
+}
+
 async function transcribeAttachment(env, db, old) {
   const obj = await env.FILES.get(old.key);
   if (!obj) throw new Error("找不到檔案內容");
   const bytes = new Uint8Array(await obj.arrayBuffer());
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(binary), task: "transcribe" });
+  const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(bytes), task: "transcribe" });
   const text = (result?.text || "").trim();
   await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
   await autoRenameAttachment(db, old, text);
@@ -952,7 +994,16 @@ async function handleApi(request, env, url) {
   const fileMatch = path.match(/^\/file\/(.+)$/);
   if (fileMatch && method === "GET") {
     if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
-    const obj = await env.FILES.get(decodeURIComponent(fileMatch[1]));
+    const key = decodeURIComponent(fileMatch[1]);
+    // 帶 expires+sig 就一定要通過驗證（篡改或過期都 403）；不帶的照舊，
+    // 因為前端 <img src>／下載連結本來就是靠 ?pin= 走同一個閘門
+    const expires = url.searchParams.get("expires");
+    const sig = url.searchParams.get("sig");
+    if (expires || sig) {
+      const err = await verifyFileSignature(key, env.FIELD_PIN, expires, sig);
+      if (err) return bad(err, 403);
+    }
+    const obj = await env.FILES.get(key);
     if (!obj) return bad("找不到檔案", 404);
     return new Response(obj.body, {
       headers: {
@@ -1150,6 +1201,144 @@ async function handleApi(request, env, url) {
   }
 
   // ---- 錄音轉文字（Workers AI Whisper）----
+  // ---- 附件原始檔存取（給 MCP／外部工具用）----
+  // 既有的 /attachments/:id 回的是「擷取後的文字」，但把照片嵌進 Word 報告這種
+  // 用途要的是原始 bytes。小圖直接 base64 回去（省一趟 round-trip、拿到就能用），
+  // 大檔改回帶簽名的下載網址，避免一次把幾十 MB 塞進 JSON。
+  const rawMatch = path.match(/^\/attachments\/(\d+)\/raw$/);
+  if (rawMatch && method === "GET") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const id = Number(rawMatch[1]);
+    const att = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    if (!att) return bad("找不到附件", 404);
+    const obj = await env.FILES.get(att.key);
+    if (!obj) return bad("找不到檔案內容", 404);
+    const size = Number(att.size || 0) || obj.size || 0;
+    const mode = url.searchParams.get("mode") || (size <= INLINE_RAW_MAX_BYTES ? "inline" : "url");
+    if (mode !== "inline" && mode !== "url") return bad("mode 只能是 inline 或 url");
+    if (mode === "inline") {
+      // 超過門檻不要硬塞：base64 會再膨脹約 4/3，Worker 回應與呼叫端的 JSON
+      // 解析都扛不住，直接告訴呼叫端改用 url
+      if (size > INLINE_RAW_MAX_BYTES) {
+        return bad(`檔案 ${(size / 1024 / 1024).toFixed(1)}MB 超過 inline 上限 ${INLINE_RAW_MAX_BYTES / 1024 / 1024}MB，請改用 mode=url`, 413);
+      }
+      const bytes = new Uint8Array(await obj.arrayBuffer());
+      return json({
+        id, filename: att.filename, mime_type: att.mime,
+        encoding: "base64", data: bytesToBase64(bytes), size_bytes: bytes.byteLength,
+      });
+    }
+    const signed = await createSignedFileUrl(att.key, env.FIELD_PIN, url.origin);
+    return json({
+      id, filename: att.filename, mime_type: att.mime,
+      url: signed.url, expires_at: signed.expires_at, size_bytes: size,
+    });
+  }
+
+  // ---- 批次擷取文字：把一個資料夾／一筆紀錄裡還沒整理的照片一次跑完 ----
+  // 只做照片 OCR，不碰錄音：錄音已經有 /entries/:id/auto-transcribe，那支帶了
+  // Neurons 預估、ai_usage_reservations 佔位與 transcribed_at 鎖，能防重複扣額度
+  // 也能在逼近門檻時提早收手。在這裡另寫一套等於繞過那層保護，所以改成把「還有
+  // 錄音待處理」的 entry id 一併回報，讓呼叫端去打那支正規端點。
+  if (path === "/batch/ocr" && method === "POST") {
+    if (!env.AI || !env.FILES) return bad("尚未啟用 Workers AI 與 R2", 501);
+    const body = await request.json().catch(() => ({}));
+    const folderId = body.folder_id ? Number(body.folder_id) : null;
+    const entryId = body.entry_id ? Number(body.entry_id) : null;
+    if (!folderId && !entryId) return bad("需指定 folder_id 或 entry_id");
+    if (folderId && entryId) return bad("folder_id 與 entry_id 只能擇一");
+    // 上限擋住的是 Worker 的 30 秒 CPU 時間：一張照片 OCR 要好幾秒，
+    // 一次收太多必定逾時，逾時的話已經扣掉的額度也拿不回來
+    const limit = Math.min(Math.max(Number(body.limit) || 8, 1), 20);
+    const scope = folderId
+      ? db.prepare(
+          `SELECT a.* FROM attachments a JOIN entries e ON e.id = a.entry_id
+           WHERE e.folder_id = ? AND a.kind = 'photo' AND COALESCE(a.ocr_at, '') = ''
+           ORDER BY a.id LIMIT ?`
+        ).bind(folderId, limit)
+      : db.prepare(
+          `SELECT a.* FROM attachments a
+           WHERE a.entry_id = ? AND a.kind = 'photo' AND COALESCE(a.ocr_at, '') = ''
+           ORDER BY a.id LIMIT ?`
+        ).bind(entryId, limit);
+    const { results: pending } = await scope.all();
+
+    // 還有多少錄音沒轉——回報給呼叫端，讓它自己去打 auto-transcribe
+    const audioSql = folderId
+      ? `SELECT DISTINCT a.entry_id AS id FROM attachments a JOIN entries e ON e.id = a.entry_id
+         WHERE e.folder_id = ? AND a.kind = 'audio' AND COALESCE(a.transcript, '') = '' AND COALESCE(a.transcribed_at, '') = ''`
+      : `SELECT DISTINCT a.entry_id AS id FROM attachments a
+         WHERE a.entry_id = ? AND a.kind = 'audio' AND COALESCE(a.transcript, '') = '' AND COALESCE(a.transcribed_at, '') = ''`;
+    const { results: audioEntries } = await db.prepare(audioSql).bind(folderId || entryId).all();
+    const pendingAudioEntryIds = (audioEntries || []).map((r) => r.id);
+
+    if (!pending.length) {
+      return json({ processed: 0, results: [], remaining: 0, pending_audio_entry_ids: pendingAudioEntryIds });
+    }
+    // 預算檢查放在真的要呼叫 AI 之前做一次就好；逐張再檢查會讓已經跑一半的批次
+    // 中途噴錯，不如在入口擋掉
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+
+    const ai = budgetedAi(env);
+    const results = [];
+    for (const att of pending) {
+      // 搶鎖：ocr_at 從空字串換成 'processing'，同一張不會被兩個請求重複跑
+      const lock = await db.prepare(
+        "UPDATE attachments SET ocr_at = 'processing' WHERE id = ? AND COALESCE(ocr_at, '') = ''"
+      ).bind(att.id).run();
+      if (!lock.meta.changes) continue;
+      try {
+        const obj = await env.FILES.get(att.key);
+        if (!obj) throw new Error("找不到檔案內容（R2 無此物件）");
+        const r = await extractImageText(ai, new Uint8Array(await obj.arrayBuffer()));
+        if (!r.ok) throw new Error(r.error);
+        let text = r.text;
+        // 跟單張 /ocr 同一套關聯判斷：照片落在哪一段錄音的區間，就拿那段逐字稿
+        // 判斷「拍這張時在講什麼」
+        if (att.offset_secs !== null && att.offset_secs !== undefined) {
+          const { results: siblings } = await db.prepare(
+            "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND offset_secs IS NOT NULL ORDER BY offset_secs ASC"
+          ).bind(att.entry_id).all();
+          let seg = null;
+          for (const s of siblings) if (s.offset_secs <= att.offset_secs) seg = s;
+          const transcript = seg ? (seg.transcript || "").trim() : "";
+          if (transcript) {
+            const relation = await judgeRelation(ai, transcript, text);
+            if (relation && !relation.includes("看不出明顯關聯")) {
+              text += `\n\n【對話關聯】${relation}（錄音 ${fmtSecs(att.offset_secs)} 時拍攝）`;
+            }
+          }
+        }
+        await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), att.id).run();
+        await autoRenameAttachment(db, att, text);
+        await logHistory(db, att.entry_id, null, "批次照片擷取文字", `${att.filename}：${text.slice(0, 60) || "（照片上沒有文字）"}`);
+        results.push({ attachment_id: att.id, filename: att.filename, success: true, message: `擷取文字成功，${text.length} 字` });
+      } catch (err) {
+        // 單張失敗不中斷整批。ocr_at 標成 failed 而不是還原成空字串：還原的話
+        // 下次批次又會重跑同一張、再失敗一次，白白耗額度
+        const message = friendlyAiError(err);
+        await db.prepare("UPDATE attachments SET ocr_at = 'failed' WHERE id = ?").bind(att.id).run();
+        await logHistory(db, att.entry_id, null, "批次照片擷取文字失敗", `${att.filename}：${message}`);
+        results.push({ attachment_id: att.id, filename: att.filename, success: false, message });
+      }
+    }
+    const remainingRow = folderId
+      ? await db.prepare(
+          `SELECT COUNT(*) AS n FROM attachments a JOIN entries e ON e.id = a.entry_id
+           WHERE e.folder_id = ? AND a.kind = 'photo' AND COALESCE(a.ocr_at, '') = ''`
+        ).bind(folderId).first()
+      : await db.prepare(
+          `SELECT COUNT(*) AS n FROM attachments WHERE entry_id = ? AND kind = 'photo' AND COALESCE(ocr_at, '') = ''`
+        ).bind(entryId).first();
+    return json({
+      processed: results.length,
+      results,
+      remaining: Number(remainingRow?.n || 0),
+      pending_audio_entry_ids: pendingAudioEntryIds,
+    });
+  }
+
   const transcribeMatch = path.match(/^\/attachments\/(\d+)\/transcribe$/);
   if (transcribeMatch && method === "POST") {
     if (!env.AI) return bad("尚未啟用 Workers AI（見 fieldlog/README.md）", 501);
