@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "81";
+const APP_VERSION = "82";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1169,6 +1169,23 @@ async function openEntry(id) {
   const folder = e.folder_id ? FOLDERS.find((f) => f.id === e.folder_id) : null;
   const template = templateFor(folder ? folder.type : "其他");
   const fields = JSON.parse(e.fields_json || "{}");
+  // 來源同步管理的記事（fields_json._sid／litdb_id 有值）永遠鎖在純文字：
+  // sync.js 用 <!-- sync:start/end --> 這組純文字標記圈出管理區，換成富文字
+  // 編輯器很容易在瀏覽器序列化時弄丟標記，下次同步會整段覆蓋掉使用者手動
+  // 加的備註，所以這類記事不給升級入口。
+  const isSynced = !!(fields._sid || fields.litdb_id);
+  const bodyFormat = e.body_format === "html" ? "html" : "text";
+  const bodySection = bodyFormat === "html"
+    ? `<div class="field-label-row"><label>內文／速記（富文字）</label></div>
+       <div id="e-body-rich" class="rich-editor"></div>`
+    : `<div class="field-label-row">
+        <label for="e-body">內文／速記</label>
+        <span class="body-format-actions">
+          ${isSynced ? "" : `<button class="btn small ghost" id="e-body-upgrade" type="button" title="把這筆記事換成跟 Word 一樣、文字和照片合在同一個框裡的編輯器（只影響這一筆，不會批次轉換）">⤴ 升級為富文字</button>`}
+          <button class="btn small ghost" id="e-body-expand" type="button" title="全螢幕編輯，字體大小可調">⤢ 展開編輯</button>
+        </span>
+      </div>
+      <textarea id="e-body">${esc(e.body)}</textarea>`;
   const mergedTranscript = (e.attachments || [])
     .filter((a) => a.kind === "audio" && (a.transcript || "").trim())
     .sort((a, b) => (a.offset_secs ?? 0) - (b.offset_secs ?? 0) || a.id - b.id)
@@ -1192,11 +1209,7 @@ async function openEntry(id) {
       ${FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("")}
     </select></div>` : ""}
     ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
-    <div class="field-label-row">
-      <label for="e-body">內文／速記</label>
-      <button class="btn small ghost" id="e-body-expand" type="button" title="全螢幕編輯，字體大小可調">⤢ 展開編輯</button>
-    </div>
-    <textarea id="e-body">${esc(e.body)}</textarea>
+    ${bodySection}
     <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button></div>
     <hr/>
     <h3 class="section-title">附件</h3>
@@ -1238,17 +1251,36 @@ async function openEntry(id) {
       if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadInbox(); loadFolders(); }
     } catch (err) { showToast("刪除失敗：" + err.message); }
   };
-  $("e-body-expand").onclick = () => {
-    openEditModal({
-      title: "內文／速記",
-      value: $("e-body").value,
-      onSave: async (text) => { $("e-body").value = text; },
-    });
-  };
+  if (bodyFormat === "html") {
+    window.fieldlogRichEditor?.init($("e-body-rich"), injectFilePinForDisplay(e.body || ""));
+  } else {
+    $("e-body-expand").onclick = () => {
+      openEditModal({
+        title: "內文／速記",
+        value: $("e-body").value,
+        onSave: async (text) => { $("e-body").value = text; },
+      });
+    };
+    const upgradeBtn = $("e-body-upgrade");
+    if (upgradeBtn) upgradeBtn.onclick = async () => {
+      if (!confirm("把這筆記事換成富文字編輯框？只影響這一筆，內容不會變，只是換了編輯方式。")) return;
+      try {
+        await api(`/entries/${id}`, {
+          method: "PUT",
+          body: JSON.stringify({ body_format: "html", body: textToHtmlForUpgrade($("e-body").value) }),
+        });
+        showToast("已升級為富文字");
+        openEntry(id);
+      } catch (err) { showToast("升級失敗：" + err.message); }
+    };
+  }
   $("e-save").onclick = async () => {
     const newFields = {};
     modal.querySelectorAll(".e-field").forEach((i) => { newFields[i.dataset.key] = i.value.trim(); });
-    const patch = { title: $("e-title").value.trim(), body: $("e-body").value.trim(), fields: newFields };
+    const bodyValue = bodyFormat === "html"
+      ? stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("e-body-rich")) || "")
+      : $("e-body").value.trim();
+    const patch = { title: $("e-title").value.trim(), body: bodyValue, fields: newFields };
     const sel = $("e-folder");
     if (sel?.value === "__new__") {
       const newFolder = await createFolderForArchive(patch.title || e.title);
@@ -1275,6 +1307,7 @@ async function openEntry(id) {
     uploadFiles(id, files);
   };
   setupFileDropZone($("entry-modal"), (files) => uploadFiles(id, files));
+  if (bodyFormat === "html") setupRichImageDropZone($("e-body-rich"), id);
   const processBtn = $("e-process");
   if (processBtn) processBtn.onclick = () => processEntryAttachments(id, processBtn);
   const renameBtn = $("e-rename-files");
@@ -2340,6 +2373,31 @@ function bindAttActions(entryId) {
   });
 }
 
+// ---------- 富文字記事內文（entries.body_format = 'html'）的圖片網址處理 ----------
+// 存進資料庫的 HTML 絕對不能帶 ?pin=——那是跟 x-pin header 同一份、擁有完整 API
+// 權限的主 PIN，燒進永久保存的內容比分享一次性檔案連結更嚴重。畫面上要顯示時
+// 才動態補上，存檔前一定要剝掉。這裡假設檔案網址永遠是 `/api/file/{key}` 後面
+// 最多接一個 `?pin=...`（app.js 全部檔案連結都是這個形狀，見 attHtml 等處）。
+function injectFilePinForDisplay(html) {
+  if (!html) return html;
+  const p = encodeURIComponent(pin());
+  return html.replace(/(<img\b[^>]*\bsrc=")(\/api\/file\/[^"?]+)(")/gi, (m, pre, src, post) => `${pre}${src}?pin=${p}${post}`);
+}
+function stripFilePinForSave(html) {
+  if (!html) return html;
+  return html.replace(/(<img\b[^>]*\bsrc="\/api\/file\/[^"?]+)\?pin=[^"]*(")/gi, "$1$2");
+}
+
+// 「升級為富文字」：把既有純文字 body 轉成安全轉義過的 HTML，換行變段落。
+// 跟 fieldlog/src/lib/richtext.js 的 textToHtml() 邏輯一致（那支是給後端 import
+// 的 ES module，app.js 是一般 <script> 沒有 import，所以這裡另外寫一份同邏輯）。
+function textToHtmlForUpgrade(text) {
+  const escaped = String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const paragraphs = escaped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+  if (!paragraphs.length) return "";
+  return paragraphs.map((block) => `<p>${block.replace(/\n/g, "<br>")}</p>`).join("");
+}
+
 // ---------- 上傳（含離線佇列保底）----------
 async function putFile(entryId, blob, filename, offsetSecs, meta) {
   const headers = {
@@ -2417,6 +2475,56 @@ async function uploadFiles(entryId, files) {
   status.textContent = "";
   showToast(`已上傳 ${done} 個檔案${duplicates ? `，略過 ${duplicates} 個重複檔案` : ""}`);
   openEntry(entryId);
+}
+
+// 富文字記事的編輯框：拖圖片進來直接插進游標位置（跟 Word 一樣），不是只掛在
+// 附件清單下面；非圖片檔（PDF、錄音…）維持原本「附件」流程，走 uploadFiles
+// 既有的整批上傳＋略過重複＋離線佇列，這裡不重複實作一次。
+function setupRichImageDropZone(el, entryId) {
+  if (!el) return;
+  const isFileDrag = (ev) => Array.from(ev.dataTransfer?.types || []).includes("Files");
+  el.ondragover = (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    ev.stopPropagation(); // 蓋掉外層 entry-modal 的拖放區，避免同一次拖放被處理兩次
+    ev.dataTransfer.dropEffect = "copy";
+  };
+  el.ondrop = (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const files = Array.from(ev.dataTransfer.files || []);
+    if (files.length) insertFilesIntoRichEditor(entryId, el, files);
+  };
+}
+
+async function insertFilesIntoRichEditor(entryId, editorEl, files) {
+  const images = files.filter((f) => (f.type || "").startsWith("image/"));
+  const others = files.filter((f) => !(f.type || "").startsWith("image/"));
+  for (const f of images) {
+    if (f.size > 50 * 1024 * 1024) { showToast(`${f.name} 超過 50MB，已略過`); continue; }
+    try {
+      const uploaded = await putFile(entryId, f, f.name, null);
+      if (uploaded.duplicate) { showToast(`${f.name} 是重複檔案，已略過`); continue; }
+      const url = `/api/file/${encodeURIComponent(uploaded.key)}?pin=${encodeURIComponent(pin())}`;
+      window.fieldlogRichEditor?.insertImage(editorEl, url, uploaded.id);
+      await refreshEntryAttachmentsPanel(entryId);
+    } catch (err) { showToast(`${f.name} 上傳失敗：${err.message}`); }
+  }
+  // 非圖片走既有附件上傳流程；uploadFiles 結尾會整個重開記事，不能跟上面
+  // 插圖流程共用同一輪迴圈（插圖故意不整個重開，才不會把正在打的字沖掉）
+  if (others.length) uploadFiles(entryId, others);
+}
+
+// 插圖後只重畫附件清單那一小塊（沿用附件卡片跟按鈕綁定邏輯），不整個重開
+// 記事——重開會把 Quill 編輯框裡還沒存檔的內容整個蓋掉
+async function refreshEntryAttachmentsPanel(entryId) {
+  const panel = $("e-attachments");
+  if (!panel) return;
+  const fresh = await api(`/entries/${entryId}`);
+  const visible = (fresh.attachments || []).filter((a) => !a.source_pdf_id);
+  panel.innerHTML = visible.map((a) => attHtml(a, fresh.attachments)).join("") || `<p class="sub">尚無附件</p>`;
+  bindAttActions(entryId);
 }
 
 // 離線佇列：IndexedDB 先存後傳（沿用 Medtec 驗證過的模式）

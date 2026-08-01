@@ -518,6 +518,12 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 #e-body { min-height: 200px; font-size: 15px; line-height: 1.6; }
 .field-label-row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 4px; }
 .field-label-row label { margin: 0; }
+.body-format-actions { display: flex; gap: 6px; }
+.rich-editor { background: #fafbfa; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.rich-editor .ql-toolbar { border: none; border-bottom: 1px solid var(--border); }
+.rich-editor .ql-container { border: none; font-size: 15px; }
+.rich-editor .ql-editor { min-height: 260px; line-height: 1.6; }
+.rich-editor .ql-editor img { max-width: 100%; border-radius: 6px; }
 .modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
 .modal .sub { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
 .create-folder-modal { max-width: 620px; margin-top: 5vh; padding: 24px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }

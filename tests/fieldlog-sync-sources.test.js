@@ -483,6 +483,35 @@ test("PUT /entries/:id 的 fields 是合併不是取代——內部識別欄位�
   assert.equal(fields.litdb_id, "coating:P01");
 });
 
+test("PUT /entries/:id：來源同步管理的記事不能升級為富文字（body_format='html' 要被擋）", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  db.tables.entries.push({
+    id: 8, folder_id: 1, title: "同步進來的記事", body: "內容", body_format: "text",
+    fields_json: JSON.stringify({ _sid: "coating:P01", litdb_id: "coating:P01" }),
+  });
+  const res = await call(env, "/entries/8", {
+    method: "PUT",
+    body: JSON.stringify({ body_format: "html", body: "<p>內容</p>" }),
+  });
+  assert.equal(res.status, 400, "同步管理的記事不能切成富文字");
+  assert.equal(db.tables.entries.find((e) => e.id === 8).body_format, "text", "拒絕後格式不能被改掉");
+});
+
+test("PUT /entries/:id：一般記事可以升級為富文字，內容會被清理過再存", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  db.tables.entries.push({ id: 9, folder_id: 1, title: "一般記事", body: "內容", body_format: "text", fields_json: "{}" });
+  const res = await call(env, "/entries/9", {
+    method: "PUT",
+    body: JSON.stringify({ body_format: "html", body: '<p onclick="evil()">內容</p><script>alert(1)</script>' }),
+  });
+  assert.equal(res.status, 200);
+  const row = db.tables.entries.find((e) => e.id === 9);
+  assert.equal(row.body_format, "html");
+  assert.equal(row.body, "<p>內容</p>", "存進資料庫前要清掉不在白名單的屬性與標籤");
+});
+
 test("沒帶 PIN 一律擋下（同步端點與 sources 管理都在 PIN 之內）", async () => {
   resetSchemaCacheForTests();
   const env = { FIELD_PIN: "pin", DB: makeDB() };

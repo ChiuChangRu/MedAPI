@@ -604,6 +604,30 @@ test("記事還有文字內容時，刪掉最後一個檔案不會把記事一�
   assert.equal(db.tables.entries.length, 1, "有文字內容的記事要留著");
 });
 
+test("body_format='html' 的記事：Quill 清空時的 <p><br></p> 不能被誤判成「有內容」", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  env.FILES = { delete: async () => {} };
+  db.tables.entries.push({ id: 10, folder_id: 1, title: "富文字空記事", body: "<p><br></p>", body_format: "html", fields_json: "{}" });
+  db.tables.attachments.push({ id: 20, entry_id: 10, filename: "a.pdf", key: "main", source_pdf_id: null });
+
+  const res = await call(env, "/attachments/20", { method: "DELETE" });
+  assert.equal(res.data.entry_removed, true, "剝成純文字後其實是空的，該收掉的記事不能被 <p><br></p> 誤判成有內容");
+  assert.equal(db.tables.entries.length, 0);
+});
+
+test("body_format='html' 的記事：有實際文字內容時不能被收掉", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  env.FILES = { delete: async () => {} };
+  db.tables.entries.push({ id: 10, folder_id: 1, title: "富文字有內容", body: "<p>現場重點</p>", body_format: "html", fields_json: "{}" });
+  db.tables.attachments.push({ id: 20, entry_id: 10, filename: "a.pdf", key: "main", source_pdf_id: null });
+
+  const res = await call(env, "/attachments/20", { method: "DELETE" });
+  assert.equal(res.data.entry_removed, false, "剝成純文字後還有「現場重點」，不能收掉");
+  assert.equal(db.tables.entries.length, 1);
+});
+
 test("檔案的附屬記事可以獨立儲存（跟記事內文分開）", async () => {
   const db = makeDB();
   const env = makeEnv(db);

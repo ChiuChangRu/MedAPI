@@ -125,6 +125,37 @@ test("get_fieldlog_entry：AI 解析段獨立呈現且明講是 AI 產出；內�
   assert.doesNotMatch(text, /<!-- sync:/, "同步標記只給引擎認位置，不該顯示");
 });
 
+test("get_fieldlog_entry：body_format='html' 的記事要剝成純文字顯示，不能帶標籤", async () => {
+  resetSynonymCacheForTests();
+  const db = makeDB({
+    entries: [entryRow({
+      body_format: "html",
+      body: '<p>第一段</p><p>第二段<br>換行</p><img src="/api/file/x" alt="收據.jpg">',
+    })],
+  });
+  const result = await callTool({ DB_FIELDLOG: db }, "get_fieldlog_entry", { id: 1 });
+  const text = result.content[0].text;
+  assert.match(text, /第一段/);
+  assert.match(text, /第二段\n換行/);
+  assert.match(text, /\[圖片：收據\.jpg\]/);
+  assert.doesNotMatch(text, /<p>|<img|<br>/, "html 格式的記事顯示時不該留下標籤");
+});
+
+test("search_fieldlog：body_format='html' 的記事一樣搜得到，命中片段是剝過標籤的純文字", async () => {
+  resetSynonymCacheForTests();
+  const db = makeDB({
+    entries: [entryRow({
+      title: "富文字記事",
+      body_format: "html",
+      body: "<p>提到 PTGL1000 這個代號</p>",
+    })],
+  });
+  const result = await callTool({ DB_FIELDLOG: db }, "search_fieldlog", { query: "PTGL1000" });
+  const text = result.content[0].text;
+  assert.match(text, /\[entry 1\]/, "html 格式的內文也要能被搜到");
+  assert.doesNotMatch(text, /<p>/, "命中片段不該帶 HTML 標籤");
+});
+
 test("get_fieldlog_entry：來源已移除的孤兒記事要有警示", async () => {
   resetSynonymCacheForTests();
   const db = makeDB({

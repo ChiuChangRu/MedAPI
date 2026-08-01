@@ -196,6 +196,36 @@ test("附件 content_hash 撞到目標記事既有檔案時當重複檔處理，
   assert.equal(db.tables.attachments.find((a) => a.id === 20).entry_id, 2, "目標原本那份不受影響");
 });
 
+test("目標是富文字（body_format='html'）、來源是純文字時，合併要把來源內容轉成 HTML 再接", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  db.tables.entries.push({ id: 1, folder_id: null, title: "純文字來源", body: "來源內容", fields_json: "{}", created_at: "x", updated_at: "x" });
+  db.tables.entries.push({ id: 2, folder_id: null, title: "富文字目標", body: "<p>目標內容</p>", body_format: "html", fields_json: "{}", created_at: "x", updated_at: "x" });
+
+  const res = await call(env, "/entries/1/merge", { method: "POST", body: JSON.stringify({ target_id: 2 }) });
+  assert.equal(res.status, 200);
+  const merged = db.tables.entries[0].body;
+  assert.match(merged, /<p>目標內容<\/p>/, "目標原本的 HTML 內容要保留");
+  assert.match(merged, /<p>來源內容<\/p>/, "來源的純文字要轉成 HTML 段落，不能原樣塞進去");
+  assert.match(merged, /純文字來源/, "併入標記要留著");
+  assert.doesNotMatch(merged, /\n\n來源內容/, "純文字換行分段不該直接混進 HTML 字串");
+});
+
+test("目標是純文字、來源是富文字時，合併要把來源內容剝成純文字再接", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  db.tables.entries.push({ id: 1, folder_id: null, title: "富文字來源", body: "<p>來源內容</p><img src=\"/api/file/x\" alt=\"圖.jpg\">", body_format: "html", fields_json: "{}", created_at: "x", updated_at: "x" });
+  db.tables.entries.push({ id: 2, folder_id: null, title: "純文字目標", body: "目標內容", fields_json: "{}", created_at: "x", updated_at: "x" });
+
+  const res = await call(env, "/entries/1/merge", { method: "POST", body: JSON.stringify({ target_id: 2 }) });
+  assert.equal(res.status, 200);
+  const merged = db.tables.entries[0].body;
+  assert.match(merged, /目標內容/);
+  assert.match(merged, /來源內容/);
+  assert.match(merged, /\[圖片：圖\.jpg\]/, "來源的圖片要轉成純文字標註");
+  assert.doesNotMatch(merged, /<p>|<img/, "目標是純文字，合併結果不該留下 HTML 標籤");
+});
+
 test("relations 雙向重新指向目標，合併後產生的自我關聯要清掉", async () => {
   const db = makeDB();
   const env = makeEnv(db);
