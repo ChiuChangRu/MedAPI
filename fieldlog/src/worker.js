@@ -43,7 +43,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "83";
+const UI_VERSION = "84";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -520,9 +520,19 @@ async function handleApi(request, env, url) {
   if (path === "/entries" && method === "POST") {
     const body = await request.json().catch(() => ({}));
     const folderId = body.folder_id ? Number(body.folder_id) : null;
+    // 新記事一律是富文字，不再有「先建成純文字、之後手動升級」這一段。呼叫端
+    // （前端各個採集入口）送來的 body 是純文字，這裡轉成 HTML 段落再存；要直接
+    // 送 HTML 就明確帶 body_format: "html"。
+    // 來源同步建立的記事不走這條路——sync.js 自己 INSERT、不帶 body_format，
+    // 維持欄位預設的 'text'，它的 <!-- sync:start/end --> 標記才不會被清掉。
+    const rawBody = (body.body || "").trim();
+    const asText = String(body.body_format || "html") === "text";
+    const storedBody = asText
+      ? rawBody
+      : sanitizeEntryHtml(body.body_format === "html" ? rawBody : textToHtml(rawBody));
     const r = await db.prepare(
-      "INSERT INTO entries (folder_id, title, fields_json, body, created_at) VALUES (?, ?, ?, ?, ?)"
-    ).bind(folderId, (body.title || "").trim(), JSON.stringify(body.fields || {}), (body.body || "").trim(), now()).run();
+      "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(folderId, (body.title || "").trim(), JSON.stringify(body.fields || {}), storedBody, asText ? "text" : "html", now()).run();
     await logHistory(db, r.meta.last_row_id, folderId, "新增紀錄", body.title || "");
     return json({ id: r.meta.last_row_id, ok: true });
   }
