@@ -1,0 +1,68 @@
+name: 部署 fieldlog／MCP Worker（手動）
+
+# 手機上也能部署：GitHub → Actions → 選這個 workflow → Run workflow
+# → 選分支與要部署的 Worker → 綠色按鈕。不需要終端機。
+#
+# ⚠️ Run workflow 時「Use workflow from」要選實際在跑的那個分支
+# （目前是 codex/kiwi-integration），不要用 main：
+#   - workflow_dispatch 的 workflow 必須存在於預設分支才會出現在 Actions 清單裡，
+#     所以這個檔案要放 main；但實際執行時 GitHub 用的是你選的那個分支的程式碼。
+#   - main 目前沒有 mcp/ 目錄，落後實際主線很多，對著 main 部署會把線上打回舊版。
+#
+# 刻意「只」用 workflow_dispatch，沒有 push 觸發：fieldlog Worker 可能已經
+# 在 Cloudflare 那邊接了 Workers Builds（README 的建立步驟就是「Continue with
+# GitHub」）。再加一個 push 觸發會變成同一次 push 被部署兩次，先後順序還不保證。
+# 要改成自動部署，先去 Cloudflare Dashboard 把 Workers Builds 關掉再說。
+#
+# 需要的 secrets（跟既有的 deploy.yml 共用，不必另外設）：
+#   CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "要部署哪個 Worker"
+        required: true
+        type: choice
+        default: fieldlog
+        options:
+          - fieldlog
+          - mcp
+          - both
+
+jobs:
+  fieldlog:
+    # fieldlog 擁有 D1 的 schema：ensureSchema 會在第一個請求進來時補上還沒跑過
+    # 的 ALTER。MCP 讀同一個 D1 但不管 migration，所以「MCP 先部署、fieldlog 沒
+    # 跟上」就會出現 no such column——先 fieldlog 再 MCP 才是正確順序。
+    if: ${{ inputs.target == 'fieldlog' || inputs.target == 'both' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy fieldlog
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: fieldlog
+          command: deploy
+
+  mcp:
+    needs: [fieldlog]
+    # always() 是必要的：只選 mcp 時 fieldlog 會是 skipped，沒有 always() 的話
+    # needs 會讓這個 job 一起被跳過。選 both 時才要求 fieldlog 真的成功。
+    if: >-
+      ${{ always() && (
+        inputs.target == 'mcp' ||
+        (inputs.target == 'both' && needs.fieldlog.result == 'success')
+      ) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy MCP
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: mcp
+          command: deploy
