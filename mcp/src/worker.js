@@ -67,10 +67,25 @@ const CORS_HEADERS = {
   "access-control-expose-headers": "mcp-session-id",
 };
 
-function json(data, status = 200) {
+function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", ...CORS_HEADERS },
+    headers: { "content-type": "application/json; charset=utf-8", ...CORS_HEADERS, ...extraHeaders },
+  });
+}
+
+// 401 一定要帶 WWW-Authenticate（RFC 7235 的要求，MCP 客戶端也是照這個判斷）。
+// 少了它，客戶端收到的就只是一個沒有任何線索的 401，只能顯示「需要重新授權」
+// 之類的泛用訊息——2026-08-01 連接器重連不上時就是這樣，錯誤訊息完全看不出
+// 「URL 少了 ?pin=」還是「PIN 值不對」。
+//
+// header 值只放 ASCII：HTTP header 不是 UTF-8 通道（RFC 7230 的 field-value 是
+// US-ASCII，中文屬於 obs-text），塞中文可能被客戶端或中間的代理拒掉，那會讓
+// 原本只是「PIN 沒帶對」的情況變成整條連線失敗，比沒加還糟。
+// 完整的中文說明放 JSON body，那裡才是 UTF-8。
+function unauthorized(reason, description) {
+  return json({ error: description }, 401, {
+    "www-authenticate": `Bearer realm="medapi-mcp", error="invalid_token", error_description="${reason}"`,
   });
 }
 
@@ -1380,10 +1395,17 @@ export default {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
       // fail-closed：MCP_PIN 未設定時全部拒絕
       const pin = (env.MCP_PIN || "").trim();
-      if (!pin) return json({ error: "尚未設定 MCP_PIN：請至 Worker Settings → Variables and Secrets 新增" }, 401);
+      if (!pin) return unauthorized("server MCP_PIN not configured", "尚未設定 MCP_PIN：請至 Worker Settings → Variables and Secrets 新增");
       const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
       const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || bearer).trim();
-      if (given !== pin) return json({ error: "PIN 錯誤或未提供" }, 401);
+      // 「沒帶」跟「帶錯」分開講：連接器重連不上時，這一句就決定要去修 URL
+      // 還是去對 PIN 值。合在一起寫成「PIN 錯誤或未提供」等於兩邊都要試。
+      if (!given) {
+        return unauthorized("missing pin: append ?pin=<MCP_PIN> to the connector URL", "沒有帶 PIN：claude.ai 自訂連接器不能自帶 header，網址要寫成 https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>（重新連接時整條網址都要貼，只貼到 /mcp 會落在這裡）");
+      }
+      if (given !== pin) {
+        return unauthorized("invalid pin", "PIN 不正確：對一下 Worker Settings → Variables and Secrets 裡的 MCP_PIN（注意不是 FIELD_PIN，兩者刻意不同值）");
+      }
       try {
         return await handleMcp(request, env);
       } catch (err) {
@@ -1391,10 +1413,17 @@ export default {
       }
     }
     if (url.pathname === "/") {
-      // 部署健康檢查用；不透露任何資料
-      return new Response("medapi-mcp OK — MCP 端點在 POST /mcp（需 ?pin=）\n", {
-        headers: { "content-type": "text/plain; charset=utf-8", ...CORS_HEADERS },
-      });
+      // 部署健康檢查用；不透露任何資料。
+      // 附上工具數是為了能從外部一眼判斷「這台有沒有部署到新版」——2026-08-01
+      // 新增兩支影像工具後，除了實際連上去之外沒有任何辦法確認部署是否生效，
+      // 排查時分不清是「Worker 沒部署」還是「客戶端把工具清單快取住了」。
+      // 工具數不是機密（README 本來就寫著），但工具名不列，不擴大暴露面。
+      return new Response(
+        `medapi-mcp OK — MCP 端點在 POST /mcp（需 ?pin=）\n`
+        + `工具數：${TOOLS.length}\n`
+        + `（連接器連不上時：先確認這裡的工具數是不是最新的，是的話就是客戶端要重新連接以更新工具清單）\n`,
+        { headers: { "content-type": "text/plain; charset=utf-8", ...CORS_HEADERS } },
+      );
     }
     // 其餘路徑一律 404——尤其是 /.well-known/oauth-*：這個 MCP 只用 PIN，
     // 不做 OAuth，若這裡誤回 200 會讓 claude.ai 誤判成「這台支援 OAuth」

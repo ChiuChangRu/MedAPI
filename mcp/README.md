@@ -123,6 +123,27 @@ Claude Code 也可以連：`claude mcp add --transport http medapi
 
 **接 ChatGPT／GPT** 的連接器設定步驟與完整工具清單見 [`CONNECT-GPT.md`](./CONNECT-GPT.md)。
 
+## 連接器連不上 / 工具清單沒更新
+
+**先開健康檢查頁**：`https://medapi-mcp.<帳號>.workers.dev/`
+
+它會印出目前部署版本的**工具數**。這一步是要分開兩件完全不同的事：
+
+| 工具數 | 代表 | 怎麼處理 |
+|---|---|---|
+| 舊的數字 | Worker **沒部署**到新版 | 去 Cloudflare → `medapi-mcp` → Deployments 看建置有沒有跑、有沒有失敗；Settings → Build 的 Production branch 是不是現在在開發的那條 |
+| 新的數字 | Worker 已是新版，**客戶端把工具清單快取住了** | 在 claude.ai 把連接器**中斷再重新連接**；MCP 客戶端不會自動發現新工具 |
+| 頁面打不開 | Worker 掛了或網址錯 | 對一下網址；Worker 真的掛了看 Deployments 的錯誤 |
+
+**401 的兩種訊息不一樣，照著做就好**（2026-08-01 之前兩種合成一句「PIN 錯誤或未提供」，看到的人兩邊都要試）：
+
+- 「沒有帶 PIN」→ **網址少了 `?pin=`**。這是重新連接時最常見的失敗：claude.ai 的自訂連接器不能自帶 header，PIN 是掛在 URL 上的，整條網址都要貼完整，只貼到 `/mcp` 就會落在這裡。
+- 「PIN 不正確」→ 值對不上。注意是 `MCP_PIN`，不是 `FIELD_PIN`，兩者刻意不同值。
+
+401 也會帶 `WWW-Authenticate`（ASCII，中文說明在 JSON body）。少了這個 header，客戶端拿不到任何線索，只會顯示「需要重新授權／token 過期」這類看不出原因的泛用訊息。
+
+> `/.well-known/oauth-*` 一律回 404 是**刻意的**：這台只用 PIN、不做 OAuth。這裡若誤回 200，claude.ai 會誤判成支援 OAuth、進而嘗試動態註冊，然後跳出「無法向登入服務註冊」。
+
 ## 安全設計
 
 - **fail-closed**：`MCP_PIN` 未設定時所有請求一律 401
