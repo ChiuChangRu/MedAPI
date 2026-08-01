@@ -33,7 +33,7 @@ function makeDB({ entries = [], attachments = [], synonyms = null, sources = [],
       state.synonyms.push({ canonical: args[0], aliases_json: args[1], codes_json: args[2] });
       return { results: [] };
     }
-    if (q.startsWith("SELECT e.id, e.folder_id, e.title, e.body, e.fields_json, e.created_at, e.analysis_json,")) {
+    if (q.startsWith("SELECT e.id, e.folder_id, e.title, e.body, e.body_format, e.fields_json, e.created_at, e.analysis_json,")) {
       return { results: state.entries };
     }
     if (q.startsWith("SELECT a.id AS att_id,")) {

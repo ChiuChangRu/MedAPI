@@ -152,9 +152,9 @@ function makeDB() {
       });
       return { results: [], lastRowId: id, changes: 1 };
     }
-    if (q === "SELECT body, fields_json FROM entries WHERE id = ?") {
+    if (q === "SELECT body, body_format, fields_json FROM entries WHERE id = ?") {
       const row = tables.entries.find((e) => e.id === args[0]);
-      return { results: row ? [{ body: row.body, fields_json: row.fields_json }] : [], changes: 0 };
+      return { results: row ? [{ body: row.body, body_format: row.body_format, fields_json: row.fields_json }] : [], changes: 0 };
     }
     if (q === "DELETE FROM entries WHERE id = ?") {
       const before = tables.entries.length;

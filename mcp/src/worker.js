@@ -42,6 +42,7 @@ import {
 // 通用 JSON→Markdown 渲染器與 fieldlog 共用同一份（單一真相來源）：
 // analysis_json 在這裡怎麼呈現、在 fieldlog 端怎麼進 body，規則永遠一致
 import { renderTree } from "../../fieldlog/src/lib/render.js";
+import { htmlToPlainText } from "../../fieldlog/src/lib/richtext.js";
 
 const PROTOCOL_DEFAULT = "2025-03-26";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
@@ -584,7 +585,7 @@ const TOOLS = [
       // fieldlog 那邊還沒跑 migration、欄位不存在時退回舊欄位集，查詢不能整個炸掉。
       const queryBoth = async (withAnalysis) => Promise.all([
         env.DB_FIELDLOG.prepare(
-          `SELECT e.id, e.folder_id, e.title, e.body, e.fields_json, e.created_at,${withAnalysis ? " e.analysis_json," : ""} f.name AS folder_name, f.type AS folder_type
+          `SELECT e.id, e.folder_id, e.title, e.body, e.body_format, e.fields_json, e.created_at,${withAnalysis ? " e.analysis_json," : ""} f.name AS folder_name, f.type AS folder_type
            FROM entries e LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY e.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
@@ -600,10 +601,13 @@ const TOOLS = [
         (!wantFolderType || row.folder_type === wantFolderType) &&
         (allowedFolderIds === null || allowedFolderIds.has(row.folder_id));
       for (const a of allAtts) a._ocr = stripPdfMetadata(a.ocr_text || ""); // 即時剝 PDF metadata
+      // 富文字記事（body_format='html'）先剝成純文字再進比對／顯示，避免標籤與
+      // 屬性造成雜訊或誤判命中——這裡跟搜尋/顯示層假設「body 是純文字」一致
+      for (const e of allEntries) e._body = e.body_format === "html" ? htmlToPlainText(e.body) : (e.body || "");
       const entryHits = runSearch(
         allEntries.filter(inScope),
         plan,
-        (e) => `${e.title}\n${e.body}\n${e.fields_json}\n${e.analysis_json || ""}`,
+        (e) => `${e.title}\n${e._body}\n${e.fields_json}\n${e.analysis_json || ""}`,
         limit
       );
       const attHits = runSearch(
@@ -617,8 +621,8 @@ const TOOLS = [
         out.push("## 命中的紀錄");
         for (const { row: e } of entryHits.hits) {
           const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "收件匣";
-          const hitText = pickHitField([e.title, e.body, e.fields_json, e.analysis_json], plan) || e.body;
-          const aiMark = e.analysis_json && !matchesPlan(`${e.title}\n${e.body}\n${e.fields_json}`, plan) ? "｜⚠ 命中在 AI 解析段（非原始紀錄）" : "";
+          const hitText = pickHitField([e.title, e._body, e.fields_json, e.analysis_json], plan) || e._body;
+          const aiMark = e.analysis_json && !matchesPlan(`${e.title}\n${e._body}\n${e.fields_json}`, plan) ? "｜⚠ 命中在 AI 解析段（非原始紀錄）" : "";
           out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}${aiMark}\n  ${planSnippet(hitText, plan)}`);
         }
       }
@@ -665,8 +669,11 @@ const TOOLS = [
       // _ 開頭是同步機制的內部欄位（_sid／_content_hash…），對讀者是雜訊
       const fields = Object.entries(allFields).filter(([k, v]) => !k.startsWith("_") && v && String(v).trim());
       for (const [k, v] of fields) lines.push(`- **${k}**：${v}`);
+      // 富文字記事（body_format='html'）先剝成純文字；純文字記事維持原本邏輯——
       // 來源同步區的 HTML 註解標記只給同步引擎認位置用，顯示時拿掉
-      const bodyText = (e.body || "").replace(/^<!-- sync:(start|end)[^\n]*-->$/gm, "").trim();
+      const bodyText = e.body_format === "html"
+        ? htmlToPlainText(e.body)
+        : (e.body || "").replace(/^<!-- sync:(start|end)[^\n]*-->$/gm, "").trim();
       if (bodyText) lines.push("", bodyText);
       const analysis = analysisSection(e);
       if (analysis) lines.push("", analysis);

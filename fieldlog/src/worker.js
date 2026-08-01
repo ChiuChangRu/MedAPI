@@ -24,6 +24,7 @@ import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelatio
 import { MAX_FOLDER_DEPTH, ensureSchema } from "./lib/schema.js";
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
+import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
 import {
   deleteAttachmentDeep,
   folderDepth,
@@ -512,7 +513,6 @@ async function handleApi(request, env, url) {
     const old = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
     if (!old) return bad("找不到紀錄", 404);
     const title = body.title !== undefined ? (body.title || "").trim() : old.title;
-    const bodyText = body.body !== undefined ? (body.body || "").trim() : old.body;
     // fields 用合併不用取代：前端只送「模板欄位」，取代會把沒顯示在表單上的鍵
     // 全部抹掉——包括同步機制的 _sid／_content_hash／litdb_id。那些鍵一被抹掉，
     // 每天的來源同步就認不得這筆記事，整批重複匯入。要清空某個欄位送空字串即可。
@@ -523,8 +523,29 @@ async function handleApi(request, env, url) {
       fields = JSON.stringify({ ...oldFields, ...body.fields });
     }
     const folderId = body.folder_id !== undefined ? (body.folder_id ? Number(body.folder_id) : null) : old.folder_id;
-    await db.prepare("UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, updated_at = ? WHERE id = ?")
-      .bind(title, bodyText, fields, folderId, now(), id).run();
+    let bodyFormat = old.body_format || "text";
+    if (body.body_format !== undefined) {
+      const requested = String(body.body_format || "text");
+      if (requested === "html") {
+        // 來源同步管理的記事（sync.js 用 fields_json._sid／litdb_id 認記事）永遠
+        // 鎖在純文字：同步引擎靠 <!-- sync:start/end --> 這組純文字標記圈出管理區，
+        // 换成富文字編輯器很容易在瀏覽器序列化時弄丟標記，下次同步會整段覆蓋掉
+        // 使用者手動加的備註。前端本來就不會給這類記事顯示升級按鈕，這裡是後端
+        // 的第二道防線，擋掉繞過前端直接打 API 的情況。
+        let checkFields = {};
+        try { checkFields = JSON.parse(fields || "{}"); } catch { /* 壞 JSON 當空 */ }
+        if (checkFields._sid || checkFields.litdb_id) {
+          return bad("這筆記事由外部來源同步管理，無法升級為富文字");
+        }
+      }
+      bodyFormat = requested === "html" ? "html" : "text";
+    }
+    const bodyRaw = body.body !== undefined ? (body.body || "").trim() : old.body;
+    // 存進資料庫前統一過一次白名單式清理：Quill 正常操作不會產生危險標籤，
+    // 但前端可以被繞過，資料庫裡不能留 <script> 之類的東西
+    const bodyText = bodyFormat === "html" ? sanitizeEntryHtml(bodyRaw) : bodyRaw;
+    await db.prepare("UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, body_format = ?, updated_at = ? WHERE id = ?")
+      .bind(title, bodyText, fields, folderId, bodyFormat, now(), id).run();
     if (body.folder_id !== undefined && folderId !== old.folder_id) {
       await logHistory(db, id, folderId, "歸檔", title);
     } else {
@@ -601,9 +622,20 @@ async function handleApi(request, env, url) {
     await db.prepare("DELETE FROM relations WHERE from_entry_id = to_entry_id").run();
 
     // body 接起來，留下來源標題當分隔線；fields 合併不取代（目標優先），
-    // 跟上面 PUT 紀錄的既有規則一致
-    const sourcePart = [source.title ? `【併入：${source.title}】` : "", (source.body || "").trim()].filter(Boolean).join("\n");
-    const mergedBody = [(target.body || "").trim(), sourcePart].filter(Boolean).join("\n\n");
+    // 跟上面 PUT 紀錄的既有規則一致。合併後維持「目標」既有的 body_format——
+    // 若目標是富文字、來源是純文字（或反過來），先把來源那段轉成跟目標
+    // 一致的格式再接，不然會把沒轉義的純文字塞進 HTML、或把 HTML 標籤原樣
+    // 當純文字疊進 textarea。
+    const targetIsHtml = target.body_format === "html";
+    const sourceBodyText = targetIsHtml
+      ? (source.body_format === "html" ? (source.body || "").trim() : textToHtml((source.body || "").trim()))
+      : (source.body_format === "html" ? htmlToPlainText(source.body) : (source.body || "").trim());
+    const targetBodyText = (target.body || "").trim();
+    const sourceTitleMark = source.title
+      ? (targetIsHtml ? textToHtml(`【併入：${source.title}】`) : `【併入：${source.title}】`)
+      : "";
+    const sourcePart = [sourceTitleMark, sourceBodyText].filter(Boolean).join(targetIsHtml ? "" : "\n");
+    const mergedBody = [targetBodyText, sourcePart].filter(Boolean).join(targetIsHtml ? "" : "\n\n");
     const mergedFields = JSON.stringify({ ...sourceFields, ...targetFields });
     await db.prepare("UPDATE entries SET body = ?, fields_json = ?, updated_at = ? WHERE id = ?")
       .bind(mergedBody, mergedFields, now(), targetId).run();
@@ -1298,7 +1330,8 @@ async function handleApi(request, env, url) {
         lines.push(``);
         for (const [k, v] of filled) lines.push(`- **${k}**：${v}`);
       }
-      if (e.body) lines.push(``, e.body);
+      const bodyOut = e.body_format === "html" ? htmlToPlainText(e.body) : e.body;
+      if (bodyOut) lines.push(``, bodyOut);
       const audios = atts.filter((a) => a.kind === "audio");
       const photos = atts.filter((a) => a.kind === "photo");
       const files = atts.filter((a) => a.kind === "file");

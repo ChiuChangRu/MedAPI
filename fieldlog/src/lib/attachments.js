@@ -7,6 +7,7 @@
  */
 
 import { cleanPart, existingChineseTitle, parseStandard, standardTitle } from "./standards.js";
+import { htmlToPlainText } from "./richtext.js";
 
 /** 把單一檔案搬到另一個資料夾。 */
 export async function moveAttachment(db, attachmentId, folderId, { logHistory, timestamp }) {
@@ -93,7 +94,7 @@ export async function deleteAttachmentDeep(db, files, attachmentId, { logHistory
 
   let entryRemoved = false;
   if (Number(remaining?.count || 0) === 0) {
-    const entry = await db.prepare("SELECT body, fields_json FROM entries WHERE id = ?")
+    const entry = await db.prepare("SELECT body, body_format, fields_json FROM entries WHERE id = ?")
       .bind(attachment.entry_id).first();
     let hasFields = false;
     try {
@@ -101,7 +102,10 @@ export async function deleteAttachmentDeep(db, files, attachmentId, { logHistory
     } catch {
       hasFields = true; // 欄位壞掉時保守處理：當成「有內容」，不要順手刪掉記事
     }
-    if (!String(entry?.body || "").trim() && !hasFields) {
+    // 富文字記事清空時 Quill 會留下 <p><br></p> 這類非空字串，剝成純文字才能
+    // 正確判斷「是不是真的沒內容」
+    const bodyText = entry?.body_format === "html" ? htmlToPlainText(entry.body) : String(entry?.body || "");
+    if (!bodyText.trim() && !hasFields) {
       await db.prepare("DELETE FROM entries WHERE id = ?").bind(attachment.entry_id).run();
       entryRemoved = true;
     }

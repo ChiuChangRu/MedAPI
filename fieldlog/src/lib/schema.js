@@ -177,6 +177,13 @@ export const MIGRATIONS = [
   // 不要靠人記）。
   `ALTER TABLE attachments ADD COLUMN source_url TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN total_pages INTEGER`,
+  // 記事內文格式：'text'（預設，含所有既有資料與來源同步管理的記事，body 是
+  // 純文字／Markdown，走舊的 <textarea>）或 'html'（富文字編輯器產生的 HTML
+  // 片段，照片以 <img> 內嵌）。不做批次轉換，使用者自己按「升級為富文字」
+  // 才會把某一筆從 text 換成 html；同步管理的記事（fields_json._sid／
+  // litdb_id 有值）永遠鎖在 text，sync.js 的 SYNC_START/SYNC_END 標記完全
+  // 不會遇到 html 格式。
+  `ALTER TABLE entries ADD COLUMN body_format TEXT DEFAULT 'text'`,
 ];
 
 /**

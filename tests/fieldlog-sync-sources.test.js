@@ -204,9 +204,9 @@ function makeDB() {
       const row = tables.entries.find((e) => e.id === args[0]);
       return { results: row ? [row] : [], changes: 0 };
     }
-    if (q === "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, updated_at = ? WHERE id = ?") {
-      const row = tables.entries.find((e) => e.id === args[5]);
-      if (row) Object.assign(row, { title: args[0], body: args[1], fields_json: args[2], folder_id: args[3], updated_at: args[4] });
+    if (q === "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, body_format = ?, updated_at = ? WHERE id = ?") {
+      const row = tables.entries.find((e) => e.id === args[6]);
+      if (row) Object.assign(row, { title: args[0], body: args[1], fields_json: args[2], folder_id: args[3], body_format: args[4], updated_at: args[5] });
       return { results: [], changes: row ? 1 : 0 };
     }
 
