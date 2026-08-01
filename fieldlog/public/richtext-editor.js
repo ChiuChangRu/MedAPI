@@ -13,12 +13,27 @@
     ["clean"],
   ];
 
-  /** 建立編輯器；container 是空的 <div>，initialHtml 是已經補好顯示用 pin 的 HTML。 */
-  function init(container, initialHtml) {
+  /**
+   * 建立編輯器；container 是空的 <div>，initialHtml 是已經補好顯示用 pin 的 HTML。
+   * opts.onImagePaste(file)：貼上剪貼簿圖片時呼叫（例如螢幕截圖後直接 Ctrl+V）。
+   * 一定要攔截掉，不然 Quill 預設會把圖片轉成 base64 直接塞進 body，存進資料庫
+   * 又大又沒有對應的 attachments 列（縮圖、刪除、OCR 都吃不到這種圖）。
+   */
+  function init(container, initialHtml, opts = {}) {
     if (!container || !window.Quill) return null;
     const quill = new window.Quill(container, { theme: "snow", modules: { toolbar: TOOLBAR } });
     if (initialHtml) quill.clipboard.dangerouslyPasteHTML(initialHtml);
     container.__fieldlogQuill = quill;
+    if (typeof opts.onImagePaste === "function") {
+      quill.root.addEventListener("paste", (ev) => {
+        const items = Array.from(ev.clipboardData?.items || []);
+        const imageItem = items.find((it) => it.kind === "file" && (it.type || "").startsWith("image/"));
+        if (!imageItem) return; // 不是圖片（純文字／一般貼上）：交給 Quill 預設行為處理
+        ev.preventDefault();
+        const file = imageItem.getAsFile();
+        if (file) opts.onImagePaste(file);
+      });
+    }
     return quill;
   }
 
