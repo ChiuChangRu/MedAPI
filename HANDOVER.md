@@ -83,6 +83,16 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 
 - 三個 Worker 都是 **Cloudflare 連 GitHub 的自動部署**：**推 code 到開發
   分支 → Cloudflare 自動 build＋部署**，不需要手動跑任何指令。
+- **實際在部署的分支以 Cloudflare Dashboard 的 Build → Branch control →
+  Production branch 為準**（2026-08-01 查為 `codex/kiwi-integration`）。這份
+  文件會過時，那個設定不會——有疑問一律去 Dashboard 看，不要相信這裡的字面值。
+- ⚠️ **`main` 遠遠落後實際主線**（2026-08-01 落後 371 個 commit，連 `mcp/`
+  目錄都還沒有）。**不要把功能分支合併進 main 再部署**，那等於把線上打回舊版。
+  新分支要從目前的 production branch 開，PR 也開回去那條。
+- **不要另外加 GitHub Actions 部署這三個 Worker。** 已經有 Cloudflare 自動部署，
+  再加一套會變成同一次 push 被部署兩次、順序還不保證，之後也沒人分得清線上
+  跑的是哪一套推上去的。`.github/workflows/deploy.yml` 只管 `cloudflare/`
+  那個 Worker 的 `cloudflare/**` 路徑，是既有例外，不要擴大。
 - `medapi-mcp` 比較特別：它的 Deploy command 是
   `npx wrangler deploy --config mcp/wrangler.jsonc`（因為這個簡化流程
   沒有獨立的 Root directory 欄位）。另兩個是 root directory 設成
@@ -116,6 +126,41 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
   就沒機會蓋掉 Assets 預設的快取表頭。那份名單要跟 worker.js 的
   `NO_CACHE_SHELL_PATHS` 一致（有測試交叉比對）。
 
+### 「D1 說某個欄位不存在，但程式碼明明有那條 migration」（2026-08-01 為此耗掉一整輪）
+
+症狀：MCP 的 `search_fieldlog` 100% 失敗，回
+`D1_ERROR: no such column: e.body_format`，但 `fieldlog` 早就部署了含
+`ALTER TABLE entries ADD COLUMN body_format` 的版本，Version History 也看得到。
+
+原因是 **migration 的執行時機**，不是部署失敗：
+
+- 三個 Worker 綁**同一個 D1**，但**只有 `fieldlog` 帶 migration**（`ensureSchema`）。
+- `ensureSchema` 只在 **帶正確 PIN 的 `/api/*` 請求**進來時才跑——PIN 閘門在前，
+  401 的請求根本走不到那一行。
+- `medapi-mcp` 直接讀 D1，**完全不經過那條路徑**。
+
+所以「fieldlog 部署完成」不等於「欄位已建立」。只要部署後沒有人真的帶 PIN
+打開過隨身記 App，欄位就一直不存在，而 MCP 一直在讀同一個資料庫 → 一直失敗。
+`fieldlog` 的排程（每天 UTC 18:00）也會跑 `ensureSchema`，但那代表最壞情況
+要等一整天。
+
+**排查順序：**
+
+1. 先確認 `fieldlog` 部署的版本**有沒有**那條 migration（看 Version History 的
+   commit 訊息，或 `git show <production-branch>:fieldlog/src/lib/schema.js`）。
+   沒有 → 是部署問題，往部署方向查。
+2. 有 → 就是這個時序問題。**帶 PIN 打開一次隨身記 App**（或
+   `curl -H "x-pin: …" .../api/config`）即可，30 秒。
+3. 之後 `medapi-mcp` 會自己處理：遇到 `no such column` 會用 `FIELDLOG`
+   service binding ＋ `FIELD_PIN` 打一次 `/api/config` 觸發 `ensureSchema`
+   再重試（`mcp/src/worker.js` 的 `triggerFieldlogSchemaMigration`，
+   `tests/mcp-schema-selfheal.test.js` 有把關）。正常路徑不會多打任何請求。
+
+**加新欄位時**：migration 寫在 `fieldlog/src/lib/schema.js` 的 `MIGRATIONS`。
+注意 `ensureSchema` 對每條 migration 都 `.catch(() => {})`——它吞掉的不只是
+「欄位已存在」，**任何錯誤都會被吞掉且無聲**。改動 migration 後要實際確認欄位
+真的建出來了，不要只看部署成功。
+
 **另外：不要用 Cloudflare Dashboard 的「Edit code」手動部署這個專案。** 當時有一筆
 `Manually deployed`（無 commit 記錄）蓋掉了正確的 git 自動部署並拿走 100% 流量，
 而且 Rollback 疑似不會一併還原靜態資源，導致 Worker 程式碼與 assets 對不上。
@@ -125,15 +170,27 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 
 ## 五、開發流程
 
-- **開發分支**：`claude/medtec-exhibitor-directory-kbs2i8`（一直在這條上
-  開發、commit、push；不要直接推 main）。
+- **開發分支**：以 Cloudflare 的 Production branch 為準（2026-08-01 是
+  `codex/kiwi-integration`）。從那條開分支、PR 也開回去那條。**不要直接推
+  main，也不要合併進 main**（見第四節：main 已經遠遠落後）。
 - **改完就 push**，Cloudflare 自動部署（見第四節）。
 - **commit 慣例**：清楚的英文標題＋內文說明「為什麼」，結尾帶
   `Co-Authored-By:` 與 `Claude-Session:` 兩行（照現有 commit 的格式）。
-- **測試**：專案沒有正式 test 目錄。過程中的驗證是寫**臨時 node 腳本**
-  跑（mock D1／fetch，驗 worker 邏輯），這些腳本在暫存區、**沒有進 repo**。
-  接手時若要回歸測試，照同樣模式（`node --check` 語法檢查＋ mock 出
-  `env.DB`/`env.FILES` 打 `worker.fetch(req, env)`）自己重建即可。
+- **測試**：`tests/` 底下有正式測試（2026-08-01 為 20 檔、237 項）。
+
+  ```bash
+  npm run check   # 三個 worker 的語法檢查
+  npm test        # node --test tests/*.test.js
+  ```
+
+  改動前後都跑一次。寫法是 mock 出 `env.DB`／`env.FILES`／service binding，
+  再打 `worker.fetch(req, env)`——照既有測試的樣子加就好。
+  改了行為卻沒有測試跟上，等於下一個接手的人（或 AI）沒有依據判斷有沒有壞。
+- **本機實跑**：`cd fieldlog && npx wrangler dev --local`（`--local` 不會碰到
+  線上 D1／R2）。要帶 PIN 就在 `fieldlog/.dev.vars` 寫 `FIELD_PIN=...`，
+  該檔已被 `.gitignore` 擋住。注意本機**沒有** Workers AI 與 Cloudflare
+  用量 API，所以 OCR／轉文字／`enforceAiSoftBudget` 這幾條路徑驗不到，
+  只能到實際部署後驗。
 - **共用模組**：`imageSkill.js`（照片 OCR／鬼打牆處理／PDF metadata 剝除）
   正本在 `cloudflare/src/`，用 `cp` 同步到 `fieldlog/src/`——改一邊要
   記得同步另一邊（兩份必須一致）。
@@ -266,4 +323,7 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 6. [ ] 真桌機 Chrome 驗證背景錄音＋Tier 2 深度處理這兩個待驗證項
 
 ## 更新日誌
+- 2026-08-01｜修正過時陳述（開發分支、「沒有 test 目錄」已不成立）；
+  補上「D1 說欄位不存在但 migration 明明有」的排查段落與 migration 時序說明；
+  明確標註 main 已遠遠落後、不要合併進去，以及不要另加 GitHub Actions 部署
 - 2026-07-19｜初版交接文件

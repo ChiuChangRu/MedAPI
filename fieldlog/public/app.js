@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "83";
+const APP_VERSION = "84";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1174,14 +1174,21 @@ async function openEntry(id) {
   // 編輯器很容易在瀏覽器序列化時弄丟標記，下次同步會整段覆蓋掉使用者手動
   // 加的備註，所以這類記事不給升級入口。
   const isSynced = !!(fields._sid || fields.litdb_id);
-  const bodyFormat = e.body_format === "html" ? "html" : "text";
+  // 記事內文只有一種編輯方式：富文字。不再有「純文字 vs 富文字」兩種格式、
+  // 也不用手動按「升級為富文字」——舊的純文字記事打開時就直接以富文字編輯，
+  // 存檔時一併轉成 html（storedAsText 就是在標記這件事）。
+  // 唯一的例外是來源同步管理的記事：它的 body 夾著 <!-- sync:start/end --> 標記，
+  // 富文字存檔會把註解清掉，下次同步就會整段覆蓋掉使用者手寫的備註（見
+  // src/lib/sync.js）。那類記事維持純文字編輯框。
+  const bodyFormat = isSynced ? "text" : "html";
+  const storedAsText = e.body_format !== "html";
   const bodySection = bodyFormat === "html"
-    ? `<div class="field-label-row"><label>內文／速記（富文字）</label></div>
+    ? `<div class="field-label-row"><label>內文／速記</label></div>
        <div id="e-body-rich" class="rich-editor"></div>`
     : `<div class="field-label-row">
         <label for="e-body">內文／速記</label>
         <span class="body-format-actions">
-          ${isSynced ? "" : `<button class="btn small ghost" id="e-body-upgrade" type="button" title="把這筆記事換成跟 Word 一樣、文字和照片合在同一個框裡的編輯器（只影響這一筆，不會批次轉換）">⤴ 升級為富文字</button>`}
+          <span class="sub" title="這筆記事的內文由外部來源同步管理，改成富文字會弄丟同步標記">🔒 來源同步管理</span>
           <button class="btn small ghost" id="e-body-expand" type="button" title="全螢幕編輯，字體大小可調">⤢ 展開編輯</button>
         </span>
       </div>
@@ -1252,7 +1259,10 @@ async function openEntry(id) {
     } catch (err) { showToast("刪除失敗：" + err.message); }
   };
   if (bodyFormat === "html") {
-    window.fieldlogRichEditor?.init($("e-body-rich"), injectFilePinForDisplay(e.body || ""), {
+    // 還存成純文字的舊記事：載進編輯器前先轉成 HTML 段落，使用者看到的內容
+    // 不變（換行、空行都保留），存檔時才真的寫回 body_format='html'
+    const initialHtml = storedAsText ? textToHtmlForEditor(e.body || "") : (e.body || "");
+    window.fieldlogRichEditor?.init($("e-body-rich"), injectFilePinForDisplay(initialHtml), {
       onImagePaste: (file) => insertFilesIntoRichEditor(id, $("e-body-rich"), [file]),
     });
   } else {
@@ -1263,18 +1273,6 @@ async function openEntry(id) {
         onSave: async (text) => { $("e-body").value = text; },
       });
     };
-    const upgradeBtn = $("e-body-upgrade");
-    if (upgradeBtn) upgradeBtn.onclick = async () => {
-      if (!confirm("把這筆記事換成富文字編輯框？只影響這一筆，內容不會變，只是換了編輯方式。")) return;
-      try {
-        await api(`/entries/${id}`, {
-          method: "PUT",
-          body: JSON.stringify({ body_format: "html", body: textToHtmlForUpgrade($("e-body").value) }),
-        });
-        showToast("已升級為富文字");
-        openEntry(id);
-      } catch (err) { showToast("升級失敗：" + err.message); }
-    };
   }
   $("e-save").onclick = async () => {
     const newFields = {};
@@ -1283,6 +1281,9 @@ async function openEntry(id) {
       ? stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("e-body-rich")) || "")
       : $("e-body").value.trim();
     const patch = { title: $("e-title").value.trim(), body: bodyValue, fields: newFields };
+    // 舊記事第一次存檔時順手把格式定下來，不用使用者自己按升級。
+    // 同步管理的記事不送 body_format，維持 text（後端也有第二道防線會擋）。
+    if (bodyFormat === "html" && storedAsText) patch.body_format = "html";
     const sel = $("e-folder");
     if (sel?.value === "__new__") {
       const newFolder = await createFolderForArchive(patch.title || e.title);
@@ -2390,10 +2391,11 @@ function stripFilePinForSave(html) {
   return html.replace(/(<img\b[^>]*\bsrc="\/api\/file\/[^"?]+)\?pin=[^"]*(")/gi, "$1$2");
 }
 
-// 「升級為富文字」：把既有純文字 body 轉成安全轉義過的 HTML，換行變段落。
+// 把純文字 body 轉成安全轉義過的 HTML，換行變段落。用在兩個地方：載入還存成
+// body_format='text' 的舊記事到富文字編輯器、以及合併記事時接上純文字來源。
 // 跟 fieldlog/src/lib/richtext.js 的 textToHtml() 邏輯一致（那支是給後端 import
 // 的 ES module，app.js 是一般 <script> 沒有 import，所以這裡另外寫一份同邏輯）。
-function textToHtmlForUpgrade(text) {
+function textToHtmlForEditor(text) {
   const escaped = String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const paragraphs = escaped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
   if (!paragraphs.length) return "";

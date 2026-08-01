@@ -53,7 +53,7 @@ connector」這類選項即可：
 4. **Server URL / MCP endpoint**：貼上面那條完整網址（含 `?pin=`）
 5. 認證方式若有選項，選「No authentication」或「None」——PIN 已經包在網址裡了，
    不需要再另外設定認證
-6. 儲存後，ChatGPT 應該會呼叫一次 `tools/list` 抓到下面這 19 個工具；
+6. 儲存後，ChatGPT 應該會呼叫一次 `tools/list` 抓到下面這 21 個工具；
    如果連線失敗，先確認網址結尾的 PIN 有沒有貼對、貼完整
 
 設定好之後，直接在對話裡問就好，例如：「幫我查展商裡做親水塗層的」
@@ -61,7 +61,7 @@ connector」這類選項即可：
 「litdb 裡有沒有講活檢針擊發機構的文獻」（LitDB 已併入隨身記並每日自動
 同步，`search_fieldlog` 就查得到）——GPT 會自己判斷該呼叫哪個工具。
 
-## 可用工具（19 個）
+## 可用工具（21 個）
 
 **先列目錄、再決定要不要細看，不要一開始就猜關鍵字。** `search_*` 查不到不代表
 沒有這份資料，可能只是關鍵字沒猜對——先用 `list_fieldlog_entries`／
@@ -89,6 +89,8 @@ connector」這類選項即可：
 | `search_fieldlog` | 搜紀錄標題／內文／欄位＋附件檔名／逐字稿／擷取文字＋AI 深度解析內容（命中在解析段時會標示）；可用 folder_id／folder_type 縮小範圍；也涵蓋每日同步的 LitDB 文獻/專利（「LitDB 文獻庫」資料夾） |
 | `get_fieldlog_entry` | 讀單筆紀錄完整內容（欄位、內文、附件摘要；「AI 深度解析」段落會明確標示是 AI 產出，引用前回原始內容確認） |
 | `get_fieldlog_attachment` | 讀單一附件全文；單次上限 20000 字，超過會明確標示總長度並可用 `offset`／`length` 分段接續讀完 |
+| `get_fieldlog_image` | 讀照片附件的「圖片本身」（MCP ImageContent，base64＋mimeType）讓 AI 直接看圖——限 4MB 內 JPEG/PNG/GIF/WebP；型錄文件類請優先走擷取文字 |
+| `image_probe` | 診斷用：回傳內建 96×96 四色測試圖，驗證 client 是否支援 MCP 圖片顯示；不讀任何使用者資料 |
 | `get_related` | 查一筆記事跟哪些其他記事有關聯（雙向）；關聯要先手動建立過才查得到 |
 
 ### 隨身記（僅限新增的可寫工具）

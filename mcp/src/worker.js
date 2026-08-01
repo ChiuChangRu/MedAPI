@@ -74,6 +74,14 @@ function json(data, status = 200) {
   });
 }
 
+// 工具 handler 一律回傳字串（會被包成 text content）；需要回傳圖片等非文字內容時，
+// 直接回傳 { content: [...] } 形狀的物件，這裡原樣透傳——MCP ImageContent
+// （get_fieldlog_image／image_probe）就是靠這條路出去的，不能被 String() 壓扁。
+function wrapToolOutput(out) {
+  if (out && typeof out === "object" && Array.isArray(out.content)) return out;
+  return { content: [{ type: "text", text: String(out) }] };
+}
+
 function rpcResult(id, result) {
   return json({ jsonrpc: "2.0", id, result });
 }
@@ -120,6 +128,68 @@ function withSearchNotes(plan, result, body) {
 function capLimit(args, dflt = 10, max = 30) {
   const n = Number(args.limit);
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : dflt;
+}
+
+// ---------- D1 schema 落後時的自我修復 ----------
+
+// fieldlog 與這支 MCP 是兩個獨立的 Worker，綁同一個 D1，但只有 fieldlog 帶
+// migration（它的 ensureSchema 會補上新欄位）。而 ensureSchema 只在「帶正確 PIN 的
+// /api/* 請求」進來時才執行——MCP 直接讀 D1、完全不經過那條路徑。
+//
+// 結果就是：fieldlog 部署了含新欄位的版本之後，只要沒有人真的打開過隨身記 App，
+// 欄位就一直不會被建立，而 MCP 一直在讀同一個資料庫 → 一直看到 no such column。
+// 2026-08-01 的 search_fieldlog（e.body_format）就是這樣壞的，而且從錯誤訊息
+// 完全看不出「去打開一次 App 就好」。
+//
+// 排程（fieldlog 每天 UTC 18:00）也會跑 ensureSchema，但那代表最壞情況要等一天。
+// 這裡改成：一遇到 no such column 就主動戳一下 fieldlog 的 API 觸發 ensureSchema，
+// 然後重試一次。正常路徑完全不受影響（沒出錯就不會有任何額外請求）。
+function isMissingColumnError(err) {
+  return /no such column/i.test(err?.message || "");
+}
+
+// entries／attachments 的欄位是 fieldlog 那邊用 migration 加的，這支 MCP 只是讀
+// 同一個 D1，所以隨時可能遇到「程式碼已經知道某個欄位、資料庫還沒有」。
+//
+// 原本的作法是在 SQL 裡寫死欄位、失敗了再退回一組較舊的欄位集，但那等於要事先
+// 猜到「會缺的是哪一個」——2026-08-01 就是這樣壞的：退回機制只切換 analysis_json，
+// 而真正缺的是 body_format（它兩個版本都在），於是兩次都失敗、錯誤照樣往外拋。
+// 改成直接問資料庫實際有哪些欄位，就不必猜，之後加任何新欄位也不會再踩。
+//
+// 每個 isolate 查一次就夠：schema 在 Worker 存活期間不會變，真的變了也是下一個
+// isolate 的事。PRAGMA 本身失敗時回 null，呼叫端會退回「全都帶上」的舊行為。
+const COLUMN_CACHE = new Map();
+
+async function tableColumns(env, table) {
+  if (COLUMN_CACHE.has(table)) return COLUMN_CACHE.get(table);
+  let cols = null;
+  try {
+    const { results } = await env.DB_FIELDLOG.prepare(`PRAGMA table_info(${table})`).all();
+    if (results?.length) cols = new Set(results.map((r) => r.name));
+  } catch {
+    cols = null; // 查不到就當作不知道，交給呼叫端退回舊行為
+  }
+  COLUMN_CACHE.set(table, cols);
+  return cols;
+}
+
+// 只留資料庫真的有的欄位；欄位清單查不到（null）時保守地全部保留，
+// 讓既有的 try/catch 退回機制當最後一道防線
+function keepExistingColumns(cols, wanted) {
+  if (!cols) return wanted;
+  return wanted.filter((c) => cols.has(c));
+}
+
+async function triggerFieldlogSchemaMigration(env) {
+  if (!env.FIELDLOG) return false;
+  const pin = (env.FIELD_PIN || "").trim();
+  if (!pin) return false;
+  const u = new URL("https://fieldlog.internal/api/config");
+  u.searchParams.set("pin", pin);
+  const res = await env.FIELDLOG.fetch(u.toString()).catch(() => null);
+  // 200 才代表真的通過 PIN 閘門走進 handleApi、跑到 ensureSchema；
+  // 401 是 PIN 對不上，補不了 schema，如實回 false
+  return !!res && res.ok;
 }
 
 // ---------- Wiki（Service Binding 呼叫 fieldlog，走它的 PIN 通道）----------
@@ -582,21 +652,33 @@ const TOOLS = [
       // 掃描上限 SCAN_CAP 純為記憶體保險；命中上限時會在結果裡明確警示（見下方），
       // 不做靜默截斷。analysis_json（AI 深度解析結果）也在掃描範圍——這是規格書 II
       // 項目 11 的硬要求：解析出來的配方、FTO 風險、待辦若搜不到，等於白做。
-      // fieldlog 那邊還沒跑 migration、欄位不存在時退回舊欄位集，查詢不能整個炸掉。
-      const queryBoth = async (withAnalysis) => Promise.all([
+      // fieldlog 那邊還沒跑 migration、欄位不存在時只挑資料庫真的有的欄位查，
+      // 查詢不能整個炸掉（見上方 tableColumns 的說明）。
+      const [entryCols, attCols] = await Promise.all([
+        tableColumns(env, "entries"),
+        tableColumns(env, "attachments"),
+      ]);
+      // 這兩組是「新加的、舊資料庫可能還沒有」的欄位；其餘欄位從第一版就存在
+      const entryOpt = keepExistingColumns(entryCols, ["body_format", "analysis_json"]);
+      const attOpt = keepExistingColumns(attCols, ["analysis_json"]);
+      const selectOpt = (alias, cols) => cols.map((c) => ` ${alias}.${c},`).join("");
+      const queryBoth = async (optE, optA) => Promise.all([
         env.DB_FIELDLOG.prepare(
-          `SELECT e.id, e.folder_id, e.title, e.body, e.body_format, e.fields_json, e.created_at,${withAnalysis ? " e.analysis_json," : ""} f.name AS folder_name, f.type AS folder_type
+          `SELECT e.id, e.folder_id, e.title, e.body,${selectOpt("e", optE)} e.fields_json, e.created_at, f.name AS folder_name, f.type AS folder_type
            FROM entries e LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY e.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
         env.DB_FIELDLOG.prepare(
-          `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,${withAnalysis ? " a.analysis_json," : ""}
+          `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,${selectOpt("a", optA)}
                   e.id AS entry_id, e.folder_id, e.title, f.name AS folder_name, f.type AS folder_type
            FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY a.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
       ]);
-      const [{ results: allEntries }, { results: allAtts }] = await queryBoth(true).catch(() => queryBoth(false));
+      // PRAGMA 查不到欄位清單（回 null → 全部保留）時仍可能撞到缺欄位，
+      // 保留一次「全部拿掉選用欄位」的退回，當最後一道防線
+      const [{ results: allEntries }, { results: allAtts }] =
+        await queryBoth(entryOpt, attOpt).catch(() => queryBoth([], []));
       const inScope = (row) =>
         (!wantFolderType || row.folder_type === wantFolderType) &&
         (allowedFolderIds === null || allowedFolderIds.has(row.folder_id));
@@ -1133,7 +1215,80 @@ const TOOLS = [
       return `已新增同義詞組：「${canonical}」←→ ${[...aliases, ...codes].join("、")}。下一次 search_* 查詢立刻生效。`;
     },
   },
+  {
+    name: "get_fieldlog_image",
+    description: "讀取隨身記照片附件的『圖片本身』（不是擷取文字），讓 Claude 直接看圖判讀——用在斷面形貌、外觀不良、塗層剝離、設備現場照這類必須以視覺判斷的場景。型錄、文件、白板照片要查『內容』請優先用 get_fieldlog_attachment 讀擷取文字（省 token 也更準）。id 用 search_fieldlog／list_attachments／get_fieldlog_entry 查到的 attachment id。僅支援 4MB 以內的 JPEG/PNG/GIF/WebP（HEIC 不支援）。第一次使用前建議先呼叫 image_probe 確認目前 client 支援 MCP 圖片顯示。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "attachment id（search_fieldlog／list_attachments／get_fieldlog_entry 查到的編號）" },
+      },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const a = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+      if (!a) throw new Error(`找不到附件 ${id}——請先用 search_fieldlog 或 list_attachments 查編號`);
+      const mime = String(a.mime || "").toLowerCase().split(";")[0].trim();
+      if (!mime.startsWith("image/")) {
+        throw new Error(`附件 ${id}（${a.filename}）不是圖片（${a.mime || "未知類型"}）——文件內容請改用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      // Claude API 的圖片內容只收這四種；HEIC（iPhone 相簿原檔常見）進不去，
+      // Worker 端也沒有可靠的轉檔手段，據實回報請改走文字路線或以 JPEG 重傳
+      const SUPPORTED_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      if (!SUPPORTED_IMAGE_MIMES.includes(mime)) {
+        throw new Error(`附件 ${id} 的格式 ${mime} 不在支援清單（JPEG/PNG/GIF/WebP）內——HEIC 等格式請在手機端以 JPEG 重傳，或用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      // 與 fieldlog 端 INLINE_RAW_MAX_BYTES 一致。超過就不硬塞：base64 膨脹約 4/3，
+      // 對 client 的 context 也是災難，直接指路
+      const INLINE_CAP = 4 * 1024 * 1024;
+      const size = Number(a.size || 0);
+      if (size > INLINE_CAP) {
+        throw new Error(`附件 ${id}（${a.filename}）為 ${(size / 1024 / 1024).toFixed(1)}MB，超過 inline 上限 4MB——請在隨身記 App 壓縮後重傳，或改用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const u = new URL(`https://fieldlog.internal/api/attachments/${id}/raw`);
+      u.searchParams.set("mode", "inline");
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString());
+      if (!res.ok) {
+        throw new Error(`讀取原始檔失敗（HTTP ${res.status}）——檢查 FIELD_PIN 是否一致，以及 fieldlog 部署版本是否已含 /attachments/:id/raw 端點（commit 5c784dd 之後）`);
+      }
+      const payload = await res.json();
+      if (!payload || !payload.data) throw new Error("raw 端點回應缺少 base64 資料——fieldlog 部署版本可能過舊");
+      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(a.entry_id).first();
+      const meta = [
+        `檔名：${a.filename}｜${(Number(payload.size_bytes || size) / 1024).toFixed(0)}KB｜${mime}`,
+        `所屬紀錄：${e ? `[entry ${e.id}] ${e.title || "（未命名）"}` : `entry ${a.entry_id}`}｜上傳：${a.created_at}`,
+      ].join("\n");
+      return {
+        content: [
+          { type: "image", data: payload.data, mimeType: payload.mime_type || mime },
+          { type: "text", text: meta },
+        ],
+      };
+    },
+  },
+  {
+    name: "image_probe",
+    description: "診斷用：回傳一張內建的 96×96 測試圖（四象限色塊），驗證目前 client（claude.ai 等）是否支援顯示 MCP 圖片內容。Claude 若能正確說出四個色塊的顏色與位置，代表圖片通道可用，get_fieldlog_image 才值得使用；若只看到 base64 亂碼或 token 超限錯誤，代表 client 尚未支援，照片請改走 get_fieldlog_attachment 的擷取文字路線。此工具不讀任何使用者資料。",
+    inputSchema: { type: "object", properties: {} },
+    async handler() {
+      return {
+        content: [
+          { type: "image", data: IMAGE_PROBE_PNG_BASE64, mimeType: "image/png" },
+          { type: "text", text: "測試圖已送出：96×96 PNG，四象限色塊。請 Claude 描述所見的顏色配置（哪個角落是什麼顏色）以驗證通道。" },
+        ],
+      };
+    },
+  },
 ];
+
+// image_probe 的內建測試圖：96×96 PNG 四象限色塊（左上紅、右上綠、左下藍、右下黃）。
+// 寫死在程式裡、不碰 R2 也不碰 D1——通道測試要把變因減到只剩「client 支不支援」一項。
+const IMAGE_PROBE_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAAAq0lEQVR42u3TQQ3AIBBFQUoqgTPn1cEZVdWEiIpATDVw2ybzFPxMdq8dUTI1n5ZqTy0CBAgQIECAAAESIECAAAECBAiQAAECBAgQIECAACEABAgQIECAAAESIECAAAECBAiQAAECBAjQL7pnrFSD3j5ckBcDBEiAAAECBAgQIECABAgQIECAAAECJECAAAECBAgQIAECBAgQIECAAAESIECAAAECBAiQAJ33AWJqBSAeWKJeAAAAAElFTkSuQmCC";
 
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 
@@ -1179,9 +1334,36 @@ async function handleMcp(request, env) {
     if (!tool) return rpcError(id, -32602, `未知工具：${params?.name}`);
     try {
       await ensureSynonyms(env); // 換上 D1 版同義詞表（5 分鐘快取；讀不到就退回出廠預設值）
-      const text = await tool.handler(env, params?.arguments || {});
-      return rpcResult(id, { content: [{ type: "text", text }] });
+      const out = await tool.handler(env, params?.arguments || {});
+      return rpcResult(id, wrapToolOutput(out));
     } catch (err) {
+      // 欄位不存在＝fieldlog 的 migration 還沒跑過（見 triggerFieldlogSchemaMigration
+      // 上方說明）。戳一下讓它補 schema，然後重試一次；成功的話使用者根本不會
+      // 察覺，不必自己去開 App，也不用有人來讀錯誤訊息才知道要做什麼。
+      if (isMissingColumnError(err)) {
+        const migrated = await triggerFieldlogSchemaMigration(env).catch(() => false);
+        if (migrated) {
+          try {
+            const out = await tool.handler(env, params?.arguments || {});
+            return rpcResult(id, wrapToolOutput(out));
+          } catch (retryErr) {
+            // 補過 schema 還是同一個錯：代表這個欄位 fieldlog 那邊也沒有
+            // （查詢寫錯欄位名，或 MCP 部署得比 fieldlog 新）。講清楚，不要
+            // 讓人以為又是同一個時序問題。
+            if (isMissingColumnError(retryErr)) {
+              return rpcResult(id, {
+                content: [{ type: "text", text: `查詢失敗：${retryErr.message}\n\n已觸發 fieldlog 補 schema 但欄位仍不存在——這不是 migration 時序問題，是 fieldlog 目前部署的版本本來就沒有這個欄位（MCP 部署得比 fieldlog 新，或查詢的欄位名有誤）。` }],
+                isError: true,
+              });
+            }
+            return rpcResult(id, { content: [{ type: "text", text: `查詢失敗：${retryErr.message}` }], isError: true });
+          }
+        }
+        return rpcResult(id, {
+          content: [{ type: "text", text: `查詢失敗：${err.message}\n\n這是 fieldlog 的 schema migration 還沒跑過造成的。自動補救沒成功（FIELDLOG service binding 或 FIELD_PIN 沒設好），請用帶 PIN 的方式打開一次隨身記 App，讓 fieldlog 的 ensureSchema 執行。` }],
+          isError: true,
+        });
+      }
       return rpcResult(id, { content: [{ type: "text", text: `查詢失敗：${err.message}` }], isError: true });
     }
   }
