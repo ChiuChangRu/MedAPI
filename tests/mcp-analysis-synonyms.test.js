@@ -310,17 +310,59 @@ test("sync_status：表還沒建立時誠實說明，不是報錯", async () => 
 // ---------- 結構性防護 ----------
 
 test("工具數與文件記載一致（改了工具就要同步改文件，不能只改一邊）", async () => {
-  const [src, connectGpt, readme] = await Promise.all([
+  const [src, connectGpt, readme, help] = await Promise.all([
     readFile(new URL("../mcp/src/worker.js", import.meta.url), "utf8"),
     readFile(new URL("../mcp/CONNECT-GPT.md", import.meta.url), "utf8"),
     readFile(new URL("../mcp/README.md", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/public/help.html", import.meta.url), "utf8"),
   ]);
   const count = (src.match(/^\s{4}name: "/gm) || []).length;
-  assert.equal(count, 21, "工具數變了要一起更新兩份文件");
+  assert.equal(count, 21, "工具數變了要一起更新文件");
   assert.match(connectGpt, new RegExp(`可用工具（${count} 個）`));
   assert.match(connectGpt, new RegExp(`抓到下面這 ${count} 個工具`));
   // README 講的是「其餘幾個唯讀」＝總數扣掉三支可寫入的
   assert.match(readme, new RegExp(`其餘 ${count - 3} 個工具`));
+  // help.html 是使用者在 App 裡看的說明。原本沒被這條把關，結果工具從 19 加到
+  // 21 之後它還寫著 19（2026-08-01 發現）——說明頁講錯數字，人就會以為少了什麼。
+  assert.match(help, new RegExp(`${count} 個工具裡只有三支會寫入`),
+    "help.html 的工具數也要跟上，不能只改 mcp/ 底下那兩份");
+});
+
+// ---------- instructions 是 Claude 唯一會讀到的使用說明 ----------
+//
+// help.html 是給人看的，Claude 從來不會去讀它；Claude 連上來時拿到的只有
+// initialize 回的 instructions 字串與各工具的 description。所以「怎麼查才準」
+// 這件事寫在 help.html 不會讓 Claude 變準，要寫進 instructions 才有用。
+// 2026-08-01 就踩過：get_fieldlog_image 上線了，但 instructions 沒提「照片可以
+// 直接看」，Claude 不知道有這個能力，使用者只看到「文字可以、圖片不行」。
+
+async function readInstructions() {
+  const req = new Request("https://mcp.example.workers.dev/mcp?pin=testpin", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+  });
+  const res = await worker.fetch(req, { MCP_PIN: "testpin" });
+  return (await res.json()).result.instructions;
+}
+
+test("instructions 提到的工具名都要真的存在（刪掉工具不能留死引用）", async () => {
+  const src = await readFile(new URL("../mcp/src/worker.js", import.meta.url), "utf8");
+  const real = new Set((src.match(/^\s{4}name: "([a-z_]+)"/gm) || []).map((s) => s.match(/"([a-z_]+)"/)[1]));
+  const instructions = await readInstructions();
+  const mentioned = instructions.match(/\b[a-z]+_[a-z_]+\b/g) || [];
+  for (const name of new Set(mentioned)) {
+    if (!/^(get|list|search|add|create|sync|image)_/.test(name)) continue; // 只檢工具名長相的字
+    assert.ok(real.has(name), `instructions 提到 ${name}，但這支工具不存在`);
+  }
+});
+
+test("instructions 要涵蓋「Claude 猜不到」的能力（目前是看圖）", async () => {
+  const instructions = await readInstructions();
+  // 文字檢索是 Claude 的預設直覺，不講也會做；「附件可以取回圖片本身」不是，
+  // 沒寫進來就等於這個能力不存在
+  assert.match(instructions, /get_fieldlog_image/, "看圖能力要在 instructions 講明，Claude 不會自己發現");
+  assert.match(instructions, /照片/, "要說清楚什麼情況該看圖，不能只丟工具名");
 });
 
 test("同義詞表已經不是編譯進程式碼的靜態常數（要能在對話裡長大）", async () => {

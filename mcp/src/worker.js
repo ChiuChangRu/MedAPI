@@ -1319,6 +1319,7 @@ async function handleMcp(request, env) {
       instructions:
         "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增記事）、create_relation（建立關聯）、add_synonym（新增同義詞對照）三支例外，且全部只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
+        " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。" +
         " 引用紀律：回應裡標示「AI 深度解析」的段落是 AI 產出的整理／推論，不是現場原始紀錄，引用前要回原始內容或來源連結確認；懷疑外部知識庫資料過時就先用 sync_status 查最後同步時間。",
     });
   }
