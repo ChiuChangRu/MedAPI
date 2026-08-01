@@ -16,10 +16,25 @@ import worker, { resetSynonymCacheForTests } from "../mcp/src/worker.js";
 
 // ---------- 假 DB_FIELDLOG ----------
 
-function makeDB({ entries = [], attachments = [], synonyms = null, sources = [], syncLog = [] } = {}) {
+// missingColumns：模擬「fieldlog 還沒跑 migration，資料庫比程式碼舊」。
+// 這些欄位在 PRAGMA 裡查不到，SELECT 到它們也會照真實 D1 的行為丟 no such column。
+function makeDB({ entries = [], attachments = [], synonyms = null, sources = [], syncLog = [], missingColumns = [] } = {}) {
   const state = { entries, attachments, synonyms, sources, syncLog, synonymInserts: [] };
+  const ENTRY_COLUMNS = ["id", "folder_id", "title", "body", "body_format", "fields_json", "created_at", "analysis_json"];
+  const ATT_COLUMNS = ["id", "entry_id", "kind", "filename", "transcript", "ocr_text", "offset_secs", "analysis_json"];
   function exec(sql, args = []) {
     const q = sql.replace(/\s+/g, " ").trim();
+    const pragma = q.match(/^PRAGMA table_info\((\w+)\)$/);
+    if (pragma) {
+      const all = pragma[1] === "entries" ? ENTRY_COLUMNS : pragma[1] === "attachments" ? ATT_COLUMNS : [];
+      return { results: all.filter((c) => !missingColumns.includes(c)).map((name) => ({ name })) };
+    }
+    // 真實 D1 的行為：SELECT 到不存在的欄位就整句失敗
+    for (const col of missingColumns) {
+      if (new RegExp(`\\b[ea]\\.${col}\\b`).test(q)) {
+        throw new Error(`D1_ERROR: no such column: e.${col} at offset 43: SQLITE_ERROR`);
+      }
+    }
     if (q.startsWith("SELECT canonical, aliases_json, codes_json FROM synonyms")) {
       if (state.synonyms === null) throw new Error("no such table: synonyms");
       return { results: state.synonyms };
@@ -33,7 +48,9 @@ function makeDB({ entries = [], attachments = [], synonyms = null, sources = [],
       state.synonyms.push({ canonical: args[0], aliases_json: args[1], codes_json: args[2] });
       return { results: [] };
     }
-    if (q.startsWith("SELECT e.id, e.folder_id, e.title, e.body, e.body_format, e.fields_json, e.created_at, e.analysis_json,")) {
+    // 不比對完整欄位清單：選用欄位（body_format／analysis_json）會依資料庫實際
+    // 有什麼而增減，寫死清單的話反而驗不出「資料庫少欄位」這個真實情境
+    if (q.startsWith("SELECT e.id, e.folder_id, e.title, e.body,")) {
       return { results: state.entries };
     }
     if (q.startsWith("SELECT a.id AS att_id,")) {
@@ -154,6 +171,46 @@ test("search_fieldlog：body_format='html' 的記事一樣搜得到，命中片�
   const text = result.content[0].text;
   assert.match(text, /\[entry 1\]/, "html 格式的內文也要能被搜到");
   assert.doesNotMatch(text, /<p>/, "命中片段不該帶 HTML 標籤");
+});
+
+// ---------- 資料庫比程式碼舊時仍要能查（2026-08-01 實際事故的迴歸測試）----------
+//
+// 當天 search_fieldlog 100% 失敗，回 no such column: e.body_format。原本就有
+// 「欄位不存在時退回舊欄位集」的機制，但它只切換 analysis_json，而 body_format
+// 兩個版本的 SQL 都帶著——於是兩次都失敗、錯誤照樣往外拋。
+// 現在改成查 PRAGMA 決定要 SELECT 哪些欄位，下面幾項就是不讓它退化回去。
+
+test("entries 少了 body_format（fieldlog 還沒跑 migration）時，搜尋照常運作", async () => {
+  resetSynonymCacheForTests();
+  const db = makeDB({
+    missingColumns: ["body_format"],
+    entries: [entryRow({ title: "UV膠測試", body: "北回 41431 太稀" })],
+  });
+  const result = await callTool({ DB_FIELDLOG: db }, "search_fieldlog", { query: "UV膠" });
+  assert.notEqual(result.isError, true, `不該報錯，實得：${result.content[0].text}`);
+  assert.match(result.content[0].text, /\[entry 1\]/, "少一個選用欄位不該讓整支查詢掛掉");
+});
+
+test("entries 少了 analysis_json 時，搜尋照常運作", async () => {
+  resetSynonymCacheForTests();
+  const db = makeDB({
+    missingColumns: ["analysis_json"],
+    entries: [entryRow({ title: "UV膠測試", body: "北回 41431" })],
+  });
+  const result = await callTool({ DB_FIELDLOG: db }, "search_fieldlog", { query: "UV膠" });
+  assert.notEqual(result.isError, true, `不該報錯，實得：${result.content[0].text}`);
+  assert.match(result.content[0].text, /\[entry 1\]/);
+});
+
+test("兩個選用欄位同時都缺（最舊的資料庫）也要能查", async () => {
+  resetSynonymCacheForTests();
+  const db = makeDB({
+    missingColumns: ["body_format", "analysis_json"],
+    entries: [entryRow({ title: "UV膠測試", body: "北回 41431" })],
+  });
+  const result = await callTool({ DB_FIELDLOG: db }, "search_fieldlog", { query: "UV膠" });
+  assert.notEqual(result.isError, true, `不該報錯，實得：${result.content[0].text}`);
+  assert.match(result.content[0].text, /\[entry 1\]/);
 });
 
 test("get_fieldlog_entry：來源已移除的孤兒記事要有警示", async () => {

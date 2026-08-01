@@ -140,6 +140,38 @@ function isMissingColumnError(err) {
   return /no such column/i.test(err?.message || "");
 }
 
+// entries／attachments 的欄位是 fieldlog 那邊用 migration 加的，這支 MCP 只是讀
+// 同一個 D1，所以隨時可能遇到「程式碼已經知道某個欄位、資料庫還沒有」。
+//
+// 原本的作法是在 SQL 裡寫死欄位、失敗了再退回一組較舊的欄位集，但那等於要事先
+// 猜到「會缺的是哪一個」——2026-08-01 就是這樣壞的：退回機制只切換 analysis_json，
+// 而真正缺的是 body_format（它兩個版本都在），於是兩次都失敗、錯誤照樣往外拋。
+// 改成直接問資料庫實際有哪些欄位，就不必猜，之後加任何新欄位也不會再踩。
+//
+// 每個 isolate 查一次就夠：schema 在 Worker 存活期間不會變，真的變了也是下一個
+// isolate 的事。PRAGMA 本身失敗時回 null，呼叫端會退回「全都帶上」的舊行為。
+const COLUMN_CACHE = new Map();
+
+async function tableColumns(env, table) {
+  if (COLUMN_CACHE.has(table)) return COLUMN_CACHE.get(table);
+  let cols = null;
+  try {
+    const { results } = await env.DB_FIELDLOG.prepare(`PRAGMA table_info(${table})`).all();
+    if (results?.length) cols = new Set(results.map((r) => r.name));
+  } catch {
+    cols = null; // 查不到就當作不知道，交給呼叫端退回舊行為
+  }
+  COLUMN_CACHE.set(table, cols);
+  return cols;
+}
+
+// 只留資料庫真的有的欄位；欄位清單查不到（null）時保守地全部保留，
+// 讓既有的 try/catch 退回機制當最後一道防線
+function keepExistingColumns(cols, wanted) {
+  if (!cols) return wanted;
+  return wanted.filter((c) => cols.has(c));
+}
+
 async function triggerFieldlogSchemaMigration(env) {
   if (!env.FIELDLOG) return false;
   const pin = (env.FIELD_PIN || "").trim();
@@ -612,21 +644,33 @@ const TOOLS = [
       // 掃描上限 SCAN_CAP 純為記憶體保險；命中上限時會在結果裡明確警示（見下方），
       // 不做靜默截斷。analysis_json（AI 深度解析結果）也在掃描範圍——這是規格書 II
       // 項目 11 的硬要求：解析出來的配方、FTO 風險、待辦若搜不到，等於白做。
-      // fieldlog 那邊還沒跑 migration、欄位不存在時退回舊欄位集，查詢不能整個炸掉。
-      const queryBoth = async (withAnalysis) => Promise.all([
+      // fieldlog 那邊還沒跑 migration、欄位不存在時只挑資料庫真的有的欄位查，
+      // 查詢不能整個炸掉（見上方 tableColumns 的說明）。
+      const [entryCols, attCols] = await Promise.all([
+        tableColumns(env, "entries"),
+        tableColumns(env, "attachments"),
+      ]);
+      // 這兩組是「新加的、舊資料庫可能還沒有」的欄位；其餘欄位從第一版就存在
+      const entryOpt = keepExistingColumns(entryCols, ["body_format", "analysis_json"]);
+      const attOpt = keepExistingColumns(attCols, ["analysis_json"]);
+      const selectOpt = (alias, cols) => cols.map((c) => ` ${alias}.${c},`).join("");
+      const queryBoth = async (optE, optA) => Promise.all([
         env.DB_FIELDLOG.prepare(
-          `SELECT e.id, e.folder_id, e.title, e.body, e.body_format, e.fields_json, e.created_at,${withAnalysis ? " e.analysis_json," : ""} f.name AS folder_name, f.type AS folder_type
+          `SELECT e.id, e.folder_id, e.title, e.body,${selectOpt("e", optE)} e.fields_json, e.created_at, f.name AS folder_name, f.type AS folder_type
            FROM entries e LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY e.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
         env.DB_FIELDLOG.prepare(
-          `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,${withAnalysis ? " a.analysis_json," : ""}
+          `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,${selectOpt("a", optA)}
                   e.id AS entry_id, e.folder_id, e.title, f.name AS folder_name, f.type AS folder_type
            FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON e.folder_id = f.id
            ORDER BY a.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
       ]);
-      const [{ results: allEntries }, { results: allAtts }] = await queryBoth(true).catch(() => queryBoth(false));
+      // PRAGMA 查不到欄位清單（回 null → 全部保留）時仍可能撞到缺欄位，
+      // 保留一次「全部拿掉選用欄位」的退回，當最後一道防線
+      const [{ results: allEntries }, { results: allAtts }] =
+        await queryBoth(entryOpt, attOpt).catch(() => queryBoth([], []));
       const inScope = (row) =>
         (!wantFolderType || row.folder_type === wantFolderType) &&
         (allowedFolderIds === null || allowedFolderIds.has(row.folder_id));
