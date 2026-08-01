@@ -122,6 +122,36 @@ function capLimit(args, dflt = 10, max = 30) {
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : dflt;
 }
 
+// ---------- D1 schema 落後時的自我修復 ----------
+
+// fieldlog 與這支 MCP 是兩個獨立的 Worker，綁同一個 D1，但只有 fieldlog 帶
+// migration（它的 ensureSchema 會補上新欄位）。而 ensureSchema 只在「帶正確 PIN 的
+// /api/* 請求」進來時才執行——MCP 直接讀 D1、完全不經過那條路徑。
+//
+// 結果就是：fieldlog 部署了含新欄位的版本之後，只要沒有人真的打開過隨身記 App，
+// 欄位就一直不會被建立，而 MCP 一直在讀同一個資料庫 → 一直看到 no such column。
+// 2026-08-01 的 search_fieldlog（e.body_format）就是這樣壞的，而且從錯誤訊息
+// 完全看不出「去打開一次 App 就好」。
+//
+// 排程（fieldlog 每天 UTC 18:00）也會跑 ensureSchema，但那代表最壞情況要等一天。
+// 這裡改成：一遇到 no such column 就主動戳一下 fieldlog 的 API 觸發 ensureSchema，
+// 然後重試一次。正常路徑完全不受影響（沒出錯就不會有任何額外請求）。
+function isMissingColumnError(err) {
+  return /no such column/i.test(err?.message || "");
+}
+
+async function triggerFieldlogSchemaMigration(env) {
+  if (!env.FIELDLOG) return false;
+  const pin = (env.FIELD_PIN || "").trim();
+  if (!pin) return false;
+  const u = new URL("https://fieldlog.internal/api/config");
+  u.searchParams.set("pin", pin);
+  const res = await env.FIELDLOG.fetch(u.toString()).catch(() => null);
+  // 200 才代表真的通過 PIN 閘門走進 handleApi、跑到 ensureSchema；
+  // 401 是 PIN 對不上，補不了 schema，如實回 false
+  return !!res && res.ok;
+}
+
 // ---------- Wiki（Service Binding 呼叫 fieldlog，走它的 PIN 通道）----------
 
 function wikiFetch(env, file) {
@@ -1182,6 +1212,33 @@ async function handleMcp(request, env) {
       const text = await tool.handler(env, params?.arguments || {});
       return rpcResult(id, { content: [{ type: "text", text }] });
     } catch (err) {
+      // 欄位不存在＝fieldlog 的 migration 還沒跑過（見 triggerFieldlogSchemaMigration
+      // 上方說明）。戳一下讓它補 schema，然後重試一次；成功的話使用者根本不會
+      // 察覺，不必自己去開 App，也不用有人來讀錯誤訊息才知道要做什麼。
+      if (isMissingColumnError(err)) {
+        const migrated = await triggerFieldlogSchemaMigration(env).catch(() => false);
+        if (migrated) {
+          try {
+            const text = await tool.handler(env, params?.arguments || {});
+            return rpcResult(id, { content: [{ type: "text", text }] });
+          } catch (retryErr) {
+            // 補過 schema 還是同一個錯：代表這個欄位 fieldlog 那邊也沒有
+            // （查詢寫錯欄位名，或 MCP 部署得比 fieldlog 新）。講清楚，不要
+            // 讓人以為又是同一個時序問題。
+            if (isMissingColumnError(retryErr)) {
+              return rpcResult(id, {
+                content: [{ type: "text", text: `查詢失敗：${retryErr.message}\n\n已觸發 fieldlog 補 schema 但欄位仍不存在——這不是 migration 時序問題，是 fieldlog 目前部署的版本本來就沒有這個欄位（MCP 部署得比 fieldlog 新，或查詢的欄位名有誤）。` }],
+                isError: true,
+              });
+            }
+            return rpcResult(id, { content: [{ type: "text", text: `查詢失敗：${retryErr.message}` }], isError: true });
+          }
+        }
+        return rpcResult(id, {
+          content: [{ type: "text", text: `查詢失敗：${err.message}\n\n這是 fieldlog 的 schema migration 還沒跑過造成的。自動補救沒成功（FIELDLOG service binding 或 FIELD_PIN 沒設好），請用帶 PIN 的方式打開一次隨身記 App，讓 fieldlog 的 ensureSchema 執行。` }],
+          isError: true,
+        });
+      }
       return rpcResult(id, { content: [{ type: "text", text: `查詢失敗：${err.message}` }], isError: true });
     }
   }
