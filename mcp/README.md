@@ -140,9 +140,17 @@ Claude Code 也可以連：`claude mcp add --transport http medapi
 - 「沒有帶 PIN」→ **網址少了 `?pin=`**。這是重新連接時最常見的失敗：claude.ai 的自訂連接器不能自帶 header，PIN 是掛在 URL 上的，整條網址都要貼完整，只貼到 `/mcp` 就會落在這裡。
 - 「PIN 不正確」→ 值對不上。注意是 `MCP_PIN`，不是 `FIELD_PIN`，兩者刻意不同值。
 
-401 也會帶 `WWW-Authenticate`（ASCII，中文說明在 JSON body）。少了這個 header，客戶端拿不到任何線索，只會顯示「需要重新授權／token 過期」這類看不出原因的泛用訊息。
+> ⚠️ 401 **絕對不能**帶 `WWW-Authenticate` header（連 `Bearer` 這個字都不行）。
+> 2026-08-01 為了「符合 RFC 7235」加過一次，結果直接把連接器弄壞：claude.ai
+> 看到 `Bearer` 會判定「這台支援 OAuth」，去戳 `/.well-known/oauth-*` 想做
+> 動態註冊（這台故意全部 404，因為根本沒做 OAuth），註冊失敗跳出
+> **「Couldn't register with sign-in service」**——而且不管 PIN 對不對都會
+> 卡在這步，比原本沒有這個 header 還糟。認證訊息只能放 JSON body，
+> `tests/mcp-auth-diagnostics.test.js` 有把關這件事不再發生。
 
-> `/.well-known/oauth-*` 一律回 404 是**刻意的**：這台只用 PIN、不做 OAuth。這裡若誤回 200，claude.ai 會誤判成支援 OAuth、進而嘗試動態註冊，然後跳出「無法向登入服務註冊」。
+> `/.well-known/oauth-*` 一律回 404 也是**刻意的**：同一個原因，這台只用
+> PIN、不做 OAuth，這裡若誤回 200 會是另一條讓 claude.ai 誤判成支援 OAuth
+> 的路。
 
 ## 安全設計
 

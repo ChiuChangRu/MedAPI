@@ -74,19 +74,20 @@ function json(data, status = 200, extraHeaders = {}) {
   });
 }
 
-// 401 一定要帶 WWW-Authenticate（RFC 7235 的要求，MCP 客戶端也是照這個判斷）。
-// 少了它，客戶端收到的就只是一個沒有任何線索的 401，只能顯示「需要重新授權」
-// 之類的泛用訊息——2026-08-01 連接器重連不上時就是這樣，錯誤訊息完全看不出
-// 「URL 少了 ?pin=」還是「PIN 值不對」。
+// 千萬不要在這裡加 WWW-Authenticate: Bearer ——2026-08-01 加過一次，直接把
+// claude.ai 的連接器弄壞了。
 //
-// header 值只放 ASCII：HTTP header 不是 UTF-8 通道（RFC 7230 的 field-value 是
-// US-ASCII，中文屬於 obs-text），塞中文可能被客戶端或中間的代理拒掉，那會讓
-// 原本只是「PIN 沒帶對」的情況變成整條連線失敗，比沒加還糟。
-// 完整的中文說明放 JSON body，那裡才是 UTF-8。
-function unauthorized(reason, description) {
-  return json({ error: description }, 401, {
-    "www-authenticate": `Bearer realm="medapi-mcp", error="invalid_token", error_description="${reason}"`,
-  });
+// RFC 7235 是說 401 該帶 WWW-Authenticate 沒錯，但 MCP 的 Authorization 規範
+// 把「看到 Bearer 這個字」當成訊號：客戶端看到就會認定「這台伺服器支援
+// OAuth」，去戳 /.well-known/oauth-authorization-server、
+// /.well-known/oauth-protected-resource 想做動態客戶端註冊。這台從頭到尾
+// 只用 PIN，沒有那些端點（故意全部 404——見下面 fetch() 裡的註解），
+// 註冊當然失敗，claude.ai 就跳「Couldn't register with sign-in service」，
+// 而且不管網址上的 PIN 對不對都會卡在這一步，比原本沒有這個 header 還糟。
+//
+// 所以錯誤說明只放在 JSON body，不透過任何 auth challenge header 傳遞。
+function unauthorized(description) {
+  return json({ error: description }, 401);
 }
 
 // 工具 handler 一律回傳字串（會被包成 text content）；需要回傳圖片等非文字內容時，
@@ -1395,16 +1396,16 @@ export default {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
       // fail-closed：MCP_PIN 未設定時全部拒絕
       const pin = (env.MCP_PIN || "").trim();
-      if (!pin) return unauthorized("server MCP_PIN not configured", "尚未設定 MCP_PIN：請至 Worker Settings → Variables and Secrets 新增");
+      if (!pin) return unauthorized("尚未設定 MCP_PIN：請至 Worker Settings → Variables and Secrets 新增");
       const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
       const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || bearer).trim();
       // 「沒帶」跟「帶錯」分開講：連接器重連不上時，這一句就決定要去修 URL
       // 還是去對 PIN 值。合在一起寫成「PIN 錯誤或未提供」等於兩邊都要試。
       if (!given) {
-        return unauthorized("missing pin: append ?pin=<MCP_PIN> to the connector URL", "沒有帶 PIN：claude.ai 自訂連接器不能自帶 header，網址要寫成 https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>（重新連接時整條網址都要貼，只貼到 /mcp 會落在這裡）");
+        return unauthorized("沒有帶 PIN：claude.ai 自訂連接器不能自帶 header，網址要寫成 https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>（重新連接時整條網址都要貼，只貼到 /mcp 會落在這裡）");
       }
       if (given !== pin) {
-        return unauthorized("invalid pin", "PIN 不正確：對一下 Worker Settings → Variables and Secrets 裡的 MCP_PIN（注意不是 FIELD_PIN，兩者刻意不同值）");
+        return unauthorized("PIN 不正確：對一下 Worker Settings → Variables and Secrets 裡的 MCP_PIN（注意不是 FIELD_PIN，兩者刻意不同值）");
       }
       try {
         return await handleMcp(request, env);
