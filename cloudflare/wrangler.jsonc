@@ -4,6 +4,10 @@
   "name": "medtec-2026",
   "main": "src/worker.js",
   "compatibility_date": "2026-07-01",
+  // 保留 Dashboard 設定的 TEAM_PIN 與 LINE_CHANNEL_* 等 Secret。沒有這一行，
+  // 每次 wrangler deploy 都會把它們清掉；TEAM_PIN 不見會讓整個團隊版進不去，
+  // LINE 憑證不見則是推播靜悄悄地失效（比整個掛掉更難發現）。
+  "keep_vars": true,
   "assets": {
     "directory": "public",
     "binding": "ASSETS",

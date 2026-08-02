@@ -15,6 +15,12 @@
   "name": "medapi-mcp",
   "main": "src/worker.js",
   "compatibility_date": "2026-07-01",
+  // 保留 Dashboard 設定的 MCP_PIN 與 FIELD_PIN。沒有這一行的話，每次
+  // wrangler deploy 都會把 Dashboard 上設的變數／Secret 一起清掉——這支端點
+  // 的 MCP_PIN 一被清掉就 fail-closed，所有請求變成
+  // 「尚未設定 MCP_PIN」401，連接器直接連不上（2026-08-01 實際發生，
+  // 而且從連接器那端只看得到「需要重新授權」，完全看不出是 Secret 不見了）。
+  "keep_vars": true,
   "d1_databases": [
     {
       "binding": "DB_FIELDLOG",
