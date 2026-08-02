@@ -38,8 +38,12 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
    Account → Members）邀請，或由原持有人代為操作。
 3. **MCP 問答連接器**（要在 claude.ai 用自然語言查live資料時）：
    連接器 URL 是 `https://medapi-mcp.gogoyankee.workers.dev/mcp?pin=<MCP_PIN>`。
-   把 `<MCP_PIN>` 的實際值私下給接手人，讓他在自己的 claude.ai →
-   Settings → Connectors → Add custom connector 貼上。
+   把 `<MCP_PIN>` 的實際值私下給接手人。
+   ⚠️ **claude.ai 網頁版一般對話的自訂連接器目前連不上這台**（2026-08-02
+   確認，claude.ai 對任何自訂連接器都無條件嘗試 OAuth，這台故意不做 OAuth，
+   已是 Anthropic 官方標記「not planned」的平台行為，見 `mcp/README.md`
+   「接上 claude.ai」一節）。改用 Claude Code：
+   `claude mcp add --transport http medapi "<連接器 URL>"`。
 
 > **要私下交付的密碼清單（值不寫在這）**：`FIELD_PIN`（隨身記登入＋wiki）、
 > `TEAM_PIN`（參展系統登入）、`MCP_PIN`（MCP 端點）。選用的還有 LINE 的
