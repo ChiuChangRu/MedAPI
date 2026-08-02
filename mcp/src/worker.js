@@ -1428,7 +1428,16 @@ export default {
     }
     // 其餘路徑一律 404——尤其是 /.well-known/oauth-*：這個 MCP 只用 PIN，
     // 不做 OAuth，若這裡誤回 200 會讓 claude.ai 誤判成「這台支援 OAuth」
-    // 進而嘗試動態註冊、失敗跳出「無法向登入服務註冊」的錯誤
-    return new Response("Not found", { status: 404, headers: CORS_HEADERS });
+    // 進而嘗試動態註冊、失敗跳出「無法向登入服務註冊」的錯誤。
+    //
+    // body 一定要是 JSON，不能是純文字。2026-08-02 實測：Claude Code CLI 的
+    // HTTP MCP client 對 .well-known/oauth-* 做 OAuth discovery 時，拿到 404
+    // 會嘗試把 body 當 JSON 解析（OAuth 規範的錯誤回應本來就該是 JSON）。
+    // 純文字 "Not found" 解析失敗直接拋例外，整個連線判定失敗——這不是
+    // Claude Code 沒處理 no-OAuth 的情況，是它處理「格式不對的 404」失敗，
+    // 而我們能在自己這端避開，不需要對方修：
+    //   [ERROR] HTTP 404: Invalid OAuth error response: SyntaxError:
+    //   JSON Parse error: Unexpected identifier "Not". Raw body: Not found
+    return json({ error: "not found" }, 404);
   },
 };
