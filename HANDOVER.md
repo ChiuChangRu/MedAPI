@@ -77,6 +77,14 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 - `medtec-2026`：`TEAM_PIN`；選用 `LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN`
 - `medapi-mcp`：`MCP_PIN`、`FIELD_PIN`（與 fieldlog 同值，讀 wiki 用）
 
+> ⚠️ 這些 Secret 都是在 Dashboard 上設的，**只有本人知道值、沒有任何自動化能補回來**。
+> 三份 `wrangler.jsonc` 都必須有 `keep_vars: true`，否則 `wrangler deploy`
+> 會把它們一併清掉（`tests/wrangler-keep-vars.test.js` 有把關）。
+> 2026-08-01 `medapi-mcp` 就是因為少了這一行，部署後 `MCP_PIN` 消失、
+> 端點 fail-closed 變成全部 401，連接器完全連不上——而從連接器那端只看得到
+> 「需要重新授權」，看不出是 Secret 不見了。**部署完若某個 Worker 突然全部
+> 401／403，第一個要看的就是 Dashboard 上的 Secret 還在不在。**
+
 ---
 
 ## 四、部署模型（重要，跟一般 CI 不同）
@@ -323,6 +331,7 @@ FastAPI 版），目前主線是 `cloudflare/`，那兩個少碰。
 6. [ ] 真桌機 Chrome 驗證背景錄音＋Tier 2 深度處理這兩個待驗證項
 
 ## 更新日誌
+- 2026-08-01｜補上 keep_vars 說明（medapi-mcp 少了它，部署後 MCP_PIN 被清掉、連接器全掛）
 - 2026-08-01｜修正過時陳述（開發分支、「沒有 test 目錄」已不成立）；
   補上「D1 說欄位不存在但 migration 明明有」的排查段落與 migration 時序說明；
   明確標註 main 已遠遠落後、不要合併進去，以及不要另加 GitHub Actions 部署
