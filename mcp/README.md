@@ -108,6 +108,26 @@ fetch() 打同帳號下另一個 workers.dev Worker**（會拿到 404，即使�
 
 ## 接上 claude.ai（自訂連接器）
 
+> ⚠️ **2026-08-02 確認：claude.ai 網頁版「一般對話」的自訂連接器，對這種
+> PIN-only（不做 OAuth）的伺服器連不上，而且沒有伺服器端能做的修法。**
+>
+> claude.ai 的「Add custom connector」流程，對任何自訂連接器都會**無條件**
+> 嘗試 OAuth 動態客戶端註冊（RFC 7591），不管伺服器有沒有宣告支援 OAuth。
+> 這台伺服器故意不做 OAuth（見下方「連接器連不上」一節），註冊當然失敗，
+> 跳出「Couldn't register with sign-in service」。這不是我們這邊能修的：
+> Anthropic 官方倉庫有完全相同症狀的回報（伺服器公開、無需認證、
+> ChatGPT／Claude Code 都連得上，只有 claude.ai 網頁連不上，對方甚至做了
+> 一套完整 OAuth 依然失敗），**已被 Anthropic 關閉並標記「not planned」**
+> ——是已知、刻意的平台行為：
+> <https://github.com/anthropics/claude-ai-mcp/issues/457>
+>
+> **目前唯一確認可行的路是用 Claude Code**（CLI 或 claude.ai/code 網頁版），
+> 見下方指令。claude.ai 網頁版的「static_headers」beta 功能理論上能跳過
+> OAuth，但那是 organization administrator 層級的功能，一般帳號不一定看
+> 得到，且社群回報這個功能本身還不穩定
+> （<https://github.com/anthropics/claude-ai-mcp/issues/644>、
+> <https://github.com/anthropics/claude-ai-mcp/issues/685>）。
+
 1. claude.ai → Settings → Connectors → **Add custom connector**
 2. URL 填：
    ```
@@ -118,8 +138,16 @@ fetch() 打同帳號下另一個 workers.dev Worker**（會拿到 404，即使�
 3. 之後在對話裡就能直接問：「幫我查展商裡做親水塗層的」「上次實驗
    紀錄裡提到的固化溫度是多少」「wiki 的抗結痂條目現在寫到哪」
 
-Claude Code 也可以連：`claude mcp add --transport http medapi
-"https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<PIN>"`。
+**claude.ai 網頁版一般對話目前連不上，改用 Claude Code**：
+
+```bash
+claude mcp add --transport http medapi \
+  "https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>"
+```
+
+裝在哪一台機器上，就在那台的 Claude Code（CLI 或 claude.ai/code 網頁版）
+裡問得到。同一個網址、同一個 PIN，跟一般對話用的是同一支 MCP server，
+差別只在「哪個介面能連上」。
 
 **接 ChatGPT／GPT** 的連接器設定步驟與完整工具清單見 [`CONNECT-GPT.md`](./CONNECT-GPT.md)。
 
