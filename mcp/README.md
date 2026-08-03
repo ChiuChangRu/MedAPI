@@ -8,7 +8,7 @@
 | `list_wiki_pages`／`read_wiki_page`／`search_wiki` | 策略地圖 Wiki 條目 | fieldlog Worker 的 `/wiki/*`（Service Binding＋PIN） |
 | `list_fieldlog_folders`／`list_fieldlog_entries`／`list_attachments` | 目錄層：資料夾、資料夾底下的紀錄與附件檔名清單，不用猜關鍵字 | fieldlog D1（共綁，只下 SELECT） |
 | `search_fieldlog`／`get_fieldlog_entry`／`get_fieldlog_attachment` | 隨身記紀錄、逐字稿、照片文字、附件全文（超長時可分段讀）——含每日同步進來的 LitDB 文獻/專利與 AI 深度解析內容（見下方說明） | fieldlog D1（共綁，只下 SELECT） |
-| `get_fieldlog_image`／`image_probe` | 照片附件的原始圖片（MCP ImageContent；4MB 內 JPEG/PNG/GIF/WebP）＋圖片通道診斷 | fieldlog 的 `/api/attachments/:id/raw`（Service Binding＋PIN）；probe 為內建圖不讀資料 |
+| `get_fieldlog_image`／`image_probe` | 照片附件的原始圖片（MCP ImageContent；4MB 內 JPEG/PNG/GIF/WebP，邊長超過 1568px 自動縮圖）＋圖片通道診斷 | fieldlog 的 `/api/attachments/:id/raw`（Service Binding＋PIN）；probe 為內建圖不讀資料 |
 | `get_related` | 兩筆記事之間的關聯（交叉比對） | fieldlog D1 的 `relations` 表 |
 | `create_fieldlog_entry`／`create_relation` | 可寫入工具（之一、之二）：新增一筆記事／建立兩筆記事的關聯 | fieldlog D1（只 INSERT，見下方說明） |
 | `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files`／`list_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR）＋不用猜關鍵字的附件目錄 | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
@@ -37,6 +37,31 @@ folders／relations／synonyms——也就是說就算透過 claude.ai 對話下
 一律要回隨身記前台親自操作；wiki 收錄一律走 git 人審。（外部來源的同步
 更新走 fieldlog 自己的 cron，不經過 MCP。）三個系統的前台怎麼改版
 都不受影響；只有**資料表結構**變動時才需要回頭同步這裡的查詢。
+
+## 圖片會自動縮圖（控制 token 消耗）
+
+`get_fieldlog_image` 回傳的圖片邊長超過 **1568px**（Claude 官方建議的圖片
+token 效率上限）就會等比縮小再回傳。原因：Claude 算圖片 token 大致跟
+像素數成正比（`(寬×高)÷750`），手機拍照常見的 3000-4000px 寬如果原樣回傳，
+單張可能吃掉一萬多 token——一份報告拉 10-20 張現場照片，光圖片就可能
+十幾萬 token。縮到 1568px 內，每張穩定落在 ~3000 token，跟原始解析度無關，
+而「看斷面、外觀不良」這類視覺判斷本來也不需要原始解析度。
+
+實作用 [`@cf-wasm/photon`](https://www.npmjs.com/package/@cf-wasm/photon)
+（Rust 圖片庫 photon-rs 編譯成 WASM，專門支援 Cloudflare Workers）：
+
+- 門檻內的圖片**原樣回傳**，不做無謂的重新編碼（例如 PNG 的透明背景，
+  統一轉 JPEG 會丟掉）
+- 超過門檻的一律轉成 JPEG（品質 85）——token 成本看的是像素數不是檔案格式，
+  轉檔純粹是為了控制回傳的 base64 大小
+- 縮圖失敗（例如附件其實是壞掉的圖檔）不會讓整支工具報錯，退回原圖並在
+  說明文字註明，讓 Claude 至少看得到，只是可能比較貴
+
+> ⚠️ import 時**不要**指定 `@cf-wasm/photon/workerd` 子路徑，要用不指定
+> 子路徑的 `@cf-wasm/photon`——package.json 的 conditional exports 會依
+> 實際 runtime 自動選版本（`node --test` 拿 node 版、wrangler 部署／dev
+> 拿 workerd 版）。指定死 `/workerd` 會讓 `node --test`（跑測試用）連
+> import 都失敗，整份 `mcp/` 測試套件會全部炸掉。
 
 ## 搜尋怎麼比對（五個 `search_*` 工具共用同一套）
 

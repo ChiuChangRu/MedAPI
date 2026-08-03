@@ -26,6 +26,12 @@
  */
 
 import { stripPdfMetadata } from "./textFold.js";
+// 不指定 /workerd 子路徑：package.json 的 conditional exports 會依實際 runtime
+// 自動選版本——node --test（跑測試用）拿到 node 版，wrangler 部署／dev 拿到
+// workerd 版。之前指定死 /workerd 直接讓 node --test 連 import 都失敗
+// （ERR_MODULE_NOT_FOUND，因為 workerd 版的 wasm 載入方式只有 wrangler 的
+// bundler 認得），整份 mcp/ 測試套件全部炸掉。
+import { PhotonImage, SamplingFilter, resize as photonResize } from "@cf-wasm/photon";
 import {
   buildPlan,
   runSearch,
@@ -376,6 +382,64 @@ function fmtExhibitor(data, ex, state, noteCount) {
     lines.push(`- 拜訪紀錄 ${noteCount} 則`);
   }
   return lines.join("\n");
+}
+
+// ---------- 圖片縮放（get_fieldlog_image 用，控制 token 消耗）----------
+
+// Claude 官方建議的圖片 token 效率上限：邊長超過這個值，token 消耗大致跟像素數
+// 成正比（(寬×高)÷750），手機拍照常見的 3000-4000px 寬會吃到單張上萬 token。
+// 縮到這個邊長內，一張圖穩定落在 ~3000 token 左右，不管原始解析度多高。
+const MAX_IMAGE_DIMENSION = 1568;
+
+function base64ToBytes(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// bytes → base64，要分段餵給 String.fromCharCode：一次展開整個陣列當參數，
+// 100KB 以上就會 Maximum call stack size exceeded（fieldlog 那邊也踩過同一個坑）。
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+// 縮圖只在真的超過門檻時做——不需要就別動原圖，省 CPU 也不會無謂損失畫質
+// （例如 PNG 的透明背景，縮圖時統一轉成 JPEG 會丟掉）。
+// 用 try/finally 呼叫 photon 的 free()：這是 WASM 手動管理的記憶體，不會被 JS
+// 的 GC 自動回收，忘記 free 會在同一個 isolate 裡持續累積直到觸頂。
+function resizeImageIfNeeded(bytes, mime) {
+  const input = PhotonImage.new_from_byteslice(bytes);
+  try {
+    const width = input.get_width();
+    const height = input.get_height();
+    if (width <= MAX_IMAGE_DIMENSION && height <= MAX_IMAGE_DIMENSION) {
+      return { bytes, mime, resized: false, width, height };
+    }
+    const scale = MAX_IMAGE_DIMENSION / Math.max(width, height);
+    const targetWidth = Math.max(1, Math.round(width * scale));
+    const targetHeight = Math.max(1, Math.round(height * scale));
+    const output = photonResize(input, targetWidth, targetHeight, SamplingFilter.Lanczos3);
+    try {
+      return {
+        bytes: output.get_bytes_jpeg(85),
+        mime: "image/jpeg",
+        resized: true,
+        width: targetWidth,
+        height: targetHeight,
+        originalWidth: width,
+        originalHeight: height,
+      };
+    } finally {
+      output.free();
+    }
+  } finally {
+    input.free();
+  }
 }
 
 // ---------- 工具定義 ----------
@@ -1233,7 +1297,7 @@ const TOOLS = [
   },
   {
     name: "get_fieldlog_image",
-    description: "讀取隨身記照片附件的『圖片本身』（不是擷取文字），讓 Claude 直接看圖判讀——用在斷面形貌、外觀不良、塗層剝離、設備現場照這類必須以視覺判斷的場景。型錄、文件、白板照片要查『內容』請優先用 get_fieldlog_attachment 讀擷取文字（省 token 也更準）。id 用 search_fieldlog／list_attachments／get_fieldlog_entry 查到的 attachment id。僅支援 4MB 以內的 JPEG/PNG/GIF/WebP（HEIC 不支援）。第一次使用前建議先呼叫 image_probe 確認目前 client 支援 MCP 圖片顯示。",
+    description: "讀取隨身記照片附件的『圖片本身』（不是擷取文字），讓 Claude 直接看圖判讀——用在斷面形貌、外觀不良、塗層剝離、設備現場照這類必須以視覺判斷的場景。型錄、文件、白板照片要查『內容』請優先用 get_fieldlog_attachment 讀擷取文字（省 token 也更準）。id 用 search_fieldlog／list_attachments／get_fieldlog_entry 查到的 attachment id。僅支援 4MB 以內的 JPEG/PNG/GIF/WebP（HEIC 不支援）。邊長超過 1568px 的照片會自動等比縮圖再回傳（手機拍照常見的 3000-4000px 若不縮圖，單張可能吃掉上萬 token）。第一次使用前建議先呼叫 image_probe 確認目前 client 支援 MCP 圖片顯示。",
     inputSchema: {
       type: "object",
       properties: {
@@ -1273,14 +1337,28 @@ const TOOLS = [
       }
       const payload = await res.json();
       if (!payload || !payload.data) throw new Error("raw 端點回應缺少 base64 資料——fieldlog 部署版本可能過舊");
+      // 邊長超過門檻才縮圖；縮圖失敗（例如損毀的圖檔）不能讓整支工具掛掉，
+      // 退回原圖讓 Claude 至少看得到，只是可能比較貴
+      let resized;
+      try {
+        resized = resizeImageIfNeeded(base64ToBytes(payload.data), payload.mime_type || mime);
+      } catch (err) {
+        resized = { bytes: null, mime: payload.mime_type || mime, resized: false, width: null, height: null, resizeError: err.message };
+      }
+      const outData = resized.resized ? bytesToBase64(resized.bytes) : payload.data;
       const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(a.entry_id).first();
+      const dimensionNote = resized.resizeError
+        ? `｜縮圖失敗（${resized.resizeError}），已回傳原圖`
+        : resized.resized
+          ? `｜已縮圖 ${resized.originalWidth}×${resized.originalHeight} → ${resized.width}×${resized.height}（省 token）`
+          : resized.width ? `｜${resized.width}×${resized.height}` : "";
       const meta = [
-        `檔名：${a.filename}｜${(Number(payload.size_bytes || size) / 1024).toFixed(0)}KB｜${mime}`,
+        `檔名：${a.filename}｜${(Number(payload.size_bytes || size) / 1024).toFixed(0)}KB｜${mime}${dimensionNote}`,
         `所屬紀錄：${e ? `[entry ${e.id}] ${e.title || "（未命名）"}` : `entry ${a.entry_id}`}｜上傳：${a.created_at}`,
       ].join("\n");
       return {
         content: [
-          { type: "image", data: payload.data, mimeType: payload.mime_type || mime },
+          { type: "image", data: outData, mimeType: resized.mime },
           { type: "text", text: meta },
         ],
       };
