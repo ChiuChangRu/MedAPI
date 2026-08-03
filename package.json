@@ -13,5 +13,8 @@
   },
   "devDependencies": {
     "wrangler": "^4.113.0"
+  },
+  "dependencies": {
+    "@cf-wasm/photon": "^0.4.0"
   }
 }
