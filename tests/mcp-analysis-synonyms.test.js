@@ -317,14 +317,14 @@ test("工具數與文件記載一致（改了工具就要同步改文件，不�
     readFile(new URL("../fieldlog/public/help.html", import.meta.url), "utf8"),
   ]);
   const count = (src.match(/^\s{4}name: "/gm) || []).length;
-  assert.equal(count, 21, "工具數變了要一起更新文件");
+  assert.equal(count, 22, "工具數變了要一起更新文件");
   assert.match(connectGpt, new RegExp(`可用工具（${count} 個）`));
   assert.match(connectGpt, new RegExp(`抓到下面這 ${count} 個工具`));
-  // README 講的是「其餘幾個唯讀」＝總數扣掉三支可寫入的
-  assert.match(readme, new RegExp(`其餘 ${count - 3} 個工具`));
+  // README 講的是「其餘幾個唯讀」＝總數扣掉四支可寫入的
+  assert.match(readme, new RegExp(`其餘 ${count - 4} 個工具`));
   // help.html 是使用者在 App 裡看的說明。原本沒被這條把關，結果工具從 19 加到
   // 21 之後它還寫著 19（2026-08-01 發現）——說明頁講錯數字，人就會以為少了什麼。
-  assert.match(help, new RegExp(`${count} 個工具裡只有三支會寫入`),
+  assert.match(help, new RegExp(`${count} 個工具裡只有四支會寫入`),
     "help.html 的工具數也要跟上，不能只改 mcp/ 底下那兩份");
 });
 

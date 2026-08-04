@@ -1175,6 +1175,19 @@ async function handleApi(request, env, url) {
     await logHistory(db, attachment.entry_id, null, "更新附件記事", `${attachment.filename}：${note.slice(0, 120)}`);
     return json({ ok: true });
   }
+  // 純顯示層的旋轉——只改 attachments.rotation 這個中繼資料欄位，R2 裡的原始
+  // 檔案完全不動（raw data 只增不刪）。每次點擊 +90° mod 360，跟前端「每點一下
+  // 轉一格」的按鈕行為對應，角度算在伺服器端，不靠前端自己算再回傳絕對值，
+  // 避免兩個分頁同時點時互相蓋掉對方的旋轉。
+  const attRotateMatch = path.match(/^\/attachments\/(\d+)\/rotate$/);
+  if (attRotateMatch && method === "POST") {
+    const id = Number(attRotateMatch[1]);
+    const attachment = await db.prepare("SELECT id, entry_id, filename, COALESCE(rotation, 0) AS rotation FROM attachments WHERE id = ?").bind(id).first();
+    if (!attachment) return bad("找不到附件", 404);
+    const rotation = (Number(attachment.rotation) + 90) % 360;
+    await db.prepare("UPDATE attachments SET rotation = ? WHERE id = ?").bind(rotation, id).run();
+    return json({ ok: true, rotation });
+  }
   const attNormalizeMatch = path.match(/^\/attachments\/(\d+)\/normalize-name$/);
   if (attNormalizeMatch && method === "POST") {
     const result = await normalizeAttachmentName(db, Number(attNormalizeMatch[1]), { logHistory });

@@ -6,9 +6,12 @@
  *   - 隨身記 fieldlog（共綁同一個 D1，只下 SELECT）
  *   - Medtec 參展系統（共綁同一個 D1 ＋ runtime 抓公開的 exhibitors.json）
  *
- * 鐵律：預設唯讀——程式碼裡絕大多數是 SELECT 與 fetch。例外只有三支
+ * 鐵律：預設唯讀——程式碼裡絕大多數是 SELECT 與 fetch。例外只有四支
  * 「只能新增」的工具：create_fieldlog_entry（INSERT 一筆記事）、
- * create_relation（INSERT 一筆關聯）、add_synonym（INSERT 一列同義詞對照）。
+ * create_relation（INSERT 一筆關聯）、add_synonym（INSERT 一列同義詞對照）、
+ * create_fieldlog_attachment（上傳一份新附件——這支不是直接 INSERT D1，是
+ * 透過 FIELDLOG Service Binding 打 fieldlog 自己的 POST /api/upload，跟
+ * App 上傳走同一條路徑，一樣只會新增一筆 attachments／一個 R2 物件）。
  * 程式碼裡沒有任何 UPDATE／DELETE 語句碰得到 entries／attachments／folders／
  * relations／synonyms。改內容、刪東西、wiki 收錄一律要回各自的前台／git
  * 人審，MCP 這邊永遠做不到。（外部來源的同步更新走 fieldlog worker 內部的
@@ -1013,7 +1016,69 @@ const TOOLS = [
     },
   },
   {
-    // 第二個可寫入工具：一樣只 INSERT，不 UPDATE／DELETE。這支存在的理由是這次的核心
+    // 第二個可寫入工具，但走的是 HTTP 而不是直接 INSERT D1：MCP 這個 Worker
+    // 沒有綁 R2（見 wrangler.jsonc），檔案本體只能透過 FIELDLOG Service Binding
+    // 打對方既有的 POST /api/upload——跟 App 上傳完全同一條路徑、同一套去重
+    // 邏輯（content_hash 一樣的檔案會被擋掉），只是呼叫方從瀏覽器換成這裡。
+    // base64 是塞進對話裡的，Claude 要自己把整份檔案內容打出來當參數，實務上
+    // 只適合幾 MB 內的檔案——太大的請使用者改在 App 手動上傳。
+    name: "create_fieldlog_attachment",
+    description: "把檔案（Word／Excel／PDF／圖片等）上傳進隨身記，掛到一筆已存在的記事底下（只能新增附件，不會修改或刪除任何既有內容）。entry_id 用 search_fieldlog／list_fieldlog_entries 查到的編號，或先呼叫 create_fieldlog_entry 新建一筆再用它回傳的 id。檔案內容要轉成 base64 傳入——受限於對話環境，只適合幾 MB 內的檔案（伺服器端上限 8MB），太大的檔案請使用者改在隨身記 App 裡手動上傳。若跟該記事底下某份既有附件內容完全相同會直接略過，不會重複上傳。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entry_id: { type: "number", description: "掛到哪一筆記事底下（search_fieldlog／list_fieldlog_entries 查到的編號，或剛用 create_fieldlog_entry 建立的 id）" },
+        filename: { type: "string", description: "檔名，含副檔名，例如「測試報告.docx」" },
+        mime_type: { type: "string", description: "選填，MIME type，例如 application/pdf、application/vnd.openxmlformats-officedocument.wordprocessingml.document（Word）、application/vnd.openxmlformats-officedocument.spreadsheetml.sheet（Excel）；不填會存成 application/octet-stream" },
+        data_base64: { type: "string", description: "檔案內容的 base64 編碼字串" },
+      },
+      required: ["entry_id", "filename", "data_base64"],
+    },
+    async handler(env, args) {
+      const entryId = Number(args.entry_id);
+      if (!entryId) throw new Error("entry_id 為必填");
+      const filename = (args.filename || "").trim();
+      if (!filename) throw new Error("filename 為必填");
+      const mimeType = (args.mime_type || "").trim() || "application/octet-stream";
+      if (!args.data_base64) throw new Error("data_base64 為必填");
+      let bytes;
+      try {
+        bytes = base64ToBytes(String(args.data_base64));
+      } catch (err) {
+        throw new Error(`data_base64 不是合法的 base64：${err.message}`);
+      }
+      if (!bytes.length) throw new Error("檔案內容為空");
+      const UPLOAD_CAP = 8 * 1024 * 1024;
+      if (bytes.length > UPLOAD_CAP) {
+        throw new Error(`檔案 ${(bytes.length / 1024 / 1024).toFixed(1)}MB，超過透過對話上傳的上限（${UPLOAD_CAP / 1024 / 1024}MB）——請使用者改在隨身記 App 裡手動上傳`);
+      }
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const entry = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(entryId).first();
+      if (!entry) throw new Error(`找不到記事 ${entryId}——先用 search_fieldlog／list_fieldlog_entries 查正確的 id，或用 create_fieldlog_entry 新建一筆`);
+      const u = new URL("https://fieldlog.internal/api/upload");
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString(), {
+        method: "POST",
+        headers: {
+          "content-type": mimeType,
+          "x-entry-id": String(entryId),
+          "x-filename": encodeURIComponent(filename),
+        },
+        body: bytes,
+      });
+      if (res.status === 409) {
+        const dup = await res.json().catch(() => ({}));
+        if (dup.duplicate) return `檔案「${filename}」跟附件 ${dup.id} 內容完全相同，已略過重複上傳。`;
+      }
+      if (!res.ok) {
+        throw new Error(`上傳失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
+      }
+      const payload = await res.json().catch(() => ({}));
+      return `已上傳「${filename}」（${(bytes.length / 1024).toFixed(0)}KB）到 [entry ${entryId}] ${entry.title || "（未命名）"}，附件 id ${payload.id}。`;
+    },
+  },
+  {
+    // 第三個可寫入工具：一樣只 INSERT，不 UPDATE／DELETE。這支存在的理由是這次的核心
     // 訴求——聊天聊到「這次實驗其實引用了某份標準」時，不用中斷去開 App 手動連，
     // 直接在對話裡把兩筆已存在的記事連起來，之後 get_related 就查得到。
     name: "create_relation",
@@ -1285,7 +1350,7 @@ const TOOLS = [
     },
   },
   {
-    // 第三支可寫入工具，寫入範圍一樣鎖死在「只能新增」：只 INSERT 一列新的同義詞
+    // 第四支可寫入工具，寫入範圍一樣鎖死在「只能新增」：只 INSERT 一列新的同義詞
     // 對照，沒有 UPDATE／DELETE。要「幫既有的組補一個講法」就再插一列同 canonical
     // 的資料，載入時會自動合併成一組——這樣既有資料永遠不會被改掉或刪掉。
     name: "add_synonym",
@@ -1430,7 +1495,7 @@ async function handleMcp(request, env) {
       capabilities: { tools: {} },
       serverInfo: { name: "medapi-mcp", version: "1.0.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增記事）、create_relation（建立關聯）、add_synonym（新增同義詞對照）三支例外，且全部只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支例外，且全部只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
         " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。" +
         " 引用紀律：回應裡標示「AI 深度解析」的段落是 AI 產出的整理／推論，不是現場原始紀錄，引用前要回原始內容或來源連結確認；懷疑外部知識庫資料過時就先用 sync_status 查最後同步時間。",

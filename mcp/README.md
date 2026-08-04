@@ -11,9 +11,10 @@
 | `get_fieldlog_image`／`image_probe` | 照片附件的原始圖片（MCP ImageContent；4MB 內 JPEG/PNG/GIF/WebP，邊長超過 1568px 自動縮圖）＋圖片通道診斷 | fieldlog 的 `/api/attachments/:id/raw`（Service Binding＋PIN）；probe 為內建圖不讀資料 |
 | `get_related` | 兩筆記事之間的關聯（交叉比對） | fieldlog D1 的 `relations` 表 |
 | `create_fieldlog_entry`／`create_relation` | 可寫入工具（之一、之二）：新增一筆記事／建立兩筆記事的關聯 | fieldlog D1（只 INSERT，見下方說明） |
+| `create_fieldlog_attachment` | 可寫入工具（之三）：把檔案（Word／Excel／PDF／圖片等，base64 傳入）上傳掛到一筆已存在的記事底下 | fieldlog 的 `/api/upload`（Service Binding＋PIN，只 INSERT，見下方說明） |
 | `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files`／`list_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR）＋不用猜關鍵字的附件目錄 | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
 | `sync_status` | 外部知識庫（litdb 等）的最後同步時間與最近同步紀錄——懷疑資料過時直接查事實 | fieldlog D1 的 `sources`／`sync_log` 表 |
-| `add_synonym` | **第三支能寫入的工具**：搜不到但確定是「用詞沒對上」時，當場補一組同義詞對照，立刻生效 | fieldlog D1 的 `synonyms` 表（只 INSERT） |
+| `add_synonym` | **第四支能寫入的工具**：搜不到但確定是「用詞沒對上」時，當場補一組同義詞對照，立刻生效 | fieldlog D1 的 `synonyms` 表（只 INSERT） |
 
 > **LitDB（`chiuchangru/litdb`，長儒另一個獨立文獻/專利知識庫）已併入
 > fieldlog**（2026-07-26，「LitDB 文獻庫」資料夾，152 筆親水塗層／活檢針
@@ -29,11 +30,12 @@
 > `list_fieldlog_entries`／`list_attachments`／`list_exhibitor_files` 就是為此而加。
 
 **鐵律：預設唯讀，例外全部鎖死在「只能新增」。** 其餘 18 個工具程式碼裡
-只有 SELECT 與 fetch；`create_fieldlog_entry`／`create_relation`／
-`add_synonym` 是僅有的三支會寫入的工具，各自只做一次 INSERT，
-程式碼裡沒有任何 `UPDATE`／`DELETE` 語句碰得到 entries／attachments／
-folders／relations／synonyms——也就是說就算透過 claude.ai 對話下指令，
-也不可能改掉或刪掉既有的任何一筆資料，只能加新的。想改內容、刪東西，
+只有 SELECT 與 fetch；`create_fieldlog_entry`／`create_fieldlog_attachment`／
+`create_relation`／`add_synonym` 是僅有的四支會寫入的工具（`create_fieldlog_attachment`
+是透過 fieldlog 自己的 `/api/upload` 新增一筆附件，其餘三支各自只做一次
+直接 INSERT D1），程式碼裡沒有任何 `UPDATE`／`DELETE` 語句碰得到 entries／
+attachments／folders／relations／synonyms——也就是說就算透過 claude.ai 對話
+下指令，也不可能改掉或刪掉既有的任何一筆資料，只能加新的。想改內容、刪東西，
 一律要回隨身記前台親自操作；wiki 收錄一律走 git 人審。（外部來源的同步
 更新走 fieldlog 自己的 cron，不經過 MCP。）三個系統的前台怎麼改版
 都不受影響；只有**資料表結構**變動時才需要回頭同步這裡的查詢。

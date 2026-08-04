@@ -580,6 +580,17 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
    被縮圖了。拿掉高度上限後圖片依原始比例撐滿寬度，也不會超過框框
    （max-width: 100% 本身就擋住放大溢出）。 */
 .att-thumb { max-width: 100%; border-radius: 6px; display: block; }
+/* 90°／270° 會讓橫幅變直幅（或反過來），視覺上的外框跟著換邊——如果直接
+   對這種長寬比的縮圖做 transform: rotate()，旋轉後的畫面會比原本的版位還
+   高／還寬，可能疊到下一張縮圖。轉成正方形外框＋object-fit: contain 之後，
+   90°／270° 旋轉前後外框永遠是同一個正方形，不會影響其他縮圖的版位；
+   0°／180° 沒有這個問題，維持原本「貼齊卡片框」的樣子就好。 */
+.att-thumb[data-rotation="90"], .att-thumb[data-rotation="270"] {
+  aspect-ratio: 1; width: 100%; object-fit: contain; background: var(--bg);
+}
+.att-thumb[data-rotation="90"] { transform: rotate(90deg); }
+.att-thumb[data-rotation="180"] { transform: rotate(180deg); }
+.att-thumb[data-rotation="270"] { transform: rotate(270deg); }
 .att-transcript { font-size: 13px; line-height: 1.6; margin: 6px 0 0; white-space: pre-line; color: var(--text-muted); }
 .att-transcribe { display: inline-block; margin-top: 6px; font-size: 13px; }
 
@@ -910,6 +921,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   max-width: 100%; max-height: 100%;
   object-fit: contain; border-radius: 6px;
 }
+/* 全螢幕檢視器本來就是唯一內容、外層有 overflow: auto 兜底，90°／270° 旋轉後
+   外框跟著變寬變高不會疊到別的東西，不用像縮圖列那樣特別框成正方形。 */
+.image-viewer-body img[data-rotation="90"] { transform: rotate(90deg); }
+.image-viewer-body img[data-rotation="180"] { transform: rotate(180deg); }
+.image-viewer-body img[data-rotation="270"] { transform: rotate(270deg); }
 /* 照片縮圖／檔案列的照片可點，游標要看得出來 */
 .att-photo-link, .folder-file-row .folder-file-name.is-photo { cursor: zoom-in; }
 
