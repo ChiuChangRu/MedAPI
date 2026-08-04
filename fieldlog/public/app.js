@@ -872,10 +872,14 @@ function renderChildFolders(parentId) {
     .sort(compareFolders);
   const wrap = $("folder-children");
   wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${children.map((f) => `
-    <button class="child-folder-card" type="button" data-id="${f.id}">
+    <div class="child-folder-card" data-id="${f.id}">
       <span>📁</span><strong>${esc(f.name)}</strong><small>${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
-    </button>`).join("")}</div>` : "";
-  wrap.querySelectorAll(".child-folder-card").forEach((el) => { el.onclick = () => openFolder(Number(el.dataset.id)); });
+      <button class="child-folder-edit" type="button" data-id="${f.id}" title="編輯資料夾名稱／類型" aria-label="編輯${esc(f.name)}資料夾">✏️</button>
+    </div>`).join("")}</div>` : "";
+  wrap.querySelectorAll(".child-folder-card").forEach((el) => {
+    el.onclick = (ev) => { if (ev.target.closest(".child-folder-edit")) return; openFolder(Number(el.dataset.id)); };
+    el.querySelector(".child-folder-edit").onclick = (ev) => { ev.stopPropagation(); renameFolder(Number(el.dataset.id)); };
+  });
   bindFolderDropTargets();
 }
 
