@@ -36,6 +36,49 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// 輕量 Markdown 轉換：內文／速記以 Markdown 為主要格式。
+// 輸入先 esc() 過，轉換只在跑逸出後的字串上做替換，不會產生可注入的原始 HTML。
+function mdToHtml(src) {
+  if (!src) return "";
+  const codeBlocks = [];
+  const s = esc(src).replace(/```([\s\S]*?)```/g, (_, code) => {
+    codeBlocks.push(`<pre><code>${code.replace(/^\n/, "")}</code></pre>`);
+    return `@@CB${codeBlocks.length - 1}@@`;
+  });
+
+  const inline = (line) => line
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/_([^_]+)_/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  const html = [];
+  let list = null; // "ul" | "ol" | null
+  let para = [];
+  const flushPara = () => { if (para.length) { html.push(`<p>${para.join("<br>")}</p>`); para = []; } };
+  const closeList = () => { if (list) { html.push(`</${list}>`); list = null; } };
+
+  for (const raw of s.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    let m;
+    if (/^@@CB\d+@@$/.test(line.trim())) { flushPara(); closeList(); html.push(line.trim()); continue; }
+    if (!line.trim()) { flushPara(); closeList(); continue; }
+    if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { flushPara(); closeList(); html.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); continue; }
+    if (/^&gt;\s?/.test(line)) { flushPara(); closeList(); html.push(`<blockquote>${inline(line.replace(/^&gt;\s?/, ""))}</blockquote>`); continue; }
+    if (/^(-{3,}|_{3,}|\*{3,})$/.test(line.trim())) { flushPara(); closeList(); html.push("<hr>"); continue; }
+    if ((m = line.match(/^[-*]\s+(.*)$/))) { flushPara(); if (list !== "ul") { closeList(); html.push("<ul>"); list = "ul"; } html.push(`<li>${inline(m[1])}</li>`); continue; }
+    if ((m = line.match(/^\d+\.\s+(.*)$/))) { flushPara(); if (list !== "ol") { closeList(); html.push("<ol>"); list = "ol"; } html.push(`<li>${inline(m[1])}</li>`); continue; }
+    closeList();
+    para.push(inline(line));
+  }
+  flushPara();
+  closeList();
+
+  return html.join("\n").replace(/@@CB(\d+)@@/g, (_, i) => codeBlocks[Number(i)]);
+}
+
 function showToast(text) {
   const t = $("toast");
   t.textContent = text;
@@ -179,7 +222,8 @@ async function openEntry(id) {
       ${FOLDERS.map((f) => `<option value="${f.id}">${esc(f.type)}｜${esc(f.name)}</option>`).join("")}
     </select></div>` : ""}
     ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
-    <label>內文／速記</label>
+    <label>內文／速記 <a href="#" id="e-body-toggle" class="body-toggle">編輯</a></label>
+    <div id="e-body-view" class="md-content"></div>
     <textarea id="e-body">${esc(e.body)}</textarea>
     <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button></div>
     <hr/>
@@ -195,6 +239,18 @@ async function openEntry(id) {
     <div id="e-attachments" class="att-list">${e.attachments.map(attHtml).join("") || `<p class="sub">尚無附件</p>`}</div>
   `;
   $("entry-overlay").classList.add("open");
+  const bodyView = $("e-body-view");
+  const bodyInput = $("e-body");
+  const bodyToggle = $("e-body-toggle");
+  const setBodyMode = (editing) => {
+    bodyView.style.display = editing ? "none" : "block";
+    bodyInput.style.display = editing ? "block" : "none";
+    bodyToggle.textContent = editing ? "👁 預覽" : "✏️ 編輯";
+    if (editing) bodyInput.focus();
+    else bodyView.innerHTML = mdToHtml(bodyInput.value) || `<p class="sub">尚無內容，點右上「編輯」開始寫。</p>`;
+  };
+  bodyToggle.onclick = (ev) => { ev.preventDefault(); setBodyMode(bodyView.style.display === "none"); };
+  setBodyMode(!e.body);
   $("e-close").onclick = closeEntry;
   $("e-delete").onclick = async () => {
     if (!confirm(`確定刪除整筆紀錄「${e.title || "（未命名）"}」？裡面的附件也會一起刪除，無法復原。`)) return;
