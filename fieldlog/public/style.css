@@ -153,11 +153,20 @@ body {
      卡片內容長度不一時，兩個 .child-folder-list 各自算出的欄寬可能因此對
      不齊，卡片位置跟著跑掉。 */
   min-width: 0;
+  position: relative;
 }
 .child-folder-card:hover, .record-group-card:hover { border-color: var(--accent); background: #f0fdfa; }
 .child-folder-card > span, .record-group-card > span { grid-row: 1 / 3; font-size: 24px; }
 .child-folder-card strong, .record-group-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .child-folder-card small, .record-group-card small { color: var(--text-muted); }
+/* 子資料夾原本只能點進去看，改名要先回上層資料夾清單才有選單——右上角補一顆
+   跟 .record-group-del 同樣手法的編輯鈕，直接沿用既有的 renameFolder()。 */
+.child-folder-card { padding-right: 34px; }
+.child-folder-edit {
+  position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
+}
+.child-folder-edit:hover { opacity: 1; }
 .child-folder-list.list-view { display: flex; flex-direction: column; }
 .child-folder-list.list-view .child-folder-card,
 .child-folder-list.list-view .record-group-card { min-height: 62px; }
@@ -191,11 +200,14 @@ body {
     color: rgba(255, 255, 255, 0.85); white-space: normal; word-break: break-all; overflow: hidden;
   }
   .child-folder-list.grid-view .folder-level-chip { background: rgba(255, 255, 255, 0.25); color: #fff; }
-  .child-folder-list.grid-view .record-group-card { padding-right: 16px; }
-  .child-folder-list.grid-view .record-group-del {
+  .child-folder-list.grid-view .record-group-card,
+  .child-folder-list.grid-view .child-folder-card { padding-right: 16px; }
+  .child-folder-list.grid-view .record-group-del,
+  .child-folder-list.grid-view .child-folder-edit {
     color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.15); border-radius: 50%;
   }
-  .child-folder-list.grid-view .record-group-del:hover { background: rgba(255, 255, 255, 0.32); opacity: 1; }
+  .child-folder-list.grid-view .record-group-del:hover,
+  .child-folder-list.grid-view .child-folder-edit:hover { background: rgba(255, 255, 255, 0.32); opacity: 1; }
 }
 .inner-entry-list.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .inner-entry-list.grid-view .entry-row { position: relative; min-height: 130px; padding: 16px; align-items: flex-start; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(27,29,28,.06); }
