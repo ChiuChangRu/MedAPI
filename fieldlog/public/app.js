@@ -891,7 +891,7 @@ function folderFileHtml(a, entryId) {
       : ["ppt", "pptx"].includes(ext) ? "📙" : "📄";
   // 照片走站內檢視器；其他檔案（PDF、Office）交給瀏覽器開新分頁，那邊的檢視器比較好用
   const nameLink = isImageAtt(a)
-    ? `<a class="folder-file-name is-photo" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}">${esc(a.filename)}</a>`
+    ? `<a class="folder-file-name is-photo" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}" data-image-id="${a.id}" data-image-rotation="${Number(a.rotation) || 0}">${esc(a.filename)}</a>`
     : `<a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
   // 每一列是「一份檔案」而不是「一筆記事」：可以拖到上方子資料夾搬移，
   // 🗑 只刪這一份，⋯ 開這一份的詳情（附屬記事、分類、AI 整理）
@@ -1989,12 +1989,17 @@ function unlockBodyScroll() {
 // 底層捲動——那個 modal 還開著。記住是不是由圖片檢視器自己鎖的。
 let IMAGE_VIEWER_LOCKED_SCROLL = false;
 
-function openImageViewer(url, filename) {
+function openImageViewer(url, filename, attachmentId, rotation) {
   const overlay = $("image-viewer-overlay");
-  $("image-viewer-img").src = url;
-  $("image-viewer-img").alt = filename || "照片";
+  const img = $("image-viewer-img");
+  img.src = url;
+  img.alt = filename || "照片";
+  img.dataset.id = attachmentId || "";
+  img.dataset.rotation = Number(rotation) || 0;
   $("image-viewer-name").textContent = filename || "";
   $("image-viewer-open").href = url;
+  const rotateBtn = $("image-viewer-rotate");
+  if (rotateBtn) rotateBtn.hidden = !attachmentId;
   overlay.classList.add("open");
   if (!document.body.classList.contains("modal-open")) {
     lockBodyScroll();
@@ -2013,6 +2018,30 @@ function closeImageViewer() {
   }
 }
 
+// 旋轉只改 attachments.rotation 這個顯示用中繼資料，R2 原始檔完全不動
+// （raw data 只增不刪）。轉完同時更新縮圖列裡同一張照片，不用整頁重新整理。
+async function rotateCurrentImage() {
+  const img = $("image-viewer-img");
+  const id = Number(img.dataset.id || 0);
+  if (!id) return;
+  const btn = $("image-viewer-rotate");
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api(`/attachments/${id}/rotate`, { method: "POST", body: "{}" });
+    img.dataset.rotation = result.rotation;
+    document.querySelectorAll(`.att-thumb[data-id="${id}"]`).forEach((thumb) => {
+      thumb.dataset.rotation = result.rotation;
+    });
+    document.querySelectorAll(`a[data-image-id="${id}"]`).forEach((link) => {
+      link.dataset.imageRotation = result.rotation;
+    });
+  } catch (error) {
+    showToast("旋轉失敗：" + error.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function isImageAtt(a) {
   return a.kind === "photo" || /^image\//i.test(a.mime || "");
 }
@@ -2024,7 +2053,7 @@ function bindImageLinks(root = document) {
     link.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openImageViewer(link.dataset.imageUrl, link.dataset.imageName || "");
+      openImageViewer(link.dataset.imageUrl, link.dataset.imageName || "", link.dataset.imageId, link.dataset.imageRotation);
     };
   });
 }
@@ -2227,7 +2256,8 @@ function attHtml(a, siblings) {
   let preview = `<a href="${url}" target="_blank" rel="noopener">${fileIcon} ${esc(a.filename)}</a>`;
   // 照片點縮圖開站內檢視器（不是 target=_blank——在 PWA 裡那會跳到沒有關閉鈕的畫面）
   if (isImageAtt(a)) {
-    preview = `<a class="att-photo-link" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}"><img class="att-thumb" src="${url}" loading="lazy" alt="${esc(a.filename)}" /></a>`;
+    const rotation = Number(a.rotation) || 0;
+    preview = `<a class="att-photo-link" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}" data-image-id="${a.id}" data-image-rotation="${rotation}"><img class="att-thumb" data-id="${a.id}" data-rotation="${rotation}" src="${url}" loading="lazy" alt="${esc(a.filename)}" /></a>`;
   }
   if (a.kind === "audio") preview = `<audio controls preload="none" src="${url}" style="width:100%;"></audio>`;
   const offset = a.offset_secs !== null && a.offset_secs !== undefined ? `<span class="att-offset">📸 錄音 ${fmtSecs(a.offset_secs)}</span>` : "";
@@ -3207,6 +3237,8 @@ function init() {
   });
   // ↗ 原圖是真的要另開分頁看原始檔，別被上面那個關閉行為吃掉
   $("image-viewer-open").addEventListener("click", (e) => e.stopPropagation());
+  // 🔄 旋轉同理，別被暗色區域的關閉行為吃掉
+  $("image-viewer-rotate").addEventListener("click", (e) => { e.stopPropagation(); rotateCurrentImage(); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeImageViewer();
   });

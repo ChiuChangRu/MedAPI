@@ -184,6 +184,10 @@ export const MIGRATIONS = [
   // litdb_id 有值）永遠鎖在 text，sync.js 的 SYNC_START/SYNC_END 標記完全
   // 不會遇到 html 格式。
   `ALTER TABLE entries ADD COLUMN body_format TEXT DEFAULT 'text'`,
+  // 照片顯示用的旋轉角度（0/90/180/270，每次點旋轉鈕 +90 mod 360）。純顯示層
+  // 中繼資料，不動 R2 裡的原始檔案——raw data 只增不刪，旋轉只是前端渲染時
+  // 加一個 CSS transform。
+  `ALTER TABLE attachments ADD COLUMN rotation INTEGER DEFAULT 0`,
 ];
 
 /**

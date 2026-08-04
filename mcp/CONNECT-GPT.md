@@ -17,11 +17,11 @@
   「AI 深度解析」段落並明確標示）
 - **Medtec 2026 參展系統**——585 家展商名單＋團隊拜訪紀錄＋附件全文
 
-**預設唯讀。** 19 個工具裡 16 個只做 SELECT／fetch，例外是
-`create_fieldlog_entry`／`create_relation`／`add_synonym` 三支，全部鎖死在
-「只能新增一筆全新的記事／關聯／同義詞對照」——沒有任何一支工具會修改或
-刪除既有資料。要改內容、刪東西，一律要回隨身記／參展系統前台親自操作；
-wiki 收錄一律走 git 人審。
+**預設唯讀。** 22 個工具裡 18 個只做 SELECT／fetch，例外是
+`create_fieldlog_entry`／`create_fieldlog_attachment`／`create_relation`／
+`add_synonym` 四支，全部鎖死在「只能新增一筆全新的記事／附件／關聯／同義詞
+對照」——沒有任何一支工具會修改或刪除既有資料。要改內容、刪東西，一律要回
+隨身記／參展系統前台親自操作；wiki 收錄一律走 git 人審。
 
 ## 連線資訊
 
@@ -53,7 +53,7 @@ connector」這類選項即可：
 4. **Server URL / MCP endpoint**：貼上面那條完整網址（含 `?pin=`）
 5. 認證方式若有選項，選「No authentication」或「None」——PIN 已經包在網址裡了，
    不需要再另外設定認證
-6. 儲存後，ChatGPT 應該會呼叫一次 `tools/list` 抓到下面這 21 個工具；
+6. 儲存後，ChatGPT 應該會呼叫一次 `tools/list` 抓到下面這 22 個工具；
    如果連線失敗，先確認網址結尾的 PIN 有沒有貼對、貼完整
 
 設定好之後，直接在對話裡問就好，例如：「幫我查展商裡做親水塗層的」
@@ -61,7 +61,7 @@ connector」這類選項即可：
 「litdb 裡有沒有講活檢針擊發機構的文獻」（LitDB 已併入隨身記並每日自動
 同步，`search_fieldlog` 就查得到）——GPT 會自己判斷該呼叫哪個工具。
 
-## 可用工具（21 個）
+## 可用工具（22 個）
 
 **先列目錄、再決定要不要細看，不要一開始就猜關鍵字。** `search_*` 查不到不代表
 沒有這份資料，可能只是關鍵字沒猜對——先用 `list_fieldlog_entries`／
@@ -97,6 +97,7 @@ connector」這類選項即可：
 | 工具 | 用途 |
 |---|---|
 | `create_fieldlog_entry` | 新增一筆記事（標題／內文／選填歸檔資料夾／選填自訂欄位）。只會 INSERT，不會動到任何既有內容 |
+| `create_fieldlog_attachment` | 上傳檔案（Word／Excel／PDF／圖片等，base64 傳入，伺服器端上限 8MB）掛到一筆**已存在**的記事底下。跟該記事既有附件內容重複會自動略過，不會重複存 |
 | `create_relation` | 把兩筆**已存在**的記事建立關聯。兩筆記事都必須先存在，不能用猜的編號 |
 | `add_synonym` | 新增一組同義詞對照（例：把「BaClear」掛到「抗結痂披膜」）。查不到但確定只是用詞沒對上時當場補，下一次查詢立刻生效；只會 INSERT，改不掉也刪不掉既有對照 |
 
@@ -128,9 +129,12 @@ connector」這類選項即可：
 
 - **fail-closed**：`MCP_PIN` 沒設定時，這個端點會拒絕所有請求，不會裸奔
 - **預設唯讀**：程式碼裡絕大多數是 SELECT／fetch；`create_fieldlog_entry`／
-  `create_relation`／`add_synonym` 是僅有的三個例外，程式碼裡沒有任何
-  UPDATE／DELETE 語句碰得到 entries／attachments／folders／relations／
-  synonyms——就算透過對話下指令，也不可能改掉或刪掉既有的任何一筆資料
+  `create_fieldlog_attachment`／`create_relation`／`add_synonym` 是僅有的四個
+  例外，全部只會新增（`create_fieldlog_attachment` 上傳檔案是透過 fieldlog
+  自己的 `/api/upload`，跟其餘三支直接 INSERT D1 的路徑不同，但一樣只新增
+  一筆附件，不會動到既有資料）——程式碼裡沒有任何 UPDATE／DELETE 語句碰得到
+  entries／attachments／folders／relations／synonyms，就算透過對話下指令，
+  也不可能改掉或刪掉既有的任何一筆資料
 - 三個後端來源（策略地圖 Wiki、隨身記、Medtec）各自獨立的 Cloudflare
   Worker／資料庫，這個 MCP 只是加一層查詢介面，不做跨系統的資料庫合併。
   LitDB（`chiuchangru/litdb`）已於 2026-07-26 併入隨身記，由 fieldlog 的
