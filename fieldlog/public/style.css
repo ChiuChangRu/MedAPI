@@ -563,7 +563,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .att-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; gap: 8px; }
 .att-delete { color: #b91c1c; }
 .att-offset { color: var(--accent-dark); font-weight: 600; }
-.att-thumb { max-width: 100%; max-height: 220px; border-radius: 6px; display: block; }
+/* 只用 max-width 卡住寬度（貼齊卡片框），不額外設 max-height——原本的
+   220px 高度上限會把橫幅照片硬壓扁，框框明明比較寬也用不到，看起來像是
+   被縮圖了。拿掉高度上限後圖片依原始比例撐滿寬度，也不會超過框框
+   （max-width: 100% 本身就擋住放大溢出）。 */
+.att-thumb { max-width: 100%; border-radius: 6px; display: block; }
 .att-transcript { font-size: 13px; line-height: 1.6; margin: 6px 0 0; white-space: pre-line; color: var(--text-muted); }
 .att-transcribe { display: inline-block; margin-top: 6px; font-size: 13px; }
 
