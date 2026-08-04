@@ -225,9 +225,27 @@ function wikiFetch(env, file) {
 
 async function wikiPages(env) {
   const res = await wikiFetch(env, "pages.json");
-  if (!res.ok) throw new Error(`讀取 wiki 頁面清單失敗（HTTP ${res.status}）——檢查 FIELD_PIN 是否與 fieldlog 一致`);
+  if (!res.ok) throw new Error(`讀取 wiki 頁面清單失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
   const data = await res.json();
   return data.pages || [];
+}
+
+// fieldlog 的 401 分兩種、原因完全不同，蓋成同一句「FIELD_PIN 是否一致」會
+// 讓人兩邊都要猜：
+//   「尚未設定 FIELD_PIN」→ fieldlog 自己的 Secret 不見了，要去 fieldlog
+//   Worker 補
+//   「PIN 錯誤或未提供」→ fieldlog 的 Secret 沒事，是 medapi-mcp 這邊存的
+//   那份 FIELD_PIN 跟 fieldlog 對不上，要去 medapi-mcp Worker 改
+// 2026-08-03 就吃過虧：MCP_PIN 被部署清掉那次，medapi-mcp 上的 FIELD_PIN
+// 大概率也一起被清了，事後手動補救時只顧著補 MCP_PIN（因為那個當下看得到
+// 症狀），FIELD_PIN 沒人發現一直缺著，直到有人用 get_fieldlog_image／
+// list_wiki_pages 才炸出來——而看到的訊息只有「HTTP 401」，沒有這裡的細節，
+// 沒辦法一眼分辨是哪一種。
+async function fieldlogErrorDetail(res) {
+  const text = await res.text().catch(() => "");
+  let detail = text;
+  try { detail = JSON.parse(text).error || text; } catch { /* 不是 JSON 就原樣用 */ }
+  return `${detail.slice(0, 150)}${res.status === 401 ? "（去對應的 Worker Settings → Variables and Secrets 檢查 FIELD_PIN）" : ""}`;
 }
 
 // ---------- 展商主檔（Service Binding 呼叫 medtec，記憶體快取 5 分鐘）----------
@@ -1333,7 +1351,8 @@ const TOOLS = [
       u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
       const res = await env.FIELDLOG.fetch(u.toString());
       if (!res.ok) {
-        throw new Error(`讀取原始檔失敗（HTTP ${res.status}）——檢查 FIELD_PIN 是否一致，以及 fieldlog 部署版本是否已含 /attachments/:id/raw 端點（commit 5c784dd 之後）`);
+        const hint = res.status === 404 ? "（也可能是 fieldlog 部署版本過舊，還沒有 /attachments/:id/raw 端點——commit 5c784dd 之後才有）" : "";
+        throw new Error(`讀取原始檔失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}${hint}`);
       }
       const payload = await res.json();
       if (!payload || !payload.data) throw new Error("raw 端點回應缺少 base64 資料——fieldlog 部署版本可能過舊");
