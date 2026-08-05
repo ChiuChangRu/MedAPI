@@ -1,0 +1,40 @@
+{
+  // Medtec China 2026 展商作戰地圖（邦特團隊版）
+  // 部署前唯一要改的：把下方 database_id 換成你自己 D1 資料庫的 UUID
+  "name": "medtec-2026",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-01",
+  // 保留 Dashboard 設定的 TEAM_PIN 與 LINE_CHANNEL_* 等 Secret。沒有這一行，
+  // 每次 wrangler deploy 都會把它們清掉；TEAM_PIN 不見會讓整個團隊版進不去，
+  // LINE 憑證不見則是推播靜悄悄地失效（比整個掛掉更難發現）。
+  "keep_vars": true,
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  // 每天 UTC 12:00 = 台北/上海（UTC+8）晚上 8 點，推播當日指派＋拜訪成果摘要到 LINE
+  "triggers": {
+    "crons": ["0 12 * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "medtec-2026",
+      "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
+    },
+    {
+      // 唯讀共綁，只給「今日 AI 用量」加總用（兩邊共用同一份 Workers AI 免費額度）
+      "binding": "DB_FIELDLOG",
+      "database_name": "fieldlog",
+      "database_id": "41483c93-9398-4be6-a670-a3120c880781"
+    }
+  ]
+  ,"r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "medtec-2026-files"
+    }
+  ]
+  ,"ai": { "binding": "AI" }
+}
