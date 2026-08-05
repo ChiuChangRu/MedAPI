@@ -359,6 +359,36 @@ Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通）�
 上傳一份附件、建立一個關聯、補一組同義詞。程式碼裡<strong>沒有任何一行</strong>能改掉或刪掉既有資料——
 就算你在對話裡叫它刪，它也做不到。要改內容、刪東西，一律回這個 App 自己操作。
 </div>
+
+<h3>架構：三個系統＋一層問答窗口，怎麼接起來的</h3>
+<p>
+<code>medapi-mcp</code> 本身<strong>不存任何資料</strong>，它只是一層轉接：
+</p>
+<pre><code>claude.ai / Claude Code / ChatGPT
+        │  自然語言問答（連接器網址帶 ?pin=MCP_PIN）
+        ▼
+   medapi-mcp（唯讀問答層，22 個工具）
+        │
+        ├── Service Binding → fieldlog /wiki/*（帶 FIELD_PIN）  … 策略地圖 Wiki 條目
+        ├── D1 共綁 → fieldlog DB（幾乎全 SELECT，4 支工具 INSERT）
+        │      … 隨身記紀錄／逐字稿／擷取文字／關聯／LitDB／同義詞表
+        ├── D1 共綁 → medtec-2026 DB（SELECT）  … 拜訪狀態／共筆紀錄／附件清單
+        └── Service Binding → medtec /data/exhibitors.json  … 展商主檔（公開靜態資產）</code></pre>
+<p>
+「Service Binding」是 Cloudflare 官方的 Worker 對 Worker 呼叫方式，直接呼叫對方程式碼、
+不經對外網路（一般 <code>fetch()</code> 打同帳號下另一個 Worker 的網址會直接被擋掉，拿到 404）。
+「D1 共綁」是同一顆資料庫同時掛在兩個 Worker 上——<code>medapi-mcp</code> 不用經過任何人，
+直接下 SELECT 查 fieldlog／medtec-2026 的資料庫。
+</p>
+<div class="warn">
+<strong>三把鑰匙，各自獨立，千萬別設成同一組：</strong>
+<code>FIELD_PIN</code>（隨身記自己的登入）、<code>MCP_PIN</code>（MyWiki 連接器登入）、
+<code>TEAM_PIN</code>（參展系統自己的登入）是三個完全獨立的 Secret。
+共用同一組密碼的話，換一次密碼就會連鎖搞壞好幾個系統——這是實際發生過的事故，
+不是假設性的提醒。<code>medapi-mcp</code> 這個 Worker 比較特別，身上同時掛了
+<strong>兩組</strong> Secret：自己的 <code>MCP_PIN</code>，加上跟 fieldlog 完全同值的
+<code>FIELD_PIN</code>（讀 Wiki 用），這兩個不要搞混。
+</div>
 </section>
 
 <section id="cost">
@@ -415,10 +445,43 @@ service worker、清掉所有快取、重新載入。
 </p>
 
 <h3>連 MCP 失敗／工具叫不出來</h3>
-<ul>
-  <li>401：PIN 沒帶或帶錯，確認網址結尾是完整的 <code>?pin=...</code></li>
-  <li>新工具沒出現：連接器快取了舊的工具清單，去 Settings → Connectors 關掉再開</li>
-</ul>
+<p>照下面順序排查，<strong>2026-08-05 這次真實發生過的完整案例</strong>就是照這個順序才挖到根因的：</p>
+<ol>
+  <li>
+    <strong>401 錯誤、或連接器一直顯示「未連線」</strong>：確認連接器網址結尾是完整的
+    <code>?pin=...</code>，值要跟 Worker 上目前的 <code>MCP_PIN</code> 一致。
+  </li>
+  <li>
+    <strong>claude.ai 跳出「Couldn't register with sign-in service」，要你填 OAuth Client ID</strong>：
+    <strong>這通常不是真的要設定 OAuth</strong>——<code>medapi-mcp</code> 完全沒有實作 OAuth，
+    這其實是 claude.ai 把「呼叫失敗（多半是 PIN 不對）」誤判成「這台伺服器要走 OAuth 註冊流程」
+    才跳出的誤導性錯誤訊息。先照上一步確認 PIN，不用真的去找 OAuth Client ID。
+  </li>
+  <li>
+    <strong>Dashboard 上明明有設定 Secret，卻還是回「尚未設定 MCP_PIN」（401 fail-closed）</strong>：
+    去 Worker 的 <strong>Deployments → Version History</strong> 看時間軸——如果「Add secret」
+    是在某次自動部署<strong>之前</strong>做的，很可能是那次部署把 Secret 整個清掉了
+    （下一節「<code>keep_vars</code>」有完整說明）。確認方式：Settings → Variables and secrets
+    現在是不是真的空的；是的話代表要<strong>重新設定一次</strong>，不是密碼設錯。
+  </li>
+  <li>
+    <strong>新工具沒出現</strong>：連接器快取了舊的工具清單，去 claude.ai Settings → Connectors
+    把 MyWiki 關掉再開。
+  </li>
+</ol>
+
+<h3><code>keep_vars</code>：自動部署會把 Secret 整個清掉（已修好，但要知道這件事）</h3>
+<div class="warn">
+Cloudflare 的 <code>wrangler deploy</code> 預設行為是「用設定檔整個覆蓋 Worker」——如果
+<code>wrangler.jsonc</code> 裡沒有 <code>"keep_vars": true</code>，Dashboard 上手動設定的
+Secret／變數會在<strong>每一次自動部署時被清空</strong>。2026-08-05 就是這樣：手動設好
+<code>MCP_PIN</code>／<code>FIELD_PIN</code> 沒多久，合併 PR 觸發的自動部署就把兩個 Secret
+都沖掉了，MyWiki 連接器因此連不上，而且從連接器那端完全看不出「是伺服器的 Secret 不見了」，
+只會看到含糊的連線失敗。<code>fieldlog</code>／<code>mcp</code>／<code>cloudflare</code>
+三個 Worker 的 <code>wrangler.jsonc</code> 現在都已經補上 <code>keep_vars: true</code>，
+並且有 <code>tests/wrangler-keep-vars.test.js</code> 這支測試把關，之後改設定檔不小心漏掉
+這一行的話，<code>npm test</code> 會直接報錯提醒，不會再無聲無息重演一次。
+</div>
 </section>
 
 <section id="ops">
@@ -435,6 +498,23 @@ service worker、清掉所有快取、重新載入。
 而且很難察覺。
 </div>
 
+<h3>Build 設定：Deploy command 跟「非正式分支」的那組是分開的</h3>
+<p>
+Cloudflare Dashboard 的 <strong>Settings → Build</strong> 裡有兩組長得很像的欄位：
+</p>
+<ul>
+  <li><strong>Deploy command</strong>：只有 push 到 <strong>Production branch</strong>
+      （Branch control 那裡設定的那條，例如 <code>codex/kiwi-integration</code>）才會用到</li>
+  <li><strong>Non-production branch deploy command</strong>（介面上有時顯示成
+      <em>Version command</em>）：push 到<strong>其他任何分支</strong>都是走這一組</li>
+</ul>
+<p>
+兩組都要帶正確的 <code>--config .../wrangler.jsonc</code>，只改對其中一組的話，
+另一組對應的那些分支每次 push 都會 build 失敗——2026-08-05 就在這裡卡了一輪，
+症狀是「隨便一個不相干的 commit 推上去也 build failed」，因為問題出在設定本身，
+跟推了什麼內容無關。
+</p>
+
 <h3>Secret 放哪裡</h3>
 <table>
   <tr><th>Worker</th><th>需要的 Secret</th></tr>
@@ -442,7 +522,11 @@ service worker、清掉所有快取、重新載入。
   <tr><td><code>medtec-2026</code></td><td><code>TEAM_PIN</code>（LINE 相關為選用）</td></tr>
   <tr><td><code>medapi-mcp</code></td><td><code>MCP_PIN</code>、<code>FIELD_PIN</code>（與 fieldlog 同值）</td></tr>
 </table>
-<p>都在該 Worker 的 <strong>Settings → Variables and Secrets</strong>。</p>
+<p>
+都在該 Worker 的 <strong>Settings → Variables and Secrets</strong>。三個 Worker 的
+<code>wrangler.jsonc</code> 都要有 <code>"keep_vars": true</code>，否則自動部署會把這裡設定的
+Secret 整個清掉——完整說明見第 8 節「疑難排解」。
+</p>
 
 <h3>排程</h3>
 <p>
@@ -462,7 +546,7 @@ fieldlog 有一個 cron：<code>0 18 * * *</code>（UTC）＝台灣時間每天 
 </section>
 
 <footer>
-隨身記使用說明｜最後更新 2026-07-26<br>
+隨身記使用說明｜最後更新 2026-08-05<br>
 更完整的工程筆記見 repo 裡的 <code>ARCHITECTURE.md</code> 與 <code>HANDOVER.md</code>
 </footer>
 
