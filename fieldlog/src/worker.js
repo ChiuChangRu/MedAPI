@@ -15,6 +15,91 @@
 
 import { extractImageText, judgeRelation } from "./imageSkill.js";
 
+// ========== EmbeddingWorkflow 類（向量化非同步流程） ==========
+export class EmbeddingWorkflow extends WorkflowEntrypoint {
+  async run(state, step) {
+    const { attachmentId, textContent, entryId, type = 'attachment' } = state;
+
+    if (!textContent || textContent.trim().length === 0) {
+      console.warn(`[Embedding] entry ${entryId}, attachment ${attachmentId}: 文字內容為空，跳過`);
+      return { success: false, reason: 'empty_content' };
+    }
+
+    try {
+      // Step 1: 生成 embedding 向量
+      const embeddingVector = await step.do('generate-embedding', async () => {
+        console.log(`[Embedding] 開始為 attachment ${attachmentId} 生成向量`);
+        const truncatedText = textContent.slice(0, 2000);
+
+        const result = await this.env.AI.run('@cf/baai/bge-base-en-v1.5', {
+          text: truncatedText,
+        });
+
+        const vector = result.data[0];
+        console.log(`[Embedding] 成功為 attachment ${attachmentId} 生成 768 維向量`);
+        return { vector, textLength: truncatedText.length };
+      });
+
+      // Step 2: 上傳向量到 Vectorize
+      const upsertResult = await step.do('upsert-vectorize', async () => {
+        console.log(`[Vectorize] 上傳 attachment ${attachmentId} 的向量`);
+        const vectorId = `att-${attachmentId}`;
+
+        await this.env.VECTOR_INDEX.upsert([
+          {
+            id: vectorId,
+            values: embeddingVector.vector,
+            metadata: {
+              attachmentId: String(attachmentId),
+              entryId: String(entryId),
+              type,
+              timestamp: new Date().toISOString(),
+              textLength: embeddingVector.textLength,
+            },
+          },
+        ]);
+
+        console.log(`[Vectorize] 成功 upsert attachment ${attachmentId}`);
+        return { vectorId, success: true };
+      });
+
+      // Step 3: 更新 D1 記錄狀態
+      await step.do('update-db-status', async () => {
+        const now = new Date().toISOString().replace('T', ' ').slice(0, 19) + 'Z';
+        await this.env.DB.prepare(
+          `UPDATE attachments SET embedding_status = 'done', vector_id = ?, updated_at = ? WHERE id = ?`
+        ).bind(upsertResult.vectorId, now, attachmentId).run();
+
+        console.log(`[DB] 更新 attachment ${attachmentId} 的 embedding 狀態為 done`);
+        return { success: true };
+      });
+
+      return {
+        success: true,
+        attachmentId,
+        vectorId: upsertResult.vectorId,
+        textLength: embeddingVector.textLength,
+      };
+
+    } catch (error) {
+      console.error(`[Embedding] 失敗 - attachment ${attachmentId}:`, error.message);
+      try {
+        await this.env.DB.prepare(
+          `UPDATE attachments SET embedding_status = 'failed', embedding_error = ? WHERE id = ?`
+        ).bind(error.message, attachmentId).run();
+      } catch (dbErr) {
+        console.error(`[DB] 更新失敗狀態失敗：`, dbErr);
+      }
+
+      return {
+        success: false,
+        attachmentId,
+        error: error.message,
+      };
+    }
+  }
+}
+
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,6 +148,9 @@ const MIGRATIONS = [
   `ALTER TABLE folders ADD COLUMN notion_last_entry_id INTEGER DEFAULT 0`,
   `ALTER TABLE folders ADD COLUMN notion_synced_at TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN ocr_text TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE attachments ADD COLUMN embedding_error TEXT DEFAULT ''`,
 ];
 
 let schemaReady = false;
@@ -119,6 +207,91 @@ async function handleApi(request, env, url) {
 
   if (path === "/config" && method === "GET") {
     return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI) });
+  }
+
+  // ========== 【新增路由】向量語義搜尋 ==========
+  if (path === "/search" && method === "GET") {
+    const query = url.searchParams.get("q") || "";
+    const topK = Number(url.searchParams.get("topK") || "5");
+    const folderId = url.searchParams.get("folder_id");
+
+    if (!query.trim()) {
+      return bad("查詢詞不可為空");
+    }
+
+    try {
+      console.log(`[Search] 查詢: "${query}", topK=${topK}`);
+
+      // Step 1: 把查詢詞轉成向量
+      if (!env.AI) return bad("AI 未配置", 501);
+      if (!env.VECTOR_INDEX) return bad("Vectorize 未配置", 501);
+
+      const queryEmbeddingResult = await env.AI.run(
+        '@cf/baai/bge-base-en-v1.5',
+        { text: query.slice(0, 2000) }
+      );
+      const queryVector = queryEmbeddingResult.data[0];
+
+      // Step 2: 在 Vectorize 查詢
+      const matches = await env.VECTOR_INDEX.query(queryVector, {
+        topK,
+        returnMetadata: true,
+      });
+
+      console.log(`[Search] Vectorize 返回 ${matches.matches.length} 個結果`);
+
+      // Step 3: 從 D1 撈回完整內容 + 篩選
+      const results = [];
+      for (const match of matches.matches) {
+        try {
+          const attachmentId = parseInt(match.metadata.attachmentId);
+
+          // 篩選：檢查 folder_id
+          if (folderId) {
+            const entry = await db.prepare(
+              `SELECT e.folder_id FROM entries e, attachments a
+               WHERE a.id = ? AND a.entry_id = e.id`
+            ).bind(attachmentId).first();
+
+            if (!entry || entry.folder_id !== Number(folderId)) {
+              continue;
+            }
+          }
+
+          // 撈附件與對應的紀錄
+          const att = await db.prepare(
+            "SELECT * FROM attachments WHERE id = ?"
+          ).bind(attachmentId).first();
+
+          if (!att) continue;
+
+          const entry = await db.prepare(
+            "SELECT * FROM entries WHERE id = ?"
+          ).bind(att.entry_id).first();
+
+          results.push({
+            score: match.score,
+            attachment: att,
+            entry: entry,
+          });
+        } catch (err) {
+          console.warn(`[Search] 處理結果時失敗:`, err);
+          continue;
+        }
+      }
+
+      console.log(`[Search] 返回 ${results.length} 個結果`);
+
+      return json({
+        query,
+        results,
+        count: results.length,
+      });
+
+    } catch (err) {
+      console.error(`[Search] 失敗:`, err.message);
+      return bad(`搜尋失敗: ${err.message}`, 500);
+    }
   }
 
   // ---- folders ----

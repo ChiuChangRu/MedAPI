@@ -21,5 +21,11 @@
       "bucket_name": "fieldlog-files"
     }
   ],
-  "ai": { "binding": "AI" }
+  "ai": { "binding": "AI" },
+  "vectorize": [
+    {
+      "binding": "VECTOR_INDEX",
+      "index_name": "fieldlog-embeddings"
+    }
+  ]
 }
