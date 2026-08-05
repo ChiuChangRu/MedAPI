@@ -5,7 +5,40 @@
   --border: #e3e5e3;
   --text: #1b1d1c;
   --text-muted: #6b706d;
+  --panel-bg: #fff;
+  --hover-bg: #f1f5f4;
+  --shadow-color: rgba(0, 0, 0, 0.15);
   --radius: 8px;
+  color-scheme: light;
+}
+
+/* 深色模式：預設跟隨系統，也可以用右上角的切換鈕手動覆蓋（存在 localStorage，
+   下次開啟記住選擇）。只換色板，版面／間距完全不動。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --accent: #2dd4bf;
+    --accent-dark: #5eead4;
+    --bg: #14171a;
+    --border: #33383d;
+    --text: #e7e9ea;
+    --text-muted: #9aa1a6;
+    --panel-bg: #1e2226;
+    --hover-bg: #2a2f34;
+    --shadow-color: rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --accent: #2dd4bf;
+  --accent-dark: #5eead4;
+  --bg: #14171a;
+  --border: #33383d;
+  --text: #e7e9ea;
+  --text-muted: #9aa1a6;
+  --panel-bg: #1e2226;
+  --hover-bg: #2a2f34;
+  --shadow-color: rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -43,7 +76,7 @@ body {
 }
 
 .panel {
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel-bg); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 14px 16px; margin-bottom: 14px;
 }
 .panel h2 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
@@ -77,7 +110,7 @@ body {
 .usage-limit.over .usage-bar i { background: #dc2626; }
 .usage-limit.over small { color: #b91c1c; font-weight: 600; }
 .usage-quiet { margin: 0; color: var(--text-muted); font-size: 12px; }
-.ai-usage { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+.ai-usage { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-bg); }
 .ai-budget-grid { display: grid; gap: 10px; margin-top: 10px; }
 .ai-budget-row { padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; }
 .ai-budget-row > div:first-child { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
@@ -101,7 +134,7 @@ body {
 .folder-card {
   position: relative; display: flex; align-items: center; gap: 8px; padding: 0;
   border: 1px solid var(--border); border-radius: var(--radius);
-  background: #fff;
+  background: var(--panel-bg);
   box-shadow: 0 1px 2px rgba(27, 29, 28, 0.05);
 }
 .folder-card:hover { border-color: var(--accent); }
@@ -131,14 +164,14 @@ body {
   align-self: flex-start; width: 40px; height: 40px; margin: 6px 6px 0 0;
   border: 0; border-radius: 8px; background: transparent; cursor: pointer; font-size: 20px;
 }
-.folder-more:hover { background: #f1f5f4; }
+.folder-more:hover { background: var(--hover-bg); }
 .folder-menu {
   position: absolute; z-index: 8; top: 44px; right: 8px; min-width: 130px;
-  padding: 5px; background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  padding: 5px; background: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.15);
 }
 .folder-menu button { display: block; width: 100%; padding: 9px 10px; border: 0; background: none; text-align: left; cursor: pointer; border-radius: 6px; }
-.folder-menu button:hover { background: #f1f5f4; }
+.folder-menu button:hover { background: var(--hover-bg); }
 .folder-menu .danger { color: #b91c1c; }
 .child-folder-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 8px 0 16px; }
 /* .record-group-card（多檔案記事歸檔後的卡片）刻意跟 .child-folder-card 共用
@@ -147,7 +180,7 @@ body {
 .child-folder-card, .record-group-card {
   display: grid; grid-template-columns: auto 1fr; gap: 3px 9px; align-items: center;
   padding: 13px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: #fff; color: var(--text); text-align: left; cursor: pointer;
+  background: var(--panel-bg); color: var(--text); text-align: left; cursor: pointer;
   /* 沒有這行，網格／彈性容器的子項目預設 min-width:auto，寬度會被內容裡
      最長的「不可斷行片段」頂住（例如附件摘要裡的英數字、emoji）。同一排的
      卡片內容長度不一時，兩個 .child-folder-list 各自算出的欄寬可能因此對
@@ -279,7 +312,7 @@ body {
 .entry-row {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
-  cursor: pointer; background: #fff; font-size: 14px;
+  cursor: pointer; background: var(--panel-bg); font-size: 14px;
 }
 .entry-row:hover { border-color: var(--accent); }
 .entry-row.dragging { opacity: 0.4; }
@@ -295,18 +328,18 @@ body {
    一樣桌機／手機都要看得到，拖曳只是這顆按鈕以外的另一種捷徑，不是唯一路徑。 */
 .entry-move {
   padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
-  color: var(--accent-dark); background: #fff; cursor: pointer; font-size: 12px;
+  color: var(--accent-dark); background: var(--panel-bg); cursor: pointer; font-size: 12px;
 }
 .entry-merge {
   padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
-  color: var(--accent-dark); background: #fff; cursor: pointer; font-size: 12px;
+  color: var(--accent-dark); background: var(--panel-bg); cursor: pointer; font-size: 12px;
 }
 .entry-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .att-original { margin-top: 2px; color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }
 .folder-file-list { width: 100%; grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
 .folder-file-row {
   display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; align-items: center; gap: 9px;
-  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff;
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-bg);
 }
 .folder-file-icon { font-size: 20px; text-align: center; }
 .folder-file-name { min-width: 0; color: var(--accent-dark); font-weight: 600; overflow-wrap: anywhere; text-decoration: none; }
@@ -314,7 +347,7 @@ body {
 .folder-file-meta { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .folder-file-manage {
   padding: 5px 9px; border: 1px solid var(--border); border-radius: 7px;
-  background: #fff; color: var(--text-muted); cursor: pointer; font-size: 12px;
+  background: var(--panel-bg); color: var(--text-muted); cursor: pointer; font-size: 12px;
 }
 .folder-file-list.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .folder-file-list.grid-view .folder-file-row {
@@ -353,7 +386,7 @@ body {
 /* ===== 按鈕 ===== */
 .btn {
   padding: 9px 16px; border-radius: var(--radius); font-size: 14px; cursor: pointer;
-  border: 1px solid var(--border); background: #fff; color: var(--text);
+  border: 1px solid var(--border); background: var(--panel-bg); color: var(--text);
   box-shadow: 0 1px 2px rgba(27, 29, 28, 0.07);
 }
 .btn:active { transform: translateY(1px); }
@@ -380,7 +413,7 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 /* 全螢幕編輯框：轉文字稿／擷取文字（PDF 全文可達數萬字）要大面積才編得動 */
 .edit-overlay { z-index: 95; padding: 0; align-items: stretch; }
 .edit-modal {
-  background: #fff; width: 100%; max-width: none;
+  background: var(--panel-bg); width: 100%; max-width: none;
   display: flex; flex-direction: column; padding: 16px 20px;
 }
 #edit-modal-textarea {
@@ -412,7 +445,7 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 }
 .modal-close-float .btn {
   width: 44px; height: 44px; padding: 0;
-  background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
+  background: var(--panel-bg); box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
   pointer-events: auto;
 }
 /* 「這筆資料的來歷」面板：這筆哪來的、誰改過、AI 動過哪裡、還跟來源同步嗎 */
@@ -480,7 +513,7 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .merged-transcript pre {
   max-height: 280px; overflow: auto; margin: 10px 0 0; padding: 10px;
   white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 inherit;
-  background: #fff; border-radius: 6px;
+  background: var(--panel-bg); border-radius: 6px;
 }
 .merged-transcript.empty { background: #fafafa; border-color: var(--border); }
 
@@ -506,7 +539,7 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .att-ai[open] summary { color: var(--text); }
 .att-ai-body { margin: 4px 0 2px; }
 .modal {
-  background: #fff; border-radius: 12px; padding: 20px;
+  background: var(--panel-bg); border-radius: 12px; padding: 20px;
   width: 100%; max-width: 560px;
 }
 .modal.narrow { max-width: 340px; margin-top: 12vh; }
@@ -523,7 +556,7 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   background: #fafbfa; box-shadow: inset 0 1px 3px rgba(27, 29, 28, 0.06);
 }
 .modal input:focus, .modal textarea:focus, .modal select:focus {
-  background: #fff; border-color: var(--accent); outline: none;
+  background: var(--panel-bg); border-color: var(--accent); outline: none;
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
 }
 .modal textarea { min-height: 90px; resize: vertical; }
@@ -636,7 +669,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .capture-folder-picker {
   position: absolute; top: calc(48px + env(safe-area-inset-top)); right: 14px;
   z-index: 3; width: 220px; max-height: 50vh; overflow-y: auto;
-  background: #fff; border-radius: 10px; padding: 6px;
+  background: var(--panel-bg); border-radius: 10px; padding: 6px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.35);
 }
 .capture-folder-picker .cfp-item {
@@ -772,7 +805,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .folder-file-manage {
   width: 40px; height: 36px; padding: 0;
   border: 1px solid var(--border); border-radius: 7px;
-  background: #fff; cursor: pointer;
+  background: var(--panel-bg); cursor: pointer;
 }
 .folder-file-delete { grid-column: 4; grid-row: 1; color: #b91c1c; }
 .folder-file-manage { grid-column: 5; grid-row: 1; justify-self: end; white-space: nowrap; }
@@ -824,7 +857,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   display: flex; align-items: center; justify-content: center;
   min-height: 44px; padding: 8px 10px;
   border: 1px solid var(--border); border-radius: 9px;
-  background: #fff; color: var(--text); text-decoration: none;
+  background: var(--panel-bg); color: var(--text); text-decoration: none;
   cursor: pointer; font-weight: 600;
 }
 .file-primary-actions button:hover,
@@ -840,7 +873,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 }
 .file-category-row select {
   min-width: 0; width: 100%; padding: 9px;
-  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-bg);
 }
 .file-category-current { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }
 .file-note-box { margin: 14px 0; }
@@ -869,7 +902,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto;
   align-items: center; gap: 8px;
   padding: 8px 10px; margin-bottom: 6px;
-  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel-bg);
 }
 .cat-icon { font-size: 18px; }
 .cat-name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
@@ -882,7 +915,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .cat-add label { display: block; margin: 8px 0 4px; font-size: 12px; color: var(--text-muted); }
 .cat-add input, .cat-add select {
   width: 100%; padding: 9px; border: 1px solid var(--border);
-  border-radius: 8px; background: #fff;
+  border-radius: 8px; background: var(--panel-bg);
 }
 .cat-add button { margin-top: 12px; }
 

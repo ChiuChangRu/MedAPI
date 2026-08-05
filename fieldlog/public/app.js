@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "86";
+const APP_VERSION = "87";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -3098,7 +3098,24 @@ function exportFolder() {
 }
 
 // ---------- init ----------
+// 深色模式切換：沒存過偏好就跟系統走（index.html 的早期腳本已經處理過 FOUC），
+// 按一下鈕才寫入 localStorage、之後就固定用這個選擇，不再跟著系統變動。
+function currentTheme() {
+  return document.documentElement.dataset.theme ||
+    (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+function setupThemeToggle() {
+  const btn = $("btn-theme-toggle");
+  if (!btn) return;
+  btn.onclick = () => {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("fieldlog-theme", next); } catch (e) {}
+  };
+}
+
 function init() {
+  setupThemeToggle();
   // 沒接住的檔案拖放，瀏覽器預設行為是直接開啟該檔案、整頁跳走——不管拖去哪
   // 都先擋掉這個預設行為，實際上傳邏輯交給各自的 setupFileDropZone。
   window.addEventListener("dragover", (ev) => {

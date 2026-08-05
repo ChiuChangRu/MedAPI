@@ -11,7 +11,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=86" />
+<!-- 深色模式要在 CSS 套用前就決定 data-theme，不然會先閃一下亮色再跳暗（FOUC）。
+     沒存過偏好時完全不設，交給 style.css 的 prefers-color-scheme 跟著系統走。 -->
+<script>
+  try {
+    var t = localStorage.getItem("fieldlog-theme");
+    if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
+<link rel="stylesheet" href="style.css?v=87" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -23,6 +31,7 @@
     <header class="home-app-head">
       <h1>隨身記</h1>
       <small>輸入、整理、歸檔 <span id="app-version" class="app-version"></span></small>
+      <button class="btn small ghost theme-toggle" id="btn-theme-toggle" type="button" title="切換深色/淺色模式">🌓</button>
       <a class="head-link" href="help.html">📖 使用說明</a>
     </header>
 
@@ -332,11 +341,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=86"></script>
+<script src="app.js?v=87"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=86"></script>
+<script src="pdf-editor.js?v=87"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=86"></script>
+<script src="richtext-editor.js?v=87"></script>
 </body>
 </html>
