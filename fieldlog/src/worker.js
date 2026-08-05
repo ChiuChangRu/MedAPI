@@ -42,8 +42,8 @@ import {
 
 // ========== EmbeddingWorkflow 類（向量化非同步流程） ==========
 export class EmbeddingWorkflow extends WorkflowEntrypoint {
-  async run(state, step) {
-    const { attachmentId, textContent, entryId, type = 'attachment' } = state;
+  async run(event, step) {
+    const { attachmentId, textContent, entryId, type = 'attachment' } = event.payload;
 
     if (!textContent || textContent.trim().length === 0) {
       console.warn(`[Embedding] entry ${entryId}, attachment ${attachmentId}: 文字內容為空，跳過`);
@@ -54,9 +54,9 @@ export class EmbeddingWorkflow extends WorkflowEntrypoint {
       const embeddingVector = await step.do('generate-embedding', async () => {
         console.log(`[Embedding] 開始為 attachment ${attachmentId} 生成向量`);
         const truncatedText = textContent.slice(0, 2000);
-        const result = await this.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: truncatedText });
+        const result = await this.env.AI.run('@cf/baai/bge-m3', { text: truncatedText });
         const vector = result.data[0];
-        console.log(`[Embedding] 成功為 attachment ${attachmentId} 生成 768 維向量`);
+        console.log(`[Embedding] 成功為 attachment ${attachmentId} 生成 1024 維向量`);
         return { vector, textLength: truncatedText.length };
       });
 
@@ -446,7 +446,7 @@ async function handleApi(request, env, url) {
       if (!env.AI) return bad("AI 未配置", 501);
       if (!env.VECTOR_INDEX) return bad("Vectorize 未配置", 501);
 
-      const queryEmbeddingResult = await env.AI.run('@cf/baai/bge-base-en-v1.5', { text: query.slice(0, 2000) });
+      const queryEmbeddingResult = await env.AI.run('@cf/baai/bge-m3', { text: query.slice(0, 2000) });
       const queryVector = queryEmbeddingResult.data[0];
 
       const matches = await env.VECTOR_INDEX.query(queryVector, { topK, returnMetadata: true });
@@ -478,6 +478,25 @@ async function handleApi(request, env, url) {
     } catch (err) {
       return bad(`搜尋失敗: ${err.message}`, 500);
     }
+  }
+
+  // ---- 一次性補跑：把 Vectorize 上線前就已經有文字內容、但從沒排入向量化的舊附件補進去 ----
+  if (path === "/admin/backfill-embeddings" && method === "POST") {
+    const { results } = await db.prepare(
+      `SELECT id, entry_id, kind, ocr_text, transcript FROM attachments
+       WHERE embedding_status = 'pending'
+         AND (COALESCE(ocr_text, '') != '' OR COALESCE(transcript, '') != '')`
+    ).all();
+    let queued = 0;
+    for (const att of results) {
+      const text = att.ocr_text || att.transcript;
+      await triggerEmbedding(env, {
+        attachmentId: att.id, textContent: text,
+        entryId: att.entry_id, type: att.kind,
+      });
+      queued++;
+    }
+    return json({ queued });
   }
 
   // ---- folders ----
