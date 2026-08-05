@@ -22,6 +22,17 @@
   function init(container, initialHtml, opts = {}) {
     if (!container || !window.Quill) return null;
     const quill = new window.Quill(container, { theme: "snow", modules: { toolbar: TOOLBAR } });
+    // 貼上從別處複製來的內容（例如從附件清單複製了縮圖＋擷取文字那一整段）時，
+    // Quill 預設會原樣保留裡面的 <img>——那張圖不是透過這篇記事的附件流程建立
+    // 的，src 通常連不到（或連到別筆記事的檔案，甚至帶著舊 PIN），畫面上會變
+    // 一個破圖示。只有 insertImage() 自己插入、帶 data-att-id 的圖片才留下；
+    // 其餘來源的 <img> 一律拿掉，文字內容不受影響。這個轉換規則同時套用在
+    // 貼上事件跟下面載入既有內容的 dangerouslyPasteHTML，所以已存的合法圖片
+    // 不會被誤刪。
+    const Delta = window.Quill.import("delta");
+    quill.clipboard.addMatcher("img", (node, delta) => {
+      return node.hasAttribute && node.hasAttribute("data-att-id") ? delta : new Delta();
+    });
     if (initialHtml) quill.clipboard.dangerouslyPasteHTML(initialHtml);
     container.__fieldlogQuill = quill;
     if (typeof opts.onImagePaste === "function") {
