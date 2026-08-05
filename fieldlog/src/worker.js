@@ -13,6 +13,7 @@
  * FIELD_PIN 未設定時一律拒絕（fail-closed）。raw data 只增不刪。
  */
 
+import { WorkflowEntrypoint } from "cloudflare:workers";
 import { extractImageText, judgeRelation } from "./imageSkill.js";
 
 // ========== EmbeddingWorkflow 類（向量化非同步流程） ==========
