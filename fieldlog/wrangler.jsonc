@@ -27,5 +27,12 @@
       "binding": "VECTOR_INDEX",
       "index_name": "fieldlog-embeddings"
     }
+  ],
+  "workflows": [
+    {
+      "name": "fieldlog-embedding-workflow",
+      "binding": "EMBEDDING_WORKFLOW",
+      "class_name": "EmbeddingWorkflow"
+    }
   ]
 }

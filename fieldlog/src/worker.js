@@ -190,6 +190,18 @@ function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// 有文字內容且 workflow binding 存在時，非同步排入向量化；失敗不阻塞主流程
+async function triggerEmbedding(env, { attachmentId, textContent, entryId, type }) {
+  if (!textContent || !textContent.trim() || !env.EMBEDDING_WORKFLOW) return;
+  try {
+    await env.EMBEDDING_WORKFLOW.create({
+      params: { attachmentId, textContent, entryId, type },
+    });
+  } catch (err) {
+    console.error(`[Embedding] 排隊失敗 attachment ${attachmentId}:`, err.message);
+  }
+}
+
 // 貼上的 Notion 頁面網址 → 32 碼 page ID（補回標準 UUID 格式的連字號）
 function parseNotionPageId(input) {
   const raw = (input || "").trim();
@@ -440,6 +452,7 @@ async function handleApi(request, env, url) {
       const ocrText = (body.ocr_text || "").trim();
       await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(ocrText, id).run();
       await logHistory(db, old.entry_id, null, "編輯擷取文字", `${old.filename}：「${ocrText.slice(0, 80)}」`);
+      await triggerEmbedding(env, { attachmentId: id, textContent: ocrText, entryId: old.entry_id, type: old.kind });
       return json({ ok: true });
     }
     const category = (body.category !== undefined ? body.category : old.category) || "";
@@ -473,6 +486,7 @@ async function handleApi(request, env, url) {
     const text = (result?.text || "").trim();
     await db.prepare("UPDATE attachments SET transcript = ? WHERE id = ?").bind(text, id).run();
     await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60)}`);
+    await triggerEmbedding(env, { attachmentId: id, textContent: text, entryId: old.entry_id, type: "audio" });
     return json({ text });
   }
 
@@ -512,6 +526,7 @@ async function handleApi(request, env, url) {
     }
     await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(text, id).run();
     await logHistory(db, old.entry_id, null, "照片擷取文字", `${old.filename}：${text.slice(0, 60)}`);
+    await triggerEmbedding(env, { attachmentId: id, textContent: text, entryId: old.entry_id, type: "photo" });
     return json({ ocr_text: text });
   }
 
