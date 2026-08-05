@@ -1,6 +1,6 @@
 # 隨身記（fieldlog）
 
-隨身助理的記事本子項目：現場採集**參展／拜訪／實驗／上課**的原始資料
+隨身助理的記事本子項目：現場採集**參展／拜訪／實驗／上課／會議／查廠**的原始資料
 （錄音自動分段、拍照帶錄音時間戳、速記、轉文字），資料夾一鍵匯出
 Markdown 原料包，貼給 AI 彙整成報告後放進 Notion。
 
@@ -24,7 +24,22 @@ D1、不同 R2，互不影響。
    「加入主畫面」變成 App
 
 > Workers AI（錄音轉文字）不用另外開通，`wrangler.jsonc` 已含 AI
-> binding，第一次部署即生效。免費額度每天 10,000 Neurons，單人用不完。
+> binding。免費額度每天 10,000 Neurons；Fieldlog 自動轉錄用完當天免費額度
+> 就停（這一層完全在免費範圍內，不會產生費用），本月實際 AI 付費（USD，
+> 是 Cloudflare 帳單的計價單位，跟其他平台的計費幣別無關）達 USD 4.50 時
+> 停止新的 AI 處理（錄音與記事仍正常）。
+
+## AI 費用雙層保護
+
+1. AI Gateway 建立專用 Gateway（例如 `fieldlog-budget`）。
+2. 在 Gateway 的 Spend limits 建立固定月週期 USD 5 規則。Cloudflare 的
+   spend limit 採最終一致性，短時間並行請求仍可能有少量超出。
+3. Worker → Settings → Variables and Secrets 新增一般變數
+   `AI_GATEWAY_ID=fieldlog-budget`，再重新部署。
+4. 首頁用量區必須顯示「AI Gateway 已接入」；若仍顯示尚未設定，USD 5
+   硬停止就還沒有生效。
+
+一般 Billing Budget Alert 只會通知、不會停止服務；不能替代 Gateway spend limit。
 
 ## 使用流程
 
@@ -32,7 +47,7 @@ D1、不同 R2，互不影響。
    隨時拍照（自動標「錄音第幾分幾秒拍的」）→ 結束後自動存成一筆
    收件匣紀錄
 2. 有空時打開紀錄：轉文字、補欄位、歸檔到資料夾（參展／拜訪／實驗／
-   上課各有欄位模板）
+   上課／會議／查廠各有欄位模板）
 3. 活動結束後，資料夾按「匯出給 AI」→ 得到一份 Markdown 原料包
    （速記＋轉錄全文＋照片時間點）→ 貼給 Claude/GPT：「彙整成報告」
    → 成品貼進 Notion
@@ -47,3 +62,58 @@ D1、不同 R2，互不影響。
 | `history` | append-only 歷程 |
 
 原始資料只增不刪（raw data 是彙整的根據，AI 整理錯了隨時能重來）。
+
+## 給 MCP／外部工具的兩支端點
+
+其餘 `/api/*` 都是前台在用的；這兩支是專門給 Mywiki MCP server 之類的外部呼叫端。
+一樣要帶 `x-pin`（或 `?pin=`）。
+
+### `GET /api/attachments/:id/raw` — 拿原始檔案
+
+既有的附件端點回的是「擷取後的文字」，這支回的是**原始 bytes**，用在把照片直接嵌進
+Word 報告這種場合。
+
+| 參數 | 說明 |
+|---|---|
+| `mode` | `inline`＝直接回 base64；`url`＝回帶簽名的下載網址。**不給就自動選**：4MB 以內走 inline，超過走 url |
+
+```jsonc
+// mode=inline
+{ "id": 266, "filename": "photo.jpg", "mime_type": "image/jpeg",
+  "encoding": "base64", "data": "...", "size_bytes": 842213 }
+
+// mode=url
+{ "id": 267, "filename": "spec.pdf", "mime_type": "application/pdf",
+  "url": "https://…/api/file/…?expires=…&sig=…",
+  "expires_at": "2026-08-01T06:13:08Z", "size_bytes": 6000009 }
+```
+
+超過 4MB 還硬指定 `mode=inline` 會回 413 並要求改用 `url`（base64 會再膨脹約 4/3，
+硬塞會讓 Worker 回應和呼叫端的 JSON 解析都爆掉）。
+
+簽名網址**不是免驗證的對外分享連結**——`/api/*` 的 FIELD_PIN 閘門在簽名檢查之前，
+沒有 PIN 的人拿到一樣是 401。簽名的作用是把持有 PIN 的呼叫端再限縮到「這一個
+檔案、這 10 分鐘」。要做真正的對外分享連結得另外把 `/api/file/` 從 PIN 閘門豁免，
+那是另一個安全決策。
+
+### `POST /api/batch/ocr` — 批次把照片擷取成文字
+
+body 給 `{"folder_id": 42}` 或 `{"entry_id": 100}`（擇一），可選 `limit`（預設 8，
+上限 20——一張 OCR 要好幾秒，一次收太多會撞上 Worker 的 30 秒上限，逾時的話已經
+扣掉的額度也拿不回來）。
+
+```jsonc
+{ "processed": 3,
+  "results": [ { "attachment_id": 1, "filename": "a.jpg", "success": true, "message": "擷取文字成功，156 字" } ],
+  "remaining": 5,                    // 這個範圍還剩幾張沒處理，可以再打一次
+  "pending_audio_entry_ids": [12] }  // 還有錄音沒轉的紀錄
+```
+
+**這支只做照片，不碰錄音。** 錄音請打 `POST /api/entries/:id/auto-transcribe`——那支
+帶了 Neurons 預估、`ai_usage_reservations` 佔位與 `transcribed_at` 鎖，能防重複扣額度、
+也會在逼近門檻時提早收手。在批次端點另寫一套等於繞過那層保護，所以這裡改成把還有
+錄音待處理的 entry id 回報出去，由呼叫端去打那支正規端點。
+
+照片這邊同樣有保護：跑 AI 前先過 `enforceAiSoftBudget`（過不了直接 429／503，
+且不會動到任何資料），每張用 `ocr_at` 搶鎖避免重複跑，單張失敗標成 `failed`
+而不是還原成待辦（還原的話下次批次又會重跑同一張、再失敗一次，白白耗額度）。
