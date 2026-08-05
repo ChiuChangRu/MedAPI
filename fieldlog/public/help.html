@@ -82,6 +82,7 @@
   <ol>
     <li><a href="#what">這套系統是什麼</a></li>
     <li><a href="#daily">日常操作：採集 → 整理 → 歸檔</a></li>
+    <li><a href="#search">語義搜尋與深色模式</a></li>
     <li><a href="#files">檔案與文字擷取</a></li>
     <li><a href="#folders">資料夾架構與分類</a></li>
     <li><a href="#sync">外部知識庫自動同步</a></li>
@@ -180,8 +181,40 @@ Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通）�
 </p>
 </section>
 
+<section id="search">
+<h2>3. 語義搜尋與深色模式</h2>
+
+<h3>🔍 語義搜尋（Vectorize）</h3>
+<p>
+新上傳的照片／錄音，只要跑完 OCR／轉文字，就會<strong>自動</strong>排入向量化，
+不用手動觸發。搜尋的時候比對的是<strong>意思相不相關</strong>，不是逐字比對——
+查「親水塗層」也能搜到用詞不同但意思相關的內容（某廠商的膠材規格書、
+某份導管 ISO 標準），不要求關鍵字完全命中。
+</p>
+<div class="warn">
+<strong>目前只有後端 API，App 介面上還沒有搜尋框。</strong>要用的話直接打
+API，或透過 claude.ai／MCP 問問題（見第 7 節）——那邊的自然語言問答
+本身就是走一般的 MCP 工具，不是這支語義搜尋端點，但效果類似、對一般
+使用來說更方便。
+</div>
+<pre><code>curl "https://fieldlog.gogoyankee.workers.dev/api/search?q=親水塗層&topK=5" \
+  -H "x-pin: 你的FIELD_PIN"</code></pre>
+<p>
+可選 <code>folder_id</code> 只在某個資料夾範圍內搜；<code>topK</code>
+控制回幾筆（預設 5）。回傳的每一筆帶 <code>score</code>（相似度，
+0～1，越高越相關）跟完整的附件／紀錄內容。
+</p>
+
+<h3>🌓 深色模式</h3>
+<p>
+首頁右上角（標題旁）的 🌓 按鈕可以手動切換深色／淺色。沒按過的話預設
+跟著手機／電腦系統的深色模式設定走；按過一次之後就固定用你選的那個，
+不會再跟著系統變動，下次打開 App 也會記得。
+</p>
+</section>
+
 <section id="files">
-<h2>3. 檔案與文字擷取</h2>
+<h2>4. 檔案與文字擷取</h2>
 
 <h3>上傳</h3>
 <p>
@@ -239,7 +272,7 @@ Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通）�
 </section>
 
 <section id="folders">
-<h2>4. 資料夾架構與分類</h2>
+<h2>5. 資料夾架構與分類</h2>
 
 <h3>四層架構</h3>
 <table>
@@ -263,7 +296,7 @@ Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通）�
 </section>
 
 <section id="sync">
-<h2>5. 外部知識庫自動同步</h2>
+<h2>6. 外部知識庫自動同步</h2>
 
 <p>
 隨身記可以每天自動去外部的公開 JSON 抓資料進來（目前設定了 litdb 的三個收藏）。
@@ -310,7 +343,7 @@ Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通）�
 </section>
 
 <section id="ask">
-<h2>6. 用 claude.ai 問問題（MCP）</h2>
+<h2>7. 用 claude.ai 問問題（MCP）</h2>
 
 <p>
 在 claude.ai 設定好 MyWiki 連接器之後，直接用講話的方式問就好，
@@ -392,7 +425,7 @@ Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通）�
 </section>
 
 <section id="cost">
-<h2>7. AI 額度與成本</h2>
+<h2>8. AI 額度與成本</h2>
 
 <ul>
   <li>轉文字／OCR 用 Cloudflare Workers AI，每天約 <strong>10,000 Neurons 免費額度</strong>，
@@ -409,7 +442,7 @@ Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通）�
 </section>
 
 <section id="trouble">
-<h2>8. 疑難排解</h2>
+<h2>9. 疑難排解</h2>
 
 <h3>畫面好像是舊版的</h3>
 <p>
@@ -436,7 +469,7 @@ service worker、清掉所有快取、重新載入。
 <h3>litdb 的新內容沒出現</h3>
 <p>
 問 claude.ai「查一下同步狀態」（<code>sync_status</code>），看最後同步時間。
-還沒跑就等當晚 02:00，或手動打第 5 節那條 curl。
+還沒跑就等當晚 02:00，或手動打第 6 節那條 curl。
 </p>
 
 <h3>PDF 上傳後沒有文字</h3>
@@ -485,7 +518,7 @@ Secret／變數會在<strong>每一次自動部署時被清空</strong>。2026-0
 </section>
 
 <section id="ops">
-<h2>9. 維運速查</h2>
+<h2>10. 維運速查</h2>
 
 <h3>改完程式碼怎麼上線</h3>
 <p>
@@ -525,7 +558,7 @@ Cloudflare Dashboard 的 <strong>Settings → Build</strong> 裡有兩組長得�
 <p>
 都在該 Worker 的 <strong>Settings → Variables and Secrets</strong>。三個 Worker 的
 <code>wrangler.jsonc</code> 都要有 <code>"keep_vars": true</code>，否則自動部署會把這裡設定的
-Secret 整個清掉——完整說明見第 8 節「疑難排解」。
+Secret 整個清掉——完整說明見第 9 節「疑難排解」。
 </p>
 
 <h3>排程</h3>
