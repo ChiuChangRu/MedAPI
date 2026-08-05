@@ -1,0 +1,7 @@
+*.backup
+node_modules/
+.env
+.env.local
+.wrangler/
+dist/
+build/
