@@ -52,13 +52,37 @@ D1、不同 R2，互不影響。
    （速記＋轉錄全文＋照片時間點）→ 貼給 Claude/GPT：「彙整成報告」
    → 成品貼進 Notion
 
+## 資料夾階層
+
+資料夾最多 **4 層**：產品／專案 → 文件類型 → 主題／試驗／標準系列 →
+年份／版本。建立資料夾時可以指定 `parent_id` 掛在既有資料夾底下；
+再深下去分類就失去意義（麵包屑、匯出也會變難讀），所以第 4 層之後系統
+會擋掉，不能再新增子資料夾。
+
+## 語義搜尋（Vectorize + Workers AI）
+
+`GET /api/search?q=關鍵字&topK=5&folder_id=選填`
+
+不是關鍵字比對，是**語意相似度搜尋**：查「親水塗層」也能搜到用詞不同但
+意思相關的內容（例如某廠商的膠材規格書、某份導管 ISO 標準），不要求
+逐字命中。
+
+運作方式：查詢詞與所有照片 OCR／錄音逐字稿一樣，先用 Workers AI 的
+`@cf/baai/bge-m3`（多語言模型，中文語意辨識力比純英文模型好很多）轉成
+1024 維向量，再拿去 Vectorize 索引（`fieldlog-embeddings`）比對餘弦
+相似度，最後回 D1 撈附件與所屬紀錄的完整內容。
+
+新上傳的照片/錄音，只要跑完 OCR／轉文字就會**自動**排進
+`EmbeddingWorkflow` 向量化，不用手動觸發；`attachments.embedding_status`
+可以看到目前狀態（`pending`／`done`／`failed`）。
+
 ## 資料表（D1，自動建立）
 
 | 表 | 用途 |
 |---|---|
-| `folders` | 活動/工作項目（type 決定欄位模板） |
+| `folders` | 活動/工作項目（type 決定欄位模板，`parent_id` 支援最多 4 層巢狀） |
 | `entries` | 紀錄（folder_id 空＝收件匣） |
-| `attachments` | 照片/錄音段/檔案（R2），offset_secs＝錄音時間點 |
+| `attachments` | 照片/錄音段/檔案（R2），offset_secs＝錄音時間點；`vector_id`／`embedding_status`／`embedding_error` 追蹤向量化狀態 |
 | `history` | append-only 歷程 |
 
 原始資料只增不刪（raw data 是彙整的根據，AI 整理錯了隨時能重來）。
@@ -117,3 +141,10 @@ body 給 `{"folder_id": 42}` 或 `{"entry_id": 100}`（擇一），可選 `limit
 照片這邊同樣有保護：跑 AI 前先過 `enforceAiSoftBudget`（過不了直接 429／503，
 且不會動到任何資料），每張用 `ocr_at` 搶鎖避免重複跑，單張失敗標成 `failed`
 而不是還原成待辦（還原的話下次批次又會重跑同一張、再失敗一次，白白耗額度）。
+
+### `POST /api/admin/backfill-embeddings` — 一次性補跑舊附件的向量化
+
+⚠️ **一次性遷移工具，不是常駐功能。** 只在 Vectorize 上線那次用來補跑「上線前就已經
+有 OCR／逐字稿文字、但從沒被排入向量化」的舊附件。除了 FIELD_PIN 沒有其他門檻，
+確認一次 backfill 全部成功（`attachments.embedding_status` 沒有殘留 `pending`）之後，
+建議直接把這段路由從 `worker.js` 刪掉，避免之後誤觸重複排入。
