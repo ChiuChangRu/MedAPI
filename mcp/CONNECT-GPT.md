@@ -1,0 +1,151 @@
+# 把 Mywiki 接進 GPT（MCP 連接器設定說明）
+
+> 這份文件給要在 ChatGPT／GPT 裡設定 MCP 連接器的人看。伺服器本身叫
+> `medapi-mcp`，在 ChatGPT 連接器列表裡的顯示名稱是你自己命名的（本文件範例
+> 用「Mywiki」）。技術細節（工具清單、驗證方式）以 `mcp/src/worker.js` 的實際
+> 程式碼為準；本檔案內容是照那支程式碼核對過的，不是憑印象寫的。
+
+## 這是什麼
+
+長儒的個人知識層窗口，跨三個來源做自然語言問答：
+
+- **策略地圖 Wiki**——披膜技術條目，Markdown、git 版控
+- **隨身記（fieldlog）**——個人現場採集：參展／拜訪／實驗的逐字稿、照片文字、
+  記事與記事之間的交叉關聯（引用標準、對照廠商產品…），以及不用猜關鍵字
+  就能列目錄的工具；也含每日自動同步進來的 LitDB 文獻/專利（152 筆親水
+  塗層／活檢針機構／醫材包裝資料，只有文字不含 PDF，專利分析存於
+  「AI 深度解析」段落並明確標示）
+- **Medtec 2026 參展系統**——585 家展商名單＋團隊拜訪紀錄＋附件全文
+
+**預設唯讀。** 22 個工具裡 18 個只做 SELECT／fetch，例外是
+`create_fieldlog_entry`／`create_fieldlog_attachment`／`create_relation`／
+`add_synonym` 四支，全部鎖死在「只能新增一筆全新的記事／附件／關聯／同義詞
+對照」——沒有任何一支工具會修改或刪除既有資料。要改內容、刪東西，一律要回
+隨身記／參展系統前台親自操作；wiki 收錄一律走 git 人審。
+
+## 連線資訊
+
+| 項目 | 值 |
+|---|---|
+| 協定 | MCP，Streamable HTTP（`POST /mcp`），JSON-RPC 2.0 |
+| 端點 URL | `https://medapi-mcp.<你的帳號>.workers.dev/mcp?pin=<你的MCP_PIN>` |
+| 驗證方式 | PIN，掛在網址上的 `?pin=` 參數 |
+| 支援的 protocolVersion | `2024-11-05`／`2025-03-26`／`2025-06-18` |
+
+**PIN 從哪裡拿**：Cloudflare Dashboard → 這個 Worker（`medapi-mcp`）→
+Settings → Variables and Secrets → `MCP_PIN`。這串 PIN 等同一把鑰匙，
+**不要貼到會被公開分享的地方**（例如公開的對話紀錄、GitHub issue）。
+
+**這個端點刻意不支援 OAuth**——如果連接器設定畫面要求「OAuth Client ID」
+之類的欄位，那一格留空或跳過即可，只要把 PIN 帶在網址的 `?pin=` 就能通過驗證。
+伺服器對 `/.well-known/oauth-*` 這類探測路徑一律回 404，是刻意設計成這樣，
+避免客戶端誤判成「這台支援 OAuth」而卡在動態註冊流程上。
+
+## 在 ChatGPT 裡設定連接器
+
+ChatGPT 的連接器設定畫面偶爾會改版，下面是目前（2026-07）常見的路徑，
+如果畫面上文字不完全一樣，找「新增連接器／自訂連接器／Add custom
+connector」這類選項即可：
+
+1. ChatGPT → 設定 → Connectors（或 Settings → Connectors）
+2. 選「新增自訂連接器 / Add custom connector」
+3. **Name**：自己取一個看得懂的名字，例如「Mywiki」
+4. **Server URL / MCP endpoint**：貼上面那條完整網址（含 `?pin=`）
+5. 認證方式若有選項，選「No authentication」或「None」——PIN 已經包在網址裡了，
+   不需要再另外設定認證
+6. 儲存後，ChatGPT 應該會呼叫一次 `tools/list` 抓到下面這 22 個工具；
+   如果連線失敗，先確認網址結尾的 PIN 有沒有貼對、貼完整
+
+設定好之後，直接在對話裡問就好，例如：「幫我查展商裡做親水塗層的」
+「上次實驗紀錄裡提到的固化溫度是多少」「wiki 的抗結痂條目現在寫到哪」
+「litdb 裡有沒有講活檢針擊發機構的文獻」（LitDB 已併入隨身記並每日自動
+同步，`search_fieldlog` 就查得到）——GPT 會自己判斷該呼叫哪個工具。
+
+## 可用工具（22 個）
+
+**先列目錄、再決定要不要細看，不要一開始就猜關鍵字。** `search_*` 查不到不代表
+沒有這份資料，可能只是關鍵字沒猜對——先用 `list_fieldlog_entries`／
+`list_attachments`／`list_exhibitor_files` 直接看資料夾或展商底下實際有什麼，
+檔名通常就足以判斷要不要細看。這是 2026-07-25 實測發現的最大瓶頸：AI 沒有
+「看得見架上有什麼書」的工具，只能靠猜詞，猜不中就誤判成「沒有這份資料」。
+
+### 策略地圖 Wiki
+| 工具 | 用途 |
+|---|---|
+| `list_wiki_pages` | 列出所有條目（分組：核心技術／支撐知識／資源網絡），回答技術問題前先看這份地圖 |
+| `read_wiki_page` | 讀單一條目的完整 Markdown 內容 |
+| `search_wiki` | 全文關鍵字搜尋，回傳命中行；適合「哪個條目講過 XX」 |
+
+### 隨身記（目錄層——不用猜關鍵字）
+| 工具 | 用途 |
+|---|---|
+| `list_fieldlog_folders` | 列出所有資料夾（四層知識架構：產品／文件類型／主題／年份），先查 folder id 用 |
+| `list_fieldlog_entries` | 列出資料夾（或全庫）底下的紀錄，**含每筆的附件檔名**；支援分頁 |
+| `list_attachments` | 列出附件清單（可用 entry_id／folder_id 縮小範圍），附內容長度，判斷要不要細讀 |
+
+### 隨身記（搜尋／讀取）
+| 工具 | 用途 |
+|---|---|
+| `search_fieldlog` | 搜紀錄標題／內文／欄位＋附件檔名／逐字稿／擷取文字＋AI 深度解析內容（命中在解析段時會標示）；可用 folder_id／folder_type 縮小範圍；也涵蓋每日同步的 LitDB 文獻/專利（「LitDB 文獻庫」資料夾） |
+| `get_fieldlog_entry` | 讀單筆紀錄完整內容（欄位、內文、附件摘要；「AI 深度解析」段落會明確標示是 AI 產出，引用前回原始內容確認） |
+| `get_fieldlog_attachment` | 讀單一附件全文；單次上限 20000 字，超過會明確標示總長度並可用 `offset`／`length` 分段接續讀完 |
+| `get_fieldlog_image` | 讀照片附件的「圖片本身」（MCP ImageContent，base64＋mimeType）讓 AI 直接看圖——限 4MB 內 JPEG/PNG/GIF/WebP；型錄文件類請優先走擷取文字 |
+| `image_probe` | 診斷用：回傳內建 96×96 四色測試圖，驗證 client 是否支援 MCP 圖片顯示；不讀任何使用者資料 |
+| `get_related` | 查一筆記事跟哪些其他記事有關聯（雙向）；關聯要先手動建立過才查得到 |
+
+### 隨身記（僅限新增的可寫工具）
+| 工具 | 用途 |
+|---|---|
+| `create_fieldlog_entry` | 新增一筆記事（標題／內文／選填歸檔資料夾／選填自訂欄位）。只會 INSERT，不會動到任何既有內容 |
+| `create_fieldlog_attachment` | 上傳檔案（Word／Excel／PDF／圖片等，base64 傳入，伺服器端上限 8MB）掛到一筆**已存在**的記事底下。跟該記事既有附件內容重複會自動略過，不會重複存 |
+| `create_relation` | 把兩筆**已存在**的記事建立關聯。兩筆記事都必須先存在，不能用猜的編號 |
+| `add_synonym` | 新增一組同義詞對照（例：把「BaClear」掛到「抗結痂披膜」）。查不到但確定只是用詞沒對上時當場補，下一次查詢立刻生效；只會 INSERT，改不掉也刪不掉既有對照 |
+
+### Medtec 2026 參展系統
+| 工具 | 用途 |
+|---|---|
+| `search_exhibitors` | 搜 585 家展商（名稱／攤位／國家／產品／分類），附團隊共筆狀態 |
+| `get_exhibitor` | 讀單一展商完整資料（主檔＋拜訪狀態＋部門標籤＋附件清單） |
+| `search_visit_notes` | 搜團隊拜訪紀錄全文（誰記了什麼） |
+| `search_exhibitor_files` | 搜展商附件內容全文（現場錄音逐字稿、型錄 OCR）——問「某家廠商的塗層方案細節」用這個 |
+| `list_exhibitor_files` | 列出某展商全部附件（不用先猜關鍵字），附內容長度 |
+
+### 系統狀態
+| 工具 | 用途 |
+|---|---|
+| `sync_status` | 查外部知識庫（litdb 等）最後同步時間與最近同步紀錄——懷疑「資料是不是過時」直接查事實，不用猜 |
+
+### 搜尋工具的共同行為
+`search_*` 系列全部支援：
+- **簡繁通用**：繁體查得到簡體庫、簡體查得到繁體庫（型錄常是簡體、個人記事常是繁體）
+- **多詞查詢**：關鍵字用空白隔開，預設全部詞都要命中；全部命中查不到時會自動放寬
+  成任一詞命中，並在回應裡標示「以下為部分符合」
+- **同義詞展開**：慣用語會自動對應到正式名稱（例如查「HD管」找得到「體外血液處理
+  用導管」），對照表存在資料庫裡，公司內部代號直接在對話裡用 `add_synonym` 補
+- **查無結果會誠實回報**：不會只回一句「查無資料」，會說明實際嘗試過哪些詞，
+  讓你分辨「真的沒有」還是「用詞沒對上」
+
+## 安全設計摘要
+
+- **fail-closed**：`MCP_PIN` 沒設定時，這個端點會拒絕所有請求，不會裸奔
+- **預設唯讀**：程式碼裡絕大多數是 SELECT／fetch；`create_fieldlog_entry`／
+  `create_fieldlog_attachment`／`create_relation`／`add_synonym` 是僅有的四個
+  例外，全部只會新增（`create_fieldlog_attachment` 上傳檔案是透過 fieldlog
+  自己的 `/api/upload`，跟其餘三支直接 INSERT D1 的路徑不同，但一樣只新增
+  一筆附件，不會動到既有資料）——程式碼裡沒有任何 UPDATE／DELETE 語句碰得到
+  entries／attachments／folders／relations／synonyms，就算透過對話下指令，
+  也不可能改掉或刪掉既有的任何一筆資料
+- 三個後端來源（策略地圖 Wiki、隨身記、Medtec）各自獨立的 Cloudflare
+  Worker／資料庫，這個 MCP 只是加一層查詢介面，不做跨系統的資料庫合併。
+  LitDB（`chiuchangru/litdb`）已於 2026-07-26 併入隨身記，由 fieldlog 的
+  每日 cron 單向同步，這個 MCP 不對外部的 litdb repo 做任何查詢
+
+## 疑難排解
+
+- **連線失敗／401**：PIN 錯了或沒帶——確認網址結尾是完整的 `?pin=<值>`
+- **工具清單是空的／連不上**：確認 URL 是 `.../mcp?pin=...`，不是少了 `/mcp`
+  或多打了字元
+- **查詢回「查無資料」但你確定有**：先確認關鍵字沒有打錯字；試試拿掉
+  `folder_id`／`folder_type` 這類縮小範圍的參數，改成全庫查；同義詞沒收錄的
+  慣用語（例如很冷門的公司內部代號）本來就查不到，直接在對話裡用
+  `add_synonym` 補一組對照，補完立刻生效

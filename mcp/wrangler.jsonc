@@ -1,0 +1,40 @@
+{
+  // medapi-mcp — 跨系統唯讀問答層（MCP Server）
+  // 與 fieldlog／medtec-2026 平行的第三個 Worker：不動任何生產資料，
+  // 只提供查詢工具給 claude.ai / Claude Code 連線問答。
+  // 直接共綁兩個既有 D1（D1 允許多個 Worker 綁同一庫）——
+  // database_id 與 fieldlog/wrangler.jsonc、cloudflare/wrangler.jsonc 相同，
+  // 若那兩邊換庫，這裡要跟著改。
+  //
+  // wiki／展商主檔改用 Service Binding（services），不再用 fetch() 打
+  // FIELDLOG_URL／MEDTEC_URL 這兩個 *.workers.dev 網址——Cloudflare 不允許
+  // 一個 Worker 用一般 fetch() 打同帳號下另一個 workers.dev Worker（會拿到
+  // 404），Service Binding 是官方的 Worker 對 Worker 呼叫方式，直接呼叫對方
+  // 程式碼、不經對外網路。"service" 要填對方 Worker 的實際名稱
+  // （= 對方 wrangler.jsonc 的 "name"）。
+  "name": "medapi-mcp",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-01",
+  // 保留 Dashboard 設定的 MCP_PIN 與 FIELD_PIN。沒有這一行的話，每次
+  // wrangler deploy 都會把 Dashboard 上設的變數／Secret 一起清掉——這支端點
+  // 的 MCP_PIN 一被清掉就 fail-closed，所有請求變成
+  // 「尚未設定 MCP_PIN」401，連接器直接連不上（2026-08-01 實際發生，
+  // 而且從連接器那端只看得到「需要重新授權」，完全看不出是 Secret 不見了）。
+  "keep_vars": true,
+  "d1_databases": [
+    {
+      "binding": "DB_FIELDLOG",
+      "database_name": "fieldlog",
+      "database_id": "41483c93-9398-4be6-a670-a3120c880781"
+    },
+    {
+      "binding": "DB_MEDTEC",
+      "database_name": "medtec-2026",
+      "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
+    }
+  ],
+  "services": [
+    { "binding": "FIELDLOG", "service": "fieldlog" },
+    { "binding": "MEDTEC", "service": "medtec-2026" }
+  ]
+}
