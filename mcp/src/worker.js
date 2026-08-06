@@ -233,6 +233,28 @@ async function wikiPages(env) {
   return data.pages || [];
 }
 
+// ---------- 向量語義搜尋（Service Binding 呼叫 fieldlog 的 /api/search）----------
+// search_fieldlog 本身是關鍵字＋同義詞展開，抓不到「用詞不同但意思相關」的內容
+// （例如查「低摩擦」找不到寫「親水披膜」的紀錄，兩邊沒有同義詞關係）。這支只
+// 是補一層語義相關結果，失敗（fieldlog 掛掉、Vectorize 還沒建好等）就靜默略過
+// ——search_fieldlog 原本的關鍵字搜尋不能因為這個附加功能掛掉而跟著壞。
+async function fieldlogVectorSearch(env, query, { topK = 5, folderId = null } = {}) {
+  if (!env.FIELDLOG) return null;
+  try {
+    const u = new URL("https://fieldlog.internal/api/search");
+    u.searchParams.set("q", query);
+    u.searchParams.set("topK", String(topK));
+    if (folderId !== null) u.searchParams.set("folder_id", String(folderId));
+    u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+    const res = await env.FIELDLOG.fetch(u.toString());
+    if (!res.ok) return null; // 501（Vectorize 未配置）、401 等一律當作「這次沒有語義結果」
+    const data = await res.json();
+    return Array.isArray(data.results) ? data.results : null;
+  } catch (err) {
+    return null;
+  }
+}
+
 // fieldlog 的 401 分兩種、原因完全不同，蓋成同一句「FIELD_PIN 是否一致」會
 // 讓人兩邊都要猜：
 //   「尚未設定 FIELD_PIN」→ fieldlog 自己的 Secret 不見了，要去 fieldlog
@@ -714,7 +736,7 @@ const TOOLS = [
   },
   {
     name: "search_fieldlog",
-    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的檔名／錄音逐字稿／照片與 PDF 擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。多個關鍵字用空白隔開即可（例「7886 注射器」＝兩個詞都要出現）；慣用語會自動對到正式標準名（查「HD管」找得到「體外血液處理用導管」）。可選 folder_id／folder_type 縮小到特定資料夾（例如專門歸檔標準規範、型錄的資料夾——先用 list_fieldlog_folders 查 id）。回傳命中片段與 entry/attachment id；附件命中後用 get_fieldlog_attachment 拉該附件完整未截斷的全文（例如查一份 ISO 標準的完整條文，不是只看片段）。找到 entry 後想看它跟哪些標準／實驗／廠商／專利有交叉關聯，改用 get_related(id)。",
+    description: "以關鍵字搜尋隨身記：紀錄的標題／內文／欄位，以及附件的檔名／錄音逐字稿／照片與 PDF 擷取文字。簡繁通用（繁體查得到簡體、反之亦然）。多個關鍵字用空白隔開即可（例「7886 注射器」＝兩個詞都要出現）；慣用語會自動對到正式標準名（查「HD管」找得到「體外血液處理用導管」）。可選 folder_id／folder_type 縮小到特定資料夾（例如專門歸檔標準規範、型錄的資料夾——先用 list_fieldlog_folders 查 id）。回傳命中片段與 entry/attachment id；附件命中後用 get_fieldlog_attachment 拉該附件完整未截斷的全文（例如查一份 ISO 標準的完整條文，不是只看片段）。找到 entry 後想看它跟哪些標準／實驗／廠商／專利有交叉關聯，改用 get_related(id)。除了關鍵字命中，也會附帶呼叫 fieldlog 的向量搜尋補一段「語義相關」結果（用詞不同但意思相關、沒建同義詞關係的內容，例如查「低摩擦」能連到寫「親水披膜」的紀錄）；這段是盡力而為，Vectorize 沒建好或 fieldlog 連不上時會靜默省略，不影響關鍵字結果。",
     inputSchema: {
       type: "object",
       properties: {
@@ -817,6 +839,27 @@ const TOOLS = [
           out.push(`- [attachment ${a.att_id}／entry ${a.entry_id}] ${a.kind}｜${a.filename}${off}｜所屬紀錄：${a.title || "（未命名）"}\n  ${planSnippet(src, plan)}`);
         }
       }
+      // 語義相關的補充結果：只補「關鍵字沒命中過」的附件（用 attachment id 去重），
+      // 避免同一份附件因為關鍵字命中一次、語義又命中一次而出現兩遍
+      const seenAttIds = new Set(attHits.hits.map(({ row }) => row.att_id));
+      const vecResults = await fieldlogVectorSearch(env, args.query, {
+        topK: limit,
+        folderId: wantFolderId,
+      });
+      if (vecResults && vecResults.length) {
+        const newOnes = vecResults.filter((r) => r.attachment && !seenAttIds.has(r.attachment.id));
+        if (newOnes.length) {
+          out.push("## 語義相關（向量搜尋，用詞不同但意思相關，關鍵字沒對上）");
+          for (const r of newOnes) {
+            const att = r.attachment;
+            const entry = r.entry;
+            const src = att.transcript || stripPdfMetadata(att.ocr_text || "") || att.filename;
+            const off = att.offset_secs !== null && att.offset_secs !== undefined ? `｜錄音 ${fmtSecs(att.offset_secs)}` : "";
+            out.push(`- [attachment ${att.id}／entry ${att.entry_id}] ${att.kind}｜${att.filename}${off}｜所屬紀錄：${entry?.title || "（未命名）"}｜相似度 ${r.score.toFixed(2)}\n  ${String(src).slice(0, 200)}`);
+          }
+        }
+      }
+
       if (!out.length) {
         const scopeNote = (wantFolderType || wantFolderId !== null)
           ? "這次有限定資料夾範圍；範圍設定得太窄的話拿掉 folder_id／folder_type 再查一次全庫。"
