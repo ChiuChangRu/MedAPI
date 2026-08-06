@@ -238,6 +238,11 @@ async function wikiPages(env) {
 // （例如查「低摩擦」找不到寫「親水披膜」的紀錄，兩邊沒有同義詞關係）。這支只
 // 是補一層語義相關結果，失敗（fieldlog 掛掉、Vectorize 還沒建好等）就靜默略過
 // ——search_fieldlog 原本的關鍵字搜尋不能因為這個附加功能掛掉而跟著壞。
+
+// bge-m3 的 cosine 相似度分數，實測 0.4～0.5 這段幾乎都是雜訊（見下方呼叫處的
+// 說明），低於這個門檻的結果直接濾掉，不進「語義相關」區塊。
+const VECTOR_MIN_SCORE = 0.55;
+
 async function fieldlogVectorSearch(env, query, { topK = 5, folderId = null } = {}) {
   if (!env.FIELDLOG) return null;
   try {
@@ -840,14 +845,23 @@ const TOOLS = [
         }
       }
       // 語義相關的補充結果：只補「關鍵字沒命中過」的附件（用 attachment id 去重），
-      // 避免同一份附件因為關鍵字命中一次、語義又命中一次而出現兩遍
+      // 避免同一份附件因為關鍵字命中一次、語義又命中一次而出現兩遍。
+      // 2026-08-06 實測發現：不設分數下限時，相似度 0.4～0.5 那段幾乎都是雜訊
+      // （例如查「低摩擦潤滑」撈到拉拔試驗逐字稿、電導度校正曲線這類八竿子打
+      // 不著的內容——bge-m3 把「有滑動性」「拉、揉」這類動作描述也算進相似）。
+      // VECTOR_MIN_SCORE 是這次調校出的起始門檻，之後如果還是常常撈到不相關
+      // 的結果，可以再往上調；反過來如果真正相關的內容也被濾掉了，就往下調。
+      // topK 特意跟 limit 分開、多要一些候選，因為濾掉低分之後能留下的通常
+      // 比原始 topK 少，不多要幾個候選的話很容易濾到剩沒幾筆甚至全部落空。
       const seenAttIds = new Set(attHits.hits.map(({ row }) => row.att_id));
       const vecResults = await fieldlogVectorSearch(env, args.query, {
-        topK: limit,
+        topK: Math.max(limit * 2, 10),
         folderId: wantFolderId,
       });
       if (vecResults && vecResults.length) {
-        const newOnes = vecResults.filter((r) => r.attachment && !seenAttIds.has(r.attachment.id));
+        const newOnes = vecResults
+          .filter((r) => r.attachment && r.score >= VECTOR_MIN_SCORE && !seenAttIds.has(r.attachment.id))
+          .slice(0, limit);
         if (newOnes.length) {
           out.push("## 語義相關（向量搜尋，用詞不同但意思相關，關鍵字沒對上）");
           for (const r of newOnes) {
