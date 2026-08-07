@@ -108,7 +108,7 @@ test("PUT /settings/auto-file-days：存進去之後 /staging 與 /auto-file/sta
 test("PUT /settings/auto-file-days：範圍外或非數字的值一律 400，不會被存進去", async () => {
   const env = { FIELD_PIN: "pin", DB: makeFieldlogDB() };
 
-  for (const bad of [0, -1, 31, 999, "abc", null]) {
+  for (const bad of [-1, 31, 999, "abc", null]) {
     const res = await call(env, "/settings/auto-file-days", { method: "PUT", body: JSON.stringify({ days: bad }) });
     assert.equal(res.status, 400, `days=${JSON.stringify(bad)} 應該被拒絕`);
   }
@@ -117,11 +117,23 @@ test("PUT /settings/auto-file-days：範圍外或非數字的值一律 400，不
   assert.equal(staging.data.days, 4, "全部都被拒絕了，天數要還是預設值");
 });
 
-test("PUT /settings/auto-file-days：邊界值 1 與 30 要能存", async () => {
+test("PUT /settings/auto-file-days：body.days 是 null 要被拒絕，不能矇混成 0", async () => {
+  // Number(null) === 0，一旦 0 是合法天數，光靠 Number.isFinite() 判斷會讓
+  // 「根本沒帶值」的請求被誤當成「使用者要設 0」而悄悄存進去
   const env = { FIELD_PIN: "pin", DB: makeFieldlogDB() };
-  const min = await call(env, "/settings/auto-file-days", { method: "PUT", body: JSON.stringify({ days: 1 }) });
-  assert.equal(min.status, 200);
-  assert.equal(min.data.days, 1);
+  const res = await call(env, "/settings/auto-file-days", { method: "PUT", body: JSON.stringify({ days: null }) });
+  assert.equal(res.status, 400);
+  const staging = await call(env, "/staging", { method: "POST", body: "{}" });
+  assert.equal(staging.data.days, 4, "沒帶值就不該偷偷把天數改成 0");
+});
+
+test("PUT /settings/auto-file-days：邊界值 0（不等待，全部立即歸檔）與 30 要能存", async () => {
+  const env = { FIELD_PIN: "pin", DB: makeFieldlogDB() };
+  const zero = await call(env, "/settings/auto-file-days", { method: "PUT", body: JSON.stringify({ days: 0 }) });
+  assert.equal(zero.status, 200, "0 是刻意允許的合法值，不該被 400 擋掉");
+  assert.equal(zero.data.days, 0);
+  const staging = await call(env, "/staging", { method: "POST", body: "{}" });
+  assert.equal(staging.data.days, 0, "/staging 要反映剛存的 0，不能被悄悄改回預設值");
   const max = await call(env, "/settings/auto-file-days", { method: "PUT", body: JSON.stringify({ days: 30 }) });
   assert.equal(max.status, 200);
   assert.equal(max.data.days, 30);

@@ -54,7 +54,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "89";
+const UI_VERSION = "90";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -380,6 +380,10 @@ async function handleApi(request, env, url) {
   // Cloudflare Dashboard 改環境變數低門檻得多。範圍夾在 1–30 天，防呆不是業務規則。
   if (path === "/settings/auto-file-days" && method === "PUT") {
     const body = await request.json().catch(() => ({}));
+    // 0 是合法天數（見下面的範圍檢查），所以不能只靠 Number.isFinite() 判斷
+    // 「有沒有帶值」——Number(null) 跟 Number(undefined) 沒帶值時分別是 0 和
+    // NaN，null 那個會直接矇混過關被當成「使用者要設 0」。缺欄位要先擋掉。
+    if (body.days === null || body.days === undefined || body.days === "") return bad("days 必須是數字");
     const requested = Number(body.days);
     if (!Number.isFinite(requested)) return bad("days 必須是數字");
     if (requested < AUTO_FILE_DAYS_MIN || requested > AUTO_FILE_DAYS_MAX) {

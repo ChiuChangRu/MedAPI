@@ -125,12 +125,14 @@ function fakeAi(responder) {
 
 // ---------- 小函式 ----------
 
-test("autoFileDays：預設四天，可用環境變數調整，並夾在 1–30 天", () => {
+test("autoFileDays：預設四天，可用環境變數調整，並夾在 0–30 天", () => {
   assert.equal(autoFileDays({}), DEFAULT_AUTO_FILE_DAYS);
   assert.equal(autoFileDays({ AUTO_FILE_DAYS: "3" }), 3);
   assert.equal(autoFileDays({ AUTO_FILE_DAYS: "5" }), 5);
-  // 打錯字變成 0／負數時不能變成「當天就搶著幫你分類」
-  assert.equal(autoFileDays({ AUTO_FILE_DAYS: "0" }), DEFAULT_AUTO_FILE_DAYS);
+  // 0 是刻意允許的合法值＝「不等待，全部立即歸檔」，不是打錯字
+  assert.equal(autoFileDays({ AUTO_FILE_DAYS: "0" }), 0);
+  // 負數／非數字才是真的打錯字，退回預設值
+  assert.equal(autoFileDays({ AUTO_FILE_DAYS: "-1" }), DEFAULT_AUTO_FILE_DAYS);
   assert.equal(autoFileDays({ AUTO_FILE_DAYS: "abc" }), DEFAULT_AUTO_FILE_DAYS);
   assert.equal(autoFileDays({ AUTO_FILE_DAYS: "999" }), 30);
 });
@@ -149,13 +151,15 @@ test("resolveAutoFileDays：使用者設定過就用那個值，環境變數退�
     "使用者在畫面上設定過，就不該再被環境變數蓋過去");
 });
 
-test("saveAutoFileDays：夾在 1–30 之間，寫壞的值退回預設值而不是存進一個荒謬的數字", async () => {
+test("saveAutoFileDays：夾在 0–30 之間，寫壞的值退回預設值而不是存進一個荒謬的數字", async () => {
   const db = makeDB();
   assert.equal(await saveAutoFileDays(db, 2, "t"), 2);
   assert.equal(await resolveAutoFileDays(db, {}), 2);
 
   assert.equal(await saveAutoFileDays(db, 999, "t"), AUTO_FILE_DAYS_MAX);
-  assert.equal(await saveAutoFileDays(db, 0, "t"), DEFAULT_AUTO_FILE_DAYS);
+  // 0 是刻意允許的合法值（不等待、全部立即歸檔），要真的存成 0，不能被當成打錯字擋掉
+  assert.equal(await saveAutoFileDays(db, 0, "t"), 0);
+  assert.equal(await resolveAutoFileDays(db, {}), 0);
   assert.equal(await saveAutoFileDays(db, -5, "t"), DEFAULT_AUTO_FILE_DAYS);
   assert.equal(await saveAutoFileDays(db, "abc", "t"), DEFAULT_AUTO_FILE_DAYS);
 });
@@ -175,6 +179,24 @@ test("自動歸類真的會用使用者設定的天數，不是還在用環境�
   // baseDB 裡兩筆記事分別是 6 天前與 1 天前建立的；設定成 1 天後，兩筆都該到期
   const result = await autoFileStagedEntries(db, { ai, days, nowMs: NOW, timestamp: stamp, logHistory });
   assert.equal(result.filed, 2);
+});
+
+// 「再做一個 0 天的！全部歸檔！」——0 要能真的立即歸檔剛建立的東西，不是
+// 只把「本來就已經到期」的舊記事順便歸掉，兩者是不同的斷言。
+test("days=0：連剛建立、還沒放滿一天的記事都立即歸檔，不用等", async () => {
+  const db = makeDB({
+    folders: [
+      { id: 1, name: "CVC", type: "產品", parent_id: null, role: "" },
+      { id: 9, name: "暫存區", type: "其他", parent_id: null, role: STAGING_FOLDER_ROLE },
+    ],
+    entries: [
+      { id: 201, folder_id: 9, title: "剛剛才建立", body: "", fields_json: "{}", created_at: stamp() },
+    ],
+  });
+  const ai = fakeAi(() => '{"folder_id": 1, "reason": "不等待"}');
+  const result = await autoFileStagedEntries(db, { ai, days: 0, nowMs: NOW, timestamp: stamp, logHistory });
+  assert.equal(result.filed, 1, "0 天要連剛建立的都歸檔，不是只歸掉本來就過期的");
+  assert.equal(db.tables.entries[0].folder_id, 1);
 });
 
 test("cutoffTimestamp 與 worker 的 now() 同格式，字串比大小就等於比時間", () => {

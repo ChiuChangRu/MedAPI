@@ -134,3 +134,29 @@ test("(c) 「最近作業」顯示的日期要跟排序依據一致（updated_at
   const loadRecent = app.match(/async function loadRecent\(\)[\s\S]*?\n\}/)[0];
   assert.match(loadRecent, /entryRowHtml\(e, \{ showRecency: true \}\)/, "最近作業列表要帶 showRecency，跟它實際的排序依據（updated_at）對上");
 });
+
+// ---------- (d) 「再做一個 0 天的！全部歸檔！」----------
+
+test("(d) 天數下限開放到 0：後端 AUTO_FILE_DAYS_MIN 是 0，不是 1", async () => {
+  const autofile = await read("../fieldlog/src/lib/autofile.js");
+  assert.match(autofile, /export const AUTO_FILE_DAYS_MIN = 0;/);
+  const clamp = autofile.match(/function clampDays\([\s\S]*?\n\}/)[0];
+  assert.match(clamp, /n < 0/, "只有負數才當打錯字退回預設值，0 是合法輸入");
+  assert.doesNotMatch(clamp, /n <= 0/, "不能再把 0 當成無效值擋掉");
+});
+
+test("(d) 前端天數下限跟後端同步開放到 0", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  assert.match(app, /const AUTO_FILE_DAYS_MIN = 0;/);
+});
+
+test("(d) 天數講成人看得懂的話，0 不會顯示成「放滿 0 天」", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  assert.match(app, /function autoFileDaysPhrase\(days\)/);
+  const fn = app.match(/function autoFileDaysPhrase[\s\S]*?\n\}/)[0];
+  assert.match(fn, /days === 0/);
+  assert.match(fn, /不等待/, "0 要講成「不等待」，不是印出「放滿 0 天」這種看起來像打錯字的字串");
+  // 四個使用者看得到天數說明的地方都要透過這支講人話，不能有漏接的
+  const usages = [...app.matchAll(/autoFileDaysPhrase\(/g)];
+  assert.ok(usages.length >= 4, "快速備忘標題、暫存區歸檔說明、採集 chip、套用後的 toast 都要用這支");
+});

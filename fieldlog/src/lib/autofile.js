@@ -35,9 +35,10 @@ export const STAGING_FOLDER_TYPE = "其他";
 export const AUTO_FILE_DAYS_SETTING_KEY = "auto_file_days";
 // 使用者從沒設定過、也沒有環境變數時的起始值
 export const DEFAULT_AUTO_FILE_DAYS = 4;
-// 天數的合理範圍：太小（0 或負數）會變成「當天就搶著分」，太大則失去「暫存」
-// 的意義；上限抓 30 純粹是防呆，不是業務規則
-export const AUTO_FILE_DAYS_MIN = 1;
+// 天數的合理範圍。0 是刻意允許的合法值——代表「不等待，全部立即歸檔」，
+// 之前把 0 當成打錯字擋掉，等於沒有「馬上全部歸類」這個選項；負數／非數字
+// 才是真的打錯字，退回預設值。上限抓 30 純粹是防呆，不是業務規則。
+export const AUTO_FILE_DAYS_MIN = 0;
 export const AUTO_FILE_DAYS_MAX = 30;
 export const AUTO_FILE_MODEL = "@cf/meta/llama-3.2-3b-instruct";
 // 一次排程最多處理幾筆：AI 呼叫要錢也要時間，寧可分幾天跑完也不要單次爆量
@@ -45,7 +46,7 @@ export const AUTO_FILE_BATCH = 10;
 
 function clampDays(value, fallback) {
   const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return fallback;
+  if (!Number.isFinite(n) || n < 0) return fallback;
   return Math.min(AUTO_FILE_DAYS_MAX, Math.max(AUTO_FILE_DAYS_MIN, Math.round(n)));
 }
 
