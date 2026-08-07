@@ -164,6 +164,10 @@ function makeDB() {
       const id = insert("folders", { name: args[0], type: args[1], parent_id: null, role: args[2], created_at: args[3] });
       return { results: [], lastRowId: id, changes: 1 };
     }
+    // 天數設定（resolveAutoFileDays）：cron 沒人設定過，退回環境變數／預設值
+    if (q === "SELECT value FROM settings WHERE key = ?") {
+      return { results: [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO entries (folder_id, title, fields_json, body, analysis_json")) {
       const id = insert("entries", {
         folder_id: args[0], title: args[1], fields_json: args[2], body: args[3],

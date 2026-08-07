@@ -136,6 +136,25 @@
 
 ---
 
+## D. 2026-08-09 追加：天數改成使用者自訂、資料夾加排序切換
+
+原本 B 節的「三～五天」是寫死在 Worker 環境變數 `AUTO_FILE_DAYS`——要改就得進
+Cloudflare Dashboard、還要重新部署，一般使用者碰不到。回報是「或是不要硬性規定，
+我可以自行選擇天數，並且時間序排，把時間或命名序排功能加到每個階層」，拆成兩件事：
+
+| 要求 | 做法 |
+|---|---|
+| 天數自己選，不要硬性規定 | 新增 `settings` 表（key-value，`fieldlog/src/lib/settings.js`），首頁「最近作業」下方多一個輸入框＋「套用」鈕，直接改數字（1–30 天）就生效，不用重新部署。`resolveAutoFileDays(db, env)` 優先讀使用者存過的設定，沒設定過才退回 `AUTO_FILE_DAYS` 環境變數，都沒有才用預設值 4 天——三層退路，舊的部署方式沒被拿掉，只是不再是唯一的路。 |
+| 時間或命名排序加到每個階層 | 資料夾清單（不是資料夾裡的檔案，是資料夾本身）新增一個全域排序開關 `FOLDER_SORT`（`"name"` 或 `"time"`），**同時套用在首頁根層、每一層子資料夾、搬移選擇器、採集畫面的資料夾 chip**——不是切了首頁、子資料夾還是舊排序。時間排序一樣把「⏳ 暫存區」置頂（它裝的是需要回頭看的東西，不該被排到後面）。首頁與資料夾內頁工具列各有一顆 `🔤 名稱排序 / 🆕 新到舊` 按鈕，跟原本「資料夾裡的檔案清單」那顆 `🆕 新到舊 / 🔤 檔名排序`（A5）是兩個獨立的開關，管的是不同層級的東西。 |
+
+新增測試：`tests/fieldlog-settings.test.js`（settings 表的 upsert 邏輯）、
+`tests/fieldlog-staging-autofile.test.js`（`resolveAutoFileDays`／`saveAutoFileDays` 的
+優先順序與範圍防呆）、`tests/fieldlog-auto-file-settings.test.js`（走完整 Worker 的
+`PUT /settings/auto-file-days` 端點）、`tests/fieldlog-days-and-folder-sort.test.js`
+（前端接線）。
+
+---
+
 ## C. 已知但這次沒動（要不要處理請指示）
 
 ### C1. ⚠️ `main` 分支的 `fieldlog/` 是舊快照，照它部署會讓隨身記整個退版

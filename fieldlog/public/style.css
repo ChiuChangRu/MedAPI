@@ -558,6 +558,11 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 }
 .entry-ai-chip.failed { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; cursor: default; }
 .staging-status { margin: 2px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.auto-file-days-control { display: inline-flex; align-items: center; gap: 6px; }
+.auto-file-days-control input[type="number"] {
+  width: 48px; min-height: 30px; padding: 2px 4px; text-align: center;
+  border: 1px solid var(--border); border-radius: 6px; font: inherit;
+}
 .cfp-item.cfp-staging { font-weight: 700; color: #9a3412; }
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;

@@ -17,23 +17,61 @@
  *   - 挑不出來就留在暫存區（標記 'failed'），不亂塞一個「其他」了事。
  *   - 一定留下痕跡：history 一列 ＋ 記事上的 🤖 標記，使用者一眼看得出來
  *     哪些位置是機器決定的，要改隨時能改。
+ *
+ * 天數不是寫死的規則：一開始用 Worker 環境變數 AUTO_FILE_DAYS 當初始值
+ * （2026-08-07 的做法），但那要進 Cloudflare Dashboard 改、重新部署才生效，
+ * 一般使用者碰不到，等於「工程說幾天就是幾天」。改成使用者自己在首頁就能
+ * 調整（存 settings 表，見 resolveAutoFileDays／saveAutoFileDays），環境變數
+ * 只在使用者從未設定過時當退路，不會互相打架。
  */
+
+import { getSetting, setSetting } from "./settings.js";
 
 export const STAGING_FOLDER_NAME = "⏳ 暫存區（待歸類）";
 export const STAGING_FOLDER_ROLE = "staging";
 export const STAGING_FOLDER_TYPE = "其他";
 
-// 幾天沒人分類就交給 AI。使用者說「三五天」，取中間值當預設，可用
-// Worker 變數 AUTO_FILE_DAYS 調整（夾在 1–30，避免打錯字變成 0 天＝當天就搶著分）。
+// settings 表裡存放天數設定的 key
+export const AUTO_FILE_DAYS_SETTING_KEY = "auto_file_days";
+// 使用者從沒設定過、也沒有環境變數時的起始值
 export const DEFAULT_AUTO_FILE_DAYS = 4;
+// 天數的合理範圍：太小（0 或負數）會變成「當天就搶著分」，太大則失去「暫存」
+// 的意義；上限抓 30 純粹是防呆，不是業務規則
+export const AUTO_FILE_DAYS_MIN = 1;
+export const AUTO_FILE_DAYS_MAX = 30;
 export const AUTO_FILE_MODEL = "@cf/meta/llama-3.2-3b-instruct";
 // 一次排程最多處理幾筆：AI 呼叫要錢也要時間，寧可分幾天跑完也不要單次爆量
 export const AUTO_FILE_BATCH = 10;
 
+function clampDays(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(AUTO_FILE_DAYS_MAX, Math.max(AUTO_FILE_DAYS_MIN, Math.round(n)));
+}
+
+/** 純環境變數版本（不碰資料庫）：部署當下的起始值，或使用者從沒改過設定時的退路 */
 export function autoFileDays(env = {}) {
-  const raw = Number(env.AUTO_FILE_DAYS);
-  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_AUTO_FILE_DAYS;
-  return Math.min(30, Math.max(1, Math.round(raw)));
+  return clampDays(env.AUTO_FILE_DAYS, DEFAULT_AUTO_FILE_DAYS);
+}
+
+/**
+ * 真正該用的版本：使用者自己在畫面上調過就用那個值，沒調過才退回
+ * 環境變數／預設值。所有讀天數的地方（/staging、/auto-file/status、
+ * /auto-file/run、cron）都呼叫這支，不要直接呼叫 autoFileDays()。
+ */
+export async function resolveAutoFileDays(db, env = {}) {
+  const stored = await getSetting(db, AUTO_FILE_DAYS_SETTING_KEY).catch(() => null);
+  if (stored !== null && stored !== undefined && stored !== "") {
+    return clampDays(stored, autoFileDays(env));
+  }
+  return autoFileDays(env);
+}
+
+/** 使用者在畫面上調整天數：夾在合理範圍內存起來，回傳實際存進去的值 */
+export async function saveAutoFileDays(db, days, timestamp) {
+  const clamped = clampDays(days, DEFAULT_AUTO_FILE_DAYS);
+  await setSetting(db, AUTO_FILE_DAYS_SETTING_KEY, clamped, timestamp);
+  return clamped;
 }
 
 /** 與 worker.js 的 now() 同格式（"YYYY-MM-DD HH:MM:SSZ"），字串比大小就等於比時間 */

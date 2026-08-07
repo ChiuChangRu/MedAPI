@@ -41,17 +41,20 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import {
-  autoFileDays,
+  AUTO_FILE_DAYS_MAX,
+  AUTO_FILE_DAYS_MIN,
   autoFileStagedEntries,
   cutoffTimestamp,
   ensureStagingFolder,
+  resolveAutoFileDays,
+  saveAutoFileDays,
 } from "./lib/autofile.js";
 
 // 前端資源的版本號。index.html 的 ?v=、sw.js 的 CACHE 名稱、app.js 的 APP_VERSION
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "87";
+const UI_VERSION = "88";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -371,10 +374,22 @@ async function handleApi(request, env, url) {
   // 收件匣面板）；放太久沒人動的由排程交給 AI，歸完一定標記是 AI 分的。
   if (path === "/staging" && (method === "GET" || method === "POST")) {
     const folder = await ensureStagingFolder(db, now());
-    return json({ ok: true, id: Number(folder.id), name: folder.name, days: autoFileDays(env) });
+    return json({ ok: true, id: Number(folder.id), name: folder.name, days: await resolveAutoFileDays(db, env) });
+  }
+  // 天數不是寫死的規則：使用者自己在首頁就能調（存進 settings 表），比進
+  // Cloudflare Dashboard 改環境變數低門檻得多。範圍夾在 1–30 天，防呆不是業務規則。
+  if (path === "/settings/auto-file-days" && method === "PUT") {
+    const body = await request.json().catch(() => ({}));
+    const requested = Number(body.days);
+    if (!Number.isFinite(requested)) return bad("days 必須是數字");
+    if (requested < AUTO_FILE_DAYS_MIN || requested > AUTO_FILE_DAYS_MAX) {
+      return bad(`天數要在 ${AUTO_FILE_DAYS_MIN}–${AUTO_FILE_DAYS_MAX} 之間`);
+    }
+    const days = await saveAutoFileDays(db, requested, now());
+    return json({ ok: true, days });
   }
   if (path === "/auto-file/status" && method === "GET") {
-    const days = autoFileDays(env);
+    const days = await resolveAutoFileDays(db, env);
     const staging = await ensureStagingFolder(db, now());
     const pending = await db.prepare(
       `SELECT COUNT(*) AS count FROM entries
@@ -396,7 +411,7 @@ async function handleApi(request, env, url) {
   if (path === "/auto-file/run" && method === "POST") {
     const result = await autoFileStagedEntries(db, {
       ai: env.AI ? budgetedAi(env) : null,
-      days: autoFileDays(env),
+      days: await resolveAutoFileDays(db, env),
       timestamp: now,
       logHistory,
       plainBody: (entry) => (entry.body_format === "html" ? htmlToPlainText(entry.body) : String(entry.body || "")),
@@ -1748,7 +1763,7 @@ export default {
     try {
       await autoFileStagedEntries(env.DB, {
         ai: env.AI ? budgetedAi(env) : null,
-        days: autoFileDays(env),
+        days: await resolveAutoFileDays(env.DB, env),
         timestamp: now,
         logHistory,
         plainBody: (entry) => (entry.body_format === "html" ? htmlToPlainText(entry.body) : String(entry.body || "")),

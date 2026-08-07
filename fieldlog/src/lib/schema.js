@@ -121,6 +121,13 @@ export const SCHEMA = [
     errors TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
+  // 使用者自己在前台可調整的行為參數（key-value）。跟環境變數不同：改了立刻
+  // 生效，不用進 Cloudflare Dashboard、不用重新部署。見 lib/settings.js。
+  `CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder_id)`,
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
