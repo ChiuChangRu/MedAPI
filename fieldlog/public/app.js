@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "88";
+const APP_VERSION = "89";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -670,7 +670,7 @@ async function loadRecent() {
   $("btn-inbox-list").classList.toggle("active", INBOX_VIEW === "list");
   $("inbox-list").className = `entry-list ${INBOX_VIEW}-view`;
   $("inbox-list").innerHTML = entries.length
-    ? entries.map(entryRowHtml).join("")
+    ? entries.map((e) => entryRowHtml(e, { showRecency: true })).join("")
     : `<p class="sub">還沒有任何記事。上面四顆按鈕都可以開始：錄影／拍照／錄音／記事。</p>`;
   bindEntryRows($("inbox-list"));
   loadStagingStatus();
@@ -760,7 +760,15 @@ function entryLocationLabel(e) {
   return "📥 收件匣";
 }
 
-function entryRowHtml(e) {
+/**
+ * showRecency：true 時顯示的日期要跟排序依據一致——只有「最近作業」是照
+ * updated_at（沒有就退回 created_at）DESC 排的，資料夾內頁的筆記清單是照
+ * id DESC（＝建立順序），兩邊排序依據不同，硬套同一顯示邏輯會變成「畫面上
+ * 的日期看起來沒照順序排」（2026-08-09 實際回報：明明設定只留 1 天，最近
+ * 作業最上面卻還看得到一週前的日期——因為顯示的是 created_at，但排序用的
+ * 是 updated_at，兩者對不上，使用者根本看不出排序邏輯有沒有在動）。
+ */
+function entryRowHtml(e, { showRecency = false } = {}) {
   // 🤖＝這個位置是 AI 挑的，不是人放的。這個區別對法規／專利場景很重要：
   // 引用之前要知道哪些判斷出自機器。點一下可以確認或改掉。
   const aiChip = e.auto_filed_at && e.auto_filed_at !== "failed"
@@ -768,11 +776,14 @@ function entryRowHtml(e) {
     : e.auto_filed_at === "failed"
       ? `<span class="entry-ai-chip failed" title="${esc(e.auto_filed_reason || "AI 判斷不出來")}">🤖 待人工</span>`
       : "";
+  const dateLabel = showRecency
+    ? `${e.updated_at ? "動過" : "建立"} ${esc(String(e.updated_at || e.created_at || "").slice(5, 16))}`
+    : esc(String(e.created_at || "").slice(5, 16));
   return `<div class="entry-row" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
     <span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}
-    <span class="entry-meta">${esc(String(e.created_at || "").slice(5, 16))}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
+    <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
     <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
     <button class="entry-merge" data-id="${e.id}" type="button" title="合併到另一筆記事">合併</button>
     <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄">🗑</button>
