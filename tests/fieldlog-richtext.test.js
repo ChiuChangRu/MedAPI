@@ -80,3 +80,41 @@ test("textToHtml: 空字串回傳空字串", () => {
   assert.equal(textToHtml(""), "");
   assert.equal(textToHtml("   "), "");
 });
+
+// ---------- 2026-08-07：「貼入 MD 檔，存檔後格式跑掉」 ----------
+// 病灶不在編輯器而在這支清理函式：標題、程式碼、分隔線根本不在白名單，
+// 存檔那一刻就被吃掉；Quill 2 的項目符號清單也是 <ol>，靠 <li data-list="bullet">
+// 區分，data-list 一被剝掉，重新開啟整串就變成編號清單。
+
+test("sanitizeEntryHtml: Markdown 的標題／程式碼／分隔線要留得住", () => {
+  const html = "<h1>大標</h1><h3>小標</h3><pre>code()</pre><hr><p>正文</p>";
+  assert.equal(sanitizeEntryHtml(html), html);
+});
+
+test("sanitizeEntryHtml: 項目符號清單的 data-list 要保留，否則會變成編號清單", () => {
+  const html = '<ol><li data-list="bullet">甲</li><li data-list="ordered">乙</li></ol>';
+  assert.equal(sanitizeEntryHtml(html), html);
+});
+
+test("sanitizeEntryHtml: data-list 只收 Quill 定義的值", () => {
+  assert.equal(sanitizeEntryHtml('<li data-list="evil">x</li>'), "<li>x</li>");
+});
+
+test("sanitizeEntryHtml: 蠟筆重點（ql-bg-*）的 class 要留住，其他 class 一律拿掉", () => {
+  assert.equal(
+    sanitizeEntryHtml('<p><span class="ql-bg-yellow">重點</span></p>'),
+    '<p><span class="ql-bg-yellow">重點</span></p>'
+  );
+  assert.equal(sanitizeEntryHtml('<p class="from-some-website">文字</p>'), "<p>文字</p>");
+  assert.equal(sanitizeEntryHtml('<p class="ql-indent-1 evil">文字</p>'), '<p class="ql-indent-1">文字</p>');
+});
+
+test("sanitizeEntryHtml: style 屬性仍然一律不收（蠟筆走 class，不走行內樣式）", () => {
+  assert.equal(sanitizeEntryHtml('<span style="background-color:red">x</span>'), "<span>x</span>");
+});
+
+test("htmlToPlainText: 標題與程式碼區塊後面要換行，不然匯出會整段黏在一起", () => {
+  assert.equal(htmlToPlainText("<h2>章節</h2><p>內文</p>"), "章節\n內文");
+  assert.equal(htmlToPlainText("<pre>code()</pre><p>說明</p>"), "code()\n說明");
+  assert.equal(htmlToPlainText("<p>上</p><hr><p>下</p>"), "上\n\n---\n下");
+});
