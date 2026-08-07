@@ -184,6 +184,31 @@ UPDATE 語句與 `entryRowHtml` 的接線。前端版本號 88 → 89。
 
 ---
 
+## F. 2026-08-09 追加：天數開放到 0（「再做一個 0 天的！全部歸檔！」）
+
+D 節把天數範圍定在 1–30，把 0 當成打錯字擋掉。但「0 天」其實是一個合理的操作：
+不想等排程慢慢篩，就是要把暫存區裡的東西**現在立刻**全部丟給 AI 分類。
+
+- `fieldlog/src/lib/autofile.js`：`AUTO_FILE_DAYS_MIN` 從 1 改成 0；`clampDays()`
+  的判斷從 `n <= 0` 改成 `n < 0`——只有負數／非數字才是打錯字退回預設值，0 是
+  刻意允許的合法輸入。`cutoffTimestamp(0)` 本來就等於「現在」，`created_at <=
+  cutoff` 對暫存區裡所有既有記事（含剛剛才建立的）都成立，不用改查詢邏輯。
+- `worker.js`：`PUT /settings/auto-file-days` 的範圍檢查連帶放寬。過程中補上一個
+  真正的既有 bug——`Number(null)` 會是 `0`，範圍放寬到含 0 之後，`{"days": null}`
+  這種「根本沒帶值」的請求會被誤判成「使用者要設 0」而悄悄存進去；改成先擋掉
+  `null`／`undefined`／空字串，不能只靠 `Number.isFinite()` 判斷有沒有帶值。
+- `fieldlog/public/app.js`：新增 `autoFileDaysPhrase()`，0 顯示成「不等待，下次
+  排程（或手動按「現在就跑一次」）就立即由 AI 自動歸類」，不是印出「放滿 0 天」
+  這種看起來像打錯字的字串。四個講天數的地方（快速備忘標題、暫存區歸檔說明、
+  採集畫面的資料夾 chip、套用後的 toast）都改用這支。
+
+新增測試：`resolveAutoFileDays`／`saveAutoFileDays` 對 0 的邊界行為、
+`autoFileStagedEntries` 用 `days: 0` 時連剛建立的記事都立即歸檔（不是只歸掉
+本來就過期的）、worker 端點的 `days: null` 迴歸測試、前端 `autoFileDaysPhrase`
+接線。前端版本號 89 → 90。
+
+---
+
 ## C. 已知但這次沒動（要不要處理請指示）
 
 ### C1. ⚠️ `main` 分支的 `fieldlog/` 是舊快照，照它部署會讓隨身記整個退版

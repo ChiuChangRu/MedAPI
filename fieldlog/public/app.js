@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "89";
+const APP_VERSION = "90";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -95,9 +95,16 @@ let FOCUSED_FILE = null;
 let STAGING_FOLDER_ID = null;
 let AUTO_FILE_DAYS = 4;
 // 跟後端 fieldlog/src/lib/autofile.js 的 AUTO_FILE_DAYS_MIN/MAX 一致——純防呆範圍，
-// 不是業務規則，使用者在這個範圍內想設幾天都可以
-const AUTO_FILE_DAYS_MIN = 1;
+// 不是業務規則，使用者在這個範圍內想設幾天都可以。0＝不等待、全部立即歸檔。
+const AUTO_FILE_DAYS_MIN = 0;
 const AUTO_FILE_DAYS_MAX = 30;
+
+/** 天數要講成人看得懂的話：0 不該顯示成「放滿 0 天」，那樣像打錯字 */
+function autoFileDaysPhrase(days) {
+  return days === 0
+    ? "不等待，下次排程（或手動按「現在就跑一次」）就立即由 AI 自動歸類"
+    : `放滿 ${days} 天沒人動就由 AI 自動歸類`;
+}
 
 // 資料夾排序模式：套用在每一層——首頁根層、每一層子資料夾、搬移選擇器、
 // 採集畫面的資料夾 chip，全部共用同一個開關，不用每層各記各的。
@@ -680,7 +687,7 @@ async function loadRecent() {
 // 兩種狀態（已經全部歸類 / 還有東西在等）共用同一段，不用寫兩次
 function autoFileDaysControlHtml(days) {
   return `<span class="auto-file-days-control">
-    放滿 <input type="number" id="auto-file-days-input" min="${AUTO_FILE_DAYS_MIN}" max="${AUTO_FILE_DAYS_MAX}" value="${days}" /> 天沒人動
+    放滿 <input type="number" id="auto-file-days-input" min="${AUTO_FILE_DAYS_MIN}" max="${AUTO_FILE_DAYS_MAX}" value="${days}" title="填 0 表示不等待，全部立即歸檔" /> 天沒人動（填 0＝不等待，立即全部歸檔）
     <button class="btn small" id="btn-save-auto-file-days" type="button">套用</button>
   </span>`;
 }
@@ -699,7 +706,7 @@ function bindAutoFileDaysControl() {
     try {
       const result = await api("/settings/auto-file-days", { method: "PUT", body: JSON.stringify({ days }) });
       AUTO_FILE_DAYS = result.days;
-      showToast(`已套用：放滿 ${result.days} 天由 AI 自動歸類`);
+      showToast(`已套用：${autoFileDaysPhrase(result.days)}`);
       await loadStagingStatus();
     } catch (err) {
       showToast("設定失敗：" + err.message);
@@ -1514,7 +1521,7 @@ async function createEntry(folderId, title) {
 // 「一開始就先歸類」在這個入口是做得到的。真的很急就選暫存區，一鍵帶過。
 function quickNote() {
   openEditModal({
-    title: `快速備忘（存檔後會問要放哪個資料夾，來不及分就丟暫存區，${AUTO_FILE_DAYS} 天後 AI 自動歸類）`,
+    title: `快速備忘（存檔後會問要放哪個資料夾，來不及分就丟暫存區，${autoFileDaysPhrase(AUTO_FILE_DAYS)}）`,
     value: "",
     onSave: async (text) => {
       if (!text) return;
@@ -1536,7 +1543,7 @@ function quickNote() {
 async function askQuickNoteFolder(entryId) {
   const picked = await openFolderPicker({
     title: "這則備忘放哪裡？",
-    desc: `選一個資料夾就直接歸好；按取消會留在「⏳ 暫存區」，${AUTO_FILE_DAYS} 天後由 AI 自動歸類並標記。`,
+    desc: `選一個資料夾就直接歸好；按取消會留在「⏳ 暫存區」，${autoFileDaysPhrase(AUTO_FILE_DAYS)}並標記 🤖。`,
     currentId: STAGING_FOLDER_ID,
     allowInbox: false,
   });
@@ -3141,7 +3148,7 @@ function setupFolderChip(chipId, pickerId, getSession) {
     // 四層架構下用一串沒縮排的平清單根本分不出「同名的是哪一個分支」，
     // 這裡跟搬移用的選擇器一樣列成樹狀並縮排
     picker.innerHTML = [
-      `<div class="cfp-item cfp-staging" data-staging="1">⏳ 很急，先放暫存區（${AUTO_FILE_DAYS} 天後 AI 自動歸類）</div>`,
+      `<div class="cfp-item cfp-staging" data-staging="1">⏳ 很急，先放暫存區（${autoFileDaysPhrase(AUTO_FILE_DAYS)}）</div>`,
       ...folderTreeOrdered()
         .filter(({ folder }) => folder.role !== "staging")
         .map(({ folder, depth }) =>
