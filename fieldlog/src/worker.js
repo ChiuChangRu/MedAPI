@@ -28,8 +28,10 @@ import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.j
 import {
   deleteAttachmentDeep,
   folderDepth,
+  isDescendantOf,
   moveAttachment,
   normalizeAttachmentName,
+  subtreeHeight,
 } from "./lib/attachments.js";
 import {
   createCategory,
@@ -38,12 +40,18 @@ import {
   listCategories,
   updateCategory,
 } from "./lib/categories.js";
+import {
+  autoFileDays,
+  autoFileStagedEntries,
+  cutoffTimestamp,
+  ensureStagingFolder,
+} from "./lib/autofile.js";
 
 // 前端資源的版本號。index.html 的 ?v=、sw.js 的 CACHE 名稱、app.js 的 APP_VERSION
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "86";
+const UI_VERSION = "87";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -358,6 +366,54 @@ async function handleApi(request, env, url) {
     return json(await cloudflareUsage(env));
   }
 
+  // ---- 暫存區與 AI 自動歸類 ----
+  // 「來不及分類就先丟這裡」要有一個真的、看得見的資料夾（不是空了就消失的
+  // 收件匣面板）；放太久沒人動的由排程交給 AI，歸完一定標記是 AI 分的。
+  if (path === "/staging" && (method === "GET" || method === "POST")) {
+    const folder = await ensureStagingFolder(db, now());
+    return json({ ok: true, id: Number(folder.id), name: folder.name, days: autoFileDays(env) });
+  }
+  if (path === "/auto-file/status" && method === "GET") {
+    const days = autoFileDays(env);
+    const staging = await ensureStagingFolder(db, now());
+    const pending = await db.prepare(
+      `SELECT COUNT(*) AS count FROM entries
+       WHERE (folder_id IS NULL OR folder_id = ?) AND COALESCE(auto_filed_at, '') = ''`
+    ).bind(Number(staging.id)).first();
+    const due = await db.prepare(
+      `SELECT COUNT(*) AS count FROM entries
+       WHERE (folder_id IS NULL OR folder_id = ?) AND COALESCE(auto_filed_at, '') = '' AND created_at <= ?`
+    ).bind(Number(staging.id), cutoffTimestamp(days)).first();
+    return json({
+      ok: true,
+      days,
+      staging_folder_id: Number(staging.id),
+      waiting: Number(pending?.count || 0),
+      due_now: Number(due?.count || 0),
+      ai_enabled: !!env.AI,
+    });
+  }
+  if (path === "/auto-file/run" && method === "POST") {
+    const result = await autoFileStagedEntries(db, {
+      ai: env.AI ? budgetedAi(env) : null,
+      days: autoFileDays(env),
+      timestamp: now,
+      logHistory,
+      plainBody: (entry) => (entry.body_format === "html" ? htmlToPlainText(entry.body) : String(entry.body || "")),
+    });
+    return json({ ok: true, ...result });
+  }
+  // 使用者確認「AI 分得對」或自己改過位置之後，把 🤖 標記清掉
+  const confirmFiledMatch = path.match(/^\/entries\/(\d+)\/confirm-filing$/);
+  if (confirmFiledMatch && method === "POST") {
+    const id = Number(confirmFiledMatch[1]);
+    const entry = await db.prepare("SELECT id, title FROM entries WHERE id = ?").bind(id).first();
+    if (!entry) return bad("找不到紀錄", 404);
+    await db.prepare("UPDATE entries SET auto_filed_at = '', auto_filed_reason = '' WHERE id = ?").bind(id).run();
+    await logHistory(db, id, null, "確認歸類", `${entry.title || "（未命名）"}：使用者確認分類正確`);
+    return json({ ok: true });
+  }
+
   // ---- folders ----
   if (path === "/folders" && method === "GET") {
     const { results } = await db.prepare(
@@ -429,6 +485,23 @@ async function handleApi(request, env, url) {
     const type = body.type !== undefined ? (body.type || "").trim() : old.type;
     if (!name) return bad("name 不可為空");
     if (!type) return bad("type 不可為空");
+    // parent_id 也能改＝資料夾本身可以搬到別的分支（或搬回最上層）。
+    // 沒有這個，四層架構一旦建錯就只能刪掉重來，裡面的記事與附件跟著陪葬。
+    if (body.parent_id !== undefined) {
+      const nextParent = body.parent_id ? Number(body.parent_id) : null;
+      if (nextParent === id) return bad("不能把資料夾搬到自己底下");
+      if (nextParent) {
+        const parent = await db.prepare("SELECT id FROM folders WHERE id = ?").bind(nextParent).first();
+        if (!parent) return bad("找不到目標上層資料夾", 404);
+        if (await isDescendantOf(db, nextParent, id)) return bad("不能把資料夾搬到自己的子資料夾底下");
+        const [parentDepth, height] = await Promise.all([folderDepth(db, nextParent), subtreeHeight(db, id)]);
+        if (parentDepth + height > MAX_FOLDER_DEPTH) {
+          return bad(`搬過去會變成第 ${parentDepth + height} 層，超過 ${MAX_FOLDER_DEPTH} 層上限（這個資料夾底下還有 ${height - 1} 層）`);
+        }
+      }
+      await db.prepare("UPDATE folders SET parent_id = ? WHERE id = ?").bind(nextParent, id).run();
+      await logHistory(db, null, id, "移動資料夾", `${name} → ${nextParent ? `folder ${nextParent}` : "最上層"}`);
+    }
     await db.prepare("UPDATE folders SET name = ?, status = ?, type = ? WHERE id = ?").bind(name, status, type, id).run();
     await logHistory(db, null, id, "更新資料夾", `${name}／${status}／${type}`);
     return json({ ok: true });
@@ -457,13 +530,26 @@ async function handleApi(request, env, url) {
       db.prepare("SELECT * FROM folders WHERE id = ?").bind(targetId).first(),
     ]);
     if (!source || !target) return bad("找不到來源或目標資料夾", 404);
+    if (await isDescendantOf(db, targetId, sourceId)) return bad("不能合併到自己的子資料夾");
     const countRow = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE folder_id = ?").bind(sourceId).first();
     const moved = Number(countRow?.count || 0);
+    const childRow = await db.prepare("SELECT COUNT(*) AS count FROM folders WHERE parent_id = ?").bind(sourceId).first();
+    const childCount = Number(childRow?.count || 0);
+    // 子資料夾要跟著進目標資料夾，不能丟回來源的上層。
+    // 舊行為（丟上層）會把「記事在 A/B 底下」拆成「記事進了目標、B 卻跑到別的
+    // 分支」——同一批資料被劈成兩半，而且畫面上完全看不出發生過這件事。
+    if (childCount) {
+      const [targetDepth, height] = await Promise.all([folderDepth(db, targetId), subtreeHeight(db, sourceId)]);
+      // height 含來源自己那一層，來源會被刪掉，所以子樹實際只往下長 height - 1
+      if (targetDepth + height - 1 > MAX_FOLDER_DEPTH) {
+        return bad(`合併後子資料夾會落到第 ${targetDepth + height - 1} 層，超過 ${MAX_FOLDER_DEPTH} 層上限。請先把「${source.name}」底下的子資料夾搬走再合併。`);
+      }
+    }
     await db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?").bind(targetId, now(), sourceId).run();
-    await db.prepare("UPDATE folders SET parent_id = ? WHERE parent_id = ?").bind(source.parent_id || null, sourceId).run();
+    await db.prepare("UPDATE folders SET parent_id = ? WHERE parent_id = ?").bind(targetId, sourceId).run();
     await db.prepare("DELETE FROM folders WHERE id = ?").bind(sourceId).run();
-    await logHistory(db, null, targetId, "合併資料夾", `${source.name} → ${target.name}；移動 ${moved} 筆記事`);
-    return json({ ok: true, moved, target_id: targetId });
+    await logHistory(db, null, targetId, "合併資料夾", `${source.name} → ${target.name}；移動 ${moved} 筆記事、${childCount} 個子資料夾`);
+    return json({ ok: true, moved, moved_children: childCount, target_id: targetId });
   }
 
   // ---- entries ----
@@ -480,6 +566,24 @@ async function handleApi(request, env, url) {
        WHERE (e.title LIKE ? OR e.body LIKE ?) AND e.id != ?
        ORDER BY e.id DESC LIMIT 20`
     ).bind(like, like, excludeId).all();
+    return json(results);
+  }
+  // 首頁的「最近作業」：不分資料夾，照最後動過的時間排。
+  // 為什麼取代原本只列收件匣的面板：收件匣是空的時候整個面板會消失，於是
+  // 「剛剛在忙的那幾筆」在首頁上沒有任何入口，每次都要自己回想放在哪個資料夾
+  // 再一層層點進去。最近作業永遠在，而且會標出每一筆現在待在哪裡。
+  if (path === "/entries/recent" && method === "GET") {
+    const limit = Math.min(Number(url.searchParams.get("limit") || 25) || 25, 100);
+    const { results } = await db.prepare(
+      `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+              COALESCE(e.auto_filed_at, '') AS auto_filed_at,
+              COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
+              f.name AS folder_name, f.type AS folder_type, COALESCE(f.role, '') AS folder_role,
+              (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
+       FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+       ORDER BY COALESCE(NULLIF(e.updated_at, ''), e.created_at) DESC, e.id DESC
+       LIMIT ?`
+    ).bind(limit).all();
     return json(results);
   }
   if (path === "/entries" && method === "GET") {
@@ -1639,5 +1743,18 @@ export default {
   async scheduled(_event, env) {
     await ensureSchema(env.DB, now());
     await syncSources(env.DB, {});
+    // 暫存區裡放了三～五天還沒人分類的，由 AI 挑一個現有資料夾歸進去並標記。
+    // 跟同步分開 try：同步失敗不該連帶讓自動歸類整個不跑（反之亦然）。
+    try {
+      await autoFileStagedEntries(env.DB, {
+        ai: env.AI ? budgetedAi(env) : null,
+        days: autoFileDays(env),
+        timestamp: now,
+        logHistory,
+        plainBody: (entry) => (entry.body_format === "html" ? htmlToPlainText(entry.body) : String(entry.body || "")),
+      });
+    } catch (err) {
+      console.error("自動歸類失敗", err);
+    }
   },
 };

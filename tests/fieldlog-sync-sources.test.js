@@ -154,6 +154,16 @@ function makeDB() {
       const id = insert("folders", { name: args[0], type: args[1], parent_id: args[2], created_at: args[3] });
       return { results: [], lastRowId: id, changes: 1 };
     }
+    // 暫存區資料夾（自動歸類用）：cron 除了同步之外也會跑一次自動歸類，
+    // 第一件事就是確保暫存區存在
+    if (q === "SELECT * FROM folders WHERE role = ? LIMIT 1") {
+      const row = tables.folders.find((f) => f.role === args[0]);
+      return { results: row ? [row] : [], changes: 0 };
+    }
+    if (q === "INSERT INTO folders (name, type, parent_id, role, created_at) VALUES (?, ?, NULL, ?, ?)") {
+      const id = insert("folders", { name: args[0], type: args[1], parent_id: null, role: args[2], created_at: args[3] });
+      return { results: [], lastRowId: id, changes: 1 };
+    }
     if (q.startsWith("INSERT INTO entries (folder_id, title, fields_json, body, analysis_json")) {
       const id = insert("entries", {
         folder_id: args[0], title: args[1], fields_json: args[2], body: args[3],

@@ -11,14 +11,50 @@
 // 記事富文字內容允許的標籤／每個標籤允許的屬性。Quill 正常操作不會產生
 // 清單外的東西，這裡防的是「使用者貼上外部網頁內容」或「有人繞過前端直接
 // 打 API」夾帶進奇怪標籤／行內事件屬性（onclick 之類）。
+//
+// 標題（h1–h6）、程式碼區塊（pre/code）、分隔線（hr）在 2026-08-07 補進來：
+// 少了它們，「貼一份 Markdown 進來 → 存檔 → 標題全部變成普通句子」是必然結果
+// ——存檔那一刻標籤就被這支函式吃掉了，畫面上看起來像「排版自己跑掉」。
 const ALLOWED_TAGS = new Set([
   "p", "br", "strong", "em", "u", "s", "b", "i",
   "ul", "ol", "li", "blockquote", "a", "img", "span",
+  "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code", "hr",
 ]);
+
+// Quill 用 class 表達縮排／對齊／蠟筆重點（ql-indent-1、ql-align-center、
+// ql-bg-yellow…），用 data-list 區分項目符號與編號清單。這兩個屬性被剝掉的
+// 後果不是「少一點樣式」而是內容變形：Quill 2 的項目符號清單也是 <ol>，
+// 靠 <li data-list="bullet"> 區分，data-list 一掉，重新開啟就整串變成編號清單。
 const ALLOWED_ATTRS = {
   a: new Set(["href", "target", "rel"]),
   img: new Set(["src", "alt", "data-att-id"]),
+  li: new Set(["class", "data-list"]),
+  p: new Set(["class"]),
+  h1: new Set(["class"]),
+  h2: new Set(["class"]),
+  h3: new Set(["class"]),
+  h4: new Set(["class"]),
+  h5: new Set(["class"]),
+  h6: new Set(["class"]),
+  pre: new Set(["class"]),
+  blockquote: new Set(["class"]),
+  span: new Set(["class"]),
+  ol: new Set(["class"]),
+  ul: new Set(["class"]),
 };
+
+// class 只收 Quill 自己產生的 ql-* 樣式名，data-list 只收 Quill 定義的四種值。
+// 白名單到「值」這一層，是因為單純允許 class 屬性等於允許任何字串進來（雖然
+// class 不像 style 那樣能直接畫東西，仍然沒有理由讓外部貼上的樣式名進資料庫）。
+const ALLOWED_LIST_VALUES = new Set(["ordered", "bullet", "checked", "unchecked"]);
+function sanitizeAttrValue(name, value) {
+  if (name === "class") {
+    const kept = String(value).split(/\s+/).filter((token) => /^ql-[a-z0-9-]+$/i.test(token));
+    return kept.length ? kept.join(" ") : null;
+  }
+  if (name === "data-list") return ALLOWED_LIST_VALUES.has(value) ? value : null;
+  return value;
+}
 
 function decodeEntities(text) {
   return String(text || "")
@@ -42,8 +78,9 @@ export function htmlToPlainText(html) {
   text = text.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "");
   text = text.replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/gi, (_, alt) => `[圖片：${decodeEntities(alt) || "未命名"}]`);
   text = text.replace(/<img\b[^>]*>/gi, "[圖片]");
-  text = text.replace(/<\/(p|div|li|blockquote)>/gi, "\n");
+  text = text.replace(/<\/(p|div|li|blockquote|h[1-6]|pre)>/gi, "\n");
   text = text.replace(/<br\s*\/?>/gi, "\n");
+  text = text.replace(/<hr\s*\/?>/gi, "\n---\n");
   text = text.replace(/<[^>]+>/g, "");
   text = decodeEntities(text);
   // Quill 空白內容常是 "\n"（來自 <p><br></p>），統一收斂多餘空白行
@@ -75,7 +112,9 @@ export function sanitizeEntryHtml(html) {
       const key = name.toLowerCase();
       if (!allowed.has(key)) continue;
       if (/^\s*javascript:/i.test(value)) continue; // href="javascript:..." 擋掉
-      kept.push(`${key}="${value.replace(/"/g, "&quot;")}"`);
+      const safeValue = sanitizeAttrValue(key, value);
+      if (safeValue === null) continue;
+      kept.push(`${key}="${safeValue.replace(/"/g, "&quot;")}"`);
     }
     return kept.length ? `<${tag} ${kept.join(" ")}>` : `<${tag}>`;
   });

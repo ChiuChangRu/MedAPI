@@ -161,12 +161,13 @@ body {
 .child-folder-card small, .record-group-card small { color: var(--text-muted); }
 /* 子資料夾原本只能點進去看，改名要先回上層資料夾清單才有選單——右上角補一顆
    跟 .record-group-del 同樣手法的編輯鈕，直接沿用既有的 renameFolder()。 */
-.child-folder-card { padding-right: 34px; }
-.child-folder-edit {
+.child-folder-card { padding-right: 60px; }
+.child-folder-edit, .child-folder-move {
   position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
 }
-.child-folder-edit:hover { opacity: 1; }
+.child-folder-move { right: 32px; }
+.child-folder-edit:hover, .child-folder-move:hover { opacity: 1; }
 .child-folder-list.list-view { display: flex; flex-direction: column; }
 .child-folder-list.list-view .child-folder-card,
 .child-folder-list.list-view .record-group-card { min-height: 62px; }
@@ -202,12 +203,15 @@ body {
   .child-folder-list.grid-view .folder-level-chip { background: rgba(255, 255, 255, 0.25); color: #fff; }
   .child-folder-list.grid-view .record-group-card,
   .child-folder-list.grid-view .child-folder-card { padding-right: 16px; }
+  .child-folder-list.grid-view .child-folder-move { right: 34px; }
   .child-folder-list.grid-view .record-group-del,
-  .child-folder-list.grid-view .child-folder-edit {
+  .child-folder-list.grid-view .child-folder-edit,
+  .child-folder-list.grid-view .child-folder-move {
     color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.15); border-radius: 50%;
   }
   .child-folder-list.grid-view .record-group-del:hover,
-  .child-folder-list.grid-view .child-folder-edit:hover { background: rgba(255, 255, 255, 0.32); opacity: 1; }
+  .child-folder-list.grid-view .child-folder-edit:hover,
+  .child-folder-list.grid-view .child-folder-move:hover { background: rgba(255, 255, 255, 0.32); opacity: 1; }
 }
 .inner-entry-list.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .inner-entry-list.grid-view .entry-row { position: relative; min-height: 130px; padding: 16px; align-items: flex-start; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(27,29,28,.06); }
@@ -505,6 +509,56 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .att-ai summary:hover { color: var(--text); }
 .att-ai[open] summary { color: var(--text); }
 .att-ai-body { margin: 4px 0 2px; }
+
+/* AI 背景資訊（來歷、逐字稿全文、AI 動過哪裡、操作履歷）一律預設收合。
+   摘要那一行講結論，細節點開才出現——這些是查證用的資料，不是每次都要看的。 */
+.ai-fold > summary {
+  cursor: pointer; user-select: none; padding: 6px 0; min-height: 32px;
+  list-style: none;
+}
+.ai-fold > summary::-webkit-details-marker { display: none; }
+.ai-fold > summary::before { content: "▸ "; color: var(--text-muted); }
+.ai-fold[open] > summary::before { content: "▾ "; }
+.ai-fold > summary.section-title { margin: 0; }
+.ai-fold > summary.prov-sub { margin: 10px 0 4px; }
+.prov-fold { margin: 4px 0; }
+
+/* 搬移用的資料夾選擇器：縮排＝層級，每一列都能看出自己在四層的哪一格。
+   z-index 要壓過記事詳情（.overlay 50）、全螢幕編輯框（95）與錄音浮動列（70）
+   ——所有 .overlay 同一層時是「DOM 後面的蓋前面的」，這個選擇器就在它們前面，
+   不特別提高的話會整個被壓在下面看不到。建資料夾的對話框又要再高一層，
+   因為它是從這個選擇器裡開出來的。 */
+#folder-picker-overlay { z-index: 98; }
+#create-folder-overlay { z-index: 99; }
+.folder-picker-modal { max-width: 560px; }
+.folder-picker-list {
+  max-height: 48vh; overflow-y: auto; margin: 10px 0;
+  border: 1px solid var(--border); border-radius: var(--radius); background: #fff;
+}
+.fp-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  width: 100%; min-height: 44px; padding: 8px 12px; text-align: left;
+  border: 0; border-bottom: 1px solid var(--border); background: none;
+  font: inherit; cursor: pointer;
+}
+.fp-row:last-child { border-bottom: 0; }
+.fp-row:hover:not(:disabled) { background: #f0fdfa; }
+.fp-row:disabled { cursor: default; opacity: 0.65; }
+.fp-name { font-weight: 600; overflow-wrap: anywhere; }
+.fp-meta { font-size: 12px; color: var(--text-muted); }
+.fp-here { font-size: 11px; color: var(--accent, #0f766e); border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; }
+.archive-current { font-weight: 600; overflow-wrap: anywhere; }
+
+/* 最近作業：每一列都標出「現在待在哪」與「這個位置是不是 AI 決定的」 */
+.entry-where { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.entry-ai-chip {
+  font-size: 11px; padding: 1px 7px; min-height: 24px;
+  border: 1px solid #fdba74; border-radius: 999px;
+  background: #fff7ed; color: #9a3412; cursor: pointer;
+}
+.entry-ai-chip.failed { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; cursor: default; }
+.staging-status { margin: 2px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cfp-item.cfp-staging { font-weight: 700; color: #9a3412; }
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
   width: 100%; max-width: 560px;
@@ -536,6 +590,22 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .rich-editor .ql-container { border: none; font-size: 15px; }
 .rich-editor .ql-editor { min-height: 260px; line-height: 1.6; }
 .rich-editor .ql-editor img { max-width: 100%; border-radius: 6px; }
+/* 貼進來的 Markdown 結構（標題／清單／程式碼／分隔線）要看得出層次，
+   不然「有轉成標題」跟「沒轉」在畫面上長得一樣。 */
+.rich-editor .ql-editor h1 { font-size: 1.5em; margin: 0.7em 0 0.3em; }
+.rich-editor .ql-editor h2 { font-size: 1.28em; margin: 0.7em 0 0.3em; }
+.rich-editor .ql-editor h3 { font-size: 1.12em; margin: 0.7em 0 0.3em; }
+.rich-editor .ql-editor blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--text-muted); }
+.rich-editor .ql-editor pre { background: #f1f5f9; border-radius: 6px; padding: 10px; overflow-x: auto; white-space: pre; }
+.rich-editor .ql-editor hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+/* 🖍 蠟筆重點。Quill 的 core CSS 也有一組 .ql-bg-*，但 index.html 是先載
+   style.css 再載 quill.snow.css，同分特異度會被它蓋掉——這裡多一層 class
+   提高特異度，顏色才是我們挑的這組（螢光筆該是淡色，不是純黃 #ff0）。 */
+.rich-editor .ql-editor .ql-bg-yellow { background-color: #fef08a; }
+.rich-editor .ql-editor .ql-bg-green { background-color: #bbf7d0; }
+.rich-editor .ql-editor .ql-bg-blue { background-color: #bfdbfe; }
+.rich-editor .ql-editor .ql-bg-pink { background-color: #fbcfe8; }
+.rich-editor .ql-editor .ql-bg-orange { background-color: #fed7aa; }
 .modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
 .modal .sub { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
 .create-folder-modal { max-width: 620px; margin-top: 5vh; padding: 24px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }

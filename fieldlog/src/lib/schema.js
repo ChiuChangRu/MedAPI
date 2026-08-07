@@ -131,6 +131,15 @@ export const SCHEMA = [
 // 舊表補欄位用（D1 沒有 ADD COLUMN IF NOT EXISTS，欄位已存在時失敗直接忽略即可）
 export const MIGRATIONS = [
   `ALTER TABLE folders ADD COLUMN parent_id INTEGER`,
+  // 資料夾的特殊身分。目前只有一種：role='staging'＝「暫存區」，現場來不及分類
+  // 的東西先丟這裡。用欄位而不是靠名字認，是因為名字可以被使用者改掉，改完
+  // 之後自動歸類就再也找不到那個資料夾（而且不會有任何錯誤訊息）。
+  `ALTER TABLE folders ADD COLUMN role TEXT DEFAULT ''`,
+  // AI 自動歸類的標記：三～五天沒人分類的記事由排程用 AI 歸檔，歸完一定要
+  // 標記，使用者才分得出「這是我自己放的」還是「AI 猜的」。
+  // ''＝沒被自動歸類過；ISO 時間＝AI 歸的；'failed'＝跑過但 AI 判斷不出來。
+  `ALTER TABLE entries ADD COLUMN auto_filed_at TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN auto_filed_reason TEXT DEFAULT ''`,
   `ALTER TABLE folders ADD COLUMN notion_page_id TEXT DEFAULT ''`,
   `ALTER TABLE folders ADD COLUMN notion_last_entry_id INTEGER DEFAULT 0`,
   `ALTER TABLE folders ADD COLUMN notion_synced_at TEXT DEFAULT ''`,

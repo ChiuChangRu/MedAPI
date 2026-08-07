@@ -143,6 +143,45 @@ export async function normalizeAttachmentName(db, attachmentId, { logHistory }) 
   return { ok: true, renamed: true, filename: next };
 }
 
+/**
+ * 這棵子樹有幾層（只有自己＝1）。搬移／合併資料夾時要用：把一棵三層的子樹
+ * 掛到第 3 層底下就會變成第 5 層，超過四層架構的上限。只檢查「新家的深度」
+ * 不夠——被搬的那一整棵樹有多高也要算進去。
+ */
+export async function subtreeHeight(db, folderId) {
+  let height = 0;
+  let level = [Number(folderId || 0)].filter(Boolean);
+  const visited = new Set();
+  while (level.length) {
+    height++;
+    if (height > 20) throw new Error("資料夾層級異常");
+    const next = [];
+    for (const id of level) {
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const { results } = await db.prepare("SELECT id FROM folders WHERE parent_id = ?").bind(id).all();
+      for (const child of results || []) next.push(Number(child.id));
+    }
+    level = next;
+  }
+  return height;
+}
+
+/** target 是不是 source 的子孫（含自己）——搬移資料夾時用來擋掉「搬進自己底下」 */
+export async function isDescendantOf(db, targetId, sourceId) {
+  let currentId = Number(targetId || 0);
+  const visited = new Set();
+  while (currentId) {
+    if (currentId === Number(sourceId)) return true;
+    if (visited.has(currentId)) return false;
+    visited.add(currentId);
+    const folder = await db.prepare("SELECT parent_id FROM folders WHERE id = ?").bind(currentId).first();
+    if (!folder) return false;
+    currentId = Number(folder.parent_id || 0);
+  }
+  return false;
+}
+
 /** 資料夾在四層架構裡的深度（1＝最上層）；找不到回 0，有環時擋掉 */
 export async function folderDepth(db, folderId) {
   let depth = 0;
