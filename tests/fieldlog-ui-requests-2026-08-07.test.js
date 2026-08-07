@@ -134,12 +134,16 @@ test("(5) 來歷、逐字稿全文、AI 動過哪裡、操作履歷全部預設�
 
 // ---------- (6) 收件匣改最近作業＋暫存區＋自動歸類 ----------
 
-test("(6) 首頁改成「最近作業」，而且空的時候不會整個消失", async () => {
+test("(6) 首頁有一個永遠看得到的待處理清單，不會空了就整個消失", async () => {
+  // 面板名稱與範圍在 2026-08-09 調整過一次（見 tests/fieldlog-days-and-folder-sort.test.js
+  // 的 (e) 那組）：這裡只鎖「面板存在且永遠可見」這個不變的行為，標題文字與
+  // 「列什麼」交給那組測試把關，避免同一件事分散在兩個檔案各鎖一半、改名時
+  // 要記得兩邊都改。
   const [app, html] = await Promise.all([
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/index.html"),
   ]);
-  assert.match(html, /🕒 最近作業/);
+  assert.match(html, /id="inbox-panel"/);
   assert.match(app, /async function loadRecent\(\)/);
   assert.match(app, /api\("\/entries\/recent\?limit=25"\)/);
   const load = app.match(/async function loadRecent[\s\S]*?\n}/)[0];

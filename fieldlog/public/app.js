@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "90";
+const APP_VERSION = "91";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -667,8 +667,11 @@ function setInboxView(view) {
   loadRecent();
 }
 
-// 「最近作業」＝最後動過的記事，不分資料夾。刻意不是「只有還沒歸檔的」：
-// 真正想快速回到的是「剛剛在忙的那幾筆」，它們常常已經歸檔了。
+// 「待處理」＝只列還沒真正歸檔的東西（收件匣、暫存區、AI 剛歸類還沒確認的），
+// 不是「不分資料夾、最後動過的全部」。2026-08-07 曾經做成後者，想解決「收件匣
+// 空了整個面板就消失」的問題，但代價是使用者剛手動搬移／編輯過的已歸檔記事
+// 會佔著最上面的位置，擠掉真正還沒處理的（2026-08-09 實際回報：套用天數
+// 0 天、暫存區已經清空，最上面卻還是一堆已經歸檔好的舊記事）。
 async function loadRecent() {
   const entries = await api("/entries/recent?limit=25");
   $("inbox-count").textContent = entries.length ? `（${entries.length}）` : "";
@@ -678,7 +681,7 @@ async function loadRecent() {
   $("inbox-list").className = `entry-list ${INBOX_VIEW}-view`;
   $("inbox-list").innerHTML = entries.length
     ? entries.map((e) => entryRowHtml(e, { showRecency: true })).join("")
-    : `<p class="sub">還沒有任何記事。上面四顆按鈕都可以開始：錄影／拍照／錄音／記事。</p>`;
+    : `<p class="sub">目前沒有還沒歸檔的東西——太好了！上面四顆按鈕都可以開始新的採集。</p>`;
   bindEntryRows($("inbox-list"));
   loadStagingStatus();
 }
@@ -756,7 +759,7 @@ async function runAutoFileNow(button) {
   }
 }
 
-/** 這筆現在待在哪裡：最近作業要一眼看得出來，不然「移動」按下去也不知道從哪搬 */
+/** 這筆現在待在哪裡：待處理清單要一眼看得出來，不然「移動」按下去也不知道從哪搬 */
 function entryLocationLabel(e) {
   if (e.folder_role === "staging") return "⏳ 暫存區";
   if (e.folder_name) return `📂 ${e.folder_name}`;

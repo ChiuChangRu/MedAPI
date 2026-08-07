@@ -54,7 +54,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "90";
+const UI_VERSION = "91";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -587,10 +587,18 @@ async function handleApi(request, env, url) {
     ).bind(like, like, excludeId).all();
     return json(results);
   }
-  // 首頁的「最近作業」：不分資料夾，照最後動過的時間排。
-  // 為什麼取代原本只列收件匣的面板：收件匣是空的時候整個面板會消失，於是
-  // 「剛剛在忙的那幾筆」在首頁上沒有任何入口，每次都要自己回想放在哪個資料夾
-  // 再一層層點進去。最近作業永遠在，而且會標出每一筆現在待在哪裡。
+  // 首頁的「待處理」：只列還沒真正歸檔的東西——收件匣（folder_id 空）、
+  // 暫存區（role='staging'），以及 AI 剛自動歸類、使用者還沒確認過的（
+  // auto_filed_at 有值且不是 'failed'；'failed' 代表 AI 判斷不出來，那筆
+  // 還留在暫存區，已經被上面那條件涵蓋，不用重複判斷）。
+  //
+  // 2026-08-07 曾經改成「不分資料夾、列最後動過的 25 筆」（不管有沒有歸檔），
+  // 想解決「收件匣空了整個面板就消失」的問題；但這樣一來，只要使用者剛剛
+  // 手動搬移／編輯過某筆已經歸檔好的記事，它就會佔著清單最上面的位置，
+  // 早就處理完的東西反而擠掉真正還沒處理的（2026-08-09 實際回報）。改回
+  // 只列「還需要你看一眼」的東西，AI 自動歸類但還沒確認的一樣列進來——
+  // 那正是設計 🤖 標記／confirm-filing 的目的，不能讓這批東西完全沒有
+  // 入口，只能靠使用者剛好逛進那個資料夾才會發現。
   if (path === "/entries/recent" && method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") || 25) || 25, 100);
     const { results } = await db.prepare(
@@ -600,6 +608,9 @@ async function handleApi(request, env, url) {
               f.name AS folder_name, f.type AS folder_type, COALESCE(f.role, '') AS folder_role,
               (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
        FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+       WHERE e.folder_id IS NULL
+          OR f.role = 'staging'
+          OR (COALESCE(e.auto_filed_at, '') <> '' AND e.auto_filed_at <> 'failed')
        ORDER BY COALESCE(NULLIF(e.updated_at, ''), e.created_at) DESC, e.id DESC
        LIMIT ?`
     ).bind(limit).all();
