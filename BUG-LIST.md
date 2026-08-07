@@ -155,6 +155,35 @@ Cloudflare Dashboard、還要重新部署，一般使用者碰不到。回報是
 
 ---
 
+## E. 2026-08-09 追加：改成 1 天後，「最近作業」最上面還是一堆舊資料〔真正的 bug〕
+
+回報附了截圖：把天數改成 1 之後，「最近作業」清單最上面還是看得到 `07-30`
+這種一週前的日期，夾在一堆 `08-06`／`08-05` 中間，順序看起來完全沒照時間排。
+
+- **根因**：`/entries/recent` 是照 `COALESCE(updated_at, created_at) DESC` 排的，
+  但 D 節那次的自動歸類 `UPDATE` 語句把 `folder_id`／`auto_filed_at`／
+  `auto_filed_reason` 一起連 `updated_at` 也蓋成「現在」。天數一改小，排程（或按
+  「現在就跑一次」）馬上把一大批放在暫存區好幾天、使用者早就沒再碰的舊記事
+  全部掃過一輪，這些記事的 `updated_at` 全部變成剛剛，於是**集體跳回清單最上面**
+  ——而畫面上顯示的日期是 `created_at`（沒跟著變），兩個資料對不上，看起來就像
+  「排序完全沒在動」。天數設得越小，這個現象越明顯，剛好對上回報的操作順序。
+- **怎麼修**：
+  1. `fieldlog/src/lib/autofile.js`——AI 自動歸類的 `UPDATE` 不再寫 `updated_at`，
+     只動 `folder_id`／`auto_filed_at`／`auto_filed_reason`。有沒有被 AI 動過看
+     `auto_filed_at` 就夠了；`updated_at` 專門留給「使用者真的動過這筆」（編輯、
+     手動搬移、合併…），排程這種背景動作不該冒充成使用者剛剛做的事。
+  2. `fieldlog/public/app.js`——`entryRowHtml()` 新增 `showRecency` 選項：「最近
+     作業」現在顯示的日期改成 `updated_at`（沒有才退回 `created_at`），跟實際
+     排序依據對齊，不會再出現「畫面上的日期跟排序結果對不上」的錯覺。資料夾
+     內頁的筆記清單維持顯示 `created_at`（那邊本來就是照 id／建立順序排的，
+     不受影響）。
+
+新增測試：`tests/fieldlog-staging-autofile.test.js` 加了一項直接斷言自動歸類前後
+`updated_at` 不變；`tests/fieldlog-days-and-folder-sort.test.js` 加了兩項鎖住
+UPDATE 語句與 `entryRowHtml` 的接線。前端版本號 88 → 89。
+
+---
+
 ## C. 已知但這次沒動（要不要處理請指示）
 
 ### C1. ⚠️ `main` 分支的 `fieldlog/` 是舊快照，照它部署會讓隨身記整個退版

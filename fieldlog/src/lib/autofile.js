@@ -239,9 +239,15 @@ export async function autoFileStagedEntries(db, {
 
     const at = stamp();
     const path = paths.get(choice.folderId) || "";
+    // 刻意不寫 updated_at：那是「首頁最近作業」排序用的欄位，意義是「使用者
+    // 最後動過這筆的時間」。AI 自動歸類是背景排程，不是使用者這一刻在做的事——
+    // 如果連帶把 updated_at 蓋成現在，會讓一批好幾天前建立、使用者早就沒再碰
+    // 的舊記事，只因為被排程掃到，就集體跳回「最近作業」最上面，看起來像是
+    // 一堆「舊資料還是排在前面」，而且完全看不出原因（2026-08-09 實際回報）。
+    // 有沒有被 AI 動過，看 auto_filed_at 就夠了，不需要也去動 updated_at。
     await db.prepare(
-      "UPDATE entries SET folder_id = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ? WHERE id = ?"
-    ).bind(choice.folderId, at, choice.reason || "AI 依內容判斷", at, entry.id).run();
+      "UPDATE entries SET folder_id = ?, auto_filed_at = ?, auto_filed_reason = ? WHERE id = ?"
+    ).bind(choice.folderId, at, choice.reason || "AI 依內容判斷", entry.id).run();
     if (typeof logHistory === "function") {
       await logHistory(db, entry.id, choice.folderId, "AI 自動歸類",
         `${entry.title || "（未命名）"} → ${path}；理由：${choice.reason || "未說明"}（放置滿 ${days} 天未分類）`);

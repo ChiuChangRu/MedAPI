@@ -89,9 +89,9 @@ function makeDB({ folders = [], entries = [], attachments = [], settings = {} } 
       if (row) Object.assign(row, { auto_filed_at: "failed", auto_filed_reason: args[0] });
       return { results: [], changes: row ? 1 : 0 };
     }
-    if (q === "UPDATE entries SET folder_id = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ? WHERE id = ?") {
-      const row = tables.entries.find((e) => e.id === args[4]);
-      if (row) Object.assign(row, { folder_id: args[0], auto_filed_at: args[1], auto_filed_reason: args[2], updated_at: args[3] });
+    if (q === "UPDATE entries SET folder_id = ?, auto_filed_at = ?, auto_filed_reason = ? WHERE id = ?") {
+      const row = tables.entries.find((e) => e.id === args[3]);
+      if (row) Object.assign(row, { folder_id: args[0], auto_filed_at: args[1], auto_filed_reason: args[2] });
       return { results: [], changes: row ? 1 : 0 };
     }
 
@@ -272,6 +272,23 @@ test("放滿天數的才歸類，還沒滿的完全不碰", async () => {
   assert.equal(untouched.folder_id, 9, "還沒放滿天數的留在暫存區");
   assert.equal(untouched.auto_filed_at, undefined);
   assert.deepEqual(db.unhandled, [], "不該下出預期外的 SQL");
+});
+
+// 2026-08-09 實際回報：把天數改成 1 天之後，「最近作業」最上面還是看得到
+// 一堆好幾天前建立、使用者早就沒再碰過的舊記事。根因是自動歸類的 UPDATE
+// 連 updated_at 一起蓋成「現在」，而首頁最近作業正是照 updated_at 排序——
+// 排程一跑，被掃到的舊記事全部因為「被 AI 動過」而跳回最上面，跟使用者
+// 期待的「真的最近有在動的東西」完全相反。
+test("AI 自動歸類不改 updated_at——不能因為排程掃過，讓舊記事跳回「最近作業」最上面", async () => {
+  const db = baseDB();
+  const before = db.tables.entries.find((e) => e.id === 201).updated_at;
+  await autoFileStagedEntries(db, {
+    ai: fakeAi(() => '{"folder_id": 2, "reason": "講的是導管標準"}'),
+    days: 4, nowMs: NOW, timestamp: stamp, logHistory,
+  });
+  const after = db.tables.entries.find((e) => e.id === 201);
+  assert.equal(after.updated_at, before, "updated_at 不該被自動歸類動到");
+  assert.match(after.auto_filed_at, /^\d{4}-\d{2}-\d{2} /, "有沒有被 AI 動過看 auto_filed_at 就夠了");
 });
 
 test("歸完會寫一筆歷程，說清楚搬去哪、為什麼", async () => {

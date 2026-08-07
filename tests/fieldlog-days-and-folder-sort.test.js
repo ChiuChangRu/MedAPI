@@ -114,3 +114,23 @@ test("(b) 切換排序時，開著的資料夾內頁要跟著重新排列，不�
   assert.match(setFolderSort, /renderFolders\(\);/);
   assert.match(setFolderSort, /if \(CURRENT_FOLDER\) renderChildFolders\(CURRENT_FOLDER\.id\);/);
 });
+
+// ---------- (c) 2026-08-09 回報：設定天數後最近作業還是一堆舊資料在最上面 ----------
+
+test("(c) AI 自動歸類的 UPDATE 不寫 updated_at，不會讓舊記事因為被排程掃到就跳回最近作業最上面", async () => {
+  const autofile = await read("../fieldlog/src/lib/autofile.js");
+  // SQL 字串本身不含 updated_at，且 .bind() 只傳 4 個參數（folder_id／auto_filed_at／
+  // auto_filed_reason／id）——只檢查註解文字裡有沒有提到 updated_at 沒有意義
+  // （註解本來就在解釋「為什麼不寫」，當然會提到這個詞），所以直接鎖 SQL 與 bind。
+  assert.match(autofile, /UPDATE entries SET folder_id = \?, auto_filed_at = \?, auto_filed_reason = \? WHERE id = \?/);
+  assert.match(autofile, /\.bind\(choice\.folderId, at, choice\.reason \|\| "AI 依內容判斷", entry\.id\)\.run\(\);/);
+});
+
+test("(c) 「最近作業」顯示的日期要跟排序依據一致（updated_at 優先），不是永遠顯示 created_at", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  assert.match(app, /function entryRowHtml\(e, \{ showRecency = false \} = \{\}\)/);
+  const fn = app.match(/function entryRowHtml[\s\S]*?\n\}/)[0];
+  assert.match(fn, /showRecency\s*\n?\s*\?\s*`[\s\S]*?e\.updated_at \|\| e\.created_at/, "showRecency 開著時要顯示 updated_at（沒有才退回 created_at）");
+  const loadRecent = app.match(/async function loadRecent\(\)[\s\S]*?\n\}/)[0];
+  assert.match(loadRecent, /entryRowHtml\(e, \{ showRecency: true \}\)/, "最近作業列表要帶 showRecency，跟它實際的排序依據（updated_at）對上");
+});
