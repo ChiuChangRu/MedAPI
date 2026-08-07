@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "87";
+const APP_VERSION = "88";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -94,6 +94,15 @@ let FOCUSED_FILE = null;
 // 暫存區資料夾的 id 與自動歸類的天數，由 /api/auto-file/status 帶回來
 let STAGING_FOLDER_ID = null;
 let AUTO_FILE_DAYS = 4;
+// 跟後端 fieldlog/src/lib/autofile.js 的 AUTO_FILE_DAYS_MIN/MAX 一致——純防呆範圍，
+// 不是業務規則，使用者在這個範圍內想設幾天都可以
+const AUTO_FILE_DAYS_MIN = 1;
+const AUTO_FILE_DAYS_MAX = 30;
+
+// 資料夾排序模式：套用在每一層——首頁根層、每一層子資料夾、搬移選擇器、
+// 採集畫面的資料夾 chip，全部共用同一個開關，不用每層各記各的。
+// "name"＝原本的規則（進行中優先／依類型分組／再依名稱）；"time"＝新到舊。
+let FOLDER_SORT = localStorage.getItem("fieldlog_folder_sort") || "name";
 
 function compareFolders(a, b) {
   // 暫存區永遠排第一：它裝的是「還沒分類、需要你回頭看一眼」的東西，
@@ -108,6 +117,19 @@ function compareFolders(a, b) {
     numeric: true,
     sensitivity: "base",
   });
+}
+
+/** 新到舊：暫存區一樣置頂，其餘依建立時間；同時間建立的用 id 當第二鍵，順序才穩定 */
+function compareFoldersByTime(a, b) {
+  const staging = Number(b.role === "staging") - Number(a.role === "staging");
+  if (staging) return staging;
+  return String(b.created_at || "").localeCompare(String(a.created_at || ""))
+    || Number(b.id) - Number(a.id);
+}
+
+/** 目前排序模式對應的比較函式——資料夾清單無論在哪一層都呼叫這支，不要直接寫死 compareFolders */
+function folderComparator() {
+  return FOLDER_SORT === "time" ? compareFoldersByTime : compareFolders;
 }
 
 // ---------- API ----------
@@ -466,10 +488,11 @@ async function loadFolders() {
 
 function renderFolders() {
   const wrap = $("folder-list");
-  const rootFolders = FOLDERS.filter((f) => !f.parent_id).sort(compareFolders);
+  const rootFolders = FOLDERS.filter((f) => !f.parent_id).sort(folderComparator());
   wrap.className = `folder-list ${FOLDER_VIEW === "grid" ? "grid-view" : "list-view"}`;
   $("btn-folder-grid")?.classList.toggle("active", FOLDER_VIEW === "grid");
   $("btn-folder-list")?.classList.toggle("active", FOLDER_VIEW === "list");
+  syncFolderSortButtons();
   if (!rootFolders.length) {
     wrap.innerHTML = `<p class="sub">還沒有資料夾。採集會先進收件匣；建了資料夾之後可以歸檔進去。</p>`;
     return;
@@ -653,6 +676,39 @@ async function loadRecent() {
   loadStagingStatus();
 }
 
+// 天數不是寫死的規則：這個輸入框讓使用者自己決定「放幾天沒人動才交給 AI」，
+// 兩種狀態（已經全部歸類 / 還有東西在等）共用同一段，不用寫兩次
+function autoFileDaysControlHtml(days) {
+  return `<span class="auto-file-days-control">
+    放滿 <input type="number" id="auto-file-days-input" min="${AUTO_FILE_DAYS_MIN}" max="${AUTO_FILE_DAYS_MAX}" value="${days}" /> 天沒人動
+    <button class="btn small" id="btn-save-auto-file-days" type="button">套用</button>
+  </span>`;
+}
+
+function bindAutoFileDaysControl() {
+  const btn = $("btn-save-auto-file-days");
+  const input = $("auto-file-days-input");
+  if (!btn || !input) return;
+  btn.onclick = async () => {
+    const days = Number(input.value);
+    if (!Number.isFinite(days) || days < AUTO_FILE_DAYS_MIN || days > AUTO_FILE_DAYS_MAX) {
+      showToast(`天數要在 ${AUTO_FILE_DAYS_MIN}–${AUTO_FILE_DAYS_MAX} 之間`);
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const result = await api("/settings/auto-file-days", { method: "PUT", body: JSON.stringify({ days }) });
+      AUTO_FILE_DAYS = result.days;
+      showToast(`已套用：放滿 ${result.days} 天由 AI 自動歸類`);
+      await loadStagingStatus();
+    } catch (err) {
+      showToast("設定失敗：" + err.message);
+      btn.disabled = false;
+    }
+  };
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") btn.click(); });
+}
+
 // 首頁那一行狀態：暫存區還有幾筆沒分類、幾天後會自動歸類、可以現在就跑一次
 async function loadStagingStatus() {
   const box = $("staging-status");
@@ -662,12 +718,14 @@ async function loadStagingStatus() {
     AUTO_FILE_DAYS = status.days;
     STAGING_FOLDER_ID = status.staging_folder_id;
     if (!status.waiting) {
-      box.innerHTML = `全部都歸類好了。來不及分類時可以先丟「⏳ 暫存區」，${status.days} 天後系統會用 AI 自動歸類並標記。`;
+      box.innerHTML = `全部都歸類好了。來不及分類時可以先丟「⏳ 暫存區」，${autoFileDaysControlHtml(status.days)}系統會用 AI 自動歸類並標記。`;
+      bindAutoFileDaysControl();
       return;
     }
     const dueBit = status.due_now ? `其中 ${status.due_now} 筆已經可以自動歸類。` : "";
-    box.innerHTML = `⏳ 暫存區還有 <strong>${status.waiting}</strong> 筆沒分類（放滿 ${status.days} 天由 AI 自動歸類並標 🤖）。${esc(dueBit)}
+    box.innerHTML = `⏳ 暫存區還有 <strong>${status.waiting}</strong> 筆沒分類（${autoFileDaysControlHtml(status.days)}由 AI 自動歸類並標 🤖）。${esc(dueBit)}
       ${status.ai_enabled ? `<button class="btn small" id="btn-auto-file-now" type="button">現在就跑一次</button>` : "（尚未啟用 Workers AI，暫時只能手動歸類）"}`;
+    bindAutoFileDaysControl();
     const runBtn = $("btn-auto-file-now");
     if (runBtn) runBtn.onclick = () => runAutoFileNow(runBtn);
   } catch {
@@ -816,7 +874,7 @@ function folderTreeOrdered() {
   const out = [];
   const seen = new Set();
   const walk = (parentKey, depth) => {
-    for (const f of (byParent.get(parentKey) || []).slice().sort(compareFolders)) {
+    for (const f of (byParent.get(parentKey) || []).slice().sort(folderComparator())) {
       if (seen.has(f.id)) continue; // parent_id 有環時不會無限遞迴
       seen.add(f.id);
       out.push({ folder: f, depth });
@@ -1102,7 +1160,7 @@ function syncSubfolderButton() {
 function renderChildFolders(parentId) {
   const children = FOLDERS
     .filter((f) => Number(f.parent_id) === Number(parentId))
-    .sort(compareFolders);
+    .sort(folderComparator());
   const wrap = $("folder-children");
   wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${children.map((f) => `
     <div class="child-folder-card" data-id="${f.id}">
@@ -1172,6 +1230,35 @@ function syncFileSortButton() {
     : "目前新到舊（最新的檔案排最上面），點一下改成依檔名排序";
 }
 
+/**
+ * 資料夾排序：不分層級，一個開關同時管首頁根層跟每一層子資料夾。
+ * 不做「每層各自記自己的排序」——那樣使用者切一次只影響眼前這層，別的層還是
+ * 舊排序，反而搞不清楚哪層改了、哪層沒改。
+ */
+function setFolderSort(sort) {
+  FOLDER_SORT = sort;
+  localStorage.setItem("fieldlog_folder_sort", sort);
+  renderFolders();
+  if (CURRENT_FOLDER) renderChildFolders(CURRENT_FOLDER.id);
+}
+
+function toggleFolderSort() {
+  setFolderSort(FOLDER_SORT === "time" ? "name" : "time");
+}
+
+function syncFolderSortButtons() {
+  const label = FOLDER_SORT === "time" ? "🆕 新到舊" : "🔤 名稱排序";
+  const title = FOLDER_SORT === "time"
+    ? "資料夾目前新到舊排序（首頁與每一層子資料夾都適用），點一下改成依名稱排序"
+    : "資料夾目前依名稱排序（首頁與每一層子資料夾都適用），點一下改成新到舊排序";
+  for (const id of ["btn-folder-sort-home", "btn-folder-sort-inner"]) {
+    const button = $(id);
+    if (!button) continue;
+    button.textContent = label;
+    button.title = title;
+  }
+}
+
 // ---------- 資料夾內頁 ----------
 async function openFolder(id) {
   CURRENT_FOLDER = FOLDERS.find((f) => f.id === id);
@@ -1185,6 +1272,7 @@ async function openFolder(id) {
   $("btn-inner-grid").classList.toggle("active", INNER_FOLDER_VIEW === "grid");
   $("btn-inner-list").classList.toggle("active", INNER_FOLDER_VIEW === "list");
   syncFileSortButton();
+  syncFolderSortButtons();
   syncSubfolderButton();
   renderChildFolders(id);
   await runLegacyCleanupOnce();
@@ -3522,6 +3610,9 @@ function init() {
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
   $("btn-inner-list").onclick = () => setInnerFolderView("list");
   $("btn-file-sort").onclick = () => setFileSort(FILE_SORT === "name" ? "new" : "name");
+  $("btn-folder-sort-home").onclick = toggleFolderSort;
+  $("btn-folder-sort-inner").onclick = toggleFolderSort;
+  syncFolderSortButtons();
   $("merge-folder-cancel").onclick = closeMergeFolderDialog;
   $("merge-folder-confirm").onclick = () => {
     const targetId = Number($("merge-folder-target").value);

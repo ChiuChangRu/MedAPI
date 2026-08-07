@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  AUTO_FILE_DAYS_MAX,
+  AUTO_FILE_DAYS_MIN,
   AUTO_FILE_MODEL,
   DEFAULT_AUTO_FILE_DAYS,
   STAGING_FOLDER_ROLE,
@@ -22,6 +24,8 @@ import {
   ensureStagingFolder,
   folderPaths,
   parseChoice,
+  resolveAutoFileDays,
+  saveAutoFileDays,
   summariseEntry,
 } from "../fieldlog/src/lib/autofile.js";
 
@@ -29,14 +33,31 @@ const NOW = Date.UTC(2026, 7, 7, 12, 0, 0); // 2026-08-07 12:00Z
 const stamp = () => new Date(NOW).toISOString().replace("T", " ").slice(0, 19) + "Z";
 const daysAgo = (n) => new Date(NOW - n * 86400000).toISOString().replace("T", " ").slice(0, 19) + "Z";
 
-function makeDB({ folders = [], entries = [], attachments = [] } = {}) {
+function makeDB({ folders = [], entries = [], attachments = [], settings = {} } = {}) {
   const tables = { folders: [...folders], entries: [...entries], attachments: [...attachments], history: [] };
+  const settingsRows = new Map(Object.entries(settings));
   const nextId = { folders: 100, entries: 200, history: 1 };
   const unhandled = [];
 
   function exec(sql, args) {
     const q = sql.replace(/\s+/g, " ").trim();
     const none = { results: [], changes: 0 };
+
+    // resolveAutoFileDays／saveAutoFileDays 用的 key-value 設定（見 lib/settings.js）
+    if (q === "SELECT value FROM settings WHERE key = ?") {
+      return { results: settingsRows.has(args[0]) ? [{ value: settingsRows.get(args[0]) }] : [] };
+    }
+    if (q === "SELECT key FROM settings WHERE key = ?") {
+      return { results: settingsRows.has(args[0]) ? [{ key: args[0] }] : [] };
+    }
+    if (q === "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)") {
+      settingsRows.set(args[0], args[1]);
+      return { results: [], changes: 1 };
+    }
+    if (q === "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?") {
+      settingsRows.set(args[2], args[0]);
+      return { results: [], changes: 1 };
+    }
 
     if (q === "SELECT * FROM folders WHERE role = ? LIMIT 1") {
       const row = tables.folders.find((f) => f.role === args[0]);
@@ -112,6 +133,48 @@ test("autoFileDays：預設四天，可用環境變數調整，並夾在 1–30 
   assert.equal(autoFileDays({ AUTO_FILE_DAYS: "0" }), DEFAULT_AUTO_FILE_DAYS);
   assert.equal(autoFileDays({ AUTO_FILE_DAYS: "abc" }), DEFAULT_AUTO_FILE_DAYS);
   assert.equal(autoFileDays({ AUTO_FILE_DAYS: "999" }), 30);
+});
+
+// ---------- 使用者自己調天數（不是寫死的規則）----------
+
+test("resolveAutoFileDays：沒設定過就退回環境變數／預設值", async () => {
+  const db = makeDB();
+  assert.equal(await resolveAutoFileDays(db, {}), DEFAULT_AUTO_FILE_DAYS);
+  assert.equal(await resolveAutoFileDays(db, { AUTO_FILE_DAYS: "6" }), 6);
+});
+
+test("resolveAutoFileDays：使用者設定過就用那個值，環境變數退居次位", async () => {
+  const db = makeDB({ settings: { auto_file_days: "2" } });
+  assert.equal(await resolveAutoFileDays(db, { AUTO_FILE_DAYS: "6" }), 2,
+    "使用者在畫面上設定過，就不該再被環境變數蓋過去");
+});
+
+test("saveAutoFileDays：夾在 1–30 之間，寫壞的值退回預設值而不是存進一個荒謬的數字", async () => {
+  const db = makeDB();
+  assert.equal(await saveAutoFileDays(db, 2, "t"), 2);
+  assert.equal(await resolveAutoFileDays(db, {}), 2);
+
+  assert.equal(await saveAutoFileDays(db, 999, "t"), AUTO_FILE_DAYS_MAX);
+  assert.equal(await saveAutoFileDays(db, 0, "t"), DEFAULT_AUTO_FILE_DAYS);
+  assert.equal(await saveAutoFileDays(db, -5, "t"), DEFAULT_AUTO_FILE_DAYS);
+  assert.equal(await saveAutoFileDays(db, "abc", "t"), DEFAULT_AUTO_FILE_DAYS);
+});
+
+test("saveAutoFileDays：改第二次是更新同一個 key，不是疊加出一列新的", async () => {
+  const db = makeDB();
+  await saveAutoFileDays(db, 3, "t1");
+  await saveAutoFileDays(db, AUTO_FILE_DAYS_MIN, "t2");
+  assert.equal(await resolveAutoFileDays(db, {}), AUTO_FILE_DAYS_MIN);
+});
+
+test("自動歸類真的會用使用者設定的天數，不是還在用環境變數", async () => {
+  const db = baseDB();
+  await saveAutoFileDays(db, 1, stamp());
+  const days = await resolveAutoFileDays(db, { AUTO_FILE_DAYS: "30" });
+  const ai = fakeAi(() => '{"folder_id": 2, "reason": "x"}');
+  // baseDB 裡兩筆記事分別是 6 天前與 1 天前建立的；設定成 1 天後，兩筆都該到期
+  const result = await autoFileStagedEntries(db, { ai, days, nowMs: NOW, timestamp: stamp, logHistory });
+  assert.equal(result.filed, 2);
 });
 
 test("cutoffTimestamp 與 worker 的 now() 同格式，字串比大小就等於比時間", () => {
