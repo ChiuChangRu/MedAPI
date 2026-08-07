@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=90" />
+<link rel="stylesheet" href="style.css?v=91" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -41,12 +41,15 @@
         <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
       </div>
 
-      <!-- 最近作業：取代原本「收件匣」面板。收件匣空了就整個消失，於是剛剛在忙
-           的那幾筆在首頁沒有入口；這一區永遠在，而且會標出每筆現在待在哪個資料夾。 -->
+      <!-- 待處理：只列還沒真正歸檔的東西（收件匣＋暫存區＋AI 剛歸類還沒確認的），
+           不是「最近動過的全部東西」。2026-08-09 從「最近作業」改回這個範圍——
+           原本改成「不分資料夾，列最後動過的」是想解決「收件匣空了整個面板就
+           消失」，但這樣一來，剛手動搬移／編輯過的已歸檔記事會佔著最上面的位置，
+           擠掉真正還沒處理的，等於清單失去「代辦」的意義。 -->
       <section class="panel home-inbox-panel" id="inbox-panel">
         <div class="folders-toolbar">
-          <h2>🕒 最近作業 <span id="inbox-count" class="count"></span></h2>
-          <div class="folder-view-toggle" aria-label="最近作業顯示模式">
+          <h2>📥 待處理 <span id="inbox-count" class="count"></span></h2>
+          <div class="folder-view-toggle" aria-label="待處理顯示模式">
             <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">▦ 卡片</button>
             <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
           </div>
@@ -343,11 +346,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=90"></script>
+<script src="app.js?v=91"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=90"></script>
+<script src="pdf-editor.js?v=91"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=90"></script>
+<script src="richtext-editor.js?v=91"></script>
 </body>
 </html>

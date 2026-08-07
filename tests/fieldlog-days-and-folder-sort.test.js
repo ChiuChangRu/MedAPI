@@ -160,3 +160,26 @@ test("(d) 天數講成人看得懂的話，0 不會顯示成「放滿 0 天」",
   const usages = [...app.matchAll(/autoFileDaysPhrase\(/g)];
   assert.ok(usages.length >= 4, "快速備忘標題、暫存區歸檔說明、採集 chip、套用後的 toast 都要用這支");
 });
+
+// ---------- (e) 2026-08-09 回報：套用 0 天後，待處理清單最上面還是一堆已歸檔的舊資料 ----------
+
+test("(e) 「最近作業」改回只列還沒真正歸檔的：收件匣、暫存區、AI 待確認的", async () => {
+  const worker = await read("../fieldlog/src/worker.js");
+  const route = worker.match(/if \(path === "\/entries\/recent" && method === "GET"\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(route, /WHERE e\.folder_id IS NULL/, "收件匣（folder_id 空）要在裡面");
+  assert.match(route, /f\.role = 'staging'/, "暫存區要在裡面");
+  assert.match(route, /COALESCE\(e\.auto_filed_at, ''\) <> '' AND e\.auto_filed_at <> 'failed'/,
+    "AI 剛歸類、使用者還沒確認的也要在裡面，不然 🤖 標記／confirm-filing 那套審查機制會完全沒有入口");
+});
+
+test("(e) 首頁面板改名為「待處理」，不再叫「最近作業」（避免使用者以為它列的是全部最近動作）", async () => {
+  const html = await read("../fieldlog/public/index.html");
+  assert.match(html, /📥 待處理/);
+  assert.doesNotMatch(html, /🕒 最近作業/, "舊名字會讓人誤以為這裡列的是不分歸檔狀態的全部最近動作");
+});
+
+test("(e) 待處理清單全部清空時的訊息要講「都處理完了」，不是誤導成「一筆記事都沒有」", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const loadRecent = app.match(/async function loadRecent\(\)[\s\S]*?\n\}/)[0];
+  assert.match(loadRecent, /目前沒有還沒歸檔的東西/);
+});
