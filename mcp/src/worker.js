@@ -6,16 +6,25 @@
  *   - 隨身記 fieldlog（共綁同一個 D1，只下 SELECT）
  *   - Medtec 參展系統（共綁同一個 D1 ＋ runtime 抓公開的 exhibitors.json）
  *
- * 鐵律：預設唯讀——程式碼裡絕大多數是 SELECT 與 fetch。例外只有四支
+ * 鐵律：預設唯讀——程式碼裡絕大多數是 SELECT 與 fetch。例外是四支
  * 「只能新增」的工具：create_fieldlog_entry（INSERT 一筆記事）、
  * create_relation（INSERT 一筆關聯）、add_synonym（INSERT 一列同義詞對照）、
  * create_fieldlog_attachment（上傳一份新附件——這支不是直接 INSERT D1，是
  * 透過 FIELDLOG Service Binding 打 fieldlog 自己的 POST /api/upload，跟
- * App 上傳走同一條路徑，一樣只會新增一筆 attachments／一個 R2 物件）。
- * 程式碼裡沒有任何 UPDATE／DELETE 語句碰得到 entries／attachments／folders／
- * relations／synonyms。改內容、刪東西、wiki 收錄一律要回各自的前台／git
- * 人審，MCP 這邊永遠做不到。（外部來源的同步更新走 fieldlog worker 內部的
- * cron，不經過 MCP——MCP 對既有資料永遠沒有修改權。）
+ * App 上傳走同一條路徑，一樣只會新增一筆 attachments／一個 R2 物件）；
+ * 以及四支限定在「資料夾結構整理」範圍內的 UPDATE／DELETE 例外
+ * （2026-08-08 分類重整新增，見 mcp/README.md「資料夾整理工具」一節）：
+ * update_folder（改名／設定色系分類 category／手動排序 sort_order）、
+ * move_folder（搬到別的上層資料夾）、move_entry（把一筆記事搬到別的資料夾）、
+ * delete_folder（刪除資料夾——底下的記事與子資料夾會自動搬到上一層，不會
+ * 遺失，跟 App 裡的刪除資料夾按鈕行為一致）。這四支全部透過 FIELDLOG
+ * Service Binding 打 fieldlog 自己的 PUT／DELETE /api/folders、/api/entries，
+ * 重用同一套已經上線、有巢狀深度檢查與歷史紀錄的邏輯，MCP 這邊沒有另外
+ * 寫一份會分歧的版本。除了資料夾結構（名稱／分類／排序／所屬）跟記事的
+ * 歸檔位置之外，entries／attachments／relations／synonyms 的實際內容
+ * 依然沒有任何 UPDATE／DELETE 語句碰得到——改內容、刪記事、wiki 收錄一律
+ * 要回各自的前台／git 人審。（外部來源的同步更新走 fieldlog worker 內部的
+ * cron，不經過 MCP。）
  *
  * 驗證：POST /mcp 需帶 ?pin=（或 x-pin header／Authorization: Bearer），
  * 與 MCP_PIN（Secret）比對，未設定時一律拒絕（fail-closed）。
@@ -1378,6 +1387,140 @@ const TOOLS = [
       return `已新增同義詞組：「${canonical}」←→ ${[...aliases, ...codes].join("、")}。下一次 search_* 查詢立刻生效。`;
     },
   },
+  // ---------- 資料夾整理工具（2026-08-08 分類重整新增）----------
+  // 以下四支是 MCP 第一次拿到 UPDATE／DELETE 能力，範圍限定在「資料夾結構」
+  // 與「記事的歸檔位置」：改資料夾名稱／色系分類／排序、搬資料夾、搬記事、
+  // 刪資料夾。entries／attachments 的實際內容（標題、內文、附件）、
+  // relations、synonyms 完全不受影響，一樣沒有任何 UPDATE／DELETE 碰得到。
+  // 全部透過 FIELDLOG Service Binding 打 fieldlog 自己既有的 PUT／DELETE
+  // /api/folders、/api/entries，重用同一套已經上線、有巢狀深度檢查／防
+  // 循環／歷史紀錄的邏輯，這裡不重寫一份會分歧的版本。
+  {
+    name: "update_folder",
+    description: "更新一個既有資料夾的名稱、色系分類（category）或手動排序（sort_order）——只能改這三項，不會動到 status／type，也不會動到 parent_id（要搬到別的上層資料夾請用 move_folder）或底下任何記事／附件的內容。category 是「色系分組」，用來讓資料夾清單依性質分組上色，跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，不要混淆：一個資料夾同時有 type 和 category，互不覆蓋。category 只能是 project（專案開發）／qa_reg（品保與法規）／literature（文獻與知識庫）／training（教育訓練）／admin（行政與廠商）／misc（暫存／其他）其中之一，留空字串代表清除分類（未分類）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "資料夾 id（list_fieldlog_folders 查到的編號）" },
+        name: { type: "string", description: "選填：新名稱" },
+        category: { type: "string", enum: ["project", "qa_reg", "literature", "training", "admin", "misc", ""], description: "選填：色系分類；空字串代表清除分類" },
+        sort_order: { type: "number", description: "選填：同層級內的手動排序，數字小的排前面" },
+      },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      if (args.name === undefined && args.category === undefined && args.sort_order === undefined) {
+        throw new Error("至少要給 name／category／sort_order 其中一項，不然沒有東西可以更新");
+      }
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const payload = {};
+      if (args.name !== undefined) payload.name = String(args.name);
+      if (args.category !== undefined) payload.category = String(args.category);
+      if (args.sort_order !== undefined) payload.sort_order = args.sort_order === null ? null : Number(args.sort_order);
+      const u = new URL(`https://fieldlog.internal/api/folders/${id}`);
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString(), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`更新失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
+      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name, category, sort_order FROM folders WHERE id = ?").bind(id).first();
+      if (!folder) throw new Error(`找不到資料夾 ${id}——先用 list_fieldlog_folders 查正確的 id`);
+      return `已更新 [folder ${id}] ${folder.name}｜category=${folder.category || "（未分類）"}｜sort_order=${folder.sort_order ?? "（未設定）"}`;
+    },
+  },
+  {
+    name: "move_folder",
+    description: "把一個資料夾搬到另一個資料夾底下，或搬回最上層。會擋掉搬到自己或自己的子孫底下、以及搬完會超過四層知識架構上限的情況，錯誤訊息會直接說明原因。只改 parent_id，不影響資料夾裡的記事或附件內容，也不影響 category／sort_order。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "要搬移的資料夾 id" },
+        parent_id: { type: "number", description: "搬到這個資料夾底下；填 0 代表搬回最上層" },
+      },
+      required: ["id", "parent_id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      if (args.parent_id === undefined || args.parent_id === null || args.parent_id === "") {
+        throw new Error("parent_id 為必填（要搬回最上層請填 0）");
+      }
+      const parentId = Number(args.parent_id) || 0;
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const u = new URL(`https://fieldlog.internal/api/folders/${id}`);
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString(), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parent_id: parentId || null }),
+      });
+      if (!res.ok) throw new Error(`搬移失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
+      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name, parent_id FROM folders WHERE id = ?").bind(id).first();
+      if (!folder) throw new Error(`找不到資料夾 ${id}——先用 list_fieldlog_folders 查正確的 id`);
+      return `已搬移 [folder ${id}] ${folder.name} → ${folder.parent_id ? `folder ${folder.parent_id}` : "最上層"}。`;
+    },
+  },
+  {
+    name: "move_entry",
+    description: "把一筆記事搬到另一個資料夾，或搬回收件匣（不歸檔）。只改記事的歸檔位置，不動標題、內文或附件。用在修正歸檔錯誤的記事——不管是 AI 自動歸類猜錯，還是原本人工歸錯資料夾。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "要搬移的記事 entry id" },
+        folder_id: { type: "number", description: "搬到這個資料夾；填 0 代表搬回收件匣（不歸檔）" },
+      },
+      required: ["id", "folder_id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      if (args.folder_id === undefined || args.folder_id === null || args.folder_id === "") {
+        throw new Error("folder_id 為必填（搬回收件匣請填 0）");
+      }
+      const folderId = Number(args.folder_id) || 0;
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const u = new URL(`https://fieldlog.internal/api/entries/${id}`);
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString(), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ folder_id: folderId || null }),
+      });
+      if (!res.ok) throw new Error(`搬移失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
+      const entry = await env.DB_FIELDLOG.prepare("SELECT id, title, folder_id FROM entries WHERE id = ?").bind(id).first();
+      if (!entry) throw new Error(`找不到記事 ${id}——先用 search_fieldlog／list_fieldlog_entries 查正確的 id`);
+      return `已搬移 [entry ${id}] ${entry.title || "（未命名）"} → ${entry.folder_id ? `folder ${entry.folder_id}` : "收件匣"}。`;
+    },
+  },
+  {
+    name: "delete_folder",
+    description: "刪除一個資料夾。不會遺失任何資料——底下的記事會搬到上一層資料夾（最上層的話搬回收件匣），子資料夾也會跟著上移一層，跟 App 裡刪除資料夾按鈕的行為完全一樣。用在清掉重複或已淨空的資料夾（例如合併後留下的空殼）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "要刪除的資料夾 id" },
+      },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name FROM folders WHERE id = ?").bind(id).first();
+      if (!folder) throw new Error(`找不到資料夾 ${id}——先用 list_fieldlog_folders 查正確的 id`);
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const u = new URL(`https://fieldlog.internal/api/folders/${id}`);
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString(), { method: "DELETE" });
+      if (!res.ok) throw new Error(`刪除失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
+      const payload = await res.json().catch(() => ({}));
+      const moved = Number(payload.moved || 0);
+      return `已刪除 [folder ${id}] ${folder.name}${moved ? `，${moved} 筆記事已搬到上一層／收件匣` : "（底下沒有記事）"}。`;
+    },
+  },
   {
     name: "get_fieldlog_image",
     description: "讀取隨身記照片附件的『圖片本身』（不是擷取文字），讓 Claude 直接看圖判讀——用在斷面形貌、外觀不良、塗層剝離、設備現場照這類必須以視覺判斷的場景。型錄、文件、白板照片要查『內容』請優先用 get_fieldlog_attachment 讀擷取文字（省 token 也更準）。id 用 search_fieldlog／list_attachments／get_fieldlog_entry 查到的 attachment id。僅支援 4MB 以內的 JPEG/PNG/GIF/WebP（HEIC 不支援）。邊長超過 1568px 的照片會自動等比縮圖再回傳（手機拍照常見的 3000-4000px 若不縮圖，單張可能吃掉上萬 token）。第一次使用前建議先呼叫 image_probe 確認目前 client 支援 MCP 圖片顯示。",
@@ -1449,6 +1592,54 @@ const TOOLS = [
     },
   },
   {
+    name: "get_fieldlog_image_base64",
+    description: "讀取隨身記照片附件的原始位元組，以純文字（base64）回傳。跟 get_fieldlog_image 的差別：那支轉成 MCP ImageContent 給 Claude『用眼睛看』，模型收到的是解碼後的圖，沒辦法把 base64 字元原樣讀出來複製；這支回傳 type:text，Claude 才真的拿得到那串字元，用在組一份內嵌照片的 HTML 報告（<img src=\"data:{mime};base64,{data}\">），或需要重新上傳／核對位元組是否一致的場景。日常判讀照片內容請優先用 get_fieldlog_image（省 token，也不會把一大串 base64 洗進對話紀錄）。僅支援 4MB 以內的 JPEG/PNG/GIF/WebP（跟 get_fieldlog_image 同一個上限），刻意不做自動縮圖——這支要的就是原始位元組，縮圖會讓位元組對不起來。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "attachment id（search_fieldlog／list_attachments／get_fieldlog_entry 查到的編號）" },
+      },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const a = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+      if (!a) throw new Error(`找不到附件 ${id}——請先用 search_fieldlog 或 list_attachments 查編號`);
+      const mime = String(a.mime || "").toLowerCase().split(";")[0].trim();
+      if (!mime.startsWith("image/")) {
+        throw new Error(`附件 ${id}（${a.filename}）不是圖片（${a.mime || "未知類型"}）——文件內容請改用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      const SUPPORTED_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      if (!SUPPORTED_IMAGE_MIMES.includes(mime)) {
+        throw new Error(`附件 ${id} 的格式 ${mime} 不在支援清單（JPEG/PNG/GIF/WebP）內——HEIC 等格式請在手機端以 JPEG 重傳，或用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      const INLINE_CAP = 4 * 1024 * 1024;
+      const size = Number(a.size || 0);
+      if (size > INLINE_CAP) {
+        throw new Error(`附件 ${id}（${a.filename}）為 ${(size / 1024 / 1024).toFixed(1)}MB，超過 inline 上限 4MB——請在隨身記 App 壓縮後重傳，或改用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const u = new URL(`https://fieldlog.internal/api/attachments/${id}/raw`);
+      u.searchParams.set("mode", "inline");
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString());
+      if (!res.ok) {
+        const hint = res.status === 404 ? "（也可能是 fieldlog 部署版本過舊，還沒有 /attachments/:id/raw 端點——commit 5c784dd 之後才有）" : "";
+        throw new Error(`讀取原始檔失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}${hint}`);
+      }
+      const payload = await res.json();
+      if (!payload || !payload.data) throw new Error("raw 端點回應缺少 base64 資料——fieldlog 部署版本可能過舊");
+      const outMime = payload.mime_type || mime;
+      return {
+        content: [
+          { type: "text", text: payload.data },
+          { type: "text", text: `↑ 純 base64（不含任何前綴），複製時只取這一段，不要連這段說明一起複製。檔名：${a.filename}｜mime：${outMime}｜大小：${(Number(payload.size_bytes || size) / 1024).toFixed(0)}KB｜base64 長度：${payload.data.length} 字元` },
+        ],
+      };
+    },
+  },
+  {
     name: "image_probe",
     description: "診斷用：回傳一張內建的 96×96 測試圖（四象限色塊），驗證目前 client（claude.ai 等）是否支援顯示 MCP 圖片內容。Claude 若能正確說出四個色塊的顏色與位置，代表圖片通道可用，get_fieldlog_image 才值得使用；若只看到 base64 亂碼或 token 超限錯誤，代表 client 尚未支援，照片請改走 get_fieldlog_attachment 的擷取文字路線。此工具不讀任何使用者資料。",
     inputSchema: { type: "object", properties: {} },
@@ -1495,9 +1686,10 @@ async function handleMcp(request, env) {
       capabilities: { tools: {} },
       serverInfo: { name: "medapi-mcp", version: "1.0.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；只有 create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支例外，且全部只能新增、不能修改或刪除既有內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、搬資料夾、搬記事歸檔位置、刪資料夾——刪除不會遺失資料，內容會自動搬到上一層），但一樣不會動到記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        " category 是「色系分組」（project／qa_reg／literature／training／admin／misc），跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，回應裡提到這兩者時不要混為一談。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
-        " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。" +
+        " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。組內嵌照片的 HTML 報告請用 get_fieldlog_image_base64 拿純文字 base64，不要用 get_fieldlog_image 的圖片內容硬抄。" +
         " 引用紀律：回應裡標示「AI 深度解析」的段落是 AI 產出的整理／推論，不是現場原始紀錄，引用前要回原始內容或來源連結確認；懷疑外部知識庫資料過時就先用 sync_status 查最後同步時間。",
     });
   }
