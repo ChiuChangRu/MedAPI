@@ -218,10 +218,23 @@ function makeDB() {
       const row = tables.entries.find((e) => e.id === args[0]);
       return { results: row ? [row] : [], changes: 0 };
     }
-    if (q === "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, body_format = ?, updated_at = ? WHERE id = ?") {
-      const row = tables.entries.find((e) => e.id === args[6]);
-      if (row) Object.assign(row, { title: args[0], body: args[1], fields_json: args[2], folder_id: args[3], body_format: args[4], updated_at: args[5] });
+    if (q === "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, body_format = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ? WHERE id = ?") {
+      const row = tables.entries.find((e) => e.id === args[8]);
+      if (row) {
+        Object.assign(row, {
+          title: args[0], body: args[1], fields_json: args[2], folder_id: args[3], body_format: args[4],
+          auto_filed_at: args[5], auto_filed_reason: args[6], updated_at: args[7],
+        });
+      }
       return { results: [], changes: row ? 1 : 0 };
+    }
+    // 排程順手跑「彙整分類規則建議」（見 reviewAutoFileCorrections）；這個測試
+    // 檔沒有相關資料，回空結果讓它安靜跳過就好，不是這裡要測的東西
+    if (q === "SELECT id, folder_id, keyword, note, created_at FROM autofile_hints WHERE status = 'active' ORDER BY id") {
+      return { results: [] };
+    }
+    if (q === "SELECT id FROM autofile_corrections WHERE COALESCE(reviewed_at, '') = ''") {
+      return { results: [] };
     }
 
     unhandled.push(q);

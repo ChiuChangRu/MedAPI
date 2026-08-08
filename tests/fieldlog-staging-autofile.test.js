@@ -34,7 +34,7 @@ const stamp = () => new Date(NOW).toISOString().replace("T", " ").slice(0, 19) +
 const daysAgo = (n) => new Date(NOW - n * 86400000).toISOString().replace("T", " ").slice(0, 19) + "Z";
 
 function makeDB({ folders = [], entries = [], attachments = [], settings = {} } = {}) {
-  const tables = { folders: [...folders], entries: [...entries], attachments: [...attachments], history: [] };
+  const tables = { folders: [...folders], entries: [...entries], attachments: [...attachments], history: [], autofile_hints: [] };
   const settingsRows = new Map(Object.entries(settings));
   const nextId = { folders: 100, entries: 200, history: 1 };
   const unhandled = [];
@@ -93,6 +93,9 @@ function makeDB({ folders = [], entries = [], attachments = [], settings = {} } 
       const row = tables.entries.find((e) => e.id === args[3]);
       if (row) Object.assign(row, { folder_id: args[0], auto_filed_at: args[1], auto_filed_reason: args[2] });
       return { results: [], changes: row ? 1 : 0 };
+    }
+    if (q === "SELECT id, folder_id, keyword, note, created_at FROM autofile_hints WHERE status = 'active' ORDER BY id") {
+      return { results: tables.autofile_hints.filter((h) => h.status === "active") };
     }
 
     unhandled.push(q);
@@ -402,4 +405,57 @@ test("一次最多處理設定的筆數，不會單次爆量呼叫 AI", async ()
   const result = await autoFileStagedEntries(db, { ai, days: 4, limit: 2, nowMs: NOW, timestamp: stamp, logHistory });
   assert.equal(result.checked, 2);
   assert.equal(ai.calls.length, 2);
+});
+
+// ---------- 分類規則（keyword → folder_id）優先於 AI ----------
+
+test("已知規則唯一命中時直接採用，完全不呼叫 AI（更快、更省，理由也講得出道理）", async () => {
+  const db = baseDB();
+  db.tables.autofile_hints.push({ id: 1, folder_id: 2, keyword: "ISO 10555", status: "active" });
+  const ai = fakeAi(() => { throw new Error("不該被呼叫"); });
+  const result = await autoFileStagedEntries(db, { ai, days: 4, nowMs: NOW, timestamp: stamp, logHistory });
+  assert.equal(result.filed, 1);
+  assert.equal(ai.calls.length, 0, "規則命中就不用麻煩 AI");
+  const row = db.tables.entries.find((e) => e.id === 201);
+  assert.equal(row.folder_id, 2);
+  assert.match(row.auto_filed_reason, /已知規則/);
+});
+
+test("規則同時命中不同資料夾（規則互相打架）時退回給 AI 判斷，不猜哪條優先", async () => {
+  const db = baseDB();
+  db.tables.autofile_hints.push({ id: 1, folder_id: 1, keyword: "ISO", status: "active" });
+  db.tables.autofile_hints.push({ id: 2, folder_id: 2, keyword: "10555", status: "active" });
+  const ai = fakeAi(() => '{"folder_id": 2, "reason": "AI 自己判斷"}');
+  const result = await autoFileStagedEntries(db, { ai, days: 4, nowMs: NOW, timestamp: stamp, logHistory });
+  assert.equal(result.filed, 1);
+  assert.equal(ai.calls.length, 1, "規則打架時要退回 AI，不是隨便選一條");
+});
+
+test("沒有 Workers AI，但有生效中的規則：命中的直接歸檔，沒命中的留在暫存區並標記原因", async () => {
+  const db = makeDB({
+    folders: [
+      { id: 1, name: "CVC", type: "中央靜脈導管（CVC）", parent_id: null, role: "" },
+      { id: 2, name: "法規與標準", type: "法規與標準", parent_id: 1, role: "" },
+      { id: 9, name: "⏳ 暫存區（待歸類）", type: "其他", parent_id: null, role: STAGING_FOLDER_ROLE },
+    ],
+    entries: [
+      { id: 201, folder_id: 9, title: "ISO 10555 摘要", body: "導管標準", fields_json: "{}", created_at: daysAgo(6) },
+      { id: 202, folder_id: 9, title: "跟規則完全無關的內容", body: "", fields_json: "{}", created_at: daysAgo(6) },
+    ],
+  });
+  db.tables.autofile_hints.push({ id: 1, folder_id: 2, keyword: "ISO 10555", status: "active" });
+  const result = await autoFileStagedEntries(db, { ai: null, days: 4, nowMs: NOW, timestamp: stamp, logHistory });
+  assert.equal(result.filed, 1, "沒有 AI 不代表完全不能歸類——規則比對不需要 AI");
+  assert.equal(db.tables.entries.find((e) => e.id === 201).folder_id, 2);
+  const unmatched = db.tables.entries.find((e) => e.id === 202);
+  assert.equal(unmatched.auto_filed_at, "failed");
+  assert.match(unmatched.auto_filed_reason, /沒有符合的已知規則/);
+});
+
+test("規則指到的資料夾如果被刪掉了（不在候選清單裡），該規則直接被忽略，不會炸掉", async () => {
+  const db = baseDB();
+  db.tables.autofile_hints.push({ id: 1, folder_id: 999, keyword: "ISO 10555", status: "active" });
+  const ai = fakeAi(() => '{"folder_id": 1, "reason": "退回 AI 判斷"}');
+  const result = await autoFileStagedEntries(db, { ai, days: 4, nowMs: NOW, timestamp: stamp, logHistory });
+  assert.equal(ai.calls.length > 0, true, "指到不存在資料夾的規則不能算數，要退回 AI");
 });

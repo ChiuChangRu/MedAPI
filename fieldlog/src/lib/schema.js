@@ -128,6 +128,32 @@ export const SCHEMA = [
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  // AI 自動歸類的判斷規則：keyword 命中時優先參考 folder_id，不用每次都靠
+  // 3B 小模型純猜。status='active' 才會實際拿去用；'suggested' 是系統自己從
+  // 「使用者把 AI 分錯的記事手動搬去別的資料夾」這個訊號推出來的候選規則，
+  // 要人工在畫面上按過「採用」才會變成 active——規則會自己長，但不會自己
+  // 生效，一定要通知使用者、讓人決定，見 autofile.js 的 reviewAutoFileCorrections()。
+  `CREATE TABLE IF NOT EXISTS autofile_hints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    folder_id INTEGER NOT NULL,
+    keyword TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  // 「使用者把 AI 自動歸類的結果手動改到別的資料夾」這個修正動作的原始紀錄，
+  // 排程每天讀這裡、彙整成 autofile_hints 的候選規則（見上）。reviewed_at 有
+  // 值＝已經被那次排程處理過（不管有沒有真的生出候選規則），避免同一筆修正
+  // 被重複彙整。
+  `CREATE TABLE IF NOT EXISTS autofile_corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER NOT NULL,
+    from_folder_id INTEGER,
+    to_folder_id INTEGER NOT NULL,
+    keyword_guess TEXT DEFAULT '',
+    reviewed_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder_id)`,
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,

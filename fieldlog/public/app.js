@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "93";
+const APP_VERSION = "94";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -740,9 +740,58 @@ async function loadStagingStatus() {
     bindAutoFileDaysControl();
     const runBtn = $("btn-auto-file-now");
     if (runBtn) runBtn.onclick = () => runAutoFileNow(runBtn);
+    if (status.pending_hints) loadAutoFileHintSuggestions(); else renderAutoFileHintSuggestions([]);
   } catch {
     box.textContent = "";
   }
+}
+
+// 判斷準則會自己長（見 fieldlog/src/lib/autofile.js 的 reviewAutoFileCorrections），
+// 但關鍵字永遠是使用者自己填的，系統只負責「通知＋讓人決定」——這個面板就是
+// 那個通知：候選規則不會自己生效，不採用就一直安靜留在這裡，不會偷偷開始用。
+async function loadAutoFileHintSuggestions() {
+  try {
+    const { hints } = await api("/auto-file/hints?status=suggested");
+    renderAutoFileHintSuggestions(hints || []);
+  } catch { /* 純通知性質，拿不到不影響其他功能，安靜跳過就好 */ }
+}
+
+function renderAutoFileHintSuggestions(hints) {
+  const panel = $("autofile-hints-panel");
+  if (!panel) return;
+  if (!hints.length) { panel.innerHTML = ""; return; }
+  panel.innerHTML = `<div class="autofile-hints-notice">
+    <strong>🤖 分類規則建議</strong>
+    ${hints.map((h) => `
+      <div class="autofile-hint-row" data-id="${h.id}">
+        <p class="sub">${esc(h.note)}</p>
+        <input type="text" class="autofile-hint-keyword" placeholder="設定關鍵字（例如：UV膠）" maxlength="60" />
+        <button class="btn small primary autofile-hint-approve" type="button" data-id="${h.id}">採用</button>
+        <button class="btn small ghost autofile-hint-reject" type="button" data-id="${h.id}">忽略</button>
+      </div>`).join("")}
+  </div>`;
+  panel.querySelectorAll(".autofile-hint-approve").forEach((btn) => {
+    btn.onclick = async () => {
+      const row = btn.closest(".autofile-hint-row");
+      const keyword = row.querySelector(".autofile-hint-keyword").value.trim();
+      if (!keyword) { showToast("請先填關鍵字，才知道以後遇到什麼內容要套用這條規則"); return; }
+      btn.disabled = true;
+      try {
+        await api(`/auto-file/hints/${btn.dataset.id}/approve`, { method: "POST", body: JSON.stringify({ keyword }) });
+        showToast("已採用這條分類規則");
+        loadAutoFileHintSuggestions();
+      } catch (err) { showToast("採用失敗：" + err.message); btn.disabled = false; }
+    };
+  });
+  panel.querySelectorAll(".autofile-hint-reject").forEach((btn) => {
+    btn.onclick = async () => {
+      if (!confirm("確定忽略這條建議？之後同樣的情況再發生還是會再問一次。")) return;
+      try {
+        await api(`/auto-file/hints/${btn.dataset.id}`, { method: "DELETE" });
+        loadAutoFileHintSuggestions();
+      } catch (err) { showToast("操作失敗：" + err.message); }
+    };
+  });
 }
 
 async function runAutoFileNow(button) {

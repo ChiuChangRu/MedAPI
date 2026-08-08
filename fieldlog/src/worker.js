@@ -43,10 +43,16 @@ import {
 import {
   AUTO_FILE_DAYS_MAX,
   AUTO_FILE_DAYS_MIN,
+  addHint,
+  approveHint,
   autoFileStagedEntries,
   cutoffTimestamp,
+  deleteHint,
   ensureStagingFolder,
+  getPendingHints,
+  recordAutoFileCorrection,
   resolveAutoFileDays,
+  reviewAutoFileCorrections,
   saveAutoFileDays,
 } from "./lib/autofile.js";
 
@@ -54,7 +60,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "93";
+const UI_VERSION = "94";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -403,6 +409,7 @@ async function handleApi(request, env, url) {
       `SELECT COUNT(*) AS count FROM entries
        WHERE (folder_id IS NULL OR folder_id = ?) AND COALESCE(auto_filed_at, '') = '' AND created_at <= ?`
     ).bind(Number(staging.id), cutoffTimestamp(days)).first();
+    const pendingHints = await getPendingHints(db);
     return json({
       ok: true,
       days,
@@ -410,6 +417,7 @@ async function handleApi(request, env, url) {
       waiting: Number(pending?.count || 0),
       due_now: Number(due?.count || 0),
       ai_enabled: !!env.AI,
+      pending_hints: pendingHints.length,
     });
   }
   if (path === "/auto-file/run" && method === "POST") {
@@ -420,6 +428,51 @@ async function handleApi(request, env, url) {
       logHistory,
       plainBody: (entry) => (entry.body_format === "html" ? htmlToPlainText(entry.body) : String(entry.body || "")),
     });
+    return json({ ok: true, ...result });
+  }
+  // ---- 分類規則（keyword → folder_id）：讓自動歸類的判斷準則能自己長，
+  // 但一定要人核准才會生效，見 fieldlog/src/lib/autofile.js 開頭的說明 ----
+  if (path === "/auto-file/hints" && method === "GET") {
+    const status = (url.searchParams.get("status") || "").trim();
+    const where = status ? "WHERE status = ?" : "";
+    const stmt = status
+      ? db.prepare(`SELECT * FROM autofile_hints ${where} ORDER BY id DESC`).bind(status)
+      : db.prepare(`SELECT * FROM autofile_hints ORDER BY id DESC`);
+    const { results } = await stmt.all();
+    return json({ hints: results || [] });
+  }
+  if (path === "/auto-file/hints" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const folderId = Number(body.folder_id || 0);
+    const keyword = String(body.keyword || "").trim();
+    if (!folderId) return bad("folder_id 為必填");
+    if (!keyword) return bad("keyword 為必填");
+    const folder = await db.prepare("SELECT id FROM folders WHERE id = ?").bind(folderId).first();
+    if (!folder) return bad("找不到資料夾", 404);
+    const id = await addHint(db, { folderId, keyword, status: "active" }, now());
+    if (!id) return bad("新增規則失敗");
+    await logHistory(db, null, folderId, "新增分類規則", `「${keyword}」→ folder ${folderId}`);
+    return json({ ok: true, id });
+  }
+  const approveHintMatch = path.match(/^\/auto-file\/hints\/(\d+)\/approve$/);
+  if (approveHintMatch && method === "POST") {
+    const id = Number(approveHintMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const keyword = String(body.keyword || "").trim();
+    if (!keyword) return bad("要先填關鍵字才能採用這條候選規則");
+    const ok = await approveHint(db, id, keyword);
+    if (!ok) return bad("找不到這條候選規則，或已經被處理過", 404);
+    return json({ ok: true });
+  }
+  const deleteHintMatch = path.match(/^\/auto-file\/hints\/(\d+)$/);
+  if (deleteHintMatch && method === "DELETE") {
+    const ok = await deleteHint(db, Number(deleteHintMatch[1]));
+    if (!ok) return bad("找不到這條規則", 404);
+    return json({ ok: true });
+  }
+  // 手動觸發「彙整候選規則」，不用等每天 02:00 的排程
+  if (path === "/auto-file/hints/review" && method === "POST") {
+    const result = await reviewAutoFileCorrections(db, { timestamp: now });
     return json({ ok: true, ...result });
   }
   // 使用者確認「AI 分得對」或自己改過位置之後，把 🤖 標記清掉
@@ -730,12 +783,25 @@ async function handleApi(request, env, url) {
     // 存進資料庫前統一過一次白名單式清理：Quill 正常操作不會產生危險標籤，
     // 但前端可以被繞過，資料庫裡不能留 <script> 之類的東西
     const bodyText = bodyFormat === "html" ? sanitizeEntryHtml(bodyRaw) : bodyRaw;
-    await db.prepare("UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, body_format = ?, updated_at = ? WHERE id = ?")
-      .bind(title, bodyText, fields, folderId, bodyFormat, now(), id).run();
-    if (body.folder_id !== undefined && folderId !== old.folder_id) {
+    const folderChanged = body.folder_id !== undefined && folderId !== old.folder_id;
+    // 這筆是 AI（或規則）自動歸類的，使用者卻手動搬去別的資料夾——代表那次
+    // 判斷是錯的。清掉 🤖 標記（不然畫面上會留著指向舊資料夾的過時理由），
+    // 同時把這次修正記下來，讓每天的排程去彙整成候選的分類規則（見
+    // reviewAutoFileCorrections），判斷準則因此能跟著實際使用情況修正，
+    // 但只會變成「候選」，不會自己生效。
+    const wasAutoFiled = folderChanged && old.auto_filed_at && old.auto_filed_at !== "failed";
+    const autoFiledAt = wasAutoFiled ? "" : (old.auto_filed_at || "");
+    const autoFiledReason = wasAutoFiled ? "" : (old.auto_filed_reason || "");
+    await db.prepare(
+      "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, body_format = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ? WHERE id = ?"
+    ).bind(title, bodyText, fields, folderId, bodyFormat, autoFiledAt, autoFiledReason, now(), id).run();
+    if (folderChanged) {
       await logHistory(db, id, folderId, "歸檔", title);
     } else {
       await logHistory(db, id, folderId, "更新紀錄", title);
+    }
+    if (wasAutoFiled) {
+      await recordAutoFileCorrection(db, { entryId: id, fromFolderId: old.folder_id, toFolderId: folderId, entryTitle: title, timestamp: now() });
     }
     return json({ ok: true });
   }
@@ -1791,6 +1857,14 @@ export default {
       });
     } catch (err) {
       console.error("自動歸類失敗", err);
+    }
+    // 把「使用者手動修正 AI 分類結果」的紀錄，彙整成候選的分類規則（見
+    // reviewAutoFileCorrections 的說明）。候選規則不會自己生效，一定要在
+    // 首頁的「🤖 分類規則建議」通知使用者、按過「採用」才會真的拿去用。
+    try {
+      await reviewAutoFileCorrections(env.DB, { timestamp: now });
+    } catch (err) {
+      console.error("彙整分類規則建議失敗", err);
     }
   },
 };

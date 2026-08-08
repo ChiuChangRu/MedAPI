@@ -147,8 +147,16 @@ export function parseChoice(text) {
   }
 }
 
-export function buildPrompt(summary, choices) {
+/** hints：{ folder_id, keyword, path } 陣列，已知的「關鍵字→資料夾」判斷規則 */
+export function buildPrompt(summary, choices, hints = []) {
   const list = choices.map((c) => `${c.id}. ${c.path}（分類：${c.type}）`).join("\n");
+  const hintBlock = hints.length
+    ? [
+        "",
+        "【已知的關鍵字對照，內容包含這些詞時優先參考，但明顯不符合就不用採用】",
+        ...hints.map((h) => `- 「${h.keyword}」→ ${h.path || h.folder_id}`),
+      ]
+    : [];
   return [
     "你是一個檔案歸檔助理。下面是一筆還沒分類的記事，以及使用者現有的資料夾清單。",
     "請從清單中挑出最適合的一個資料夾。只能挑清單裡有的編號，不可以自己發明分類。",
@@ -157,10 +165,150 @@ export function buildPrompt(summary, choices) {
     "",
     "【資料夾清單】",
     list,
+    ...hintBlock,
     "",
     "【記事內容】",
     summary,
   ].join("\n");
+}
+
+// ---------- 分類規則（keyword → folder_id）：判斷準則會自己長，但一定要人核准 ----------
+//
+// 設計取捨：不做「AI 自動幫你猜關鍵字」——猜錯的關鍵字比沒有關鍵字更糟（會
+// 誤判本來判斷得出來的案例）。規則永遠是「使用者自己看過候選、自己填詞」，
+// 系統只負責偵測「這個資料夾最近被手動修正了好幾次，可能值得設一條規則」
+// 這個訊號，跟 MyWiki 的 add_synonym（同義詞永遠是人補的，AI 只負責發現
+// 查不到）是同一種分工。
+
+/** 目前生效中、實際會拿去比對與塞進 prompt 的規則 */
+export async function getActiveHints(db) {
+  const { results } = await db.prepare(
+    "SELECT id, folder_id, keyword, note, created_at FROM autofile_hints WHERE status = 'active' ORDER BY id"
+  ).all();
+  return results || [];
+}
+
+/** 還在等使用者決定要不要採用的候選規則（首頁通知用） */
+export async function getPendingHints(db) {
+  const { results } = await db.prepare(
+    "SELECT id, folder_id, keyword, note, created_at FROM autofile_hints WHERE status = 'suggested' ORDER BY id"
+  ).all();
+  return results || [];
+}
+
+/**
+ * 新增一條規則：使用者自己在畫面上補的，或候選規則被採用時直接帶關鍵字寫入。
+ * 只有 status='suggested' 允許先不填關鍵字——候選規則本來就是「留給使用者
+ * 補關鍵字」用的（見 reviewAutoFileCorrections／approveHint），active 規則
+ * 沒有關鍵字等於永遠不會命中，沒有意義，一律擋掉。
+ */
+export async function addHint(db, { folderId, keyword, status = "active", note = "" }, timestamp) {
+  const kw = String(keyword || "").trim();
+  if (!folderId) return null;
+  if (!kw && status !== "suggested") return null;
+  const r = await db.prepare(
+    "INSERT INTO autofile_hints (folder_id, keyword, status, note, created_at) VALUES (?, ?, ?, ?, ?)"
+  ).bind(Number(folderId), kw, status, note, timestamp).run();
+  return Number(r.meta.last_row_id);
+}
+
+/** 採用候選規則：候選規則建立時通常還沒有關鍵字（見 reviewAutoFileCorrections），
+ * 使用者在畫面上補上關鍵字、按「採用」時才真正變成 active。 */
+export async function approveHint(db, id, keyword) {
+  const kw = String(keyword || "").trim();
+  if (!kw) return false;
+  const r = await db.prepare("UPDATE autofile_hints SET keyword = ?, status = 'active' WHERE id = ? AND status = 'suggested'")
+    .bind(kw, Number(id)).run();
+  return !!r.meta.changes;
+}
+
+/** 不管是候選規則還是已生效的規則，都能直接刪掉——判斷準則要能隨時修正 */
+export async function deleteHint(db, id) {
+  const r = await db.prepare("DELETE FROM autofile_hints WHERE id = ?").bind(Number(id)).run();
+  return !!r.meta.changes;
+}
+
+/**
+ * 拿記事摘要文字去跟現有規則比對。只有「唯一命中一個資料夾」才當高信心結果
+ * 直接採用——同時命中不同資料夾的規則，代表規則彼此打架，這種情況寧可退回
+ * 給 AI（或留在暫存區），不猜哪一條該優先，避免把使用者還沒發現的規則衝突
+ * 悄悄用掉。
+ */
+export function matchHints(hints, summary, allowedFolderIds) {
+  const text = String(summary || "").toLowerCase();
+  const hit = new Map(); // folderId -> 命中的規則
+  for (const h of hints) {
+    const folderId = Number(h.folder_id);
+    if (!allowedFolderIds.has(folderId)) continue; // 規則指到的資料夾被刪了或已是暫存區，跳過
+    const kw = String(h.keyword || "").trim().toLowerCase();
+    if (kw && text.includes(kw)) hit.set(folderId, h);
+  }
+  if (hit.size !== 1) return null;
+  const [[folderId, hint]] = [...hit.entries()];
+  return { folderId, keyword: hint.keyword };
+}
+
+// 同一個資料夾要累積這麼多次手動修正，才值得跳出來問「要不要設關鍵字」——
+// 只發生一次太可能是個案，不該一有動靜就跳通知打擾使用者。
+export const AUTOFILE_HINT_MIN_OCCURRENCES = 2;
+
+/** 記一筆「AI（或規則）分錯，使用者手動搬去別的資料夾」，排程靠這個彙整候選規則 */
+export async function recordAutoFileCorrection(db, { entryId, fromFolderId, toFolderId, entryTitle, timestamp }) {
+  await db.prepare(
+    "INSERT INTO autofile_corrections (entry_id, from_folder_id, to_folder_id, keyword_guess, created_at) VALUES (?, ?, ?, ?, ?)"
+  ).bind(Number(entryId), fromFolderId ? Number(fromFolderId) : null, Number(toFolderId),
+    String(entryTitle || "").trim().slice(0, 60), timestamp).run();
+}
+
+/**
+ * 每天排程跑一次：把還沒處理過的修正紀錄，依「搬去了哪個資料夾」分組，同一個
+ * 資料夾累積到 AUTOFILE_HINT_MIN_OCCURRENCES 次以上、而且還沒有候選規則在等
+ * 的話，建一條 status='suggested' 的候選規則（關鍵字先留空，見 approveHint）。
+ * 候選規則不會自己生效，一定要通知使用者、讓人在畫面上補關鍵字採用。
+ */
+export async function reviewAutoFileCorrections(db, { timestamp } = {}) {
+  const stamp = typeof timestamp === "function" ? timestamp : () => new Date().toISOString();
+  const { results: pending } = await db.prepare(
+    "SELECT id FROM autofile_corrections WHERE COALESCE(reviewed_at, '') = ''"
+  ).all();
+  const result = { reviewed: 0, suggested: 0 };
+  if (!pending?.length) return result;
+
+  const { results: existingHints } = await db.prepare(
+    "SELECT DISTINCT folder_id FROM autofile_hints WHERE status IN ('active', 'suggested') AND (keyword = '' OR keyword IS NULL)"
+  ).all();
+  const alreadySuggested = new Set((existingHints || []).map((h) => Number(h.folder_id)));
+
+  // 門檻要看「這個資料夾這輩子總共累積了幾次修正」，不能只看這次排程剛好還
+  // 沒處理過的那幾筆——不然某一天沒湊滿門檻、那幾筆就被標記「已看過」，隔天
+  // 新增的修正單獨來看又不夠門檻，永遠湊不滿，規則就永遠長不出來。
+  const { results: allForFolders } = await db.prepare(
+    "SELECT to_folder_id, keyword_guess FROM autofile_corrections"
+  ).all();
+  const byFolder = new Map(); // folderId -> [entryTitle, ...]
+  for (const c of allForFolders || []) {
+    const folderId = Number(c.to_folder_id);
+    if (!byFolder.has(folderId)) byFolder.set(folderId, []);
+    if (c.keyword_guess) byFolder.get(folderId).push(c.keyword_guess);
+  }
+
+  const at = stamp();
+  for (const c of pending) {
+    result.reviewed++;
+    await db.prepare("UPDATE autofile_corrections SET reviewed_at = ? WHERE id = ?").bind(at, c.id).run();
+  }
+  for (const [folderId, titles] of byFolder) {
+    if (titles.length < AUTOFILE_HINT_MIN_OCCURRENCES || alreadySuggested.has(folderId)) continue;
+    const examples = titles.slice(0, 3).map((t) => `「${t}」`).join("、");
+    await addHint(db, {
+      folderId,
+      keyword: "", // 故意留空——關鍵字要人自己填，見 approveHint
+      status: "suggested",
+      note: `最近有 ${titles.length} 筆記事被手動搬進這個資料夾，例如 ${examples}；要不要幫它設一個關鍵字，之後類似內容自動歸檔？`,
+    }, at);
+    result.suggested++;
+  }
+  return result;
 }
 
 /**
@@ -185,7 +333,10 @@ export async function autoFileStagedEntries(db, {
   const staging = await ensureStagingFolder(db, stamp());
   const summary = { filed: 0, unresolved: 0, checked: 0, staging_folder_id: Number(staging.id), days };
 
-  if (!ai) return { ...summary, skipped: "尚未啟用 Workers AI，自動歸類跳過" };
+  // 沒開 Workers AI 時，只有在「已經有生效中的規則」才值得繼續往下跑——規則
+  // 比對完全不需要 AI。沒有規則、也沒有 AI，跟以前一樣直接跳過，不掃資料庫。
+  const activeHints = ai ? null : await getActiveHints(db);
+  if (!ai && !activeHints.length) return { ...summary, skipped: "尚未啟用 Workers AI，自動歸類跳過" };
 
   const cutoff = cutoffTimestamp(days, nowMs);
   const { results: candidates } = await db.prepare(
@@ -208,6 +359,9 @@ export async function autoFileStagedEntries(db, {
   const paths = folderPaths(folders || []);
   const choices = targets.map((f) => ({ id: Number(f.id), path: paths.get(Number(f.id)) || f.name, type: f.type }));
   const allowed = new Set(choices.map((c) => c.id));
+  const hints = (activeHints ?? await getActiveHints(db))
+    .filter((h) => allowed.has(Number(h.folder_id)))
+    .map((h) => ({ ...h, path: paths.get(Number(h.folder_id)) || "" }));
 
   for (const entry of candidates) {
     summary.checked++;
@@ -220,21 +374,28 @@ export async function autoFileStagedEntries(db, {
       "SELECT filename, COALESCE(ocr_text, '') AS ocr_text, COALESCE(transcript, '') AS transcript FROM attachments WHERE entry_id = ? ORDER BY id LIMIT 5"
     ).bind(entry.id).all();
 
-    let choice = null;
-    try {
-      const result = await ai.run(AUTO_FILE_MODEL, {
-        messages: [{ role: "user", content: buildPrompt(summariseEntry(entry, atts || [], { plainBody }), choices) }],
-        max_tokens: 200,
-      });
-      choice = parseChoice(result?.response ?? result?.result?.response ?? result);
-    } catch {
-      choice = null; // AI 掛掉不能讓整批停下來，這一筆留在暫存區下次再試
+    const summaryText = summariseEntry(entry, atts || [], { plainBody });
+    // 先用已知規則比對：唯一命中才直接採用，不用每筆都呼叫 AI——更快、更省
+    // 額度，而且判斷理由是講得出道理的規則，不是模型的黑箱猜測。
+    const ruleHit = matchHints(hints, summaryText, allowed);
+    let choice = ruleHit ? { folderId: ruleHit.folderId, reason: `符合已知規則「${ruleHit.keyword}」` } : null;
+
+    if (!choice && ai) {
+      try {
+        const result = await ai.run(AUTO_FILE_MODEL, {
+          messages: [{ role: "user", content: buildPrompt(summaryText, choices, hints) }],
+          max_tokens: 200,
+        });
+        choice = parseChoice(result?.response ?? result?.result?.response ?? result);
+      } catch {
+        choice = null; // AI 掛掉不能讓整批停下來，這一筆留在暫存區下次再試
+      }
     }
 
     if (!choice || !allowed.has(choice.folderId)) {
       summary.unresolved++;
       await db.prepare("UPDATE entries SET auto_filed_at = 'failed', auto_filed_reason = ? WHERE id = ?")
-        .bind("AI 判斷不出合適的資料夾，留在暫存區", entry.id).run();
+        .bind(ai ? "AI 判斷不出合適的資料夾，留在暫存區" : "沒有符合的已知規則，留在暫存區", entry.id).run();
       continue;
     }
 
