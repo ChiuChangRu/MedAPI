@@ -122,8 +122,11 @@ export function sanitizeEntryHtml(html) {
 }
 
 /**
- * 「升級為富文字」：把既有純文字 body 轉成安全轉義過的 HTML，換行變段落。
- * 只在使用者主動點按鈕時呼叫一次，不做批次／自動轉換。
+ * 純文字轉成安全轉義過的 HTML，換行變段落。用在兩種情境：POST /entries
+ * 新記事預設直接建成 body_format='html'，呼叫端送來的純文字先經過這裡；
+ * 以及既有純文字記事被打開、以富文字編輯器編輯並存檔時，把舊內容轉一次
+ * 再繼續編輯——不是使用者按按鈕觸發的一次性「升級」動作，是格式轉換
+ * 本身固定會做的事。
  */
 export function textToHtml(text) {
   const escaped = String(text || "")

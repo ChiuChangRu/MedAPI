@@ -219,12 +219,16 @@ export const MIGRATIONS = [
   // 不要靠人記）。
   `ALTER TABLE attachments ADD COLUMN source_url TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN total_pages INTEGER`,
-  // 記事內文格式：'text'（預設，含所有既有資料與來源同步管理的記事，body 是
-  // 純文字／Markdown，走舊的 <textarea>）或 'html'（富文字編輯器產生的 HTML
-  // 片段，照片以 <img> 內嵌）。不做批次轉換，使用者自己按「升級為富文字」
-  // 才會把某一筆從 text 換成 html；同步管理的記事（fields_json._sid／
-  // litdb_id 有值）永遠鎖在 text，sync.js 的 SYNC_START/SYNC_END 標記完全
-  // 不會遇到 html 格式。
+  // 記事內文格式：'text'（純文字／Markdown）或 'html'（富文字編輯器產生的
+  // HTML 片段，照片以 <img> 內嵌）。欄位預設值仍是 'text'，因為既有資料庫
+  // 裡的每一列在這個 migration 跑之前就已經存在，一律先是純文字；但 2026-08-01
+  // 起新記事一律直接建成 'html'（見 worker.js 的 POST /entries），舊的純
+  // 文字記事打開時就自動以富文字編輯、存檔時一併轉檔，使用者不用知道有
+  // 「升級」這件事，也沒有對應的手動按鈕。唯一維持 'text' 的例外是來源
+  // 同步管理的記事（fields_json._sid／litdb_id 有值）——sync.js 靠
+  // <!-- sync:start/end --> 這組純文字標記圈出同步管理區，換成富文字編輯器
+  // 容易在瀏覽器序列化時弄丟標記，所以這類記事永遠鎖在 text，不會遇到
+  // html 格式。
   `ALTER TABLE entries ADD COLUMN body_format TEXT DEFAULT 'text'`,
   // 照片顯示用的旋轉角度（0/90/180/270，每次點旋轉鈕 +90 mod 360）。純顯示層
   // 中繼資料，不動 R2 裡的原始檔案——raw data 只增不刪，旋轉只是前端渲染時
