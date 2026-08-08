@@ -4,15 +4,25 @@ import test from "node:test";
 
 import worker from "../mcp/src/worker.js";
 
-// medapi-mcp 預設唯讀，只有 create_fieldlog_entry／create_relation／add_synonym
-// 三支工具能寫入，而且只能 INSERT（新增），不能 UPDATE／DELETE。這份測試同時守兩件事：
-// (1) 原始碼層級的不變量——不管以後加多少工具都不該出現 UPDATE／DELETE
-// (2) 寫入工具的實際行為——真的只新增、找不到既有資料就報錯，不會用猜的硬寫
+// medapi-mcp 對「記事的實際內容」與「關聯／同義詞」預設唯讀：
+// create_fieldlog_entry／create_fieldlog_attachment／create_relation／add_synonym
+// 四支工具能寫入，而且只能 INSERT（新增），不能 UPDATE／DELETE——這份測試守的
+// 就是這件事：mcp/src/worker.js 裡不會出現操作 entries 內容／attachments／
+// relations／synonyms 的 SQL UPDATE 或 DELETE 語句。
+//
+// 2026-08-08 分類重整新增了 update_folder／move_folder／move_entry／
+// delete_folder 四支資料夾整理工具，範圍限定在資料夾結構與記事的歸檔位置，
+// 這四支「沒有」自己的 SQL UPDATE／DELETE 字串——全部是 fetch(..., {method:
+// "PUT"/"DELETE"}) 透過 FIELDLOG Service Binding 打 fieldlog 自己既有、
+// 已經測試過的 /api/folders、/api/entries 端點，真正的 UPDATE／DELETE SQL
+// 執行在 fieldlog/src/worker.js 那邊，不在這支檔案裡，所以下面這條正規表達式
+// 守衛依然成立且依然有意義：medapi-mcp 自己的程式碼裡沒有寫任何一行會
+// 修改／刪除既有資料的 SQL。
 
-test("原始碼裡沒有任何 UPDATE 或 DELETE 語句（寫入工具只能 INSERT）", async () => {
+test("原始碼裡沒有任何 SQL UPDATE 或 DELETE 語句（寫入只能是 INSERT，或代理呼叫 fieldlog 既有端點）", async () => {
   const src = await readFile(new URL("../mcp/src/worker.js", import.meta.url), "utf8");
-  assert.equal(/\bUPDATE\s+\w/i.test(src), false, "不應該出現 UPDATE 語句");
-  assert.equal(/\bDELETE\s+FROM\b/i.test(src), false, "不應該出現 DELETE FROM 語句");
+  assert.equal(/\bUPDATE\s+\w/i.test(src), false, "不應該出現 SQL UPDATE 語句");
+  assert.equal(/\bDELETE\s+FROM\b/i.test(src), false, "不應該出現 SQL DELETE FROM 語句");
   // entries+history、relations+history、synonyms 出廠 seed、add_synonym 各 1 處
   assert.equal((src.match(/INSERT INTO/g) || []).length, 6, "應該剛好 6 處 INSERT INTO（entries+history、relations+history、synonyms seed、add_synonym）");
 });

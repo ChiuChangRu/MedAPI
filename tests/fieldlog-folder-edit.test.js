@@ -8,7 +8,7 @@ import fieldlogWorker from "../fieldlog/src/worker.js";
 
 function makeFieldlogDB() {
   const folders = [
-    { id: 11, name: "課程", type: "中央靜脈導管（CVC）", status: "進行中", parent_id: null, created_at: "2026-07-24" },
+    { id: 11, name: "課程", type: "中央靜脈導管（CVC）", status: "進行中", parent_id: null, category: null, sort_order: null, created_at: "2026-07-24" },
   ];
   const history = [];
 
@@ -18,10 +18,10 @@ function makeFieldlogDB() {
       const f = folders.find((row) => row.id === args[0]);
       return { results: f ? [f] : [] };
     }
-    if (sql.includes("UPDATE folders SET name = ?, status = ?, type = ? WHERE id = ?")) {
-      const [name, status, type, id] = args;
+    if (sql.includes("UPDATE folders SET name = ?, status = ?, type = ?, category = ?, sort_order = ? WHERE id = ?")) {
+      const [name, status, type, category, sortOrder, id] = args;
       const f = folders.find((row) => row.id === id);
-      if (f) { f.name = name; f.status = status; f.type = type; }
+      if (f) { f.name = name; f.status = status; f.type = type; f.category = category; f.sort_order = sortOrder; }
       return { results: [] };
     }
     if (sql.includes("INSERT INTO history")) { history.push(args); return { results: [] }; }
@@ -90,4 +90,60 @@ test("PUT /folders/:id 查無此資料夾回 404", async () => {
   const env = { FIELD_PIN: "pin", DB };
   const res = await putFolder(env, 999, { name: "x", type: "上課" });
   assert.equal(res.status, 404);
+});
+
+// ---------- category（色系分組，2026-08-08 分類重整）----------
+// type 是既有的「活動性質」欄位，category 是新的「色系分組」，兩者是不同的軸，
+// 這裡只測 category／sort_order 本身，不重複測 type 既有的行為。
+
+test("PUT /folders/:id 可以設定 category", async () => {
+  const DB = makeFieldlogDB();
+  const env = { FIELD_PIN: "pin", DB };
+  const res = await putFolder(env, 11, { category: "literature" });
+  assert.equal(res.status, 200);
+  assert.equal(DB.folders[0].category, "literature");
+});
+
+test("PUT /folders/:id category 不在合法清單內要拒絕，不能亂塞字串", async () => {
+  const DB = makeFieldlogDB();
+  const env = { FIELD_PIN: "pin", DB };
+  const res = await putFolder(env, 11, { category: "not-a-real-category" });
+  assert.equal(res.status, 400);
+  assert.match(res.data.error, /project.*qa_reg.*literature.*training.*admin.*misc/);
+  assert.equal(DB.folders[0].category, null, "失敗時不該改到任何東西");
+});
+
+test("PUT /folders/:id category 傳空字串代表清除分類", async () => {
+  const DB = makeFieldlogDB();
+  DB.folders[0].category = "project";
+  const env = { FIELD_PIN: "pin", DB };
+  const res = await putFolder(env, 11, { category: "" });
+  assert.equal(res.status, 200);
+  assert.equal(DB.folders[0].category, null);
+});
+
+test("PUT /folders/:id 不給 category 時沿用原本的值，不會被清空", async () => {
+  const DB = makeFieldlogDB();
+  DB.folders[0].category = "training";
+  const env = { FIELD_PIN: "pin", DB };
+  const res = await putFolder(env, 11, { name: "課程改名" });
+  assert.equal(res.status, 200);
+  assert.equal(DB.folders[0].category, "training");
+});
+
+test("PUT /folders/:id 可以設定 sort_order", async () => {
+  const DB = makeFieldlogDB();
+  const env = { FIELD_PIN: "pin", DB };
+  const res = await putFolder(env, 11, { sort_order: 3 });
+  assert.equal(res.status, 200);
+  assert.equal(DB.folders[0].sort_order, 3);
+});
+
+test("PUT /folders/:id sort_order 傳 null 可以清掉手動排序", async () => {
+  const DB = makeFieldlogDB();
+  DB.folders[0].sort_order = 5;
+  const env = { FIELD_PIN: "pin", DB };
+  const res = await putFolder(env, 11, { sort_order: null });
+  assert.equal(res.status, 200);
+  assert.equal(DB.folders[0].sort_order, null);
 });

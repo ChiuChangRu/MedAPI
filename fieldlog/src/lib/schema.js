@@ -234,7 +234,24 @@ export const MIGRATIONS = [
   // 中繼資料，不動 R2 裡的原始檔案——raw data 只增不刪，旋轉只是前端渲染時
   // 加一個 CSS transform。
   `ALTER TABLE attachments ADD COLUMN rotation INTEGER DEFAULT 0`,
+  // 資料夾的色系分組（2026-08-08 分類重整）。跟既有的 folders.type 是兩個不同的軸，
+  // 不要混用：
+  //   type     ＝活動性質（參展／拜訪／實驗／上課／會議／查廠／其他…），已被
+  //              folder_type 搜尋參數、匯出檔名等大量既有邏輯使用，維持不動
+  //   category ＝色系分組（見 FOLDER_CATEGORIES），只用來讓資料夾清單依「性質
+  //              大類」分色分組顯示與排序，不影響 type 既有的任何行為
+  // 新增時一律是 NULL（尚未分類），前端／排序邏輯要把 NULL 當成 misc（最後一組）
+  // 處理，不能排到最前面造成視覺混亂。
+  `ALTER TABLE folders ADD COLUMN category TEXT`,
+  // 同一層級內的手動排序，數字小的排前面；NULL／相同值時退回既有的
+  // id／status 排序，不影響原本沒設定過排序的資料夾。
+  `ALTER TABLE folders ADD COLUMN sort_order INTEGER`,
 ];
+
+// folders.category 的合法值——色系分組，見上面 MIGRATIONS 裡的說明。
+// 陣列順序＝顯示優先序（category_rank），不是字母序：越前面代表「預期會長越大」，
+// 不是「現在筆數比較多」，避免之後又要重排一次。
+export const FOLDER_CATEGORIES = ["project", "qa_reg", "literature", "training", "admin", "misc"];
 
 /**
  * 外部來源的初始內容——litdb 的三個收藏。跟 CATEGORY_SEED 一樣只在第一次寫入，

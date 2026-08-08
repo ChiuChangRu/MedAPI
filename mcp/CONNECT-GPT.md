@@ -17,11 +17,15 @@
   「AI 深度解析」段落並明確標示）
 - **Medtec 2026 參展系統**——585 家展商名單＋團隊拜訪紀錄＋附件全文
 
-**預設唯讀。** 23 個工具裡 19 個只做 SELECT／fetch，例外是
-`create_fieldlog_entry`／`create_fieldlog_attachment`／`create_relation`／
-`add_synonym` 四支，全部鎖死在「只能新增一筆全新的記事／附件／關聯／同義詞
-對照」——沒有任何一支工具會修改或刪除既有資料。要改內容、刪東西，一律要回
-隨身記／參展系統前台親自操作；wiki 收錄一律走 git 人審。
+**對記事內容預設唯讀，例外分兩組。** 27 個工具裡 19 個只做 SELECT／fetch。
+第一組`create_fieldlog_entry`／`create_fieldlog_attachment`／`create_relation`／
+`add_synonym` 四支鎖死在「只能新增一筆全新的記事／附件／關聯／同義詞對照」，
+不會修改或刪除既有資料。第二組是 2026-08-08 新增的資料夾整理工具
+`update_folder`／`move_folder`／`move_entry`／`delete_folder`，範圍限定在
+資料夾名稱／分類／排序／巢狀位置與記事的歸檔位置，會真的 UPDATE／DELETE，
+但不會動到任何記事或附件的內容（`delete_folder` 也不會遺失資料，見下方
+工具表說明）。除了這兩組之外，要改內容、刪東西，一律要回隨身記／參展系統
+前台親自操作；wiki 收錄一律走 git 人審。
 
 ## 連線資訊
 
@@ -53,7 +57,7 @@ connector」這類選項即可：
 4. **Server URL / MCP endpoint**：貼上面那條完整網址（含 `?pin=`）
 5. 認證方式若有選項，選「No authentication」或「None」——PIN 已經包在網址裡了，
    不需要再另外設定認證
-6. 儲存後，ChatGPT 應該會呼叫一次 `tools/list` 抓到下面這 23 個工具；
+6. 儲存後，ChatGPT 應該會呼叫一次 `tools/list` 抓到下面這 27 個工具；
    如果連線失敗，先確認網址結尾的 PIN 有沒有貼對、貼完整
 
 設定好之後，直接在對話裡問就好，例如：「幫我查展商裡做親水塗層的」
@@ -61,7 +65,7 @@ connector」這類選項即可：
 「litdb 裡有沒有講活檢針擊發機構的文獻」（LitDB 已併入隨身記並每日自動
 同步，`search_fieldlog` 就查得到）——GPT 會自己判斷該呼叫哪個工具。
 
-## 可用工具（23 個）
+## 可用工具（27 個）
 
 **先列目錄、再決定要不要細看，不要一開始就猜關鍵字。** `search_*` 查不到不代表
 沒有這份資料，可能只是關鍵字沒猜對——先用 `list_fieldlog_entries`／
@@ -102,6 +106,16 @@ connector」這類選項即可：
 | `create_relation` | 把兩筆**已存在**的記事建立關聯。兩筆記事都必須先存在，不能用猜的編號 |
 | `add_synonym` | 新增一組同義詞對照（例：把「BaClear」掛到「抗結痂披膜」）。查不到但確定只是用詞沒對上時當場補，下一次查詢立刻生效；只會 INSERT，改不掉也刪不掉既有對照 |
 
+### 隨身記（資料夾整理工具，2026-08-08 新增）
+會真的 UPDATE／DELETE，但範圍鎖死在資料夾結構與記事的歸檔位置，不會動到
+任何記事或附件的實際內容：
+| 工具 | 用途 |
+|---|---|
+| `update_folder` | 改資料夾的名稱／色系分類 `category`（`project`／`qa_reg`／`literature`／`training`／`admin`／`misc`）／手動排序 `sort_order`。`category` 跟既有的 `type`（活動性質）是兩個不同的欄位，互不覆蓋 |
+| `move_folder` | 把資料夾搬到另一個上層資料夾，或搬回最上層；超過四層知識架構上限或搬到自己子孫底下會被擋下 |
+| `move_entry` | 把一筆記事搬到另一個資料夾，或搬回收件匣；只改歸檔位置，不動標題／內文／附件 |
+| `delete_folder` | 刪除一個資料夾——底下的記事與子資料夾會自動搬到上一層（最上層則搬回收件匣），不會遺失任何資料，跟 App 裡的刪除按鈕行為一致 |
+
 ### Medtec 2026 參展系統
 | 工具 | 用途 |
 |---|---|
@@ -129,13 +143,17 @@ connector」這類選項即可：
 ## 安全設計摘要
 
 - **fail-closed**：`MCP_PIN` 沒設定時，這個端點會拒絕所有請求，不會裸奔
-- **預設唯讀**：程式碼裡絕大多數是 SELECT／fetch；`create_fieldlog_entry`／
-  `create_fieldlog_attachment`／`create_relation`／`add_synonym` 是僅有的四個
-  例外，全部只會新增（`create_fieldlog_attachment` 上傳檔案是透過 fieldlog
-  自己的 `/api/upload`，跟其餘三支直接 INSERT D1 的路徑不同，但一樣只新增
-  一筆附件，不會動到既有資料）——程式碼裡沒有任何 UPDATE／DELETE 語句碰得到
-  entries／attachments／folders／relations／synonyms，就算透過對話下指令，
-  也不可能改掉或刪掉既有的任何一筆資料
+- **預設唯讀，例外分兩組**：程式碼裡絕大多數是 SELECT／fetch。第一組
+  `create_fieldlog_entry`／`create_fieldlog_attachment`／`create_relation`／
+  `add_synonym` 全部只會新增（`create_fieldlog_attachment` 上傳檔案是透過
+  fieldlog 自己的 `/api/upload`，跟其餘三支直接 INSERT D1 的路徑不同，但
+  一樣只新增一筆附件），沒有任何 UPDATE／DELETE 語句碰得到 entries 的內容／
+  attachments／relations／synonyms。第二組 `update_folder`／`move_folder`／
+  `move_entry`／`delete_folder`（2026-08-08 新增）會真的造成 UPDATE／DELETE，
+  但透過 FIELDLOG Service Binding 代理呼叫 fieldlog 自己既有的
+  `PUT`／`DELETE /api/folders`、`PUT /api/entries` 端點，範圍鎖死在資料夾
+  結構與記事歸檔位置，不會動到任何記事或附件的標題／內文／附件內容，
+  `delete_folder` 也不會遺失資料（內容自動搬到上一層）
 - 三個後端來源（策略地圖 Wiki、隨身記、Medtec）各自獨立的 Cloudflare
   Worker／資料庫，這個 MCP 只是加一層查詢介面，不做跨系統的資料庫合併。
   LitDB（`chiuchangru/litdb`）已於 2026-07-26 併入隨身記，由 fieldlog 的

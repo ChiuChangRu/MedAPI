@@ -21,7 +21,7 @@
  */
 
 import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
-import { MAX_FOLDER_DEPTH, ensureSchema } from "./lib/schema.js";
+import { FOLDER_CATEGORIES, MAX_FOLDER_DEPTH, ensureSchema } from "./lib/schema.js";
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
@@ -557,6 +557,20 @@ async function handleApi(request, env, url) {
     const type = body.type !== undefined ? (body.type || "").trim() : old.type;
     if (!name) return bad("name 不可為空");
     if (!type) return bad("type 不可為空");
+    // category＝色系分組，跟上面的 type（活動性質）是兩個不同的軸，見
+    // lib/schema.js MIGRATIONS 裡 FOLDER_CATEGORIES 上方的說明。空字串代表
+    // 清除分類（回到未分類，排序時當 misc 處理）。
+    let category = old.category;
+    if (body.category !== undefined) {
+      const wantCategory = String(body.category || "").trim();
+      if (wantCategory && !FOLDER_CATEGORIES.includes(wantCategory)) {
+        return bad(`category 只能是 ${FOLDER_CATEGORIES.join("／")} 其中之一，或留空清除分類`);
+      }
+      category = wantCategory || null;
+    }
+    const sortOrder = body.sort_order !== undefined
+      ? (body.sort_order === null || body.sort_order === "" ? null : Number(body.sort_order))
+      : old.sort_order;
     // parent_id 也能改＝資料夾本身可以搬到別的分支（或搬回最上層）。
     // 沒有這個，四層架構一旦建錯就只能刪掉重來，裡面的記事與附件跟著陪葬。
     if (body.parent_id !== undefined) {
@@ -574,8 +588,9 @@ async function handleApi(request, env, url) {
       await db.prepare("UPDATE folders SET parent_id = ? WHERE id = ?").bind(nextParent, id).run();
       await logHistory(db, null, id, "移動資料夾", `${name} → ${nextParent ? `folder ${nextParent}` : "最上層"}`);
     }
-    await db.prepare("UPDATE folders SET name = ?, status = ?, type = ? WHERE id = ?").bind(name, status, type, id).run();
-    await logHistory(db, null, id, "更新資料夾", `${name}／${status}／${type}`);
+    await db.prepare("UPDATE folders SET name = ?, status = ?, type = ?, category = ?, sort_order = ? WHERE id = ?")
+      .bind(name, status, type, category, sortOrder, id).run();
+    await logHistory(db, null, id, "更新資料夾", `${name}／${status}／${type}${category !== old.category ? `／分類：${category || "（未分類）"}` : ""}`);
     return json({ ok: true });
   }
   if (folderMatch && method === "DELETE") {
