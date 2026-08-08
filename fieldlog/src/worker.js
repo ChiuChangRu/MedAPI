@@ -54,7 +54,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "92";
+const UI_VERSION = "93";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -841,12 +841,18 @@ async function handleApi(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const line = String(body.line || "").trim();
     if (!line) return bad("line 為必填");
-    const old = await db.prepare("SELECT id, folder_id FROM entries WHERE id = ?").bind(entryId).first();
+    const old = await db.prepare("SELECT id, folder_id, body_format FROM entries WHERE id = ?").bind(entryId).first();
     if (!old) return bad("找不到紀錄", 404);
+    // 富文字記事（body_format='html'）不能把純文字原樣串進 body——那樣會在
+    // HTML 片段外插入沒有標籤包住的裸文字。先包成 <p> 轉義過的段落，再走跟
+    // 純文字一樣的原子附加 SQL，不影響「連續多句不互相蓋掉」這個既有保證。
+    const appended = old.body_format === "html"
+      ? sanitizeEntryHtml(`<p>${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
+      : line;
     const updatedAt = now();
     const result = await db.prepare(
       "UPDATE entries SET body = CASE WHEN body IS NULL OR body = '' THEN ? ELSE body || char(10) || ? END, updated_at = ? WHERE id = ?"
-    ).bind(line, line, updatedAt, entryId).run();
+    ).bind(appended, appended, updatedAt, entryId).run();
     if (!result.meta.changes) return bad("找不到紀錄", 404);
     await logHistory(db, entryId, old.folder_id ?? null, "記一句", line);
     return json({ ok: true });

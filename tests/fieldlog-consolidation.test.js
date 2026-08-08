@@ -134,7 +134,7 @@ function makeDB() {
     }
 
     // ---- entries ----
-    if (q === "SELECT id, folder_id FROM entries WHERE id = ?") {
+    if (q === "SELECT id, folder_id, body_format FROM entries WHERE id = ?") {
       const row = tables.entries.find((e) => e.id === args[0]);
       return { results: row ? [row] : [], changes: 0 };
     }
@@ -517,6 +517,17 @@ test("記一句到不存在的記事回 404", async () => {
   const env = makeEnv();
   const res = await call(env, "/entries/999/notes", { method: "POST", body: JSON.stringify({ line: "x" }) });
   assert.equal(res.status, 404);
+});
+
+test("記一句：body_format='html' 的記事要包成 <p> 再附加，不能留下沒有標籤包住的裸文字", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  db.tables.entries.push({ id: 8, folder_id: 3, title: "富文字記事", body: "<p>原本內容</p>", body_format: "html", fields_json: "{}" });
+
+  await call(env, "/entries/8/notes", { method: "POST", body: JSON.stringify({ line: "⚠️ 錄音疑似中斷 <script>" }) });
+
+  const row = db.tables.entries.find((e) => e.id === 8);
+  assert.equal(row.body, '<p>原本內容</p>\n<p>⚠️ 錄音疑似中斷 &lt;script&gt;</p>', "要包成 <p> 且轉義過，不能把裸文字或危險標籤直接串進 HTML");
 });
 
 // ---------- 單一檔案操作（原本在 v49）----------

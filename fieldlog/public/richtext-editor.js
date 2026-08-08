@@ -9,28 +9,37 @@
   // 蠟筆（螢光筆）用的顏色。值本身也是合法的 CSS 色名，工具列的色塊才畫得出來；
   // 實際存進 body 的是 class（見下面 registerFormats），不是行內 style。
   const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "orange", false];
+  // 字體大小：false＝一般大小，其餘三檔是 Quill 內建的字級名稱
+  const FONT_SIZES = ["small", false, "large", "huge"];
 
   const TOOLBAR = [
     [{ header: [1, 2, 3, false] }],
+    [{ size: FONT_SIZES }],
     ["bold", "italic", "underline", "strike"],
     [{ background: HIGHLIGHT_COLORS }],
+    [{ align: [] }],
     [{ list: "ordered" }, { list: "bullet" }],
     ["blockquote", "code-block", "link"],
     ["clean"],
   ];
 
   /**
-   * 蠟筆重點要存成 class（ql-bg-yellow）而不是 Quill 預設的行內
-   * style="background-color:…"。理由是後端 sanitizeEntryHtml 一律不收 style
-   * 屬性（style 能直接畫東西，開放它等於讓貼上的外部內容決定畫面），
-   * 所以行內樣式的蠟筆一存檔就整個消失；class 版本有白名單（只收 ql-* ）
-   * 可以安全保留，重新開啟時顏色還在。
+   * 蠟筆重點、字體大小、對齊方式都要存成 class（ql-bg-yellow／ql-size-large／
+   * ql-align-center）而不是 Quill 預設的行內 style="…"。理由是後端
+   * sanitizeEntryHtml 一律不收 style 屬性（style 能直接畫東西，開放它等於讓
+   * 貼上的外部內容決定畫面），所以行內樣式一存檔就整個消失；class 版本有
+   * 白名單（只收 ql-*）可以安全保留，重新開啟時設定還在。
    */
   let formatsReady = false;
   function registerFormats() {
     if (formatsReady || !window.Quill) return;
     const BackgroundClass = window.Quill.import("attributors/class/background");
     window.Quill.register(BackgroundClass, true);
+    const SizeClass = window.Quill.import("attributors/class/size");
+    SizeClass.whitelist = ["small", "large", "huge"];
+    window.Quill.register(SizeClass, true);
+    const AlignClass = window.Quill.import("attributors/class/align");
+    window.Quill.register(AlignClass, true);
     formatsReady = true;
   }
 
@@ -226,7 +235,9 @@
     if (toolbar && toolbar.classList.contains("ql-toolbar")) {
       const labels = {
         ".ql-header": "標題層級（貼 Markdown 的 # 會自動變成標題）",
+        ".ql-size": "字體大小",
         ".ql-background": "🖍 蠟筆重點（螢光筆）",
+        ".ql-align": "對齊方式",
         ".ql-blockquote": "引言",
         ".ql-code-block": "程式碼區塊",
         ".ql-clean": "清除格式",

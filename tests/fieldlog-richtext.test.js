@@ -113,6 +113,14 @@ test("sanitizeEntryHtml: style 屬性仍然一律不收（蠟筆走 class，不�
   assert.equal(sanitizeEntryHtml('<span style="background-color:red">x</span>'), "<span>x</span>");
 });
 
+test("sanitizeEntryHtml: 字體大小（ql-size-*）與對齊方式（ql-align-*）的 class 要留住", () => {
+  assert.equal(
+    sanitizeEntryHtml('<p class="ql-align-center"><span class="ql-size-huge">大字</span></p>'),
+    '<p class="ql-align-center"><span class="ql-size-huge">大字</span></p>'
+  );
+  assert.equal(sanitizeEntryHtml('<h1 class="ql-align-right">標題</h1>'), '<h1 class="ql-align-right">標題</h1>');
+});
+
 test("htmlToPlainText: 標題與程式碼區塊後面要換行，不然匯出會整段黏在一起", () => {
   assert.equal(htmlToPlainText("<h2>章節</h2><p>內文</p>"), "章節\n內文");
   assert.equal(htmlToPlainText("<pre>code()</pre><p>說明</p>"), "code()\n說明");

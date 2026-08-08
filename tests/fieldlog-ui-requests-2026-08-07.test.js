@@ -106,6 +106,21 @@ test("(7) 蠟筆重點存成 class 而不是行內 style（style 一律會被後
   }
 });
 
+// ---------- 字體大小／對齊方式（段落設定） ----------
+// 2026-08-XX 回報：筆記本要能調字體大小或段落設定。同樣走 class（不是行內
+// style），Quill 的 snow 主題本身就內建 ql-size-*／ql-align-* 的樣式，
+// 不用像蠟筆顏色那樣自己另外補 CSS。
+
+test("筆記本工具列有字體大小與對齊方式，兩者都走 class attributor", async () => {
+  const editor = await read("../fieldlog/public/richtext-editor.js");
+  assert.match(editor, /attributors\/class\/size/, "要註冊 class 版的 size attributor");
+  assert.match(editor, /attributors\/class\/align/, "要註冊 class 版的 align attributor");
+  assert.match(editor, /\{ size: FONT_SIZES \}/, "工具列要有字體大小下拉選單");
+  assert.match(editor, /\{ align: \[\] \}/, "工具列要有對齊方式下拉選單");
+  assert.match(editor, /字體大小/, "按鈕要有看得懂的中文說明");
+  assert.match(editor, /對齊方式/);
+});
+
 // ---------- (4) 新檔案在最上面 ----------
 
 test("(4) 資料夾內的檔案預設新到舊，可切回檔名排序", async () => {

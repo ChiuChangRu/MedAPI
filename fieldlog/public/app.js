@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "92";
+const APP_VERSION = "93";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -3075,7 +3075,12 @@ async function syncPendingFiles() {
 // 順便打開鏡頭全螢幕——只有按「錄影」才是真的要錄影。
 // 拍照永遠要看得到即時畫面才拍（不做隱藏鏡頭盲拍那套）。
 const SEG_MINUTES = 10;
-const AUDIO_LIVE_SEG_SECONDS = 60;
+// 跟錄影分段用同一個單位（10 分鐘），不要各自寫一個數字之後兜不起來
+const AUDIO_LIVE_SEG_SECONDS = SEG_MINUTES * 60;
+// 換下一段錄音時，新的一段提前這麼多毫秒先開始收音，跟舊的一段重疊一下再收尾舊的
+// （見 rotateAudioSegment）——比起先收尾舊的、才開始收新的，重疊比空隙安全：
+// 頂多兩段音檔開頭/結尾多重複這一小段，不會真的漏錄。
+const AUDIO_SEG_OVERLAP_MS = 800;
 
 function segOffset(session) { return Math.floor((Date.now() - session.startedAt) / 1000); }
 
@@ -3391,6 +3396,20 @@ function startAudioSegRecorder() {
   AUDIO.recorder = recorder;
   AUDIO.segStartMs = Date.now();
   recorder.start();
+  return recorder;
+}
+
+// 換下一段：同一個麥克風 stream 可以同時被兩個 MediaRecorder 消費，不會互相
+// 干擾——先讓新的一段開始收音，過 AUDIO_SEG_OVERLAP_MS 才收尾舊的那個
+// recorder，兩段音檔會有一小段重疊，但中間不會出現真正收不到音的空隙。
+// （舊寫法是「先 stop 舊的，onstop 觸發後才 start 新的」，中間有個小空隙。）
+function rotateAudioSegment() {
+  const oldRecorder = AUDIO.recorder;
+  AUDIO.segIndex++;
+  startAudioSegRecorder();
+  setTimeout(() => {
+    try { if (oldRecorder.state !== "inactive") oldRecorder.stop(); } catch {}
+  }, AUDIO_SEG_OVERLAP_MS);
 }
 
 async function startAudio(entryId) {
@@ -3412,7 +3431,7 @@ async function startAudio(entryId) {
     if (!AUDIO || AUDIO.ending) return;
     $("audio-timer").textContent = fmtSecs(segOffset(AUDIO));
     if (AUDIO.recorder.state === "recording" && Date.now() - AUDIO.segStartMs >= AUDIO_LIVE_SEG_SECONDS * 1000) {
-      AUDIO.recorder.stop();
+      rotateAudioSegment();
     }
   }, 1000);
 }
@@ -3489,8 +3508,17 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
   await uploadSeg();
 }
 
-// 回到前台時：若背景中錄音被系統中斷（iOS 一定會、Android 記憶體吃緊時可能），
-// 且沒有自動接上，就接續錄新的一段。錄音不會整個結束，切走前錄的也都保住。
+// 中斷這件事要留在記事裡，不能只靠浮動列上一閃而過的提示——事後回顧記事
+// 才是真正會發現「怎麼接不上」的時候，那時浮動列早就不在了。寫失敗（離線／
+// 網路不穩）就算了，不影響錄音本身，安靜略過即可。
+async function noteAudioInterruption(entryId, line) {
+  try { await api(`/entries/${entryId}/notes`, { method: "POST", body: JSON.stringify({ line }) }); }
+  catch {}
+}
+
+// 回到前台時：若背景中錄音被系統中斷（iOS 一定會、Android 記憶體吃緊時可能，
+// 桌面版 Chrome 切分頁／開別的 App 實測也可能發生），且沒有自動接上，就接續
+// 錄新的一段。錄音不會整個結束，切走前錄的也都保住。
 async function resumeAudioOnForeground() {
   if (!AUDIO || AUDIO.ending) return;
   const backgroundSecs = AUDIO.backgroundAt ? Math.max(1, Math.round((Date.now() - AUDIO.backgroundAt) / 1000)) : 0;
@@ -3499,6 +3527,7 @@ async function resumeAudioOnForeground() {
   const st = AUDIO.recorder && AUDIO.recorder.state;
   const trackEnded = !AUDIO.stream || AUDIO.stream.getAudioTracks().every((track) => track.readyState === "ended");
   if (st !== "recording" || trackEnded) {
+    const interruptedAt = fmtSecs(segOffset(AUDIO)); // 中斷發生的當下，記在整段錄音的第幾分幾秒
     AUDIO.interrupted = true;
     AUDIO.resuming = true;
     try {
@@ -3508,9 +3537,15 @@ async function resumeAudioOnForeground() {
       startAudioSegRecorder();
       setAudioStatus(`⚠️ 背景期間偵測到中斷（最多可能漏錄 ${fmtSecs(backgroundSecs)}），已從第 ${AUDIO.segIndex} 段接續`, true);
       showToast("錄音曾中斷，已另開新段接續");
+      noteAudioInterruption(AUDIO.entryId,
+        `⚠️ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，最多可能漏錄 ${fmtSecs(backgroundSecs)}，已自動開新的一段接續。`);
     } catch (err) {
       setAudioStatus("⛔ 錄音已中斷且無法自動接續，請結束後重新錄音", true);
       showToast("錄音無法自動接續：" + err.message);
+      if (AUDIO) {
+        noteAudioInterruption(AUDIO.entryId,
+          `⛔ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，且無法自動接續，錄音已中止，之後的內容請另外補記。`);
+      }
     } finally {
       if (AUDIO) AUDIO.resuming = false;
     }
