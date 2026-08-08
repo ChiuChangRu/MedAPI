@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "94";
+const APP_VERSION = "95";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -55,10 +55,43 @@ function choicesForLevel(level) {
   return [...list, ...general];
 }
 
+/** 色系分類的卡片底色：未分類或 misc（透明）不覆蓋，維持預設白底 */
+function folderCategoryStyle(f) {
+  const meta = FOLDER_CATEGORY_META[f.category];
+  if (!meta || f.category === "misc" || meta.bg === "transparent") return "";
+  return ` style="background:${meta.bg}"`;
+}
+
+/** 色系分類徽章：未分類或 misc 不顯示，避免每個資料夾都掛一個「暫存／其他」而失去辨識度 */
+function folderCategoryChipHtml(f) {
+  const meta = FOLDER_CATEGORY_META[f.category];
+  if (!meta || f.category === "misc") return "";
+  return `<span class="folder-category">${esc(meta.label)}</span>`;
+}
+
 /** 分類排序用的位置（資料夾清單依分類分群時用） */
 function typeOrderOf(type) {
   const index = folderTypes().findIndex((item) => item.name === type);
   return index < 0 ? 999 : index;
+}
+
+// 資料夾的色系分組（folders.category，2026-08-08 分類重整）。跟上面的
+// folder_type／typeOrderOf（既有的「活動性質」欄位，例如「參展／實驗／
+// 會議」）是完全不同的軸，這裡刻意不共用同一份清單——category 是固定的
+// 六個色系，不像 type 可以在「管理分類」裡自由增刪。rank 決定排序順序，
+// 是「預期會長多大」不是「現在筆數多少」，避免之後又要重排一次。
+const FOLDER_CATEGORY_META = {
+  project: { label: "專案開發", bg: "#FFE5E5", rank: 1 },
+  qa_reg: { label: "品保與法規", bg: "#FFEDD5", rank: 2 },
+  literature: { label: "文獻與知識庫", bg: "#DBEAFE", rank: 3 },
+  training: { label: "教育訓練", bg: "#DCFCE7", rank: 4 },
+  admin: { label: "行政與廠商", bg: "#FEF9C3", rank: 5 },
+  misc: { label: "暫存／其他", bg: "transparent", rank: 6 },
+};
+
+/** 還沒設定 category 的資料夾（NULL）當 misc 處理，排在最後，不排最前面造成視覺混亂 */
+function categoryRankOf(category) {
+  return FOLDER_CATEGORY_META[category]?.rank ?? FOLDER_CATEGORY_META.misc.rank;
 }
 
 async function loadCategories() {
@@ -116,8 +149,15 @@ function compareFolders(a, b) {
   // 排在一堆已經整理好的資料夾後面就失去意義了
   const staging = Number(b.role === "staging") - Number(a.role === "staging");
   if (staging) return staging;
+  // 色系分組（category）優先於進行中／類型——同一色系的資料夾要能連在一起看，
+  // 不然上色分組也沒有意義。未分類（NULL）當 misc 排最後。
+  const byCategory = categoryRankOf(a.category) - categoryRankOf(b.category);
+  if (byCategory) return byCategory;
   const active = Number(b.status === "進行中") - Number(a.status === "進行中");
   if (active) return active;
+  // 手動排序（sort_order）：同一色系內數字小的排前面，沒設定的（null/undefined）排最後
+  const bySortOrder = (a.sort_order ?? Infinity) - (b.sort_order ?? Infinity);
+  if (bySortOrder) return bySortOrder;
   const byType = typeOrderOf(a.type) - typeOrderOf(b.type);
   if (byType) return byType;
   return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant", {
@@ -505,10 +545,10 @@ function renderFolders() {
     return;
   }
   wrap.innerHTML = rootFolders.map((f) => `
-    <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}">
+    <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}"${folderCategoryStyle(f)}>
       <button class="folder-drag" type="button" draggable="true" title="拖曳合併或刪除" aria-label="拖曳${esc(f.name)}">⠿</button>
       <div class="folder-card-main">
-        <span class="folder-type">${esc(f.type)}</span>
+        <span class="folder-type-group"><span class="folder-type">${esc(f.type)}</span>${folderCategoryChipHtml(f)}</span>
         <span class="folder-name">${esc(f.name)}</span>
         <span class="folder-count">${f.entry_count} 筆記事${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</span>
         <span class="folder-date">建立於 ${esc((f.created_at || "").slice(0, 10))}</span>
@@ -1235,8 +1275,8 @@ function renderChildFolders(parentId) {
     .sort(folderComparator());
   const wrap = $("folder-children");
   wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${children.map((f) => `
-    <div class="child-folder-card" data-id="${f.id}">
-      <span>📁</span><strong>${esc(f.name)}</strong><small>${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
+    <div class="child-folder-card" data-id="${f.id}"${folderCategoryStyle(f)}>
+      <span>📁</span><strong>${esc(f.name)}</strong><small>${folderCategoryChipHtml(f)}${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
       <button class="child-folder-edit" type="button" data-id="${f.id}" title="編輯資料夾名稱／類型" aria-label="編輯${esc(f.name)}資料夾">✏️</button>
       <button class="child-folder-move" type="button" data-id="${f.id}" title="把這個子資料夾搬到別的地方" aria-label="移動${esc(f.name)}資料夾">📂</button>
     </div>`).join("")}</div>` : "";

@@ -21,7 +21,7 @@
  */
 
 import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
-import { FOLDER_CATEGORIES, MAX_FOLDER_DEPTH, ensureSchema } from "./lib/schema.js";
+import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFolderReorg20260808, ensureSchema } from "./lib/schema.js";
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
@@ -60,7 +60,7 @@ import {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "94";
+const UI_VERSION = "95";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -492,7 +492,7 @@ async function handleApi(request, env, url) {
       `SELECT f.*,
         (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id) AS entry_count,
         (SELECT COUNT(*) FROM folders c WHERE c.parent_id = f.id) AS child_count
-       FROM folders f ORDER BY f.status = '進行中' DESC, f.id DESC`
+       FROM folders f ORDER BY ${FOLDER_CATEGORY_RANK_SQL}, f.status = '進行中' DESC, f.sort_order, f.id DESC`
     ).all();
     return json(results);
   }
@@ -1880,6 +1880,14 @@ export default {
       await reviewAutoFileCorrections(env.DB, { timestamp: now });
     } catch (err) {
       console.error("彙整分類規則建議失敗", err);
+    }
+    // 一次性的資料夾分類重整（2026-08-08）。自帶標記、只會真的套用一次，
+    // 之後每天的排程呼叫都是立即返回的無事發生，跟前面幾個每日任務分開
+    // try，不讓一次性遷移失敗連帶擋到當天的同步／自動歸類。
+    try {
+      await applyFolderReorg20260808(env.DB, now());
+    } catch (err) {
+      console.error("資料夾分類重整失敗", err);
     }
   },
 };

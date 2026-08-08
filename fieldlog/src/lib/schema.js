@@ -253,6 +253,13 @@ export const MIGRATIONS = [
 // 不是「現在筆數比較多」，避免之後又要重排一次。
 export const FOLDER_CATEGORIES = ["project", "qa_reg", "literature", "training", "admin", "misc"];
 
+// 資料夾清單依 category 分組排序用的 SQL 片段（§B5）。放這裡讓 fieldlog／mcp
+// 兩支 worker 的 /folders 查詢共用同一份順序定義，不用各自寫一次、之後
+// FOLDER_CATEGORIES 順序調整時兩邊還要記得一起改。NULL／不在清單內的值
+// 一律落在 ELSE（排最後，等同 misc），不會排到最前面造成視覺混亂。
+export const FOLDER_CATEGORY_RANK_SQL =
+  "CASE f.category " + FOLDER_CATEGORIES.map((c, i) => `WHEN '${c}' THEN ${i + 1}`).join(" ") + ` ELSE ${FOLDER_CATEGORIES.length} END`;
+
 /**
  * 外部來源的初始內容——litdb 的三個收藏。跟 CATEGORY_SEED 一樣只在第一次寫入，
  * 之後使用者增刪改（含整列刪掉）都不會被倒回來。
@@ -429,5 +436,108 @@ async function seedSources(db, timestamp) {
       )
     );
   }
+  await db.batch(statements);
+}
+
+/**
+ * 一次性的資料夾分類重整（2026-08-08，依「MyWiki 隨身記系統改造規格」§B
+ * 對照表套用）。標記機制跟上面兩支種子函式同一個做法：用 categories 表的
+ * 標記列記住「套用過了」，之後使用者自己再調整名稱／category／歸檔位置，
+ * 不會被這裡的舊值蓋回去。
+ *
+ * 刻意不掛在 ensureSchema()（每個請求／每個測試冷啟動都會跑一次）——
+ * 改由 worker.js 的 scheduled()（daily cron）呼叫，跟 autoFileStagedEntries
+ * 那些每日任務同一批，一次性資料搬移只需要在部署後的下一次排程套用一次，
+ * 不需要出現在所有測試的 ensureSchema 呼叫路徑上。
+ *
+ * 範圍刻意只包含兩類不需要知道「現在實際的 parent_id／深度」也能安全做
+ * 的動作：
+ *   1. 改名＋設定 category——純文字／metadata，不影響資料夾樹狀結構
+ *   2. 規格 §B4 明確列出、id 對 id 的資料搬移／刪除（11 的 3 筆記事併入
+ *      13 後刪掉 11；26 直接刪除；entry 262 從 folder 36 搬到 folder 35）
+ *
+ * 規格裡用「｜」表示的巢狀關係（例如「專案｜檢體針｜設備請購」暗示可能要
+ * 搬到 folder 19 底下）刻意不在這裡做：那是搬動資料夾在樹狀結構裡的位置，
+ * 需要先知道現在實際的 parent_id／深度才能安全判斷會不會超過
+ * MAX_FOLDER_DEPTH，這支遷移拿不到那個資訊，硬搬有搬錯或超過層數上限的
+ * 風險。要做那部分，改用已經有深度檢查與防循環邏輯的 update_folder／
+ * move_folder（MCP 工具，或 App 裡的搬移功能）逐一確認著做。
+ */
+export async function applyFolderReorg20260808(db, timestamp) {
+  const applied = await db
+    .prepare("SELECT id FROM categories WHERE kind = '_folder_reorg_2026_08_08' LIMIT 1")
+    .first()
+    .catch(() => null);
+  if (applied) return;
+
+  const rename = (id, name, category) =>
+    db.prepare("UPDATE folders SET name = ?, category = ? WHERE id = ?").bind(name, category, id);
+  const setCategory = (id, category) =>
+    db.prepare("UPDATE folders SET category = ? WHERE id = ?").bind(category, id);
+
+  const statements = [
+    db.prepare(
+      "INSERT INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('_folder_reorg_2026_08_08', 0, 'applied', '', '', '[]', 0, ?)"
+    ).bind(timestamp),
+
+    // ---- 專案開發（project）----
+    rename(19, "專案｜檢體針", "project"),
+    rename(38, "專案｜檢體針｜設備請購", "project"),
+    rename(34, "專案｜檢體針｜拉拔試驗", "project"),
+    rename(33, "專案｜檢體針｜設計輸入", "project"),
+    rename(22, "專案｜檢體針｜原料資訊", "project"),
+    setCategory(23, "project"), // 廠商｜北回化學：保留名稱，維持在 22 底下
+    setCategory(24, "project"), // 廠商｜LOCTITE(上澄)：保留名稱，維持在 22 底下
+    rename(25, "專案｜HD導管", "project"),
+    rename(29, "專案｜HD導管｜再回流測試", "project"),
+    rename(27, "專案｜編織管", "project"),
+    rename(28, "專案｜編織管｜POM熱分析", "project"), // §B4 已確認歸專案
+    rename(36, "專案｜Pigtail｜親水塗層", "project"),
+    rename(40, "專案｜CVC／輸尿管", "project"),
+    rename(10, "專案｜高壓注射筒", "project"), // §B4 已確認
+
+    // ---- 品保與法規（qa_reg）----
+    rename(7, "品保法規｜ISO標準", "qa_reg"),
+    rename(8, "品保法規｜IFU", "qa_reg"),
+    rename(30, "品保法規｜驗證測試｜流速壓力", "qa_reg"),
+    rename(32, "品保法規｜驗證測試｜UV膠", "qa_reg"),
+    rename(43, "品保法規｜稽核｜宜蘭二廠", "qa_reg"),
+
+    // ---- 文獻與知識庫（literature）：命名已清楚，只設定 category ----
+    setCategory(15, "literature"),
+    setCategory(16, "literature"),
+    setCategory(17, "literature"),
+    setCategory(18, "literature"),
+
+    // ---- 教育訓練（training）----
+    rename(13, "教育訓練（根）", "training"),
+    rename(35, "教育訓練｜FMEA", "training"),
+    rename(31, "教育訓練｜AI", "training"),
+    rename(12, "教育訓練｜資料庫入門", "training"),
+
+    // ---- 行政與廠商（admin）----
+    rename(37, "行政｜一般行政", "admin"),
+    rename(41, "行政｜設備", "admin"), // §B4 已確認歸行政
+    rename(3, "行政｜月會", "admin"),
+    rename(42, "行政｜週報月報KPI", "admin"),
+
+    // ---- 暫存／其他（misc）----
+    rename(39, "暫存區（待歸類）", "misc"),
+    rename(9, "暫存區｜高壓注射筒（待確認）", "misc"), // §B4 已確認：不確定歸屬先進暫存區
+
+    // ---- §B4：明確的 id 對 id 資料搬移／刪除 ----
+    // 11「其他專案｜課程」（3 筆）併入 13「教育訓練（根）」，記事搬完再刪 11。
+    // 順手把可能存在的子資料夾上移一層，跟 App 刪除資料夾按鈕的安全邏輯一致
+    // （規格沒提到 11 有子資料夾，這裡是防禦性處理，沒有的話這句只是無事發生）。
+    db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?").bind(13, timestamp, 11),
+    db.prepare("UPDATE folders SET parent_id = ? WHERE parent_id = ?").bind(13, 11),
+    db.prepare("DELETE FROM folders WHERE id = ?").bind(11),
+    // 26「其他｜月報與周報」0 筆、跟 42 重複，直接刪除。
+    db.prepare("UPDATE entries SET folder_id = NULL, updated_at = ? WHERE folder_id = ?").bind(timestamp, 26),
+    db.prepare("UPDATE folders SET parent_id = NULL WHERE parent_id = ?").bind(26),
+    db.prepare("DELETE FROM folders WHERE id = ?").bind(26),
+    // entry 262（FMEA 課程筆記）誤歸在 folder 36（親水塗層），搬到 folder 35（FMEA）。
+    db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE id = ?").bind(35, timestamp, 262),
+  ];
   await db.batch(statements);
 }

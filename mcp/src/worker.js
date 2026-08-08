@@ -61,6 +61,7 @@ import {
 // analysis_json 在這裡怎麼呈現、在 fieldlog 端怎麼進 body，規則永遠一致
 import { renderTree } from "../../fieldlog/src/lib/render.js";
 import { htmlToPlainText } from "../../fieldlog/src/lib/richtext.js";
+import { FOLDER_CATEGORY_RANK_SQL } from "../../fieldlog/src/lib/schema.js";
 
 const PROTOCOL_DEFAULT = "2025-03-26";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
@@ -570,7 +571,7 @@ const TOOLS = [
     async handler(env) {
       const { results } = await env.DB_FIELDLOG.prepare(
         `SELECT f.*, (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id) AS entry_count
-         FROM folders f ORDER BY f.status = '進行中' DESC, f.id DESC`
+         FROM folders f ORDER BY ${FOLDER_CATEGORY_RANK_SQL}, f.status = '進行中' DESC, f.sort_order, f.id DESC`
       ).all();
       if (!results.length) return "隨身記目前沒有任何資料夾。";
       // 資料夾有 parent_id 巢狀結構（四層目錄）：先照樹狀排序（父在子之前）再縮排顯示，

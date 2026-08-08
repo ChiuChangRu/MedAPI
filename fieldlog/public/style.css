@@ -120,9 +120,21 @@ body {
 .grid-view .folder-name { margin-top: 12px; font-size: 16px; }
 .grid-view .folder-count { margin-top: auto; padding-top: 16px; }
 .grid-view .folder-date { margin-top: 5px; }
+/* 包住 .folder-type ＋ .folder-category 兩個徽章，讓 .folder-card-main 的
+   grid（list-view：auto minmax(0,1fr) auto auto）維持原本 4 欄不變——
+   新增色系分類徽章不能讓子項目數變多，否則 list-view 的欄位對齊會整個跑掉。 */
+.folder-type-group { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .folder-type {
   font-size: 11px; padding: 2px 8px; border-radius: 999px;
   background: #e6f2f0; color: var(--accent-dark); white-space: nowrap;
+}
+/* 色系分類徽章（folders.category，2026-08-08 分類重整）。卡片本身已經用
+   folderCategoryStyle() 上淡色底，這裡只需要一個半透明白底的文字標籤，
+   在任何一種淡色底上都讀得清楚，不用每個 category 各寫一組顏色。 */
+.folder-category {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(255, 255, 255, .6); border: 1px solid rgba(0, 0, 0, .08);
+  color: #44403c; white-space: nowrap;
 }
 .folder-name { font-size: 14px; font-weight: 600; flex: 1; }
 .folder-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }

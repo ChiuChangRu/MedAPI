@@ -73,11 +73,33 @@ function makeDB() {
       const row = tables.categories.find((c) => c.kind === "_sources_seeded");
       return { results: row ? [row] : [], changes: 0 };
     }
+    // 一次性的資料夾分類重整（2026-08-08，見 lib/schema.js 的
+    // applyFolderReorg20260808）掛在 scheduled() 裡，這個測試檔會直接呼叫
+    // worker 的 scheduled handler，所以也會跑到它——這裡的假 folders／entries
+    // 表本來就是空的，讓它安靜套用（或安靜判定已套用過）即可，不是這個
+    // 測試檔要驗的東西。
+    if (q === "SELECT id FROM categories WHERE kind = '_folder_reorg_2026_08_08' LIMIT 1") {
+      const row = tables.categories.find((c) => c.kind === "_folder_reorg_2026_08_08");
+      return { results: row ? [row] : [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO categories") || q.startsWith("INSERT OR IGNORE INTO categories")) {
       const kind = q.includes("VALUES ('_seeded'") ? "_seeded"
-        : q.includes("VALUES ('_sources_seeded'") ? "_sources_seeded" : args[0];
+        : q.includes("VALUES ('_sources_seeded'") ? "_sources_seeded"
+        : q.includes("VALUES ('_folder_reorg_2026_08_08'") ? "_folder_reorg_2026_08_08" : args[0];
       insert("categories", { kind });
       return { results: [], changes: 1 };
+    }
+    if (
+      q === "UPDATE folders SET name = ?, category = ? WHERE id = ?"
+      || q === "UPDATE folders SET category = ? WHERE id = ?"
+      || q === "UPDATE folders SET parent_id = ? WHERE parent_id = ?"
+      || q === "UPDATE folders SET parent_id = NULL WHERE parent_id = ?"
+      || q === "DELETE FROM folders WHERE id = ?"
+      || q === "UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?"
+      || q === "UPDATE entries SET folder_id = NULL, updated_at = ? WHERE folder_id = ?"
+      || q === "UPDATE entries SET folder_id = ?, updated_at = ? WHERE id = ?"
+    ) {
+      return none;
     }
     if (q.startsWith("INSERT OR IGNORE INTO sources")) {
       const [key, label, url, items_path, id_field, title_field, folder_parent, folder_type, created_at] = args;
