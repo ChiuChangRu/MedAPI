@@ -1449,6 +1449,54 @@ const TOOLS = [
     },
   },
   {
+    name: "get_fieldlog_image_base64",
+    description: "讀取隨身記照片附件的原始位元組，以純文字（base64）回傳。跟 get_fieldlog_image 的差別：那支轉成 MCP ImageContent 給 Claude『用眼睛看』，模型收到的是解碼後的圖，沒辦法把 base64 字元原樣讀出來複製；這支回傳 type:text，Claude 才真的拿得到那串字元，用在組一份內嵌照片的 HTML 報告（<img src=\"data:{mime};base64,{data}\">），或需要重新上傳／核對位元組是否一致的場景。日常判讀照片內容請優先用 get_fieldlog_image（省 token，也不會把一大串 base64 洗進對話紀錄）。僅支援 4MB 以內的 JPEG/PNG/GIF/WebP（跟 get_fieldlog_image 同一個上限），刻意不做自動縮圖——這支要的就是原始位元組，縮圖會讓位元組對不起來。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "attachment id（search_fieldlog／list_attachments／get_fieldlog_entry 查到的編號）" },
+      },
+      required: ["id"],
+    },
+    async handler(env, args) {
+      const id = Number(args.id);
+      if (!id) throw new Error("id 為必填");
+      const a = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+      if (!a) throw new Error(`找不到附件 ${id}——請先用 search_fieldlog 或 list_attachments 查編號`);
+      const mime = String(a.mime || "").toLowerCase().split(";")[0].trim();
+      if (!mime.startsWith("image/")) {
+        throw new Error(`附件 ${id}（${a.filename}）不是圖片（${a.mime || "未知類型"}）——文件內容請改用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      const SUPPORTED_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      if (!SUPPORTED_IMAGE_MIMES.includes(mime)) {
+        throw new Error(`附件 ${id} 的格式 ${mime} 不在支援清單（JPEG/PNG/GIF/WebP）內——HEIC 等格式請在手機端以 JPEG 重傳，或用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      const INLINE_CAP = 4 * 1024 * 1024;
+      const size = Number(a.size || 0);
+      if (size > INLINE_CAP) {
+        throw new Error(`附件 ${id}（${a.filename}）為 ${(size / 1024 / 1024).toFixed(1)}MB，超過 inline 上限 4MB——請在隨身記 App 壓縮後重傳，或改用 get_fieldlog_attachment(${id}) 讀擷取文字`);
+      }
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const u = new URL(`https://fieldlog.internal/api/attachments/${id}/raw`);
+      u.searchParams.set("mode", "inline");
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString());
+      if (!res.ok) {
+        const hint = res.status === 404 ? "（也可能是 fieldlog 部署版本過舊，還沒有 /attachments/:id/raw 端點——commit 5c784dd 之後才有）" : "";
+        throw new Error(`讀取原始檔失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}${hint}`);
+      }
+      const payload = await res.json();
+      if (!payload || !payload.data) throw new Error("raw 端點回應缺少 base64 資料——fieldlog 部署版本可能過舊");
+      const outMime = payload.mime_type || mime;
+      return {
+        content: [
+          { type: "text", text: payload.data },
+          { type: "text", text: `↑ 純 base64（不含任何前綴），複製時只取這一段，不要連這段說明一起複製。檔名：${a.filename}｜mime：${outMime}｜大小：${(Number(payload.size_bytes || size) / 1024).toFixed(0)}KB｜base64 長度：${payload.data.length} 字元` },
+        ],
+      };
+    },
+  },
+  {
     name: "image_probe",
     description: "診斷用：回傳一張內建的 96×96 測試圖（四象限色塊），驗證目前 client（claude.ai 等）是否支援顯示 MCP 圖片內容。Claude 若能正確說出四個色塊的顏色與位置，代表圖片通道可用，get_fieldlog_image 才值得使用；若只看到 base64 亂碼或 token 超限錯誤，代表 client 尚未支援，照片請改走 get_fieldlog_attachment 的擷取文字路線。此工具不讀任何使用者資料。",
     inputSchema: { type: "object", properties: {} },

@@ -317,7 +317,7 @@ test("工具數與文件記載一致（改了工具就要同步改文件，不�
     readFile(new URL("../fieldlog/public/help.html", import.meta.url), "utf8"),
   ]);
   const count = (src.match(/^\s{4}name: "/gm) || []).length;
-  assert.equal(count, 22, "工具數變了要一起更新文件");
+  assert.equal(count, 23, "工具數變了要一起更新文件");
   assert.match(connectGpt, new RegExp(`可用工具（${count} 個）`));
   assert.match(connectGpt, new RegExp(`抓到下面這 ${count} 個工具`));
   // README 講的是「其餘幾個唯讀」＝總數扣掉四支可寫入的
