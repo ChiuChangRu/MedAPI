@@ -364,6 +364,12 @@ Notion 自動同步<strong>還沒做完</strong>（欄位有了但沒接通）�
 想知道「資料是不是過時了」，直接在 claude.ai 對話裡問，它會用 <code>sync_status</code>
 工具告訴你每個來源最後同步的時間和筆數——不用靠記憶。
 </div>
+
+<h3>資料夾分類重整（2026-08-08）想立刻套用、不等半夜</h3>
+<pre><code>curl -X POST "https://fieldlog.gogoyankee.workers.dev/api/admin/reorg-folders-20260808" \
+  -H "x-pin: 你的FIELD_PIN"</code></pre>
+<p>這是一次性的資料搬移（改名、上色分類），本來就掛在每天凌晨 02:00 的排程裡，
+只會真的套用一次，不想等的話用這支立刻跑；跑第二次也是安全的無事發生。</p>
 </section>
 
 <section id="ask">

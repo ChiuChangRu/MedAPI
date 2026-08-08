@@ -637,3 +637,23 @@ test("來歷面板：同步來的資料要標示來源，孤兒要警示，AI �
   }
   assert.match(app, /AI 對這筆做過什麼/, "AI 動過哪裡要獨立一段");
 });
+
+// ---------- 資料夾分類重整（2026-08-08）手動觸發端點 ----------
+// 本來掛在 scheduled()（每天台灣時間 02:00），不想等的話用這支立刻跑，
+// 跟 /admin/sync-sources 同一個道理。函式自己有標記機制，這裡只測端點
+// 有沒有接對，一次性遷移本身的行為在 tests/fieldlog-folder-reorg.test.js。
+
+test("POST /admin/reorg-folders-20260808：接得到，回應 ok", async () => {
+  const env = makeEnv();
+  const res = await call(env, "/admin/reorg-folders-20260808", { method: "POST" });
+  assert.equal(res.status, 200);
+  assert.equal(res.data.ok, true);
+});
+
+test("POST /admin/reorg-folders-20260808：跑第二次也是安全的無事發生（標記機制生效）", async () => {
+  const env = makeEnv();
+  await call(env, "/admin/reorg-folders-20260808", { method: "POST" });
+  const second = await call(env, "/admin/reorg-folders-20260808", { method: "POST" });
+  assert.equal(second.status, 200);
+  assert.equal(second.data.ok, true);
+});

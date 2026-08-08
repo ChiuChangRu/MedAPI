@@ -1096,6 +1096,14 @@ async function handleApi(request, env, url) {
     return json(outcome, outcome.ok ? 200 : 502);
   }
 
+  // 一次性的資料夾分類重整（2026-08-08）手動觸發端點，跟 /admin/sync-sources
+  // 同一個道理：本來掛在 scheduled()，每天台灣時間 02:00 才會自動套用一次，
+  // 不想等的話用這支立刻跑。函式自己有標記機制，跑第二次也是安全的無事發生。
+  if (path === "/admin/reorg-folders-20260808" && method === "POST") {
+    await applyFolderReorg20260808(db, now());
+    return json({ ok: true });
+  }
+
   // ---- 外部來源管理（新增一個知識庫＝往 sources 表加一列，不用改程式碼）----
   // key 建立後不可改：它是同步進來的每筆記事的內部識別碼前綴（_sid = key:id），
   // 改了會讓既有記事全部變成孤兒、下次同步整批重複匯入。
