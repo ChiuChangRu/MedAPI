@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "91";
+const APP_VERSION = "92";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -728,7 +728,9 @@ async function loadStagingStatus() {
     AUTO_FILE_DAYS = status.days;
     STAGING_FOLDER_ID = status.staging_folder_id;
     if (!status.waiting) {
-      box.innerHTML = `全部都歸類好了。來不及分類時可以先丟「⏳ 暫存區」，${autoFileDaysControlHtml(status.days)}系統會用 AI 自動歸類並標記。`;
+      // 「太好了」那句已經在下面的 inbox-list 空清單訊息講過一次，這裡不用
+      // 重講一次「全部都歸類好了」；只留使用者真的可能想調的天數設定
+      box.innerHTML = `<span class="sub">${autoFileDaysControlHtml(status.days)}</span>`;
       bindAutoFileDaysControl();
       return;
     }
