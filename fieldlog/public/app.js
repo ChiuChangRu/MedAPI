@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "102";
+const APP_VERSION = "103";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1494,16 +1494,26 @@ function recordGroupCardHtml(e, atts) {
   // ".child-folder-card[data-id]" 當拖曳檔案的落點，抓的是真正的資料夾 id；
   // 這張卡片的 data-id 其實是記事 id，混進同一個 class 會讓拖檔案誤觸到這裡，
   // 把檔案搬去一個根本不存在的資料夾。視覺樣式另外在 CSS 裡共用選取器套用。
+  //
+  // 拖曳／📂 移動：跟 entryRowHtml 的 .entry-drag／.entry-move 共用同一套
+  // application/x-fieldlog-entry payload 與 openMoveEntryDialog()，這樣多檔案
+  // 記事（分段錄音一類）才能跟純文字筆記一樣「已歸檔了還能再搬」，不用先
+  // 刪掉重建（entry 266：之前這裡只有刪除鍵，完全搬不動）。
   return `<div class="record-group-card" data-id="${e.id}">
+    <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span>📁</span><strong>${esc(e.title || "（未命名）")}</strong>
     <small>${esc((e.created_at || "").slice(5, 16))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
+    <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
     <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>
   </div>`;
 }
 
 function bindRecordGroupCards() {
   document.querySelectorAll(".record-group-card[data-id]").forEach((card) => {
-    card.onclick = (ev) => { if (!ev.target.closest(".record-group-del")) openEntry(Number(card.dataset.id)); };
+    card.onclick = (ev) => {
+      if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-drag")) return;
+      openEntry(Number(card.dataset.id));
+    };
     const del = card.querySelector(".record-group-del");
     del.onclick = async (ev) => {
       ev.preventDefault();
@@ -1514,6 +1524,29 @@ function bindRecordGroupCards() {
         showToast("已刪除");
         await refreshFolderView();
       } catch (err) { showToast("刪除失敗：" + err.message); }
+    };
+    const move = card.querySelector(".record-group-move");
+    move.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const title = card.querySelector("strong")?.textContent || "這筆記事";
+      openMoveEntryDialog(Number(card.dataset.id), { currentFolderId: CURRENT_FOLDER?.id ?? null, title })
+        .catch((err) => showToast("移動失敗：" + err.message));
+    };
+    const drag = card.querySelector(".record-group-drag");
+    drag.onclick = (ev) => ev.stopPropagation();
+    drag.ondragstart = (ev) => {
+      ev.stopPropagation();
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("application/x-fieldlog-entry", String(card.dataset.id));
+      ev.dataTransfer.setData("application/x-fieldlog-entry-title", card.querySelector("strong")?.textContent || "新資料夾");
+      ev.dataTransfer.setData("application/x-fieldlog-entry-folder", CURRENT_FOLDER?.id != null ? String(CURRENT_FOLDER.id) : "");
+      card.classList.add("dragging");
+      document.body.classList.add("entry-dragging");
+    };
+    drag.ondragend = () => {
+      card.classList.remove("dragging");
+      document.body.classList.remove("entry-dragging");
     };
   });
 }
@@ -1617,11 +1650,24 @@ function hasAttachmentDrag(event) {
   return Array.from(event.dataTransfer?.types || []).includes("application/x-fieldlog-attachment");
 }
 
-/** 子資料夾卡片當放置目標：把檔案拖進去就搬過去 */
+function hasEntryDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("application/x-fieldlog-entry");
+}
+
+/**
+ * 子資料夾卡片當放置目標：把檔案或已歸檔記事拖進去就搬過去。
+ *
+ * entry 266：這裡原本只接檔案（application/x-fieldlog-attachment），記事
+ * （筆記／多檔案記事）拖上來完全沒反應——根本原因是「子資料夾建立時間比
+ * 記事晚」：記事還在收件匣或上層資料夾時拖到首頁清單能歸檔，但一旦子資料夾
+ * 是後來才在這個資料夾內頁建的，使用者只能在這裡看到它，這裡卻沒接
+ * application/x-fieldlog-entry，於是卡住、只能請人手動搬。跟檔案共用同一張
+ * 卡片當落點，兩種 payload 分開判斷、分開處理。
+ */
 function bindFolderDropTargets() {
   document.querySelectorAll(".child-folder-card[data-id]").forEach((card) => {
     card.ondragover = (event) => {
-      if (!hasAttachmentDrag(event)) return;
+      if (!hasAttachmentDrag(event) && !hasEntryDrag(event)) return;
       event.preventDefault();
       event.stopPropagation();
       event.dataTransfer.dropEffect = "move";
@@ -1629,10 +1675,20 @@ function bindFolderDropTargets() {
     };
     card.ondragleave = () => card.classList.remove("file-drop-target");
     card.ondrop = async (event) => {
-      if (!hasAttachmentDrag(event)) return;
+      if (!hasAttachmentDrag(event) && !hasEntryDrag(event)) return;
       event.preventDefault();
       event.stopPropagation();
       card.classList.remove("file-drop-target");
+      const targetId = Number(card.dataset.id || 0);
+      const targetName = card.querySelector("strong")?.textContent?.trim() || "子資料夾";
+      if (!targetId) return;
+      if (hasEntryDrag(event)) {
+        const entryId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
+        const prevFolder = event.dataTransfer.getData("application/x-fieldlog-entry-folder");
+        if (!entryId) return;
+        await moveInboxEntry(entryId, targetId, prevFolder ? Number(prevFolder) : null);
+        return;
+      }
       let payload;
       try {
         payload = JSON.parse(event.dataTransfer.getData("application/x-fieldlog-attachment"));
@@ -1640,9 +1696,7 @@ function bindFolderDropTargets() {
         showToast("無法讀取拖曳的檔案");
         return;
       }
-      const targetId = Number(card.dataset.id || 0);
-      const targetName = card.querySelector("strong")?.textContent?.trim() || "子資料夾";
-      if (!payload?.attachmentId || !targetId) return;
+      if (!payload?.attachmentId) return;
       if (!confirm(`將「${payload.filename}」移入「${targetName}」？`)) return;
       try {
         await api(`/attachments/${payload.attachmentId}/move`, {

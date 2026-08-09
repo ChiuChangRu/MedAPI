@@ -226,14 +226,20 @@ body {
   }
   .child-folder-list.grid-view .folder-level-chip { background: rgba(255, 255, 255, 0.25); color: #fff; }
   .child-folder-list.grid-view .record-group-card,
-  .child-folder-list.grid-view .child-folder-card { padding-right: 16px; }
+  .child-folder-list.grid-view .child-folder-card { padding-right: 16px; padding-left: 16px; }
   .child-folder-list.grid-view .child-folder-move { right: 34px; }
+  .child-folder-list.grid-view .record-group-move { right: 34px; top: 8px; }
+  .child-folder-list.grid-view .record-group-drag { left: 8px; top: 8px; transform: none; }
   .child-folder-list.grid-view .record-group-del,
+  .child-folder-list.grid-view .record-group-move,
+  .child-folder-list.grid-view .record-group-drag,
   .child-folder-list.grid-view .child-folder-edit,
   .child-folder-list.grid-view .child-folder-move {
     color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.15); border-radius: 50%;
   }
   .child-folder-list.grid-view .record-group-del:hover,
+  .child-folder-list.grid-view .record-group-move:hover,
+  .child-folder-list.grid-view .record-group-drag:hover,
   .child-folder-list.grid-view .child-folder-edit:hover,
   .child-folder-list.grid-view .child-folder-move:hover { background: rgba(255, 255, 255, 0.32); opacity: 1; }
 }
@@ -828,9 +834,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   font-size: 13px; font-weight: 700; letter-spacing: .04em;
 }
 .archive-note-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-/* 已歸檔的筆記不再提供拖曳／移動／合併／刪除——歸檔後要改請進去記事裡改 */
-.archive-note-list .entry-drag,
-.archive-note-list .entry-move,
+/* 合併／刪除維持只在記事詳情裡做，不放在列表上；拖曳／移動（entry-drag／
+   entry-move）2026-08-09 起重新開放——entry 266：已歸檔的筆記跟多檔案記事
+   一樣，四層架構建錯／後來才補子資料夾時要搬得動，不能只能刪掉重建。 */
 .archive-note-list .entry-merge,
 .archive-note-list .entry-del { display: none; }
 .archive-note-list .entry-row::before { content: '📝'; font-size: 18px; }
@@ -840,7 +846,21 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
    就是資料夾把附件包在裡面，不是被拆散成一堆各自獨立的檔案列，也不會像
    借用 note 那組 entry-row 樣式時被 grid-view 的 min-height/flex-wrap
    撐得歪七扭八。點卡片開整筆記事詳情，右上角保留單獨的刪除鈕。 */
-.record-group-card { position: relative; padding-right: 34px; }
+/* 左邊拖曳把手／右邊 📂 移動＋🗑 刪除都用絕對定位疊在卡片上，不進網格排版，
+   跟 .child-folder-edit／.child-folder-move／.record-group-del 同一手法。 */
+.record-group-card { position: relative; padding-left: 30px; padding-right: 58px; }
+.record-group-drag {
+  position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; color: var(--text-muted); cursor: grab;
+  font-size: 15px; opacity: 0.45; padding: 4px;
+}
+.record-group-drag:hover { opacity: 1; }
+.record-group-drag:active { cursor: grabbing; }
+.record-group-move {
+  position: absolute; right: 32px; top: 8px; border: 0; background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
+}
+.record-group-move:hover { opacity: 1; }
 .record-group-del {
   position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
