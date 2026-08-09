@@ -92,8 +92,9 @@ test("(e) 首頁面板改名為「待處理」，不再叫「最近作業」（�
   assert.doesNotMatch(html, /🕒 最近作業/, "舊名字會讓人誤以為這裡列的是不分歸檔狀態的全部最近動作");
 });
 
-test("(e) 待處理清單全部清空時的訊息要講「都處理完了」，不是誤導成「一筆記事都沒有」", async () => {
+test("(e) 待處理清單全部清空時留白，不印制式訊息（標題旁的數字歸零就是訊號）", async () => {
   const app = await read("../fieldlog/public/app.js");
   const loadRecent = app.match(/async function loadRecent\(\)[\s\S]*?\n\}/)[0];
-  assert.match(loadRecent, /目前沒有還沒歸檔的東西/);
+  assert.match(loadRecent, /: ""/, "全部處理完時 inbox-list 應該留白");
+  assert.doesNotMatch(loadRecent, /目前沒有還沒歸檔的東西/, "2026-08-09 拿掉了這句多餘的文案");
 });

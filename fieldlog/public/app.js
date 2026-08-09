@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "97";
+const APP_VERSION = "98";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -831,9 +831,11 @@ async function loadRecent() {
   $("btn-inbox-grid").classList.toggle("active", INBOX_VIEW === "grid");
   $("btn-inbox-list").classList.toggle("active", INBOX_VIEW === "list");
   $("inbox-list").className = `entry-list ${INBOX_VIEW}-view`;
+  // 全部處理完了不再另外印一句「太好了」——標題旁的數字本來就會歸零，
+  // 清單留白就是最直接的訊號，多一句話反而是視覺雜訊。
   $("inbox-list").innerHTML = entries.length
     ? entries.map((e) => entryRowHtml(e, { showRecency: true })).join("")
-    : `<p class="sub">目前沒有還沒歸檔的東西——太好了！上面四顆按鈕都可以開始新的採集。</p>`;
+    : "";
   bindEntryRows($("inbox-list"));
 }
 
