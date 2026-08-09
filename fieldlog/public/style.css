@@ -96,8 +96,11 @@ body {
 .folders-toolbar h2 { margin: 0 auto 0 0; }
 .folder-view-toggle { display: flex; gap: 4px; }
 .folder-view-toggle .active { color: #fff; background: var(--accent); border-color: var(--accent); }
+/* 2026-08-09：卡片模式拿掉了（跟清單模式同一批資料、只是排版不同，沒有
+   額外功能），改成縮排樹狀清單——每一列是 folder-card，depth 用行內
+   margin-left 表示，所以這裡只留原本 list-view 那一種版面，不再需要
+   grid-view/list-view 兩套並存。 */
 .folder-list { display: flex; flex-direction: column; gap: 8px; }
-.folder-list.grid-view { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .folder-card {
   position: relative; display: flex; align-items: center; gap: 8px; padding: 0;
   border: 1px solid var(--border); border-radius: var(--radius);
@@ -106,7 +109,11 @@ body {
 }
 .folder-card:hover { border-color: var(--accent); }
 .folder-card.done { opacity: 0.55; }
-.folder-card-main { min-width: 0; flex: 1; cursor: pointer; }
+.folder-card-main {
+  min-width: 0; flex: 1; cursor: pointer;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center; gap: 10px; padding: 12px;
+}
 .folder-drag {
   flex: none; align-self: center; width: 32px; height: 44px; margin-left: 6px;
   border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 20px;
@@ -114,12 +121,6 @@ body {
 .folder-drag:active { cursor: grabbing; }
 .folder-card.dragging { opacity: 0.35; }
 .folder-card.drop-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
-.list-view .folder-card-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 12px; }
-.grid-view .folder-card { min-height: 150px; align-items: stretch; }
-.grid-view .folder-card-main { display: flex; flex-direction: column; align-items: flex-start; padding: 16px; }
-.grid-view .folder-name { margin-top: 12px; font-size: 16px; }
-.grid-view .folder-count { margin-top: auto; padding-top: 16px; }
-.grid-view .folder-date { margin-top: 5px; }
 /* 包住 .folder-type ＋ .folder-category 兩個徽章，讓 .folder-card-main 的
    grid（list-view：auto minmax(0,1fr) auto auto）維持原本 4 欄不變——
    新增色系分類徽章不能讓子項目數變多，否則 list-view 的欄位對齊會整個跑掉。 */
@@ -257,17 +258,13 @@ body {
 @media (max-width: 719px) {
   .folder-view-toggle { display: none; }
   .folders-toolbar { flex-wrap: wrap; }
-  .folder-list.grid-view { display: flex; }
-  .folder-list.grid-view .folder-card { min-height: 0; align-items: center; }
   /* 這裡本來是 3 欄的 grid（類型｜名稱｜筆數）。類型 chip 跟筆數文字都是
      auto 寬、不換行，遇到「其他專案」這種較長的類型、或「N 筆記事｜N 個
      子資料夾」這種較長的筆數文字時，兩邊都變寬，名稱那欄（僅剩的彈性欄）
      就被壓到只剩幾像素，中文名稱變成一個字一行。改成 flex-wrap，用 order
      讓名稱永遠自己獨佔一行，類型／筆數換到下一行一起顯示。 */
-  .folder-list.grid-view .folder-card-main,
-  .list-view .folder-card-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px; }
-  .folder-list.grid-view .folder-name,
-  .list-view .folder-name { order: -1; flex: 1 1 100%; }
+  .folder-card-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px; }
+  .folder-name { order: -1; flex: 1 1 100%; }
   .folder-date { display: none; }
   .folder-drag, .folder-trash-zone, .entry-new-folder-zone { display: none; }
   .inner-view-toggle { display: none; }

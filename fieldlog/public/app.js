@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "98";
+const APP_VERSION = "99";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -110,7 +110,6 @@ async function loadCategories() {
 let FOLDERS = [];
 let CURRENT_FOLDER = null; // 開啟中的資料夾物件
 let TRANSCRIBE_ENABLED = false;
-let FOLDER_VIEW = localStorage.getItem("fieldlog_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 // 收件匣預設清單模式（本來就是待處理的草稿，清單本來就夠緊湊），卡片模式
 // 是給想要一眼看縮圖式排版的人選的，不像資料夾內頁的卡片那麼大張。
@@ -645,24 +644,26 @@ async function loadFolders() {
   renderFolders();
 }
 
+// 2026-08-09：卡片模式拿掉了——跟清單模式顯示的是同一批資料夾（只有根層），
+// 只是排版不同，沒有提供額外功能。改成縮排樹狀清單，用 folderTreeOrdered()
+// 一次攤平整棵四層樹（跟「移動到資料夾」選擇器共用同一份排序／縮排邏輯），
+// 不用再點進資料夾才看得到子資料夾。
 function renderFolders() {
   const wrap = $("folder-list");
-  const rootFolders = FOLDERS.filter((f) => !f.parent_id).sort(folderComparator());
-  wrap.className = `folder-list ${FOLDER_VIEW === "grid" ? "grid-view" : "list-view"}`;
-  $("btn-folder-grid")?.classList.toggle("active", FOLDER_VIEW === "grid");
-  $("btn-folder-list")?.classList.toggle("active", FOLDER_VIEW === "list");
+  const rows = folderTreeOrdered();
+  wrap.className = "folder-list";
   syncFolderSortButtons();
-  if (!rootFolders.length) {
+  if (!rows.length) {
     wrap.innerHTML = `<p class="sub">還沒有資料夾。採集會先進收件匣；建了資料夾之後可以歸檔進去。</p>`;
     return;
   }
-  wrap.innerHTML = rootFolders.map((f) => `
-    <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}"${folderCategoryStyle(f)}>
+  wrap.innerHTML = rows.map(({ folder: f, depth }) => `
+    <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}" style="margin-left:${depth * 18}px"${folderCategoryStyle(f)}>
       <button class="folder-drag" type="button" draggable="true" title="拖曳合併或刪除" aria-label="拖曳${esc(f.name)}">⠿</button>
       <div class="folder-card-main">
-        <span class="folder-type-group"><span class="folder-type">${esc(f.type)}</span>${folderCategoryChipHtml(f)}</span>
+        <span class="folder-type-group">${f.parent_id ? "📁" : "📂"} <span class="folder-type">${esc(f.type)}</span>${folderCategoryChipHtml(f)}</span>
         <span class="folder-name">${esc(f.name)}</span>
-        <span class="folder-count">${f.entry_count} 筆記事${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</span>
+        <span class="folder-count">${f.entry_count} 筆記事</span>
         <span class="folder-date">建立於 ${esc((f.created_at || "").slice(0, 10))}</span>
       </div>
       <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
@@ -713,12 +714,6 @@ function renderFolders() {
       if (sourceId && sourceId !== targetId) mergeFolder(sourceId, targetId);
     };
   });
-}
-
-function setFolderView(view) {
-  FOLDER_VIEW = view;
-  localStorage.setItem("fieldlog_folder_view", view);
-  renderFolders();
 }
 
 // 編輯資料夾：名稱＋類型一起改。類型也能改是因為建立時選錯很常見
@@ -3738,8 +3733,6 @@ function init() {
     if (!CURRENT_FOLDER) { showToast("請先進入要存放檔案的資料夾"); return; }
     uploadFilesToFolder(files);
   });
-  $("btn-folder-grid").onclick = () => setFolderView("grid");
-  $("btn-folder-list").onclick = () => setFolderView("list");
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");

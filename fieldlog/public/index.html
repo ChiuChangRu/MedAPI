@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=98" />
+<link rel="stylesheet" href="style.css?v=99" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -80,12 +80,11 @@
 
       <div class="home-file-stack">
         <section class="panel folders-panel home-files-panel">
+          <!-- 2026-08-09：卡片模式拿掉了（跟清單模式完全同一組資料、只是換個排版，
+               沒有提供額外功能）。清單模式改成縮排樹狀，一次看到整棵四層資料夾樹，
+               不用再點進去才看得到子資料夾。 -->
           <div class="folders-toolbar">
             <h2>📂 已歸檔資料夾</h2>
-            <div class="folder-view-toggle" aria-label="資料夾顯示模式">
-              <button class="btn small" id="btn-folder-grid" type="button" title="卡片模式">▦ 卡片</button>
-              <button class="btn small" id="btn-folder-list" type="button" title="清單模式">☷ 清單</button>
-            </div>
             <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
             <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
             <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
@@ -364,11 +363,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=98"></script>
+<script src="app.js?v=99"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=98"></script>
+<script src="pdf-editor.js?v=99"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=98"></script>
+<script src="richtext-editor.js?v=99"></script>
 </body>
 </html>
