@@ -49,8 +49,40 @@ test("index.html：巡廠整理連結只留工具列那一份，不在 header �
 
 test("home.css：四欄工具列有響應式斷點，窄螢幕疊成一欄", async () => {
   const css = await read("../fieldlog/public/home.css");
-  assert.match(css, /\.home-toolbar-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr 1\.6fr 1fr 1fr;/);
+  assert.match(
+    css,
+    /\.home-toolbar-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1\.6fr\) minmax\(0, 1fr\) minmax\(0, 1fr\);/
+  );
   assert.match(css, /@media \(max-width: 719px\)[\s\S]*?\.home-toolbar-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr;/);
+});
+
+// 2026-08-09：使用者提醒「顏色樹狀格式不要亂掉」——資料夾樹（縮排＋色系底）
+// 塞進較窄的工具列欄位後，原本假設「夠寬才用 grid 排一列、719px 那個*視窗*
+// 寬度斷點才切換成窄版排版」的規則會失效（斷點量的是視窗寬度，量不到這一欄
+// 實際多窄），逼 date／count／type 這些 nowrap 欄位把名稱擠爛、色系底跟著
+// 撐壞。三個測試各鎖一個環節，缺一個都不夠。
+test("home.css：工具列欄位用 minmax(0, …) 而不是裸 fr，內容太寬時欄位會縮而不是撐開整排", async () => {
+  const css = await read("../fieldlog/public/home.css");
+  assert.doesNotMatch(
+    css.match(/\.home-toolbar-grid\s*\{[\s\S]*?\}/)[0],
+    /grid-template-columns:\s*[\d.]+fr/,
+    "grid-template-columns 不該有裸的 fr 軌（要包在 minmax(0, …) 裡）"
+  );
+});
+
+test("home.css：Wiki 檔案欄不管視窗多寬都套用窄版資料夾卡片排版（名稱獨占一行、日期與拖曳把手藏起來）", async () => {
+  const css = await read("../fieldlog/public/home.css");
+  assert.match(css, /\.home-toolbar-files \.folder-card-main\s*\{[\s\S]*?flex-wrap:\s*wrap;/);
+  assert.match(css, /\.home-toolbar-files \.folder-name\s*\{[\s\S]*?flex:\s*1 1 100%;/);
+  assert.match(
+    css,
+    /\.home-toolbar-files \.folder-date,\s*\n\s*\.home-toolbar-files \.folder-drag\s*\{[\s\S]*?display:\s*none;/
+  );
+});
+
+test("style.css：.folder-card 有 min-width: 0，flex column 容器裡才會真的縮小而不是撐破窄欄", async () => {
+  const css = await read("../fieldlog/public/style.css");
+  assert.match(css, /\.folder-card\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?\}/);
 });
 
 test("sw.js：CACHE 版本有跟著這次首頁改版一起換，avoid 舊快取卡住", async () => {

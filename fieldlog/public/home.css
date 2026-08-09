@@ -74,14 +74,19 @@ body {
 .home-toolbar-grid {
   display: grid;
   /* 「Wiki 檔案」欄放的是四層資料夾樹，縮排比連結清單／搜尋結果吃版面，
-     多分一點寬度給它，其餘三欄平分剩下的。 */
-  grid-template-columns: 1fr 1.6fr 1fr 1fr;
+     多分一點寬度給它，其餘三欄平分剩下的。minmax(0, …) 而不是裸的 fr——
+     fr 軌預設下限是 auto（內容的 min-content），資料夾卡片內容一長，
+     軌道會被撐開，逼其他欄跟著變窄甚至整排溢出版面。裸 fr 是這次「顏色
+     樹狀格式」會亂掉的根因之一，跟下面 .home-toolbar-files 的窄版排版
+     一起修，兩個缺一個都不夠。 */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
 
 .home-toolbar-col {
   padding: 13px;
+  min-width: 0;
 }
 
 .home-toolbar-col .home-section-title {
@@ -96,6 +101,34 @@ body {
 
 .home-toolbar-search .home-search-results {
   margin-top: 10px;
+}
+
+/* 資料夾樹的縮排＋色系底（folder-card，見 style.css）原本假設「夠寬才用
+   CSS Grid 排一列（類型｜名稱｜筆數｜日期），撐不下才在 719px 那個*視窗*
+   寬度斷點切換成 flex-wrap」。問題是這欄的實際寬度是工具列的 1.6 份，
+   桌機開著大視窗、視窗寬度遠超過 719px，也還是可能只有兩三百像素——
+   媒體查詢量的是視窗，量不到「這一欄」，所以 719px 斷點不會生效，
+   date／count／type 這些 white-space:nowrap 的欄位會把 minmax(0,1fr) 的
+   名稱欄擠到看不見、色系底跟著被撐爛。這裡不管視窗多寬，直接對這一欄
+   套用手機版那套「名稱獨占一行、日期藏起來」的窄版排版——跟 style.css
+   719px 那組規則是同一套值，只是拿掉視窗寬度的前提，改成「這一欄本來
+   就窄」。 */
+.home-toolbar-files .folder-card-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 12px;
+}
+
+.home-toolbar-files .folder-name {
+  order: -1;
+  flex: 1 1 100%;
+}
+
+.home-toolbar-files .folder-date,
+.home-toolbar-files .folder-drag {
+  display: none;
 }
 
 .toolbar-link-list {
