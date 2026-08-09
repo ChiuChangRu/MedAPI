@@ -23,24 +23,71 @@
     <header class="home-app-head">
       <h1>隨身記</h1>
       <small>輸入、整理、歸檔 <span id="app-version" class="app-version"></span></small>
-      <a class="head-link" href="patrol.html">🏭 巡廠整理</a>
       <a class="head-link" href="help.html">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
     <div class="stale-banner" id="stale-version-banner" hidden></div>
 
-    <!-- 首頁搜尋：傳統關鍵字全文搜尋（標題／內文／欄位／附件檔名／逐字稿／
-         OCR 擷取文字），不是語意搜尋——依「MyWiki 首頁改版規格」§1.1，Vectorize
-         語意搜尋目前命中率太差不適合當首頁入口。多詞空白分隔＝AND，查無自動
-         降級成 OR 並標示，簡繁互通，套用既有同義詞表。 -->
-    <div class="home-search-bar">
-      <span class="home-search-icon" aria-hidden="true">🔍</span>
-      <input type="search" id="home-search-input" class="home-search-input"
-             placeholder="搜尋記事、附件、逐字稿…" autocomplete="off" />
-      <button type="button" id="home-search-clear" class="home-search-clear" hidden aria-label="清除搜尋">✕</button>
+    <!-- 首頁四欄工具列（2026-08-09）：檢索／Wiki／開發工具／Cloudflare 用量
+         各自獨立成欄，取代原本散落在頁面各處的搜尋列與用量區塊。四欄在窄螢幕
+         （手機，本 App 主要使用情境）疊成一欄，寬螢幕才並排——見 home.css。 -->
+    <div class="home-toolbar-grid" id="home-toolbar-grid">
+      <div class="home-section home-toolbar-col home-toolbar-search">
+        <h2 class="home-section-title">🔍 檢索</h2>
+        <!-- 傳統關鍵字全文搜尋（標題／內文／欄位／附件檔名／逐字稿／OCR 擷取
+             文字），不是語意搜尋——依「MyWiki 首頁改版規格」§1.1，Vectorize
+             語意搜尋目前命中率太差不適合當首頁入口。多詞空白分隔＝AND，查無
+             自動降級成 OR 並標示，簡繁互通，套用既有同義詞表。 -->
+        <div class="home-search-bar">
+          <span class="home-search-icon" aria-hidden="true">🔍</span>
+          <input type="search" id="home-search-input" class="home-search-input"
+                 placeholder="搜尋記事、附件、逐字稿…" autocomplete="off" />
+          <button type="button" id="home-search-clear" class="home-search-clear" hidden aria-label="清除搜尋">✕</button>
+        </div>
+        <div id="home-search-results" class="home-search-results" hidden></div>
+      </div>
+
+      <div class="home-section home-toolbar-col home-toolbar-wiki">
+        <h2 class="home-section-title">📖 Wiki 檔案</h2>
+        <a class="toolbar-link-card" href="wiki.html">
+          <span class="toolbar-link-icon" aria-hidden="true">🗺</span>
+          <span class="toolbar-link-text"><strong>策略地圖 Wiki</strong><small>個人知識庫・PIN 保護</small></span>
+        </a>
+      </div>
+
+      <div class="home-section home-toolbar-col home-toolbar-tools">
+        <h2 class="home-section-title">🛠 開發工具</h2>
+        <div class="toolbar-link-list">
+          <a class="toolbar-link-card" href="patrol.html">
+            <span class="toolbar-link-icon" aria-hidden="true">🏭</span>
+            <span class="toolbar-link-text"><strong>巡廠整理</strong></span>
+          </a>
+          <a class="toolbar-link-card" href="https://medtec-2026.gogoyankee.workers.dev/" target="_blank" rel="noopener">
+            <span class="toolbar-link-icon" aria-hidden="true">🧪</span>
+            <span class="toolbar-link-text"><strong>MedTec 2026</strong></span>
+          </a>
+          <a class="toolbar-link-card" href="https://chiuchangru.github.io/DMAIC/" target="_blank" rel="noopener">
+            <span class="toolbar-link-icon" aria-hidden="true">📈</span>
+            <span class="toolbar-link-text"><strong>DMAIC</strong></span>
+          </a>
+        </div>
+      </div>
+
+      <!-- 預設收合、展開才打 /usage：避免每次開首頁都白白耗一次 Cloudflare 帳單查詢 -->
+      <details class="home-section home-toolbar-col home-usage-section" id="usage-details">
+        <summary class="home-usage-summary">
+          <h2 class="home-section-title" id="home-usage-title">Cloudflare 用量</h2>
+          <span class="usage-status-dot" id="usage-status-dot" hidden></span>
+          <span class="usage-summary-chevron" aria-hidden="true">▾</span>
+        </summary>
+        <div class="home-usage-toolbar">
+          <strong>資源監控</strong>
+          <button class="btn small" id="btn-usage-refresh">重新整理</button>
+        </div>
+        <div class="home-usage-content" id="usage-content"><p class="sub">展開以載入用量。</p></div>
+      </details>
     </div>
-    <div id="home-search-results" class="home-search-results" hidden></div>
 
     <div id="home-main-sections">
     <section class="home-section home-input-section" aria-labelledby="home-input-title">
@@ -94,20 +141,6 @@
         </section>
       </div>
     </section>
-
-    <!-- 預設收合、展開才打 /usage：避免每次開首頁都白白耗一次 Cloudflare 帳單查詢 -->
-    <details class="home-section home-usage-section" id="usage-details">
-      <summary class="home-usage-summary">
-        <h2 class="home-section-title" id="home-usage-title">系統用量</h2>
-        <span class="usage-status-dot" id="usage-status-dot" hidden></span>
-        <span class="usage-summary-chevron" aria-hidden="true">▾</span>
-      </summary>
-      <div class="home-usage-toolbar">
-        <strong>資源監控</strong>
-        <button class="btn small" id="btn-usage-refresh">重新整理</button>
-      </div>
-      <div class="home-usage-content" id="usage-content"><p class="sub">展開以載入用量。</p></div>
-    </details>
     </div>
   </div>
 
