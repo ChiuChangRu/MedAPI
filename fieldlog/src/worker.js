@@ -41,6 +41,7 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import { ensureStagingFolder } from "./lib/autofile.js";
+import { ensurePatrolFolder, formatPatrolReport } from "./lib/patrol.js";
 // 全文搜尋的比對邏輯（斷詞／同義詞展開／簡繁摺疊）跟 medapi-mcp 的
 // search_fieldlog 共用同一份，不重寫第二套——mcp 是讀 D1 的「智慧查詢層」，
 // fieldlog 是「raw data 存取層」，兩者一直是這個分工；但比對演算法本身是
@@ -97,7 +98,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "103";
+const UI_VERSION = "104";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1587,6 +1588,45 @@ async function handleApi(request, env, url) {
       remaining: Number(remainingRow?.n || 0),
       pending_audio_entry_ids: pendingAudioEntryIds,
     });
+  }
+
+  // ---------- 巡廠頁面（Jeremy 功能規格書）：截圖 OCR → LLM 整理 → 存檔 ----------
+  // 存檔本身沿用既有的 POST /entries（body_format:"text"，保留巡廠紀錄的固定
+  // 縮排／換行/『』符號不被富文字轉換動到）＋ POST /upload（把原始截圖當附件
+  // 保留，方便日後追溯核對），不另外開端點；這裡只加「整理」流程真正新增的
+  // 兩支：單張截圖 OCR（不需要先有 entry，存檔前只是預覽，可能整批放棄）、
+  // 和把已 OCR 好的文字送給 Claude 整理成固定格式。
+  const patrolOcrMatch = path === "/patrol/ocr" && method === "POST";
+  if (patrolOcrMatch) {
+    if (!env.AI) return bad("尚未啟用 Workers AI（見 fieldlog/README.md）", 501);
+    const mime = request.headers.get("content-type") || "application/octet-stream";
+    if (!mime.startsWith("image/")) return bad("只接受圖片");
+    const body = await request.arrayBuffer();
+    if (!body.byteLength) return bad("空檔案");
+    if (body.byteLength > 50 * 1024 * 1024) return bad("檔案過大（上限 50MB）");
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    const ai = budgetedAi(env);
+    const r = await extractImageText(ai, new Uint8Array(body));
+    if (!r.ok) return bad(friendlyAiError(new Error(r.error)), 502);
+    return json({ text: r.text });
+  }
+
+  if (path === "/patrol/format" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (!items.length) return bad("需要至少一張截圖的 OCR 文字");
+    try {
+      const formatted = await formatPatrolReport(env, items);
+      return json({ formatted_text: formatted });
+    } catch (err) {
+      return bad(err.message, 502);
+    }
+  }
+
+  if (path === "/patrol/folder" && method === "GET") {
+    const folderId = await ensurePatrolFolder(db, now());
+    return json({ folder_id: folderId });
   }
 
   const transcribeMatch = path.match(/^\/attachments\/(\d+)\/transcribe$/);

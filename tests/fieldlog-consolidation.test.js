@@ -47,13 +47,21 @@ function makeDB() {
       const row = tables.categories.find((c) => c.kind === "_sources_seeded");
       return { results: row ? [row] : [], changes: 0 };
     }
+    if (q === "SELECT id FROM categories WHERE kind = '_patrol_category_2026_08_09' LIMIT 1") {
+      const row = tables.categories.find((c) => c.kind === "_patrol_category_2026_08_09");
+      return { results: row ? [row] : [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO categories") || q.startsWith("INSERT OR IGNORE INTO categories")) {
       const [kind, level, name, icon, note, fields_json, sort_order, created_at] =
         q.includes("VALUES ('_seeded'")
           ? ["_seeded", 0, "seeded", "", "", "[]", 0, args[0]]
           : q.includes("VALUES ('_sources_seeded'")
             ? ["_sources_seeded", 0, "seeded", "", "", "[]", 0, args[0]]
-            : args;
+            : q.includes("VALUES ('_patrol_category_2026_08_09'")
+              ? ["_patrol_category_2026_08_09", 0, "applied", "", "", "[]", 0, args[0]]
+              : q.includes("VALUES ('folder_type', 0, '巡廠'")
+                ? ["folder_type", 0, "巡廠", "🚶", "假日巡廠出勤與生產紀錄", "[]", 999, args[0]]
+                : args;
       const clash = tables.categories.some((c) => c.kind === kind && c.level === level && c.name === name);
       if (clash && q.startsWith("INSERT OR IGNORE")) return none;
       const id = insert("categories", { kind, level, name, icon, note, fields_json, sort_order, created_at });

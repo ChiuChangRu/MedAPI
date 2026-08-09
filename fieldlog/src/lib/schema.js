@@ -363,7 +363,31 @@ export async function ensureSchema(db, timestamp) {
   }
   await seedCategories(db, timestamp);
   await seedSources(db, timestamp);
+  await ensurePatrolCategory(db, timestamp);
   schemaReady = true;
+}
+
+/**
+ * 一次性補上「巡廠」資料夾分類（2026-08-09，Jeremy 假日巡廠回報功能規格）。
+ * seedCategories() 只在 categories 表完全空的時候跑一次，那時已經跑過了、
+ * 不會再自動長出新分類，這裡用同一套「標記列」手法補一筆，不放進 cron
+ * （applyFolderReorg20260808 那種），而是掛在 ensureSchema()——它本來就每次
+ * 冷啟動都跑，這樣部署完立刻能用，不用等下一次排程。
+ */
+export async function ensurePatrolCategory(db, timestamp) {
+  const applied = await db
+    .prepare("SELECT id FROM categories WHERE kind = '_patrol_category_2026_08_09' LIMIT 1")
+    .first()
+    .catch(() => null);
+  if (applied) return;
+  await db.batch([
+    db.prepare(
+      "INSERT INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('_patrol_category_2026_08_09', 0, 'applied', '', '', '[]', 0, ?)"
+    ).bind(timestamp),
+    db.prepare(
+      "INSERT OR IGNORE INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('folder_type', 0, '巡廠', '🚶', '假日巡廠出勤與生產紀錄', '[]', 999, ?)"
+    ).bind(timestamp),
+  ]);
 }
 
 // 測試用：重置「已初始化」旗標
