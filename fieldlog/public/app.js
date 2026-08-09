@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "99";
+const APP_VERSION = "100";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -55,11 +55,20 @@ function choicesForLevel(level) {
   return [...list, ...general];
 }
 
-/** 色系分類的卡片底色：未分類或 misc（透明）不覆蓋，維持預設白底 */
-function folderCategoryStyle(f) {
+/** 色系分類的卡片底色（未分類或 misc／透明不覆蓋，維持預設白底），純色碼，不含 style= 包裝——
+ * 呼叫端如果自己還要加別的 inline style（例如樹狀縮排的 margin-left），要合併成同一個 style
+ * 屬性，不能各自輸出一個 style="..."：同一個元素出現兩個 style 屬性時瀏覽器只認第一個，
+ * 第二個會被靜默忽略（2026-08-09 樹狀清單上線時就是這樣把顏色弄不見的）。 */
+function folderCategoryBg(f) {
   const meta = FOLDER_CATEGORY_META[f.category];
   if (!meta || f.category === "misc" || meta.bg === "transparent") return "";
-  return ` style="background:${meta.bg}"`;
+  return meta.bg;
+}
+
+/** 給只需要單獨這一個 style 屬性的呼叫端用（沒有其他 inline style 要合併時） */
+function folderCategoryStyle(f) {
+  const bg = folderCategoryBg(f);
+  return bg ? ` style="background:${bg}"` : "";
 }
 
 /** 色系分類徽章：未分類或 misc 不顯示，避免每個資料夾都掛一個「暫存／其他」而失去辨識度 */
@@ -645,25 +654,65 @@ async function loadFolders() {
 }
 
 // 2026-08-09：卡片模式拿掉了——跟清單模式顯示的是同一批資料夾（只有根層），
-// 只是排版不同，沒有提供額外功能。改成縮排樹狀清單，用 folderTreeOrdered()
-// 一次攤平整棵四層樹（跟「移動到資料夾」選擇器共用同一份排序／縮排邏輯），
-// 不用再點進資料夾才看得到子資料夾。
+// 只是排版不同，沒有提供額外功能。改成縮排樹狀清單，重用「移動到資料夾」
+// 選擇器已經在用的 folderTreeOrdered()（排序／縮排邏輯只寫一份）。
+//
+// 預設只顯示根層（跟拿掉卡片模式之前的畫面一樣），有子資料夾的項目前面有
+// 展開／收合箭頭，按下去才往下展開一層——不是一次全部攤開整棵樹，跟
+// Notion 側欄的頁面樹是同一種互動。EXPANDED_FOLDER_IDS 只存在記憶體裡、
+// 重新整理就重置，符合「預設跟上一版一樣」的要求。
+let EXPANDED_FOLDER_IDS = new Set();
+
+/** 只留下「目前看得到」的列：根層一定看得到，其餘要一路往上追到全部祖先都展開才算 */
+function visibleFolderRows() {
+  const byId = new Map(FOLDERS.map((f) => [Number(f.id), f]));
+  const childCountOf = new Map();
+  for (const f of FOLDERS) {
+    if (!f.parent_id) continue;
+    const key = Number(f.parent_id);
+    childCountOf.set(key, (childCountOf.get(key) || 0) + 1);
+  }
+  const isVisible = (folder) => {
+    let current = folder;
+    while (current.parent_id) {
+      const parent = byId.get(Number(current.parent_id));
+      // parent_id 指向已經不存在的資料夾（孤兒）：folderTreeOrdered() 把這種
+      // 情況當成根層處理，這裡要跟它一致，不然孤兒資料夾會憑空消失
+      if (!parent) return true;
+      if (!EXPANDED_FOLDER_IDS.has(Number(current.parent_id))) return false;
+      current = parent;
+    }
+    return true;
+  };
+  return folderTreeOrdered()
+    .filter(({ folder }) => isVisible(folder))
+    .map(({ folder, depth }) => ({ folder, depth, childCount: childCountOf.get(Number(folder.id)) || 0 }));
+}
+
 function renderFolders() {
   const wrap = $("folder-list");
-  const rows = folderTreeOrdered();
+  const rows = visibleFolderRows();
   wrap.className = "folder-list";
   syncFolderSortButtons();
   if (!rows.length) {
     wrap.innerHTML = `<p class="sub">還沒有資料夾。採集會先進收件匣；建了資料夾之後可以歸檔進去。</p>`;
     return;
   }
-  wrap.innerHTML = rows.map(({ folder: f, depth }) => `
-    <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}" style="margin-left:${depth * 18}px"${folderCategoryStyle(f)}>
+  wrap.innerHTML = rows.map(({ folder: f, depth, childCount }) => {
+    const expanded = EXPANDED_FOLDER_IDS.has(Number(f.id));
+    const bg = folderCategoryBg(f);
+    const style = `margin-left:${depth * 18}px${bg ? `;background:${bg}` : ""}`;
+    const expandBtn = childCount
+      ? `<button class="folder-expand" type="button" data-id="${f.id}" aria-expanded="${expanded}" aria-label="${expanded ? "收合" : "展開"}「${esc(f.name)}」的子資料夾">${expanded ? "▾" : "▸"}</button>`
+      : `<span class="folder-expand-spacer" aria-hidden="true"></span>`;
+    return `
+    <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}" style="${style}">
       <button class="folder-drag" type="button" draggable="true" title="拖曳合併或刪除" aria-label="拖曳${esc(f.name)}">⠿</button>
+      ${expandBtn}
       <div class="folder-card-main">
         <span class="folder-type-group">${f.parent_id ? "📁" : "📂"} <span class="folder-type">${esc(f.type)}</span>${folderCategoryChipHtml(f)}</span>
         <span class="folder-name">${esc(f.name)}</span>
-        <span class="folder-count">${f.entry_count} 筆記事</span>
+        <span class="folder-count">${f.entry_count} 筆記事${childCount ? `｜${childCount} 個子資料夾` : ""}</span>
         <span class="folder-date">建立於 ${esc((f.created_at || "").slice(0, 10))}</span>
       </div>
       <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
@@ -673,7 +722,16 @@ function renderFolders() {
         <button type="button" data-act="merge">合併至其他資料夾</button>
         <button type="button" data-act="delete" class="danger">刪除資料夾</button>
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
+  wrap.querySelectorAll(".folder-expand").forEach((btn) => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const id = Number(btn.dataset.id);
+      if (EXPANDED_FOLDER_IDS.has(id)) EXPANDED_FOLDER_IDS.delete(id); else EXPANDED_FOLDER_IDS.add(id);
+      renderFolders();
+    };
+  });
   wrap.querySelectorAll(".folder-card").forEach((el) => {
     el.querySelector(".folder-card-main").onclick = () => openFolder(Number(el.dataset.id));
     el.querySelector(".folder-more").onclick = (ev) => {

@@ -121,6 +121,17 @@ body {
 .folder-drag:active { cursor: grabbing; }
 .folder-card.dragging { opacity: 0.35; }
 .folder-card.drop-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
+/* 展開／收合子資料夾（跟 Notion 側欄同一種互動：預設收合，按箭頭才往下展開
+   一層）。沒有子資料夾的列用同寬度的空白佔位，讓所有列的名稱維持對齊，
+   不會因為有沒有箭頭而左右跳動。 */
+.folder-expand,
+.folder-expand-spacer {
+  flex: none; width: 24px; height: 44px;
+}
+.folder-expand {
+  border: 0; background: transparent; color: #6b7280; cursor: pointer; font-size: 13px;
+}
+.folder-expand:hover { color: var(--accent); }
 /* 包住 .folder-type ＋ .folder-category 兩個徽章，讓 .folder-card-main 的
    grid（list-view：auto minmax(0,1fr) auto auto）維持原本 4 欄不變——
    新增色系分類徽章不能讓子項目數變多，否則 list-view 的欄位對齊會整個跑掉。 */

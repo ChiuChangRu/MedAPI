@@ -42,20 +42,26 @@ test("compareFolders：category 排序優先於 status／type，且 sort_order �
 
 test("renderFolders／renderChildFolders 都套用了 category 底色與徽章", async () => {
   const app = await read("../fieldlog/public/app.js");
+  // renderFolders() 2026-08-09 起要跟樹狀縮排的 margin-left 合併成同一個
+  // style 屬性（同一個元素兩個 style 屬性時瀏覽器只認第一個，這正是樹狀
+  // 清單上線那次把顏色弄不見的原因），所以這裡呼叫的是只回傳色碼的
+  // folderCategoryBg(f)，不是自帶 style="..." 包裝的 folderCategoryStyle(f)。
   const renderFolders = app.match(/function renderFolders\(\)[\s\S]*?\n\}/)[0];
-  assert.match(renderFolders, /folderCategoryStyle\(f\)/);
+  assert.match(renderFolders, /folderCategoryBg\(f\)/);
   assert.match(renderFolders, /folderCategoryChipHtml\(f\)/);
   const renderChild = app.match(/function renderChildFolders\(parentId\)[\s\S]*?\n\}/)[0];
   assert.match(renderChild, /folderCategoryStyle\(f\)/);
   assert.match(renderChild, /folderCategoryChipHtml\(f\)/);
 });
 
-test("folderCategoryChipHtml／folderCategoryStyle 對未分類與 misc 都不上色，避免每張卡片都掛暫存徽章", async () => {
+test("folderCategoryChipHtml／folderCategoryBg 對未分類與 misc 都不上色，避免每張卡片都掛暫存徽章", async () => {
   const app = await read("../fieldlog/public/app.js");
   const chip = app.match(/function folderCategoryChipHtml\(f\)[\s\S]*?\n\}/)[0];
   assert.match(chip, /f\.category === "misc"/);
-  const style = app.match(/function folderCategoryStyle\(f\)[\s\S]*?\n\}/)[0];
-  assert.match(style, /f\.category === "misc"/);
+  // folderCategoryStyle(f) 2026-08-09 起改成薄包一層 folderCategoryBg(f)，
+  // 真正的 misc／未分類判斷邏輯搬進了 folderCategoryBg 裡
+  const bg = app.match(/function folderCategoryBg\(f\)[\s\S]*?\n\}/)[0];
+  assert.match(bg, /f\.category === "misc"/);
 });
 
 test("style.css 有 .folder-category／.folder-type-group，且 .folder-card-main 的 4 欄 grid 沒被破壞", async () => {

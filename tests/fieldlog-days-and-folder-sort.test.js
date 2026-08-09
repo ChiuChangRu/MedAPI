@@ -37,12 +37,15 @@ test("(b) 排序新規則要保留暫存區置頂——不能因為改排序模�
 test("(b) 根層、每一層子資料夾、搬移選擇器都改用 folderComparator()，不再寫死 compareFolders", async () => {
   const app = await read("../fieldlog/public/app.js");
   assert.doesNotMatch(app, /\.sort\(compareFolders\)/, "不該再有地方寫死用 compareFolders 排序——要透過 folderComparator() 才會吃到使用者選的排序模式");
-  // 2026-08-09 起首頁根層改用 folderTreeOrdered()（縮排樹狀清單，見卡片模式
-  // 拿掉那次的改動）——排序邏輯只在 folderTreeOrdered() 裡出現一次，
-  // renderFolders() 不用也不該重複寫排序，下面另一個斷言已經確認
+  // 2026-08-09 起首頁根層改用 visibleFolderRows()（可展開／收合的縮排樹狀
+  // 清單）——它內部呼叫 folderTreeOrdered() 取得排序好的整棵樹再依展開狀態
+  // 過濾，排序邏輯只在 folderTreeOrdered() 裡出現一次，renderFolders() 跟
+  // visibleFolderRows() 都不用也不該重複寫排序，下面另一個斷言已經確認
   // folderTreeOrdered() 本身有用 folderComparator()。
   const renderFolders = app.match(/function renderFolders\(\)[\s\S]*?\n\}/)[0];
-  assert.match(renderFolders, /folderTreeOrdered\(\)/, "首頁根層資料夾改用縮排樹狀清單");
+  assert.match(renderFolders, /visibleFolderRows\(\)/, "首頁根層資料夾改用可展開的縮排樹狀清單");
+  const visibleRows = app.match(/function visibleFolderRows\(\)[\s\S]*?\n\}/)[0];
+  assert.match(visibleRows, /folderTreeOrdered\(\)/, "可見列的過濾要建立在 folderTreeOrdered() 已經排序好的結果上");
   const folderTree = app.match(/function folderTreeOrdered\(\)[\s\S]*?\n\}/)[0];
   assert.match(folderTree, /\.sort\(folderComparator\(\)\)/, "搬移選擇器與採集 chip 共用的樹狀展開");
   const renderChild = app.match(/function renderChildFolders\(parentId\)[\s\S]*?\n\}/)[0];
