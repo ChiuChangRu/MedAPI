@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "101";
+const APP_VERSION = "102";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -701,7 +701,11 @@ function renderFolders() {
   wrap.innerHTML = rows.map(({ folder: f, depth, childCount }) => {
     const expanded = EXPANDED_FOLDER_IDS.has(Number(f.id));
     const bg = folderCategoryBg(f);
-    const style = `margin-left:${depth * 18}px${bg ? `;background:${bg}` : ""}`;
+    // 色系底已經表達了分類，卡片裡再重複一個「專案開發」之類的白底文字
+    // 標籤是多餘的（folderCategoryChipHtml，2026-08-08 分類重整時加的）；
+    // 首頁這份清單拿掉，child-folder-card（資料夾內頁的子資料夾卡片）沒有
+    // 底色可以借，那邊繼續保留文字標籤。
+    const style = `margin-left:${depth * 28}px${bg ? `;background:${bg}` : ""}`;
     const expandBtn = childCount
       ? `<button class="folder-expand" type="button" data-id="${f.id}" aria-expanded="${expanded}" aria-label="${expanded ? "收合" : "展開"}「${esc(f.name)}」的子資料夾">${expanded ? "▾" : "▸"}</button>`
       : `<span class="folder-expand-spacer" aria-hidden="true"></span>`;
@@ -710,7 +714,7 @@ function renderFolders() {
       <button class="folder-drag" type="button" draggable="true" title="拖曳合併或刪除" aria-label="拖曳${esc(f.name)}">⠿</button>
       ${expandBtn}
       <div class="folder-card-main">
-        <span class="folder-type-group">${f.parent_id ? "📁" : "📂"} <span class="folder-type">${esc(f.type)}</span>${folderCategoryChipHtml(f)}</span>
+        <span class="folder-type-group">${f.parent_id ? "📁" : "📂"} <span class="folder-type">${esc(f.type)}</span></span>
         <span class="folder-name">${esc(f.name)}</span>
         <span class="folder-count">${f.entry_count} 筆記事${childCount ? `｜${childCount} 個子資料夾` : ""}</span>
         <span class="folder-date">建立於 ${esc((f.created_at || "").slice(0, 10))}</span>

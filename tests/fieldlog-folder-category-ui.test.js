@@ -40,15 +40,17 @@ test("compareFolders：category 排序優先於 status／type，且 sort_order �
   assert.ok(sortOrderIdx > statusIdx, "sort_order 要在 status 之後、type 之前納入比較");
 });
 
-test("renderFolders／renderChildFolders 都套用了 category 底色與徽章", async () => {
+test("renderFolders 套用 category 底色（不重複掛文字徽章）；renderChildFolders 沒有底色可借，兩者都掛", async () => {
   const app = await read("../fieldlog/public/app.js");
   // renderFolders() 2026-08-09 起要跟樹狀縮排的 margin-left 合併成同一個
   // style 屬性（同一個元素兩個 style 屬性時瀏覽器只認第一個，這正是樹狀
   // 清單上線那次把顏色弄不見的原因），所以這裡呼叫的是只回傳色碼的
   // folderCategoryBg(f)，不是自帶 style="..." 包裝的 folderCategoryStyle(f)。
+  // 2026-08-09：拿掉 folderCategoryChipHtml(f)——卡片本身已經是該 category
+  // 的底色，再掛一個白底文字重複講一次分類名稱沒有意義。
   const renderFolders = app.match(/function renderFolders\(\)[\s\S]*?\n\}/)[0];
   assert.match(renderFolders, /folderCategoryBg\(f\)/);
-  assert.match(renderFolders, /folderCategoryChipHtml\(f\)/);
+  assert.doesNotMatch(renderFolders, /folderCategoryChipHtml\(f\)/);
   const renderChild = app.match(/function renderChildFolders\(parentId\)[\s\S]*?\n\}/)[0];
   assert.match(renderChild, /folderCategoryStyle\(f\)/);
   assert.match(renderChild, /folderCategoryChipHtml\(f\)/);
