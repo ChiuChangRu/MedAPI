@@ -121,18 +121,17 @@ export const SCHEMA = [
     errors TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
-  // 使用者自己在前台可調整的行為參數（key-value）。跟環境變數不同：改了立刻
-  // 生效，不用進 Cloudflare Dashboard、不用重新部署。見 lib/settings.js。
+  // 2026-08-09 前：使用者自己在前台可調整的行為參數（key-value），當時只有
+  // 「暫存區放幾天後 AI 自動歸類」這一個 key。AI 自動歸類整個拿掉之後這張表
+  // 沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE；沒有新設定需求前
+  // 不用重新接上。
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  // AI 自動歸類的判斷規則：keyword 命中時優先參考 folder_id，不用每次都靠
-  // 3B 小模型純猜。status='active' 才會實際拿去用；'suggested' 是系統自己從
-  // 「使用者把 AI 分錯的記事手動搬去別的資料夾」這個訊號推出來的候選規則，
-  // 要人工在畫面上按過「採用」才會變成 active——規則會自己長，但不會自己
-  // 生效，一定要通知使用者、讓人決定，見 autofile.js 的 reviewAutoFileCorrections()。
+  // 2026-08-09 前：AI 自動歸類的判斷規則（keyword → folder_id）。AI 自動歸類
+  // 整個拿掉之後這兩張表沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE。
   `CREATE TABLE IF NOT EXISTS autofile_hints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     folder_id INTEGER NOT NULL,
@@ -141,10 +140,6 @@ export const SCHEMA = [
     note TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
-  // 「使用者把 AI 自動歸類的結果手動改到別的資料夾」這個修正動作的原始紀錄，
-  // 排程每天讀這裡、彙整成 autofile_hints 的候選規則（見上）。reviewed_at 有
-  // 值＝已經被那次排程處理過（不管有沒有真的生出候選規則），避免同一筆修正
-  // 被重複彙整。
   `CREATE TABLE IF NOT EXISTS autofile_corrections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entry_id INTEGER NOT NULL,
@@ -152,6 +147,18 @@ export const SCHEMA = [
     to_folder_id INTEGER NOT NULL,
     keyword_guess TEXT DEFAULT '',
     reviewed_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  // 搜尋同義詞表（mcp/src/search.js 的 setSynonymGroups 用）。原本只由 medapi-mcp
+  // 那支 Worker 在第一次搜尋時建立（見 mcp/src/worker.js 的 ensureSynonyms），
+  // 是「只有 fieldlog 帶 migration」這個原則下的一個例外；fieldlog 首頁的
+  // /search 端點（2026-08-09）同樣要用到這張表，補進這裡才符合原本的原則，
+  // IF NOT EXISTS 對已經由 mcp 建過的既有資料庫是無害的 no-op。
+  `CREATE TABLE IF NOT EXISTS synonyms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical TEXT NOT NULL,
+    aliases_json TEXT DEFAULT '[]',
+    codes_json TEXT DEFAULT '[]',
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder_id)`,
@@ -168,8 +175,8 @@ export const MIGRATIONS = [
   // 的東西先丟這裡。用欄位而不是靠名字認，是因為名字可以被使用者改掉，改完
   // 之後自動歸類就再也找不到那個資料夾（而且不會有任何錯誤訊息）。
   `ALTER TABLE folders ADD COLUMN role TEXT DEFAULT ''`,
-  // AI 自動歸類的標記：三～五天沒人分類的記事由排程用 AI 歸檔，歸完一定要
-  // 標記，使用者才分得出「這是我自己放的」還是「AI 猜的」。
+  // AI 自動歸類的標記（該功能已於 2026-08-09 移除，欄位保留給歷史資料與
+  // /entries/:id/confirm-filing 用，不會再有新資料寫入）：
   // ''＝沒被自動歸類過；ISO 時間＝AI 歸的；'failed'＝跑過但 AI 判斷不出來。
   `ALTER TABLE entries ADD COLUMN auto_filed_at TEXT DEFAULT ''`,
   `ALTER TABLE entries ADD COLUMN auto_filed_reason TEXT DEFAULT ''`,
@@ -446,8 +453,8 @@ async function seedSources(db, timestamp) {
  * 不會被這裡的舊值蓋回去。
  *
  * 刻意不掛在 ensureSchema()（每個請求／每個測試冷啟動都會跑一次）——
- * 改由 worker.js 的 scheduled()（daily cron）呼叫，跟 autoFileStagedEntries
- * 那些每日任務同一批，一次性資料搬移只需要在部署後的下一次排程套用一次，
+ * 改由 worker.js 的 scheduled()（daily cron）呼叫，跟 syncSources 那些
+ * 每日任務同一批，一次性資料搬移只需要在部署後的下一次排程套用一次，
  * 不需要出現在所有測試的 ensureSchema 呼叫路徑上。
  *
  * 範圍刻意只包含兩類不需要知道「現在實際的 parent_id／深度」也能安全做

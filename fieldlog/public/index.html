@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=96" />
+<link rel="stylesheet" href="style.css?v=97" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -29,6 +29,19 @@
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
     <div class="stale-banner" id="stale-version-banner" hidden></div>
 
+    <!-- 首頁搜尋：傳統關鍵字全文搜尋（標題／內文／欄位／附件檔名／逐字稿／
+         OCR 擷取文字），不是語意搜尋——依「MyWiki 首頁改版規格」§1.1，Vectorize
+         語意搜尋目前命中率太差不適合當首頁入口。多詞空白分隔＝AND，查無自動
+         降級成 OR 並標示，簡繁互通，套用既有同義詞表。 -->
+    <div class="home-search-bar">
+      <span class="home-search-icon" aria-hidden="true">🔍</span>
+      <input type="search" id="home-search-input" class="home-search-input"
+             placeholder="搜尋記事、附件、逐字稿…" autocomplete="off" />
+      <button type="button" id="home-search-clear" class="home-search-clear" hidden aria-label="清除搜尋">✕</button>
+    </div>
+    <div id="home-search-results" class="home-search-results" hidden></div>
+
+    <div id="home-main-sections">
     <section class="home-section home-input-section" aria-labelledby="home-input-title">
       <div class="home-section-head">
         <h2 class="home-section-title" id="home-input-title">輸入與草稿</h2>
@@ -41,11 +54,13 @@
         <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
       </div>
 
-      <!-- 待處理：只列還沒真正歸檔的東西（收件匣＋暫存區＋AI 剛歸類還沒確認的），
-           不是「最近動過的全部東西」。2026-08-09 從「最近作業」改回這個範圍——
-           原本改成「不分資料夾，列最後動過的」是想解決「收件匣空了整個面板就
-           消失」，但這樣一來，剛手動搬移／編輯過的已歸檔記事會佔著最上面的位置，
-           擠掉真正還沒處理的，等於清單失去「代辦」的意義。 -->
+      <!-- 待處理：只列還沒真正歸檔的東西（收件匣＋暫存區＋歷史上 AI 歸類過還沒
+           確認的），不是「最近動過的全部東西」。2026-08-09 從「最近作業」改回
+           這個範圍——原本改成「不分資料夾，列最後動過的」是想解決「收件匣空了
+           整個面板就消失」，但這樣一來，剛手動搬移／編輯過的已歸檔記事會佔著
+           最上面的位置，擠掉真正還沒處理的，等於清單失去「代辦」的意義。
+           （同一天：拿掉「放滿 N 天沒人動由 AI 自動歸類」設定與規則建議通知，
+           暫存區改回純手動——使用者自己找時間搬去該去的資料夾。） -->
       <section class="panel home-inbox-panel" id="inbox-panel">
         <div class="folders-toolbar">
           <h2>📥 待處理 <span id="inbox-count" class="count"></span></h2>
@@ -54,8 +69,6 @@
             <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
           </div>
         </div>
-        <p class="sub staging-status" id="staging-status"></p>
-        <div id="autofile-hints-panel"></div>
         <div id="inbox-list" class="entry-list"></div>
       </section>
     </section>
@@ -95,6 +108,7 @@
       </div>
       <div class="home-usage-content" id="usage-content"><p class="sub">展開以載入用量。</p></div>
     </details>
+    </div>
   </div>
 
   <!-- 資料夾內頁 -->
@@ -350,11 +364,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=96"></script>
+<script src="app.js?v=97"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=96"></script>
+<script src="pdf-editor.js?v=97"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=96"></script>
+<script src="richtext-editor.js?v=97"></script>
 </body>
 </html>

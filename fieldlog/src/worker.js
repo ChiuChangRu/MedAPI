@@ -40,27 +40,64 @@ import {
   listCategories,
   updateCategory,
 } from "./lib/categories.js";
-import {
-  AUTO_FILE_DAYS_MAX,
-  AUTO_FILE_DAYS_MIN,
-  addHint,
-  approveHint,
-  autoFileStagedEntries,
-  cutoffTimestamp,
-  deleteHint,
-  ensureStagingFolder,
-  getPendingHints,
-  recordAutoFileCorrection,
-  resolveAutoFileDays,
-  reviewAutoFileCorrections,
-  saveAutoFileDays,
-} from "./lib/autofile.js";
+import { ensureStagingFolder } from "./lib/autofile.js";
+// 全文搜尋的比對邏輯（斷詞／同義詞展開／簡繁摺疊）跟 medapi-mcp 的
+// search_fieldlog 共用同一份，不重寫第二套——mcp 是讀 D1 的「智慧查詢層」，
+// fieldlog 是「raw data 存取層」，兩者一直是這個分工；但比對演算法本身是
+// 沒有 Cloudflare/MCP 相依的純函式，兩邊 import 同一份完全安全（mcp 早就
+// 反向 import fieldlog 的 render.js／richtext.js／schema.js，這裡只是同樣
+// 手法用在另一個方向）。
+import { buildPlan, isDegraded, pickHitField, planSnippet, runSearch, setSynonymGroups, SYNONYM_SEED } from "../../mcp/src/search.js";
+
+const SEARCH_SCAN_CAP = 5000;
+let SEARCH_SYN_CACHE_AT = 0;
+
+function synonymRowsToGroups(rows) {
+  const byCanonical = new Map();
+  for (const row of rows) {
+    let aliases = [];
+    let codes = [];
+    try { aliases = JSON.parse(row.aliases_json || "[]"); } catch { /* 壞 JSON 當空 */ }
+    try { codes = JSON.parse(row.codes_json || "[]"); } catch { /* 壞 JSON 當空 */ }
+    const group = byCanonical.get(row.canonical) || { canonical: row.canonical, aliases: [], codes: [] };
+    for (const a of aliases) if (a && !group.aliases.includes(a)) group.aliases.push(a);
+    for (const c of codes) if (c && !group.codes.includes(c)) group.codes.push(c);
+    byCanonical.set(row.canonical, group);
+  }
+  return [...byCanonical.values()];
+}
+
+// 5 分鐘記憶體快取，跟 mcp/src/worker.js 的 ensureSynonyms 同一套做法；
+// 兩支 Worker 各自快取一份是刻意的，比同步兩個 isolate 的快取簡單得多，
+// 代價只是最壞情況下同義詞更新要等 5 分鐘才在兩邊都生效。
+//
+// 不假設 mcp 一定先跑過（雖然它自己第一次搜尋時也會做同一件事）：這裡的
+// 資料表是 fieldlog 的 ensureSchema 建的，但「有表沒資料」時要自己 seed
+// 出廠預設值，不能只靠 mcp 那邊剛好先被呼叫過。
+async function ensureSearchSynonyms(db, timestamp) {
+  if (Date.now() - SEARCH_SYN_CACHE_AT < 5 * 60 * 1000) return;
+  try {
+    let { results } = await db.prepare("SELECT canonical, aliases_json, codes_json FROM synonyms ORDER BY id").all();
+    if (!results?.length) {
+      for (const g of SYNONYM_SEED) {
+        await db.prepare(
+          "INSERT INTO synonyms (canonical, aliases_json, codes_json, created_at) VALUES (?, ?, ?, ?)"
+        ).bind(g.canonical, JSON.stringify(g.aliases || []), JSON.stringify(g.codes || []), timestamp()).run();
+      }
+      ({ results } = await db.prepare("SELECT canonical, aliases_json, codes_json FROM synonyms ORDER BY id").all());
+    }
+    setSynonymGroups(results?.length ? synonymRowsToGroups(results) : null);
+  } catch {
+    setSynonymGroups(null); // 讀不到就退回出廠預設值，搜尋不能因為同義詞表壞掉而跟著壞
+  }
+  SEARCH_SYN_CACHE_AT = Date.now();
+}
 
 // 前端資源的版本號。index.html 的 ?v=、sw.js 的 CACHE 名稱、app.js 的 APP_VERSION
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "96";
+const UI_VERSION = "97";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -375,107 +412,16 @@ async function handleApi(request, env, url) {
     return json(await cloudflareUsage(env));
   }
 
-  // ---- 暫存區與 AI 自動歸類 ----
+  // ---- 暫存區 ----
   // 「來不及分類就先丟這裡」要有一個真的、看得見的資料夾（不是空了就消失的
-  // 收件匣面板）；放太久沒人動的由排程交給 AI，歸完一定標記是 AI 分的。
+  // 收件匣面板）。純手動：使用者自己找時間搬去該去的資料夾，不再有
+  // AI／天數排程自動歸類（2026-08-09 移除，見該功能被拿掉的說明）。
   if (path === "/staging" && (method === "GET" || method === "POST")) {
     const folder = await ensureStagingFolder(db, now());
-    return json({ ok: true, id: Number(folder.id), name: folder.name, days: await resolveAutoFileDays(db, env) });
+    return json({ ok: true, id: Number(folder.id), name: folder.name });
   }
-  // 天數不是寫死的規則：使用者自己在首頁就能調（存進 settings 表），比進
-  // Cloudflare Dashboard 改環境變數低門檻得多。範圍夾在 1–30 天，防呆不是業務規則。
-  if (path === "/settings/auto-file-days" && method === "PUT") {
-    const body = await request.json().catch(() => ({}));
-    // 0 是合法天數（見下面的範圍檢查），所以不能只靠 Number.isFinite() 判斷
-    // 「有沒有帶值」——Number(null) 跟 Number(undefined) 沒帶值時分別是 0 和
-    // NaN，null 那個會直接矇混過關被當成「使用者要設 0」。缺欄位要先擋掉。
-    if (body.days === null || body.days === undefined || body.days === "") return bad("days 必須是數字");
-    const requested = Number(body.days);
-    if (!Number.isFinite(requested)) return bad("days 必須是數字");
-    if (requested < AUTO_FILE_DAYS_MIN || requested > AUTO_FILE_DAYS_MAX) {
-      return bad(`天數要在 ${AUTO_FILE_DAYS_MIN}–${AUTO_FILE_DAYS_MAX} 之間`);
-    }
-    const days = await saveAutoFileDays(db, requested, now());
-    return json({ ok: true, days });
-  }
-  if (path === "/auto-file/status" && method === "GET") {
-    const days = await resolveAutoFileDays(db, env);
-    const staging = await ensureStagingFolder(db, now());
-    const pending = await db.prepare(
-      `SELECT COUNT(*) AS count FROM entries
-       WHERE (folder_id IS NULL OR folder_id = ?) AND COALESCE(auto_filed_at, '') = ''`
-    ).bind(Number(staging.id)).first();
-    const due = await db.prepare(
-      `SELECT COUNT(*) AS count FROM entries
-       WHERE (folder_id IS NULL OR folder_id = ?) AND COALESCE(auto_filed_at, '') = '' AND created_at <= ?`
-    ).bind(Number(staging.id), cutoffTimestamp(days)).first();
-    const pendingHints = await getPendingHints(db);
-    return json({
-      ok: true,
-      days,
-      staging_folder_id: Number(staging.id),
-      waiting: Number(pending?.count || 0),
-      due_now: Number(due?.count || 0),
-      ai_enabled: !!env.AI,
-      pending_hints: pendingHints.length,
-    });
-  }
-  if (path === "/auto-file/run" && method === "POST") {
-    const result = await autoFileStagedEntries(db, {
-      ai: env.AI ? budgetedAi(env) : null,
-      days: await resolveAutoFileDays(db, env),
-      timestamp: now,
-      logHistory,
-      plainBody: (entry) => (entry.body_format === "html" ? htmlToPlainText(entry.body) : String(entry.body || "")),
-    });
-    return json({ ok: true, ...result });
-  }
-  // ---- 分類規則（keyword → folder_id）：讓自動歸類的判斷準則能自己長，
-  // 但一定要人核准才會生效，見 fieldlog/src/lib/autofile.js 開頭的說明 ----
-  if (path === "/auto-file/hints" && method === "GET") {
-    const status = (url.searchParams.get("status") || "").trim();
-    const where = status ? "WHERE status = ?" : "";
-    const stmt = status
-      ? db.prepare(`SELECT * FROM autofile_hints ${where} ORDER BY id DESC`).bind(status)
-      : db.prepare(`SELECT * FROM autofile_hints ORDER BY id DESC`);
-    const { results } = await stmt.all();
-    return json({ hints: results || [] });
-  }
-  if (path === "/auto-file/hints" && method === "POST") {
-    const body = await request.json().catch(() => ({}));
-    const folderId = Number(body.folder_id || 0);
-    const keyword = String(body.keyword || "").trim();
-    if (!folderId) return bad("folder_id 為必填");
-    if (!keyword) return bad("keyword 為必填");
-    const folder = await db.prepare("SELECT id FROM folders WHERE id = ?").bind(folderId).first();
-    if (!folder) return bad("找不到資料夾", 404);
-    const id = await addHint(db, { folderId, keyword, status: "active" }, now());
-    if (!id) return bad("新增規則失敗");
-    await logHistory(db, null, folderId, "新增分類規則", `「${keyword}」→ folder ${folderId}`);
-    return json({ ok: true, id });
-  }
-  const approveHintMatch = path.match(/^\/auto-file\/hints\/(\d+)\/approve$/);
-  if (approveHintMatch && method === "POST") {
-    const id = Number(approveHintMatch[1]);
-    const body = await request.json().catch(() => ({}));
-    const keyword = String(body.keyword || "").trim();
-    if (!keyword) return bad("要先填關鍵字才能採用這條候選規則");
-    const ok = await approveHint(db, id, keyword);
-    if (!ok) return bad("找不到這條候選規則，或已經被處理過", 404);
-    return json({ ok: true });
-  }
-  const deleteHintMatch = path.match(/^\/auto-file\/hints\/(\d+)$/);
-  if (deleteHintMatch && method === "DELETE") {
-    const ok = await deleteHint(db, Number(deleteHintMatch[1]));
-    if (!ok) return bad("找不到這條規則", 404);
-    return json({ ok: true });
-  }
-  // 手動觸發「彙整候選規則」，不用等每天 02:00 的排程
-  if (path === "/auto-file/hints/review" && method === "POST") {
-    const result = await reviewAutoFileCorrections(db, { timestamp: now });
-    return json({ ok: true, ...result });
-  }
-  // 使用者確認「AI 分得對」或自己改過位置之後，把 🤖 標記清掉
+  // 使用者確認「分類正確」或自己改過位置之後，把 🤖 標記清掉
+  // （舊資料可能還留著歷史上 AI 自動歸類時打的標記，這個入口保留給它們用）
   const confirmFiledMatch = path.match(/^\/entries\/(\d+)\/confirm-filing$/);
   if (confirmFiledMatch && method === "POST") {
     const id = Number(confirmFiledMatch[1]);
@@ -640,6 +586,64 @@ async function handleApi(request, env, url) {
   }
 
   // ---- entries ----
+  // 首頁的全文搜尋（依「MyWiki 首頁改版規格」§1.1）：傳統關鍵字比對，不是
+  // 語意搜尋——多詞空白分隔＝AND，查無自動降級成 OR 並標示，簡繁互通，套用
+  // 使用者自己在 D1 補的同義詞表。比對邏輯跟 medapi-mcp 的 search_fieldlog
+  // 共用同一份（見上方 import 處的說明），不重寫第二套規則以免兩邊之後跑歪。
+  //
+  // 跟下面 /entries/search（給「新增關聯」選取器用的簡單 LIKE）是兩個不同
+  // 端點：那支只比對標題／內文，這支還涵蓋欄位、附件檔名、逐字稿、OCR／PDF
+  // 擷取文字，且經過同義詞展開與簡繁摺疊——語意不同，不能合併成一支。
+  if (path === "/search" && method === "GET") {
+    const q = (url.searchParams.get("q") || "").trim();
+    if (!q) return json({ query: "", entries: [], attachments: [], degraded: false, truncated: false });
+    await ensureSearchSynonyms(db, now);
+    const plan = buildPlan(q);
+    const limit = Math.min(Number(url.searchParams.get("limit") || 20) || 20, 50);
+
+    const [{ results: allEntries }, { results: allAtts }] = await Promise.all([
+      db.prepare(
+        `SELECT e.id, e.folder_id, e.title, e.body, e.body_format, e.fields_json, e.created_at, e.updated_at,
+                COALESCE(e.auto_filed_at, '') AS auto_filed_at, COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
+                f.name AS folder_name, f.type AS folder_type, COALESCE(f.role, '') AS folder_role,
+                (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
+         FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+         ORDER BY e.id DESC LIMIT ${SEARCH_SCAN_CAP}`
+      ).all(),
+      db.prepare(
+        `SELECT a.id AS att_id, a.entry_id, a.kind, a.filename, a.transcript, COALESCE(a.ocr_text, '') AS ocr_text, a.offset_secs,
+                e.title AS entry_title, e.folder_id, f.name AS folder_name, f.type AS folder_type
+         FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON f.id = e.folder_id
+         ORDER BY a.id DESC LIMIT ${SEARCH_SCAN_CAP}`
+      ).all(),
+    ]);
+    for (const e of allEntries) e._body = e.body_format === "html" ? htmlToPlainText(e.body) : (e.body || "");
+    for (const a of allAtts) a._ocr = stripPdfMetadata(a.ocr_text || "");
+
+    const entryHits = runSearch(allEntries, plan, (e) => `${e.title}\n${e._body}\n${e.fields_json}`, limit);
+    const attHits = runSearch(allAtts, plan, (a) => `${a.transcript}\n${a._ocr}\n${a.filename}`, limit);
+
+    const entries = entryHits.hits.map(({ row: e }) => ({
+      id: e.id, folder_id: e.folder_id, title: e.title, created_at: e.created_at, updated_at: e.updated_at,
+      auto_filed_at: e.auto_filed_at, auto_filed_reason: e.auto_filed_reason,
+      folder_name: e.folder_name, folder_type: e.folder_type, folder_role: e.folder_role, att_count: e.att_count,
+      snippet: planSnippet(pickHitField([e.title, e._body, e.fields_json], plan) || e._body, plan),
+    }));
+    const attachments = attHits.hits.map(({ row: a }) => ({
+      att_id: a.att_id, entry_id: a.entry_id, kind: a.kind, filename: a.filename, offset_secs: a.offset_secs,
+      entry_title: a.entry_title, folder_id: a.folder_id, folder_name: a.folder_name, folder_type: a.folder_type,
+      snippet: planSnippet(pickHitField([a.transcript, a._ocr, a.filename], plan) || a.filename, plan),
+    }));
+    return json({
+      query: q,
+      entries,
+      attachments,
+      degraded: isDegraded(entryHits, attHits),
+      // 掃描到上限＝可能還有更舊的資料沒進比對，不能讓「沒搜到」被誤讀成
+      // 「資料庫裡沒有」——跟 mcp 的 search_fieldlog 同一個誠實回報原則。
+      truncated: allEntries.length >= SEARCH_SCAN_CAP || allAtts.length >= SEARCH_SCAN_CAP,
+    });
+  }
   // 跨資料夾找記事（給「新增關聯」的選取器用：關聯常常是跨資料夾的，
   // 例如把一筆實驗記事關聯到另一棵資料夾樹下的廠商記事）
   if (path === "/entries/search" && method === "GET") {
@@ -799,11 +803,8 @@ async function handleApi(request, env, url) {
     // 但前端可以被繞過，資料庫裡不能留 <script> 之類的東西
     const bodyText = bodyFormat === "html" ? sanitizeEntryHtml(bodyRaw) : bodyRaw;
     const folderChanged = body.folder_id !== undefined && folderId !== old.folder_id;
-    // 這筆是 AI（或規則）自動歸類的，使用者卻手動搬去別的資料夾——代表那次
-    // 判斷是錯的。清掉 🤖 標記（不然畫面上會留著指向舊資料夾的過時理由），
-    // 同時把這次修正記下來，讓每天的排程去彙整成候選的分類規則（見
-    // reviewAutoFileCorrections），判斷準則因此能跟著實際使用情況修正，
-    // 但只會變成「候選」，不會自己生效。
+    // 這筆是（歷史上）AI 自動歸類的，使用者卻手動搬去別的資料夾——清掉 🤖
+    // 標記，不然畫面上會留著指向舊資料夾的過時理由。
     const wasAutoFiled = folderChanged && old.auto_filed_at && old.auto_filed_at !== "failed";
     const autoFiledAt = wasAutoFiled ? "" : (old.auto_filed_at || "");
     const autoFiledReason = wasAutoFiled ? "" : (old.auto_filed_reason || "");
@@ -814,9 +815,6 @@ async function handleApi(request, env, url) {
       await logHistory(db, id, folderId, "歸檔", title);
     } else {
       await logHistory(db, id, folderId, "更新紀錄", title);
-    }
-    if (wasAutoFiled) {
-      await recordAutoFileCorrection(db, { entryId: id, fromFolderId: old.folder_id, toFolderId: folderId, entryTitle: title, timestamp: now() });
     }
     return json({ ok: true });
   }
@@ -1868,30 +1866,9 @@ export default {
   async scheduled(_event, env) {
     await ensureSchema(env.DB, now());
     await syncSources(env.DB, {});
-    // 暫存區裡放了三～五天還沒人分類的，由 AI 挑一個現有資料夾歸進去並標記。
-    // 跟同步分開 try：同步失敗不該連帶讓自動歸類整個不跑（反之亦然）。
-    try {
-      await autoFileStagedEntries(env.DB, {
-        ai: env.AI ? budgetedAi(env) : null,
-        days: await resolveAutoFileDays(env.DB, env),
-        timestamp: now,
-        logHistory,
-        plainBody: (entry) => (entry.body_format === "html" ? htmlToPlainText(entry.body) : String(entry.body || "")),
-      });
-    } catch (err) {
-      console.error("自動歸類失敗", err);
-    }
-    // 把「使用者手動修正 AI 分類結果」的紀錄，彙整成候選的分類規則（見
-    // reviewAutoFileCorrections 的說明）。候選規則不會自己生效，一定要在
-    // 首頁的「🤖 分類規則建議」通知使用者、按過「採用」才會真的拿去用。
-    try {
-      await reviewAutoFileCorrections(env.DB, { timestamp: now });
-    } catch (err) {
-      console.error("彙整分類規則建議失敗", err);
-    }
     // 一次性的資料夾分類重整（2026-08-08）。自帶標記、只會真的套用一次，
-    // 之後每天的排程呼叫都是立即返回的無事發生，跟前面幾個每日任務分開
-    // try，不讓一次性遷移失敗連帶擋到當天的同步／自動歸類。
+    // 之後每天的排程呼叫都是立即返回的無事發生，跟上面的同步分開 try，
+    // 不讓一次性遷移失敗連帶擋到當天的同步。
     try {
       await applyFolderReorg20260808(env.DB, now());
     } catch (err) {

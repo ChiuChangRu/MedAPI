@@ -190,14 +190,6 @@ test("(6) AI 歸的位置一定看得出來，而且可以確認或改掉", asyn
   assert.match(worker, /const confirmFiledMatch = path\.match\(\/\^\\\/entries\\\/\(\\d\+\)\\\/confirm-filing\$\/\)/);
 });
 
-test("(6) cron 除了同步之外也會跑自動歸類，而且兩者互不拖累", async () => {
-  const worker = await read("../fieldlog/src/worker.js");
-  const scheduled = worker.match(/async scheduled\([\s\S]*?\n  \},/)[0];
-  assert.match(scheduled, /syncSources/);
-  assert.match(scheduled, /autoFileStagedEntries/);
-  assert.match(scheduled, /try \{[\s\S]*catch/, "自動歸類要自己 try，掛掉不能連帶讓同步整個失敗（反之亦然）");
-});
-
 test("(6) 暫存區用 role 欄位辨識，不是用名字", async () => {
   const [schema, autofile] = await Promise.all([
     read("../fieldlog/src/lib/schema.js"),

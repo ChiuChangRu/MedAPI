@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "96";
+const APP_VERSION = "97";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -124,20 +124,9 @@ let MERGE_ENTRY_SOURCE_ID = null;
 let CREATE_FOLDER_RESOLVE = null;
 // 開啟「單一檔案」詳情時記住是哪一份，這樣整理完重新開啟仍停在同一個檔案上
 let FOCUSED_FILE = null;
-// 暫存區資料夾的 id 與自動歸類的天數，由 /api/auto-file/status 帶回來
+// 暫存區資料夾的 id，由 /api/staging 帶回來。純手動暫存，2026-08-09 拿掉了
+// 「放滿 N 天沒人動由 AI 自動歸類」，不用再記天數。
 let STAGING_FOLDER_ID = null;
-let AUTO_FILE_DAYS = 4;
-// 跟後端 fieldlog/src/lib/autofile.js 的 AUTO_FILE_DAYS_MIN/MAX 一致——純防呆範圍，
-// 不是業務規則，使用者在這個範圍內想設幾天都可以。0＝不等待、全部立即歸檔。
-const AUTO_FILE_DAYS_MIN = 0;
-const AUTO_FILE_DAYS_MAX = 30;
-
-/** 天數要講成人看得懂的話：0 不該顯示成「放滿 0 天」，那樣像打錯字 */
-function autoFileDaysPhrase(days) {
-  return days === 0
-    ? "不等待，下次排程（或手動按「現在就跑一次」）就立即由 AI 自動歸類"
-    : `放滿 ${days} 天沒人動就由 AI 自動歸類`;
-}
 
 // 資料夾排序模式：套用在每一層——首頁根層、每一層子資料夾、搬移選擇器、
 // 採集畫面的資料夾 chip，全部共用同一個開關，不用每層各記各的。
@@ -527,6 +516,86 @@ function showVersion(serverVersion) {
   $("stale-version-reload").onclick = (event) => forceReloadLatest(event.currentTarget);
 }
 
+// ---------- 首頁搜尋（MyWiki 首頁改版規格 §1.1）----------
+// 傳統關鍵字全文搜尋，刻意不是語意搜尋——Vectorize 目前命中率太差，不適合
+// 當首頁主要入口（見規格文件）。多詞空白分隔＝AND，查無自動降級成 OR 並
+// 標示，簡繁互通，套用既有同義詞表；比對邏輯在後端 /search（worker.js）。
+
+function searchHitHtml(kind, item) {
+  if (kind === "entry") {
+    const where = item.folder_name
+      ? `${esc(item.folder_type)}｜${esc(item.folder_name)}`
+      : (item.folder_role === "staging" ? "⏳ 暫存區" : "📥 收件匣");
+    return `<button type="button" class="search-hit" data-kind="entry" data-id="${item.id}">
+      <span class="search-hit-title">${esc(item.title || "（未命名）")}<span class="search-hit-where">${where}</span></span>
+      <p class="search-hit-snippet">${esc(item.snippet)}</p>
+    </button>`;
+  }
+  const off = item.offset_secs !== null && item.offset_secs !== undefined ? `｜錄音 ${fmtSecs(item.offset_secs)}` : "";
+  const where = item.folder_name ? `${esc(item.folder_type)}｜${esc(item.folder_name)}` : "📥 收件匣";
+  return `<button type="button" class="search-hit" data-kind="attachment" data-id="${item.entry_id}">
+    <span class="search-hit-title">📎 ${esc(item.filename)}<span class="search-hit-where">${where}${off}</span></span>
+    <p class="search-hit-snippet">所屬記事：${esc(item.entry_title || "（未命名）")}｜${esc(item.snippet)}</p>
+  </button>`;
+}
+
+function renderSearchResults(data) {
+  const box = $("home-search-results");
+  const notes = [];
+  if (data.degraded) notes.push("⚠ 沒有同時符合全部關鍵字的結果，以下為部分符合。");
+  if (data.truncated) notes.push("⚠ 資料量較大，較舊的資料可能未納入本次搜尋。");
+  const groups = [];
+  if (data.entries.length) {
+    groups.push(`<div class="search-hit-group"><h3>紀錄（${data.entries.length}）</h3>${data.entries.map((e) => searchHitHtml("entry", e)).join("")}</div>`);
+  }
+  if (data.attachments.length) {
+    groups.push(`<div class="search-hit-group"><h3>附件（${data.attachments.length}）</h3>${data.attachments.map((a) => searchHitHtml("attachment", a)).join("")}</div>`);
+  }
+  if (!groups.length) {
+    box.innerHTML = `<p class="sub">找不到「${esc(data.query)}」的相關內容（簡繁已互通）。</p>`;
+  } else {
+    box.innerHTML = `${notes.map((n) => `<p class="home-search-note">${esc(n)}</p>`).join("")}${groups.join("")}`;
+  }
+  box.querySelectorAll(".search-hit").forEach((btn) => {
+    btn.onclick = () => openEntry(Number(btn.dataset.id));
+  });
+}
+
+const runHomeSearch = debounce(async (q) => {
+  try {
+    const data = await api(`/search?q=${encodeURIComponent(q)}`);
+    // 使用者可能在請求飛行中又改了字或清空——只接受跟目前輸入框內容一致的結果，
+    // 避免慢的那次請求晚到蓋掉快的那次（經典的 race condition）
+    if ($("home-search-input").value.trim() !== q) return;
+    renderSearchResults(data);
+  } catch (err) {
+    $("home-search-results").innerHTML = `<p class="usage-error">搜尋失敗：${esc(err.message)}</p>`;
+  }
+}, 300);
+
+function initHomeSearch() {
+  const input = $("home-search-input");
+  const clearBtn = $("home-search-clear");
+  const resultsBox = $("home-search-results");
+  const mainSections = $("home-main-sections");
+  if (!input) return;
+  const setActive = (active) => {
+    resultsBox.hidden = !active;
+    mainSections.hidden = active;
+    clearBtn.hidden = !input.value;
+  };
+  input.addEventListener("input", () => {
+    const q = input.value.trim();
+    clearBtn.hidden = !input.value;
+    if (!q) { setActive(false); return; }
+    setActive(true);
+    resultsBox.innerHTML = `<p class="sub">搜尋中…</p>`;
+    runHomeSearch(q);
+  });
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { input.value = ""; setActive(false); } });
+  clearBtn.onclick = () => { input.value = ""; setActive(false); input.focus(); };
+}
+
 // ---------- 首頁 ----------
 // 開啟 App 到畫面填滿內容之間，要打好幾支 API（設定／分類／資料夾／收件匣），
 // 資料夾、記事、附件越多這幾支就越慢；空白畫面撐久了容易被誤會當機，用
@@ -559,6 +628,7 @@ async function boot() {
     showVersion(null);
   }
   setBootProgress(20);
+  initHomeSearch();
   // 分類清單要先載入：建資料夾的對話框、資料夾排序、記事欄位模板都靠它
   await loadCategories();
   setBootProgress(45);
@@ -765,131 +835,6 @@ async function loadRecent() {
     ? entries.map((e) => entryRowHtml(e, { showRecency: true })).join("")
     : `<p class="sub">目前沒有還沒歸檔的東西——太好了！上面四顆按鈕都可以開始新的採集。</p>`;
   bindEntryRows($("inbox-list"));
-  loadStagingStatus();
-}
-
-// 天數不是寫死的規則：這個輸入框讓使用者自己決定「放幾天沒人動才交給 AI」，
-// 兩種狀態（已經全部歸類 / 還有東西在等）共用同一段，不用寫兩次
-function autoFileDaysControlHtml(days) {
-  return `<span class="auto-file-days-control">
-    放滿 <input type="number" id="auto-file-days-input" min="${AUTO_FILE_DAYS_MIN}" max="${AUTO_FILE_DAYS_MAX}" value="${days}" title="填 0 表示不等待，全部立即歸檔" /> 天沒人動（填 0＝不等待，立即全部歸檔）
-    <button class="btn small" id="btn-save-auto-file-days" type="button">套用</button>
-  </span>`;
-}
-
-function bindAutoFileDaysControl() {
-  const btn = $("btn-save-auto-file-days");
-  const input = $("auto-file-days-input");
-  if (!btn || !input) return;
-  btn.onclick = async () => {
-    const days = Number(input.value);
-    if (!Number.isFinite(days) || days < AUTO_FILE_DAYS_MIN || days > AUTO_FILE_DAYS_MAX) {
-      showToast(`天數要在 ${AUTO_FILE_DAYS_MIN}–${AUTO_FILE_DAYS_MAX} 之間`);
-      return;
-    }
-    btn.disabled = true;
-    try {
-      const result = await api("/settings/auto-file-days", { method: "PUT", body: JSON.stringify({ days }) });
-      AUTO_FILE_DAYS = result.days;
-      showToast(`已套用：${autoFileDaysPhrase(result.days)}`);
-      await loadStagingStatus();
-    } catch (err) {
-      showToast("設定失敗：" + err.message);
-      btn.disabled = false;
-    }
-  };
-  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") btn.click(); });
-}
-
-// 首頁那一行狀態：暫存區還有幾筆沒分類、幾天後會自動歸類、可以現在就跑一次
-async function loadStagingStatus() {
-  const box = $("staging-status");
-  if (!box) return;
-  try {
-    const status = await api("/auto-file/status");
-    AUTO_FILE_DAYS = status.days;
-    STAGING_FOLDER_ID = status.staging_folder_id;
-    if (!status.waiting) {
-      // 「太好了」那句已經在下面的 inbox-list 空清單訊息講過一次，這裡不用
-      // 重講一次「全部都歸類好了」；只留使用者真的可能想調的天數設定
-      box.innerHTML = `<span class="sub">${autoFileDaysControlHtml(status.days)}</span>`;
-      bindAutoFileDaysControl();
-      return;
-    }
-    const dueBit = status.due_now ? `其中 ${status.due_now} 筆已經可以自動歸類。` : "";
-    box.innerHTML = `⏳ 暫存區還有 <strong>${status.waiting}</strong> 筆沒分類（${autoFileDaysControlHtml(status.days)}由 AI 自動歸類並標 🤖）。${esc(dueBit)}
-      ${status.ai_enabled ? `<button class="btn small" id="btn-auto-file-now" type="button">現在就跑一次</button>` : "（尚未啟用 Workers AI，暫時只能手動歸類）"}`;
-    bindAutoFileDaysControl();
-    const runBtn = $("btn-auto-file-now");
-    if (runBtn) runBtn.onclick = () => runAutoFileNow(runBtn);
-    if (status.pending_hints) loadAutoFileHintSuggestions(); else renderAutoFileHintSuggestions([]);
-  } catch {
-    box.textContent = "";
-  }
-}
-
-// 判斷準則會自己長（見 fieldlog/src/lib/autofile.js 的 reviewAutoFileCorrections），
-// 但關鍵字永遠是使用者自己填的，系統只負責「通知＋讓人決定」——這個面板就是
-// 那個通知：候選規則不會自己生效，不採用就一直安靜留在這裡，不會偷偷開始用。
-async function loadAutoFileHintSuggestions() {
-  try {
-    const { hints } = await api("/auto-file/hints?status=suggested");
-    renderAutoFileHintSuggestions(hints || []);
-  } catch { /* 純通知性質，拿不到不影響其他功能，安靜跳過就好 */ }
-}
-
-function renderAutoFileHintSuggestions(hints) {
-  const panel = $("autofile-hints-panel");
-  if (!panel) return;
-  if (!hints.length) { panel.innerHTML = ""; return; }
-  panel.innerHTML = `<div class="autofile-hints-notice">
-    <strong>🤖 分類規則建議</strong>
-    ${hints.map((h) => `
-      <div class="autofile-hint-row" data-id="${h.id}">
-        <p class="sub">${esc(h.note)}</p>
-        <input type="text" class="autofile-hint-keyword" placeholder="設定關鍵字（例如：UV膠）" maxlength="60" />
-        <button class="btn small primary autofile-hint-approve" type="button" data-id="${h.id}">採用</button>
-        <button class="btn small ghost autofile-hint-reject" type="button" data-id="${h.id}">忽略</button>
-      </div>`).join("")}
-  </div>`;
-  panel.querySelectorAll(".autofile-hint-approve").forEach((btn) => {
-    btn.onclick = async () => {
-      const row = btn.closest(".autofile-hint-row");
-      const keyword = row.querySelector(".autofile-hint-keyword").value.trim();
-      if (!keyword) { showToast("請先填關鍵字，才知道以後遇到什麼內容要套用這條規則"); return; }
-      btn.disabled = true;
-      try {
-        await api(`/auto-file/hints/${btn.dataset.id}/approve`, { method: "POST", body: JSON.stringify({ keyword }) });
-        showToast("已採用這條分類規則");
-        loadAutoFileHintSuggestions();
-      } catch (err) { showToast("採用失敗：" + err.message); btn.disabled = false; }
-    };
-  });
-  panel.querySelectorAll(".autofile-hint-reject").forEach((btn) => {
-    btn.onclick = async () => {
-      if (!confirm("確定忽略這條建議？之後同樣的情況再發生還是會再問一次。")) return;
-      try {
-        await api(`/auto-file/hints/${btn.dataset.id}`, { method: "DELETE" });
-        loadAutoFileHintSuggestions();
-      } catch (err) { showToast("操作失敗：" + err.message); }
-    };
-  });
-}
-
-async function runAutoFileNow(button) {
-  button.disabled = true;
-  button.textContent = "歸類中…";
-  try {
-    const result = await api("/auto-file/run", { method: "POST", body: "{}" });
-    showToast(result.skipped
-      ? result.skipped
-      : `AI 歸類完成：成功 ${result.filed} 筆${result.unresolved ? `，${result.unresolved} 筆判斷不出來留在暫存區` : ""}`);
-    await Promise.all([loadFolders(), loadRecent()]);
-  } catch (err) {
-    showToast("自動歸類失敗：" + err.message);
-    button.disabled = false;
-    button.textContent = "現在就跑一次";
-  }
 }
 
 /** 這筆現在待在哪裡：待處理清單要一眼看得出來，不然「移動」按下去也不知道從哪搬 */
@@ -1657,7 +1602,7 @@ async function createEntry(folderId, title) {
 // 「一開始就先歸類」在這個入口是做得到的。真的很急就選暫存區，一鍵帶過。
 function quickNote() {
   openEditModal({
-    title: `快速備忘（存檔後會問要放哪個資料夾，來不及分就丟暫存區，${autoFileDaysPhrase(AUTO_FILE_DAYS)}）`,
+    title: "快速備忘（存檔後會問要放哪個資料夾，來不及分就丟暫存區，之後自己找時間搬過去）",
     value: "",
     onSave: async (text) => {
       if (!text) return;
@@ -1675,11 +1620,11 @@ function quickNote() {
   });
 }
 
-/** 快速備忘存好之後問要歸到哪；不選就留在暫存區，等自動歸類接手 */
+/** 快速備忘存好之後問要歸到哪；不選就留在暫存區，之後自己找時間搬過去 */
 async function askQuickNoteFolder(entryId) {
   const picked = await openFolderPicker({
     title: "這則備忘放哪裡？",
-    desc: `選一個資料夾就直接歸好；按取消會留在「⏳ 暫存區」，${autoFileDaysPhrase(AUTO_FILE_DAYS)}並標記 🤖。`,
+    desc: `選一個資料夾就直接歸好；按取消會留在「⏳ 暫存區」，之後自己找時間搬過去。`,
     currentId: STAGING_FOLDER_ID,
     allowInbox: false,
   });
@@ -3218,7 +3163,7 @@ function segOffset(session) { return Math.floor((Date.now() - session.startedAt)
 /**
  * 暫存區資料夾的 id（沒有就請後端建一個）。
  * 現場來不及分類的東西一律先落在這裡，而不是「空了就整個消失」的收件匣——
- * 看得見才會被處理，而且放滿設定天數之後 AI 會自動歸類並標記。
+ * 看得見才會被處理，使用者自己找時間搬去該去的資料夾。
  */
 async function stagingFolderId() {
   // 快取的 id 要先確認資料夾還在：使用者把暫存區刪掉之後，拿舊 id 去建記事
@@ -3228,7 +3173,6 @@ async function stagingFolderId() {
   try {
     const result = await api("/staging", { method: "POST", body: "{}" });
     STAGING_FOLDER_ID = Number(result.id);
-    AUTO_FILE_DAYS = result.days || AUTO_FILE_DAYS;
     FOLDERS = await api("/folders");
     return STAGING_FOLDER_ID;
   } catch {
@@ -3289,7 +3233,7 @@ function setupFolderChip(chipId, pickerId, getSession) {
     // 四層架構下用一串沒縮排的平清單根本分不出「同名的是哪一個分支」，
     // 這裡跟搬移用的選擇器一樣列成樹狀並縮排
     picker.innerHTML = [
-      `<div class="cfp-item cfp-staging" data-staging="1">⏳ 很急，先放暫存區（${autoFileDaysPhrase(AUTO_FILE_DAYS)}）</div>`,
+      `<div class="cfp-item cfp-staging" data-staging="1">⏳ 很急，先放暫存區（之後自己找時間搬過去）</div>`,
       ...folderTreeOrdered()
         .filter(({ folder }) => folder.role !== "staging")
         .map(({ folder, depth }) =>

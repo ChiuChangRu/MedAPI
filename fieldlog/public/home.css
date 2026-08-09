@@ -16,6 +16,123 @@ body {
   padding: 2px 2px 4px;
 }
 
+/* 首頁搜尋列（MyWiki 首頁改版規格 §1.1）：pill 形、淺灰底，跟 Chrome 線上
+   應用程式商店首頁同款版面推論出的 token，但這裡走傳統關鍵字全文搜尋，
+   不是語意搜尋（見 index.html 上方的說明）。 */
+.home-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  min-height: 44px;
+  border-radius: 999px;
+  background: #f1f3f4;
+}
+
+.home-search-icon {
+  flex: none;
+  font-size: 15px;
+  opacity: .65;
+}
+
+.home-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 0;
+}
+
+.home-search-input:focus {
+  outline: none;
+}
+
+.home-search-input::-webkit-search-cancel-button {
+  display: none; /* 用自己那顆 ✕ 按鈕，兩顆清除鈕重複沒有意義 */
+}
+
+.home-search-clear {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 6px;
+  cursor: pointer;
+}
+
+#home-main-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.home-search-results {
+  display: grid;
+  gap: 10px;
+}
+
+.home-search-results .home-section {
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+
+.home-search-note {
+  margin: 0 2px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.search-hit-group + .search-hit-group {
+  margin-top: 2px;
+}
+
+.search-hit-group h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.search-hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  margin-bottom: 6px;
+}
+
+.search-hit:hover {
+  border-color: var(--accent);
+}
+
+.search-hit-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.search-hit-where {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.search-hit-snippet {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 .home-app-head h1 {
   margin: 0;
   font-size: 22px;
