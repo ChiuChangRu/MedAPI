@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "95";
+const APP_VERSION = "96";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -398,12 +398,35 @@ function hasActualUsage(item) {
   return Number(item.used || 0) > 0;
 }
 
+/** 收合區只顯示綠/黃/紅小圓點：取所有額度裡使用率最高的一個換算燈號 */
+function usageStatusOf(data) {
+  const percents = (data.limits || [])
+    .filter((item) => item.key !== "ai" && item.limit)
+    .map((item) => item.used / item.limit * 100);
+  if (!percents.length) return "ok";
+  const worst = Math.max(...percents);
+  if (worst > 100) return "danger";
+  if (worst >= 70) return "warn";
+  return "ok";
+}
+
+function setUsageStatusDot(status) {
+  const dot = $("usage-status-dot");
+  if (!dot) return;
+  if (!status) { dot.hidden = true; return; }
+  dot.hidden = false;
+  dot.className = `usage-status-dot usage-status-${status}`;
+}
+
 async function loadUsage() {
   const wrap = $("usage-content");
   if (!wrap) return;
   wrap.innerHTML = `<p class="usage-quiet">正在讀取 Cloudflare 帳單用量…</p>`;
   try {
     const data = await api("/usage");
+    const status = usageStatusOf(data);
+    setUsageStatusDot(status);
+    localStorage.setItem("fieldlog_usage_status", status);
     const activeLimits = (data.limits || []).filter(hasActualUsage);
     const totalCost = Number(data.totalCost || 0);
     const ai = (data.limits || []).find((item) => item.key === "ai");
@@ -425,8 +448,27 @@ async function loadUsage() {
     wrap.innerHTML = `${overviewBanner(data)}${costHtml}${limitsHtml}${gatewayWarning}
       <p class="sub usage-updated">${data.source === "billable" ? "實際帳單資料" : "Pay-as-you-go 帳單資料"}</p>`;
   } catch (err) {
+    // 取數失敗要讓使用者知道「查不到」，不能默默留白讓人誤以為用量是 0
     wrap.innerHTML = `<p class="usage-error">暫時無法讀取用量：${esc(err.message)}</p>`;
   }
+}
+
+/** 用量區塊：預設收合，第一次展開才打 /usage；收合時的燈號只讀上次快取，不額外發請求 */
+function initUsageDetails() {
+  const details = $("usage-details");
+  if (!details) return;
+  const OPEN_KEY = "fieldlog_usage_expanded";
+  if (localStorage.getItem(OPEN_KEY) === "1") details.open = true;
+  setUsageStatusDot(localStorage.getItem("fieldlog_usage_status"));
+  let loaded = false;
+  const maybeLoad = () => {
+    if (details.open && !loaded) { loaded = true; loadUsage(); }
+  };
+  details.addEventListener("toggle", () => {
+    localStorage.setItem(OPEN_KEY, details.open ? "1" : "0");
+    maybeLoad();
+  });
+  maybeLoad();
 }
 
 // ---------- 登入 ----------
@@ -522,7 +564,7 @@ async function boot() {
   setBootProgress(45);
   await Promise.all([loadFolders(), loadRecent()]);
   setBootProgress(90);
-  loadUsage();
+  initUsageDetails();
   syncPendingFiles();
   setBootProgress(100);
   hideBootProgress();

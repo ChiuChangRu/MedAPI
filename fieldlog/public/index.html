@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=95" />
+<link rel="stylesheet" href="style.css?v=96" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -82,16 +82,19 @@
       </div>
     </section>
 
-    <section class="home-section home-usage-section" aria-labelledby="home-usage-title">
-      <div class="home-section-head">
-        <h2 class="home-section-title" id="home-usage-title">Cloudflare 用量</h2>
-      </div>
+    <!-- 預設收合、展開才打 /usage：避免每次開首頁都白白耗一次 Cloudflare 帳單查詢 -->
+    <details class="home-section home-usage-section" id="usage-details">
+      <summary class="home-usage-summary">
+        <h2 class="home-section-title" id="home-usage-title">系統用量</h2>
+        <span class="usage-status-dot" id="usage-status-dot" hidden></span>
+        <span class="usage-summary-chevron" aria-hidden="true">▾</span>
+      </summary>
       <div class="home-usage-toolbar">
         <strong>資源監控</strong>
         <button class="btn small" id="btn-usage-refresh">重新整理</button>
       </div>
-      <div class="home-usage-content" id="usage-content"><p class="sub">登入後自動載入用量。</p></div>
-    </section>
+      <div class="home-usage-content" id="usage-content"><p class="sub">展開以載入用量。</p></div>
+    </details>
   </div>
 
   <!-- 資料夾內頁 -->
@@ -347,11 +350,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=95"></script>
+<script src="app.js?v=96"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=95"></script>
+<script src="pdf-editor.js?v=96"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=95"></script>
+<script src="richtext-editor.js?v=96"></script>
 </body>
 </html>

@@ -155,13 +155,50 @@ body {
   display: none !important;
 }
 
-/* 用量只保留真正有數值的項目，視覺降為輕量監控區 */
+/* 用量只保留真正有數值的項目，視覺降為輕量監控區；預設收合，展開才載入資料 */
 .home-usage-section {
   padding-top: 13px;
   padding-bottom: 13px;
 }
 
-.home-usage-section .home-section-head {
+.home-usage-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.home-usage-summary::-webkit-details-marker {
+  display: none;
+}
+
+.home-usage-summary .home-section-title {
+  margin: 0;
+}
+
+.usage-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.usage-summary-chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform .15s;
+}
+
+.home-usage-section[open] .usage-summary-chevron {
+  transform: rotate(180deg);
+}
+
+.usage-status-dot.usage-status-ok { background: #22c55e; }
+.usage-status-dot.usage-status-warn { background: #eab308; }
+.usage-status-dot.usage-status-danger { background: #ef4444; }
+
+.home-usage-section[open] .home-usage-summary {
   margin-bottom: 8px;
 }
 
@@ -169,7 +206,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  margin: -42px 0 8px;
+  margin: 0 0 8px;
 }
 
 .home-usage-toolbar strong {
@@ -239,9 +276,5 @@ body {
 
   .home-files-panel .folders-toolbar {
     align-items: stretch;
-  }
-
-  .home-usage-toolbar {
-    margin-top: -40px;
   }
 }
