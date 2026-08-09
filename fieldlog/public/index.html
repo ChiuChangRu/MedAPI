@@ -11,28 +11,103 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=101" />
+<link rel="stylesheet" href="home.css" />
+<!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
+     CDN 載入、鎖定版本號，不用 @latest -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />
 </head>
 <body>
 <div class="container">
-  <!-- 首頁：採集優先。錄影／拍照／錄音／記事各自獨立，按哪個就只做那件事 -->
   <div id="view-home">
-    <div class="capture-grid">
-      <button class="cap-tile cap-video" id="btn-video">🎥<span>錄影</span></button>
-      <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
-      <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
-      <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
+    <header class="home-app-head">
+      <h1>隨身記</h1>
+      <small>輸入、整理、歸檔 <span id="app-version" class="app-version"></span></small>
+      <a class="head-link" href="help.html">📖 使用說明</a>
+    </header>
+
+    <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
+    <div class="stale-banner" id="stale-version-banner" hidden></div>
+
+    <!-- 首頁搜尋：傳統關鍵字全文搜尋（標題／內文／欄位／附件檔名／逐字稿／
+         OCR 擷取文字），不是語意搜尋——依「MyWiki 首頁改版規格」§1.1，Vectorize
+         語意搜尋目前命中率太差不適合當首頁入口。多詞空白分隔＝AND，查無自動
+         降級成 OR 並標示，簡繁互通，套用既有同義詞表。 -->
+    <div class="home-search-bar">
+      <span class="home-search-icon" aria-hidden="true">🔍</span>
+      <input type="search" id="home-search-input" class="home-search-input"
+             placeholder="搜尋記事、附件、逐字稿…" autocomplete="off" />
+      <button type="button" id="home-search-clear" class="home-search-clear" hidden aria-label="清除搜尋">✕</button>
     </div>
+    <div id="home-search-results" class="home-search-results" hidden></div>
 
-    <section class="panel" id="inbox-panel">
-      <h2>📥 收件匣 <span id="inbox-count" class="count"></span></h2>
-      <div id="inbox-list" class="entry-list"></div>
+    <div id="home-main-sections">
+    <section class="home-section home-input-section" aria-labelledby="home-input-title">
+      <div class="home-section-head">
+        <h2 class="home-section-title" id="home-input-title">輸入與草稿</h2>
+      </div>
+
+      <div class="capture-grid">
+        <button class="cap-tile cap-video" id="btn-video">🎥<span>錄影</span></button>
+        <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
+        <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
+        <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
+      </div>
+
+      <!-- 待處理：只列還沒真正歸檔的東西（收件匣＋暫存區＋歷史上 AI 歸類過還沒
+           確認的），不是「最近動過的全部東西」。2026-08-09 從「最近作業」改回
+           這個範圍——原本改成「不分資料夾，列最後動過的」是想解決「收件匣空了
+           整個面板就消失」，但這樣一來，剛手動搬移／編輯過的已歸檔記事會佔著
+           最上面的位置，擠掉真正還沒處理的，等於清單失去「代辦」的意義。
+           （同一天：拿掉「放滿 N 天沒人動由 AI 自動歸類」設定與規則建議通知，
+           暫存區改回純手動——使用者自己找時間搬去該去的資料夾。） -->
+      <section class="panel home-inbox-panel" id="inbox-panel">
+        <div class="folders-toolbar">
+          <h2>📥 待處理 <span id="inbox-count" class="count"></span></h2>
+          <div class="folder-view-toggle" aria-label="待處理顯示模式">
+            <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">▦ 卡片</button>
+            <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
+          </div>
+        </div>
+        <div id="inbox-list" class="entry-list"></div>
+      </section>
     </section>
 
-    <section class="panel">
-      <h2>📂 資料夾 <button class="btn small" id="btn-new-folder">＋ 新增</button></h2>
-      <div id="folder-list" class="folder-list"></div>
+    <section class="home-section home-files-section" aria-labelledby="home-files-title">
+      <div class="home-section-head">
+        <h2 class="home-section-title" id="home-files-title">檔案</h2>
+      </div>
+
+      <div class="home-file-stack">
+        <section class="panel folders-panel home-files-panel">
+          <!-- 2026-08-09：卡片模式拿掉了（跟清單模式完全同一組資料、只是換個排版，
+               沒有提供額外功能）。清單模式改成縮排樹狀，一次看到整棵四層資料夾樹，
+               不用再點進去才看得到子資料夾。 -->
+          <div class="folders-toolbar">
+            <h2>📂 已歸檔資料夾</h2>
+            <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
+            <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
+            <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
+          </div>
+          <div id="folder-list" class="folder-list"></div>
+        </section>
+      </div>
     </section>
+
+    <!-- 預設收合、展開才打 /usage：避免每次開首頁都白白耗一次 Cloudflare 帳單查詢 -->
+    <details class="home-section home-usage-section" id="usage-details">
+      <summary class="home-usage-summary">
+        <h2 class="home-section-title" id="home-usage-title">系統用量</h2>
+        <span class="usage-status-dot" id="usage-status-dot" hidden></span>
+        <span class="usage-summary-chevron" aria-hidden="true">▾</span>
+      </summary>
+      <div class="home-usage-toolbar">
+        <strong>資源監控</strong>
+        <button class="btn small" id="btn-usage-refresh">重新整理</button>
+      </div>
+      <div class="home-usage-content" id="usage-content"><p class="sub">展開以載入用量。</p></div>
+    </details>
+    </div>
   </div>
 
   <!-- 資料夾內頁 -->
@@ -41,14 +116,155 @@
       <button class="btn small ghost" id="btn-back">‹ 回首頁</button>
       <h2 id="folder-title"></h2>
       <div class="folder-actions">
+        <div class="folder-view-toggle inner-view-toggle" aria-label="資料夾內容顯示模式">
+          <button class="btn small" id="btn-inner-grid" type="button" title="卡片模式">▦ 卡片</button>
+          <button class="btn small" id="btn-inner-list" type="button" title="清單模式">☷ 清單</button>
+        </div>
+        <button class="btn small" id="btn-file-sort" type="button">🆕 新到舊</button>
+        <button class="btn small" id="btn-folder-sort-inner" type="button">🔤 名稱排序</button>
+        <button class="btn small" id="btn-new-subfolder">＋ 子資料夾</button>
         <button class="btn small" id="btn-video-f">🎥 錄影</button>
         <button class="btn small" id="btn-photo-f">📷 拍照</button>
         <button class="btn small" id="btn-audio-f">🎙 錄音</button>
         <button class="btn small" id="btn-folder-entry">✏️ 新紀錄</button>
+        <button class="btn small upload-btn" id="btn-folder-upload-file" type="button">＋ 上傳檔案</button>
+        <input id="folder-upload-file-input" type="file" multiple hidden />
+        <button class="btn small" id="btn-cleanup-filenames" type="button" title="統一成「標準編號_年份_中文標題」並移除內容完全相同的重複檔；不會呼叫 AI">🏷 整理檔名</button>
         <button class="btn small primary" id="btn-folder-export">📄 匯出給 AI</button>
       </div>
     </div>
+    <div id="folder-children"></div>
     <div id="folder-entries" class="entry-list"></div>
+  </div>
+</div>
+
+<!-- 站內圖片檢視器：在 PWA（standalone）裡用 target=_blank 開圖片會跳到一個
+     沒有任何瀏覽器介面的畫面，沒有返回也沒有關閉，只能強制關掉 App。
+     照片改成在這個覆蓋層裡看，一定有關閉鈕。 -->
+<div class="overlay image-viewer-overlay" id="image-viewer-overlay">
+  <div class="image-viewer">
+    <div class="image-viewer-bar">
+      <span class="image-viewer-name" id="image-viewer-name"></span>
+      <button class="btn small ghost" id="image-viewer-rotate" type="button" aria-label="旋轉照片" title="旋轉 90 度（會記住，下次打開一樣是轉正的）">🔄 旋轉</button>
+      <a class="btn small ghost" id="image-viewer-open" href="#" target="_blank" rel="noopener" title="在新視窗開啟原圖">↗ 原圖</a>
+      <button class="btn small ghost" id="image-viewer-close" type="button" aria-label="關閉圖片" title="關閉圖片">✕</button>
+    </div>
+    <div class="image-viewer-body">
+      <img id="image-viewer-img" alt="" />
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="category-manager-overlay">
+  <div class="modal category-manager-modal">
+    <div class="modal-close-float"><button class="btn small ghost" id="category-manager-close" type="button" aria-label="關閉" title="關閉">✕</button></div>
+    <h2>⚙️ 管理分類</h2>
+    <p class="sub">分類存在資料庫裡，這裡改完立刻生效，不用改程式也不用重新部署。</p>
+    <div id="category-manager-body"><p class="sub">載入中…</p></div>
+  </div>
+</div>
+
+<div class="overlay" id="merge-folder-overlay">
+  <div class="modal narrow">
+    <h2>合併資料夾</h2>
+    <p class="sub" id="merge-folder-desc"></p>
+    <label for="merge-folder-target">合併到</label>
+    <select id="merge-folder-target"></select>
+    <div class="modal-actions">
+      <button class="btn ghost" id="merge-folder-cancel" type="button">取消</button>
+      <button class="btn primary" id="merge-folder-confirm" type="button">下一步</button>
+    </div>
+  </div>
+</div>
+
+<!-- 搬移用的資料夾選擇器：四層架構下用一個平的下拉選單根本認不出「同名的
+     那個是哪一層的哪一個分支」，所以列成有縮排的樹，每一列都標出完整路徑。
+     記事、單一檔案、收件匣草稿全部共用這一個選擇器。 -->
+<div class="overlay" id="folder-picker-overlay">
+  <div class="modal narrow folder-picker-modal">
+    <div class="modal-close-float"><button class="btn small ghost" id="folder-picker-close" type="button" aria-label="關閉" title="關閉">✕</button></div>
+    <h2 id="folder-picker-title">移動到資料夾</h2>
+    <p class="sub" id="folder-picker-desc"></p>
+    <input id="folder-picker-search" placeholder="輸入名稱過濾（可打路徑上的任何一層）…" autocomplete="off" />
+    <div class="folder-picker-list" id="folder-picker-list"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="folder-picker-cancel" type="button">取消</button>
+      <button class="btn small" id="folder-picker-new" type="button">＋ 建立新資料夾</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="merge-entry-overlay">
+  <div class="modal narrow">
+    <h2>合併記事</h2>
+    <p class="sub" id="merge-entry-desc"></p>
+    <label for="merge-entry-target">合併到</label>
+    <select id="merge-entry-target"></select>
+    <div class="modal-actions">
+      <button class="btn ghost" id="merge-entry-cancel" type="button">取消</button>
+      <button class="btn primary" id="merge-entry-confirm" type="button">合併</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="create-folder-overlay">
+  <form class="modal create-folder-modal" id="create-folder-form">
+    <div class="create-folder-head">
+      <span class="create-folder-icon">📁</span>
+      <div><h2 id="create-folder-title">新增資料夾</h2><p class="sub" id="create-folder-desc">整理成容易找到的分類</p></div>
+    </div>
+    <label for="create-folder-name">資料夾名稱</label>
+    <input id="create-folder-name" maxlength="80" autocomplete="off" placeholder="例如：供應商會議、查廠紀錄" required />
+    <fieldset class="folder-type-fieldset">
+      <legend>選擇類型</legend>
+      <div class="folder-type-picker" id="create-folder-types"></div>
+    </fieldset>
+    <div class="modal-actions">
+      <button class="btn ghost" id="create-folder-cancel" type="button">取消</button>
+      <button class="btn primary" type="submit">建立資料夾</button>
+    </div>
+  </form>
+</div>
+
+<div class="overlay" id="relation-picker-overlay">
+  <div class="modal narrow">
+    <h2>新增關聯</h2>
+    <p class="sub">關聯到哪一筆記事？（例如這次實驗引用的標準、對照的廠商產品）</p>
+    <input id="relation-search-input" placeholder="輸入標題關鍵字搜尋…" autocomplete="off" />
+    <div id="relation-search-results" class="relation-search-results"></div>
+    <div id="relation-picked" class="relation-picked" style="display:none;">
+      <p class="sub">已選：<strong id="relation-picked-title"></strong></p>
+      <label for="relation-type-input">關係</label>
+      <input id="relation-type-input" list="relation-type-suggestions" autocomplete="off" placeholder="例：引用標準、測試對象、專利依據" />
+      <datalist id="relation-type-suggestions">
+        <option value="引用標準"></option>
+        <option value="被引用於"></option>
+        <option value="測試對象"></option>
+        <option value="專利依據"></option>
+        <option value="供應商"></option>
+        <option value="比對對象"></option>
+        <option value="延伸自"></option>
+      </datalist>
+      <label for="relation-note-input">備註（選填）</label>
+      <input id="relation-note-input" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="relation-picker-cancel" type="button">取消</button>
+      <button class="btn primary" id="relation-picker-confirm" type="button" disabled>建立關聯</button>
+    </div>
+  </div>
+</div>
+
+<div class="folder-trash-zone" id="folder-trash-zone" aria-hidden="true">🗑 放開以刪除資料夾分類</div>
+<div class="entry-new-folder-zone" id="entry-new-folder-zone" aria-hidden="true">📁 放開以建立新資料夾並歸檔</div>
+
+<!-- 開啟 App 時的載入進度：資料夾／記事／附件變多，boot() 要打的 API 陸續
+     跑完前畫面會空白一段時間，容易讓人以為當機。用百分比讓使用者知道還在動。 -->
+<div class="overlay boot-loading-overlay" id="boot-loading-overlay">
+  <div class="modal narrow boot-loading-box">
+    <div class="boot-loading-title">🎒 載入中…</div>
+    <div class="usage-bar boot-loading-bar"><i id="boot-loading-bar-fill" style="width:0%"></i></div>
+    <p class="sub" id="boot-loading-pct">0%</p>
   </div>
 </div>
 
@@ -66,6 +282,26 @@
 <!-- 紀錄詳情 -->
 <div class="overlay" id="entry-overlay">
   <div class="modal wide" id="entry-modal"></div>
+</div>
+
+<!-- 全螢幕編輯框：轉文字稿／擷取文字內容偏長，prompt() 太小編不動，改用這個 -->
+<div class="overlay edit-overlay" id="edit-overlay">
+  <div class="edit-modal">
+    <div class="detail-head">
+      <h2 id="edit-modal-title" style="flex:1; margin:0;">編輯內容</h2>
+      <div class="font-size-stepper" role="group" aria-label="調整字體大小">
+        <button class="btn small ghost" id="edit-modal-font-smaller" type="button" title="字體縮小">A－</button>
+        <button class="btn small ghost" id="edit-modal-font-bigger" type="button" title="字體放大">A＋</button>
+      </div>
+      <button class="btn small ghost" id="edit-modal-close">✕</button>
+    </div>
+    <textarea id="edit-modal-textarea"></textarea>
+    <div class="modal-actions">
+      <span class="sub" id="edit-modal-count"></span>
+      <button class="btn small ghost" id="edit-modal-cancel">取消</button>
+      <button class="btn primary" id="edit-modal-save">儲存</button>
+    </div>
+  </div>
 </div>
 
 <!-- 現場採集：全程開鏡頭看得到畫面（拍照本來就要看得到才能取景）。
@@ -102,7 +338,10 @@
 
 <!-- 🎙 錄音：不開鏡頭，浮動控制列，畫面照常滑手機 -->
 <div class="audio-badge" id="audio-badge" style="display:none;">
+  <span class="audio-status" id="audio-status" role="status" aria-live="polite" hidden></span>
+  <div class="audio-live-transcript" id="audio-live-transcript" aria-live="polite" hidden></div>
   <span class="audio-badge-dot"></span><span id="audio-timer">00:00</span>
+  <button id="audio-folder-btn" type="button" title="歸類到資料夾（錄音不中斷）">📂</button>
   <button id="audio-photo-btn" type="button" title="拍照">📷</button>
   <button id="audio-note-btn" type="button" title="記一句">✏️</button>
   <button id="audio-stop-btn" type="button" title="結束">⏹</button>
@@ -120,6 +359,15 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js"></script>
+<!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
+     只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+<script src="app.js?v=101"></script>
+<!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
+<script src="pdf-editor.js?v=101"></script>
+<!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
+     window.fieldlogRichEditor -->
+<script src="richtext-editor.js?v=101"></script>
 </body>
 </html>

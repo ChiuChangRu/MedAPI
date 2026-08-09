@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>需求留言後台 - Medtec China 2026</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <h1>需求留言後台</h1>
+    <p>彙整同事對各廠商提出的洽談需求，並匯出轉達給展覽窗口</p>
+  </div>
+  <nav class="tabs">
+    <a href="index.html">展商導覽</a>
+    <a href="admin.html" class="active">需求留言後台</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="controls">
+    <button class="btn primary" onclick="location.href='/api/inquiries/export'">匯出 CSV（轉達用）</button>
+    <button class="btn" onclick="loadInquiries()">重新整理</button>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div style="overflow-x:auto;">
+    <table class="admin">
+      <thead>
+        <tr>
+          <th>時間</th>
+          <th>廠商</th>
+          <th>提出人</th>
+          <th>部門</th>
+          <th>聯絡方式</th>
+          <th>需求內容</th>
+          <th>狀態</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STATUS_OPTIONS = ["待轉達", "已轉達", "已完成"];
+
+async function loadInquiries() {
+  const res = await fetch("/api/inquiries");
+  const rows = await res.json();
+  document.getElementById("stats").textContent = `共 ${rows.length} 筆留言`;
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+  rows.forEach((r) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${r.created_at}</td>
+      <td>${r.exhibitor_name}</td>
+      <td>${r.requester_name}</td>
+      <td>${r.department || ""}</td>
+      <td>${r.contact}</td>
+      <td>${r.message}</td>
+      <td></td>
+    `;
+    const statusCell = tr.lastElementChild;
+    const select = document.createElement("select");
+    select.className = "status-select";
+    STATUS_OPTIONS.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      if (s === r.status) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.onchange = () => updateStatus(r.id, select.value);
+    statusCell.appendChild(select);
+    tbody.appendChild(tr);
+  });
+}
+
+async function updateStatus(id, status) {
+  await fetch(`/api/inquiries/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  showToast("狀態已更新");
+}
+
+function showToast(text) {
+  const toast = document.getElementById("toast");
+  toast.textContent = text;
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 2000);
+}
+
+loadInquiries();
+</script>
+</body>
+</html>

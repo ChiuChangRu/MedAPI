@@ -18,6 +18,7 @@ body {
 }
 
 .container { max-width: 760px; margin: 0 auto; padding: calc(14px + env(safe-area-inset-top)) 14px 60px; }
+@media (min-width: 900px) { .container { max-width: 1080px; } }
 
 /* ===== 首頁：採集優先。四個獨立入口排 2x2，方型好按、單手拇指範圍內 ===== */
 .capture-grid {
@@ -35,6 +36,11 @@ body {
 .cap-photo { background: linear-gradient(135deg, #1d4ed8, #3b82f6); box-shadow: 0 4px 14px rgba(29, 78, 216, 0.35); }
 .cap-audio { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 4px 14px rgba(180, 83, 9, 0.35); }
 .cap-note { background: linear-gradient(135deg, #4b5563, #6b7280); box-shadow: 0 4px 14px rgba(75, 85, 99, 0.35); }
+@media (min-width: 720px) {
+  .capture-grid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .cap-tile { aspect-ratio: auto; min-height: 88px; padding: 10px; font-size: 24px; border-radius: 12px; }
+  .cap-tile span { font-size: 13px; }
+}
 
 .panel {
   background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
@@ -44,31 +50,325 @@ body {
 .panel h2 .count { color: var(--text-muted); font-size: 13px; font-weight: 400; }
 .panel h2 .btn { margin-left: auto; }
 
+/* 「查詢時間」（剛剛去問 Cloudflare）跟「帳單資料本身是哪天的」分開兩行講，
+   不合成一句——這是使用者會誤會「剛更新＝數字最新」的根源 */
+.usage-overview { margin-bottom: 10px; }
+.usage-overview p { margin: 0 0 3px; }
+.usage-lag-warn {
+  margin: 0; padding: 6px 9px; border-radius: 7px;
+  background: #fff7ed; color: #9a3412; border: 1px solid #fdba74;
+  font-size: 12px; line-height: 1.5;
+}
+.usage-total {
+  display: grid; grid-template-columns: 1fr auto; gap: 3px 10px;
+  align-items: center; margin-bottom: 10px; padding: 12px;
+  color: #fff; background: var(--accent); border-radius: var(--radius);
+}
+.usage-total strong { font-size: 20px; }
+.usage-total small { grid-column: 1 / -1; opacity: 0.85; }
+.usage-limits { margin-top: 16px; }
+.usage-limits h3 { margin: 0 0 10px; font-size: 13px; }
+.usage-limit { margin-bottom: 12px; }
+.usage-limit > div:first-child { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.usage-limit > div:first-child span { color: var(--text-muted); text-align: right; }
+.usage-bar { height: 9px; margin-top: 5px; overflow: hidden; background: #e5e7eb; border-radius: 999px; }
+.usage-bar i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.usage-limit small { display: block; margin-top: 3px; color: var(--text-muted); text-align: right; }
+.usage-limit.over .usage-bar i { background: #dc2626; }
+.usage-limit.over small { color: #b91c1c; font-weight: 600; }
+.usage-quiet { margin: 0; color: var(--text-muted); font-size: 12px; }
+.ai-usage { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+.ai-budget-grid { display: grid; gap: 10px; margin-top: 10px; }
+.ai-budget-row { padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; }
+.ai-budget-row > div:first-child { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.ai-budget-row span { font-variant-numeric: tabular-nums; }
+.ai-budget-row small { display: block; margin-top: 3px; color: var(--text-muted); text-align: right; font-size: 10px; }
+.ai-budget-row.safe .usage-bar i { background: #16a34a; }
+.ai-budget-row.daily .usage-bar i { background: #f59e0b; }
+.ai-budget-row.paid .usage-bar i { background: #dc2626; }
+.ai-plan-note { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.usage-updated { margin: 8px 0 0; text-align: right; }
+.usage-error { margin: 0; color: #b91c1c; font-size: 12px; line-height: 1.5; }
+
 /* ===== 資料夾與紀錄清單 ===== */
-.folder-list { display: flex; flex-direction: column; gap: 6px; }
+.folders-panel { padding: 18px; }
+.folders-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.folders-toolbar h2 { margin: 0 auto 0 0; }
+.folder-view-toggle { display: flex; gap: 4px; }
+.folder-view-toggle .active { color: #fff; background: var(--accent); border-color: var(--accent); }
+/* 2026-08-09：卡片模式拿掉了（跟清單模式同一批資料、只是排版不同，沒有
+   額外功能），改成縮排樹狀清單——每一列是 folder-card，depth 用行內
+   margin-left 表示，所以這裡只留原本 list-view 那一種版面，不再需要
+   grid-view/list-view 兩套並存。 */
+.folder-list { display: flex; flex-direction: column; gap: 8px; }
 .folder-card {
-  display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+  position: relative; display: flex; align-items: center; gap: 8px; padding: 0;
   border: 1px solid var(--border); border-radius: var(--radius);
-  cursor: pointer; background: #fff;
+  background: #fff;
   box-shadow: 0 1px 2px rgba(27, 29, 28, 0.05);
 }
 .folder-card:hover { border-color: var(--accent); }
 .folder-card.done { opacity: 0.55; }
+.folder-card-main {
+  min-width: 0; flex: 1; cursor: pointer;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center; gap: 10px; padding: 12px;
+}
+.folder-drag {
+  flex: none; align-self: center; width: 32px; height: 44px; margin-left: 6px;
+  border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 20px;
+}
+.folder-drag:active { cursor: grabbing; }
+.folder-card.dragging { opacity: 0.35; }
+.folder-card.drop-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
+/* 展開／收合子資料夾（跟 Notion 側欄同一種互動：預設收合，按箭頭才往下展開
+   一層）。沒有子資料夾的列用同寬度的空白佔位，讓所有列的名稱維持對齊，
+   不會因為有沒有箭頭而左右跳動。 */
+.folder-expand,
+.folder-expand-spacer {
+  flex: none; width: 24px; height: 44px;
+}
+.folder-expand {
+  border: 0; background: transparent; color: #6b7280; cursor: pointer; font-size: 13px;
+}
+.folder-expand:hover { color: var(--accent); }
+/* 包住 .folder-type ＋ .folder-category 兩個徽章，讓 .folder-card-main 的
+   grid（list-view：auto minmax(0,1fr) auto auto）維持原本 4 欄不變——
+   新增色系分類徽章不能讓子項目數變多，否則 list-view 的欄位對齊會整個跑掉。 */
+.folder-type-group { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .folder-type {
   font-size: 11px; padding: 2px 8px; border-radius: 999px;
   background: #e6f2f0; color: var(--accent-dark); white-space: nowrap;
 }
+/* 色系分類徽章（folders.category，2026-08-08 分類重整）。卡片本身已經用
+   folderCategoryStyle() 上淡色底，這裡只需要一個半透明白底的文字標籤，
+   在任何一種淡色底上都讀得清楚，不用每個 category 各寫一組顏色。 */
+.folder-category {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(255, 255, 255, .6); border: 1px solid rgba(0, 0, 0, .08);
+  color: #44403c; white-space: nowrap;
+}
 .folder-name { font-size: 14px; font-weight: 600; flex: 1; }
 .folder-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.folder-date { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.folder-more {
+  align-self: flex-start; width: 40px; height: 40px; margin: 6px 6px 0 0;
+  border: 0; border-radius: 8px; background: transparent; cursor: pointer; font-size: 20px;
+}
+.folder-more:hover { background: #f1f5f4; }
+.folder-menu {
+  position: absolute; z-index: 8; top: 44px; right: 8px; min-width: 130px;
+  padding: 5px; background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+.folder-menu button { display: block; width: 100%; padding: 9px 10px; border: 0; background: none; text-align: left; cursor: pointer; border-radius: 6px; }
+.folder-menu button:hover { background: #f1f5f4; }
+.folder-menu .danger { color: #b91c1c; }
+.child-folder-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 8px 0 16px; }
+/* .record-group-card（多檔案記事歸檔後的卡片）刻意跟 .child-folder-card 共用
+   這組視覺樣式、但不共用 class 名稱——見 recordGroupCardHtml() 的註解，
+   兩者的 data-id 語意不同（資料夾 id vs. 記事 id），拖曳落點判斷不能混淆。 */
+.child-folder-card, .record-group-card {
+  display: grid; grid-template-columns: auto 1fr; gap: 3px 9px; align-items: center;
+  padding: 13px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: #fff; color: var(--text); text-align: left; cursor: pointer;
+  /* 沒有這行，網格／彈性容器的子項目預設 min-width:auto，寬度會被內容裡
+     最長的「不可斷行片段」頂住（例如附件摘要裡的英數字、emoji）。同一排的
+     卡片內容長度不一時，兩個 .child-folder-list 各自算出的欄寬可能因此對
+     不齊，卡片位置跟著跑掉。 */
+  min-width: 0;
+  position: relative;
+}
+.child-folder-card:hover, .record-group-card:hover { border-color: var(--accent); background: #f0fdfa; }
+.child-folder-card > span, .record-group-card > span { grid-row: 1 / 3; font-size: 24px; }
+.child-folder-card strong, .record-group-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.child-folder-card small, .record-group-card small { color: var(--text-muted); }
+/* 子資料夾原本只能點進去看，改名要先回上層資料夾清單才有選單——右上角補一顆
+   跟 .record-group-del 同樣手法的編輯鈕，直接沿用既有的 renameFolder()。 */
+.child-folder-card { padding-right: 60px; }
+.child-folder-edit, .child-folder-move {
+  position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
+}
+.child-folder-move { right: 32px; }
+.child-folder-edit:hover, .child-folder-move:hover { opacity: 1; }
+.child-folder-list.list-view { display: flex; flex-direction: column; }
+.child-folder-list.list-view .child-folder-card,
+.child-folder-list.list-view .record-group-card { min-height: 62px; }
+/* 卡片模式：跟首頁採集按鈕（錄影／拍照／錄音／記事）同一套漸層光澤正方形
+   磚，子資料夾／已歸檔的多檔案紀錄看起來像一疊有質感的磚塊。只在夠寬的
+   螢幕上套用——手機版本來就沒有卡片／清單切換鈕（見下面的手機 media
+   query），會直接落回上面那組緊湊橫向列樣式，不用另外寫「復原」規則。 */
+@media (min-width: 720px) {
+  .child-folder-list.grid-view .child-folder-card,
+  .child-folder-list.grid-view .record-group-card {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; gap: 6px; padding: 16px;
+    border: none; border-radius: 14px; color: #fff;
+    background: linear-gradient(135deg, var(--accent), #14907f);
+    box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
+  }
+  .child-folder-list.grid-view .child-folder-card:hover,
+  .child-folder-list.grid-view .record-group-card:hover {
+    background: linear-gradient(135deg, var(--accent), #14907f);
+    box-shadow: 0 6px 18px rgba(15, 118, 110, 0.45);
+  }
+  .child-folder-list.grid-view .child-folder-card > span,
+  .child-folder-list.grid-view .record-group-card > span { font-size: 34px; }
+  .child-folder-list.grid-view .child-folder-card strong,
+  .child-folder-list.grid-view .record-group-card strong {
+    font-size: 14px; white-space: normal; word-break: break-all; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .child-folder-list.grid-view .child-folder-card small,
+  .child-folder-list.grid-view .record-group-card small {
+    color: rgba(255, 255, 255, 0.85); white-space: normal; word-break: break-all; overflow: hidden;
+  }
+  .child-folder-list.grid-view .folder-level-chip { background: rgba(255, 255, 255, 0.25); color: #fff; }
+  .child-folder-list.grid-view .record-group-card,
+  .child-folder-list.grid-view .child-folder-card { padding-right: 16px; }
+  .child-folder-list.grid-view .child-folder-move { right: 34px; }
+  .child-folder-list.grid-view .record-group-del,
+  .child-folder-list.grid-view .child-folder-edit,
+  .child-folder-list.grid-view .child-folder-move {
+    color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.15); border-radius: 50%;
+  }
+  .child-folder-list.grid-view .record-group-del:hover,
+  .child-folder-list.grid-view .child-folder-edit:hover,
+  .child-folder-list.grid-view .child-folder-move:hover { background: rgba(255, 255, 255, 0.32); opacity: 1; }
+}
+.inner-entry-list.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.inner-entry-list.grid-view .entry-row { position: relative; min-height: 130px; padding: 16px; align-items: flex-start; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(27,29,28,.06); }
+.inner-entry-list.grid-view .entry-title { flex-basis: calc(100% - 40px); font-size: 15px; font-weight: 650; line-height: 1.45; }
+.inner-entry-list.grid-view .entry-meta { order: 3; width: 100%; margin-top: auto; padding-top: 18px; }
+.inner-entry-list.grid-view .entry-del { position: absolute; right: 10px; top: 10px; }
+.inner-entry-list.grid-view .entry-drag { align-self: flex-start; }
+#folder-children h3 { margin: 14px 0 6px; font-size: 14px; }
+.folder-trash-zone {
+  position: fixed; z-index: 120; left: 50%; bottom: 24px;
+  width: min(420px, calc(100vw - 32px)); padding: 18px;
+  border: 2px dashed #ef4444; border-radius: 14px;
+  color: #b91c1c; background: #fff1f2; text-align: center; font-weight: 700;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.22);
+  transform: translate(-50%, calc(100% + 60px)); opacity: 0; pointer-events: none;
+  transition: transform 0.18s, opacity 0.18s;
+}
+.folder-dragging .folder-trash-zone { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.folder-trash-zone.active { color: #fff; background: #dc2626; border-color: #fff; }
+.entry-new-folder-zone {
+  position: fixed; z-index: 120; left: 50%; bottom: 24px;
+  width: min(420px, calc(100vw - 32px)); padding: 18px;
+  border: 2px dashed #5eead4; border-radius: 14px;
+  color: #0f766e; background: #f0fdfa; text-align: center; font-weight: 700;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.22);
+  transform: translate(-50%, calc(100% + 60px)); opacity: 0; pointer-events: none;
+  transition: transform 0.18s, opacity 0.18s;
+}
+.entry-dragging .entry-new-folder-zone { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.entry-new-folder-zone.active { color: #fff; background: #0f766e; border-color: #fff; }
+@media (max-width: 719px) {
+  .folder-view-toggle { display: none; }
+  .folders-toolbar { flex-wrap: wrap; }
+  /* 這裡本來是 3 欄的 grid（類型｜名稱｜筆數）。類型 chip 跟筆數文字都是
+     auto 寬、不換行，遇到「其他專案」這種較長的類型、或「N 筆記事｜N 個
+     子資料夾」這種較長的筆數文字時，兩邊都變寬，名稱那欄（僅剩的彈性欄）
+     就被壓到只剩幾像素，中文名稱變成一個字一行。改成 flex-wrap，用 order
+     讓名稱永遠自己獨佔一行，類型／筆數換到下一行一起顯示。 */
+  .folder-card-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px; }
+  .folder-name { order: -1; flex: 1 1 100%; }
+  .folder-date { display: none; }
+  .folder-drag, .folder-trash-zone, .entry-new-folder-zone { display: none; }
+  .inner-view-toggle { display: none; }
+  .child-folder-list.grid-view, .inner-entry-list.grid-view { display: flex; flex-direction: column; }
+  .inner-entry-list.grid-view .entry-row { min-height: 0; padding: 10px 12px; flex-wrap: nowrap; box-shadow: none; }
+  .inner-entry-list.grid-view .entry-title { flex-basis: auto; font-size: 14px; font-weight: 400; }
+  .inner-entry-list.grid-view .entry-meta { order: initial; width: auto; margin: 0; padding: 0; }
+  .inner-entry-list.grid-view .entry-del { position: static; }
+}
 
 .entry-list { display: flex; flex-direction: column; gap: 4px; }
+/* 收件匣卡片模式：跟資料夾內頁那種大卡片（min-height 130px）不是同一組樣式，
+   草稿本來就一堆，卡片故意做小一點，不要佔掉太多畫面。 */
+#inbox-list.grid-view {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px;
+}
+#inbox-list.grid-view .entry-row {
+  flex-wrap: wrap; align-items: flex-start; gap: 6px; padding: 10px;
+}
+#inbox-list.grid-view .entry-drag { display: none; } /* 卡片模式改靠「移動」按鈕，省掉抓手圖示佔位 */
+#inbox-list.grid-view .entry-title { flex: 1 1 100%; font-size: 13px; font-weight: 600; white-space: normal; }
+#inbox-list.grid-view .entry-meta { white-space: normal; }
+#inbox-list.grid-view .entry-move,
+#inbox-list.grid-view .entry-merge { padding: 4px 7px; font-size: 11px; }
 .entry-row {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
   cursor: pointer; background: #fff; font-size: 14px;
 }
 .entry-row:hover { border-color: var(--accent); }
+.entry-row.dragging { opacity: 0.4; }
+.entry-row.merge-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
+.entry-title { min-width: 0; flex: 1; }
+.entry-drag {
+  flex: none; width: 28px; height: 36px; padding: 0;
+  border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 18px;
+}
+.entry-drag:active { cursor: grabbing; }
+/* 原本桌機隱藏、只靠拖曳歸檔，但視窗夠寬、目標資料夾卻在捲動範圍外時，
+   滑鼠根本拖不到、拖曳中也沒有自動捲動——這種時候完全卡住。跟 .entry-merge
+   一樣桌機／手機都要看得到，拖曳只是這顆按鈕以外的另一種捷徑，不是唯一路徑。 */
+.entry-move {
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--accent-dark); background: #fff; cursor: pointer; font-size: 12px;
+}
+.entry-merge {
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--accent-dark); background: #fff; cursor: pointer; font-size: 12px;
+}
 .entry-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.att-original { margin-top: 2px; color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }
+.folder-file-list { width: 100%; grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+.folder-file-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; align-items: center; gap: 9px;
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff;
+}
+.folder-file-icon { font-size: 20px; text-align: center; }
+.folder-file-name { min-width: 0; color: var(--accent-dark); font-weight: 600; overflow-wrap: anywhere; text-decoration: none; }
+.folder-file-name:hover { text-decoration: underline; }
+.folder-file-meta { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.folder-file-manage {
+  padding: 5px 9px; border: 1px solid var(--border); border-radius: 7px;
+  background: #fff; color: var(--text-muted); cursor: pointer; font-size: 12px;
+}
+.folder-file-list.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.folder-file-list.grid-view .folder-file-row {
+  min-height: 130px; grid-template-columns: 1fr auto; align-content: start;
+}
+.folder-file-list.grid-view .folder-file-icon { grid-column: 1 / 3; text-align: left; font-size: 28px; }
+.folder-file-list.grid-view .folder-file-name { grid-column: 1 / 3; }
+.folder-file-list.grid-view .folder-file-meta { align-self: end; margin-top: 14px; }
+.folder-note-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.entry-del {
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  font-size: 14px; opacity: 0.45; line-height: 1;
+}
+.entry-del:hover { opacity: 1; }
+@media (max-width: 719px) {
+  .entry-drag { display: none; }
+  /* 標題現在要跟時間、附件數、移動／合併／刪除三顆按鈕擠在同一行，窄螢幕
+     可用寬度不夠時標題會被壓到只剩幾像素，中文字就會變成一字一行。讓標題
+     自己獨佔一行，時間／按鈕換到下一行 */
+  .entry-row { flex-wrap: wrap; }
+  .entry-title { flex: 1 1 100%; }
+  .folder-file-list.grid-view { display: flex; }
+  .folder-file-list.grid-view .folder-file-row,
+  .folder-file-row { min-height: 0; grid-template-columns: 26px minmax(0, 1fr) auto; }
+  .folder-file-list.grid-view .folder-file-icon,
+  .folder-file-list.grid-view .folder-file-name { grid-column: auto; }
+  .folder-file-list.grid-view .folder-file-icon { font-size: 20px; text-align: center; }
+  .folder-file-list.grid-view .folder-file-meta, .folder-file-meta { display: none; }
+  .folder-file-list.grid-view .folder-file-manage { margin: 0; }
+}
 
 .folder-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .folder-head h2 { margin: 0; font-size: 16px; flex: 1; }
@@ -94,13 +394,200 @@ body {
   position: fixed; inset: 0; background: rgba(20, 22, 21, 0.55);
   display: none; align-items: flex-start; justify-content: center;
   padding: 30px 14px; z-index: 50; overflow-y: auto;
+  overscroll-behavior: contain; /* 捲到底時不要把捲動傳給底層頁面 */
 }
 .overlay.open { display: flex; }
+
+/* 詳情頁打開時鎖住底層頁面（配合 JS 的 lockBodyScroll，iOS 需要 position:fixed 才鎖得住） */
+body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hidden; }
+
+/* 全螢幕編輯框：轉文字稿／擷取文字（PDF 全文可達數萬字）要大面積才編得動 */
+.edit-overlay { z-index: 95; padding: 0; align-items: stretch; }
+.edit-modal {
+  background: #fff; width: 100%; max-width: none;
+  display: flex; flex-direction: column; padding: 16px 20px;
+}
+#edit-modal-textarea {
+  flex: 1; width: 100%; min-height: 0; resize: none;
+  font-size: 15px; line-height: 1.6; padding: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: inherit; background: #fafbfa;
+}
+.edit-modal .modal-actions { flex-shrink: 0; align-items: center; }
+.edit-modal .modal-actions .sub { margin-right: auto; }
+/* 從桌面拖檔案／照片進來時的落點提示（entry-modal、資料夾內頁都用得到） */
+.file-drag-over { outline: 3px dashed #14b8a6; outline-offset: -3px; }
+.font-size-stepper { display: flex; gap: 4px; margin-right: 8px; }
+.font-size-stepper .btn { padding: 6px 10px; font-weight: 700; }
+@media (min-width: 720px) {
+  .edit-overlay { padding: 30px; align-items: center; }
+  .edit-modal { max-width: 900px; height: 90vh; border-radius: 10px; border: 1px solid var(--border); }
+}
+@media (max-width: 719px) {
+  .edit-modal { height: 100vh; }
+}
+
+/* 關閉鈕黏在捲動視窗頂端：保留獨立列，避免和下一列的刪除鈕重疊誤按。 */
+.modal-close-float {
+  position: sticky; top: 4px; z-index: 6;
+  display: flex; justify-content: flex-end; align-items: center;
+  min-height: 44px; margin-bottom: 8px;
+  pointer-events: none;
+}
+.modal-close-float .btn {
+  width: 44px; height: 44px; padding: 0;
+  background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+/* 「這筆資料的來歷」面板：這筆哪來的、誰改過、AI 動過哪裡、還跟來源同步嗎 */
+.prov-box {
+  background: #f8faf9; border: 1px solid var(--border, #e2e4e3);
+  border-radius: 10px; padding: 12px 14px; font-size: 13.5px;
+}
+.prov-line {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 4px 0; border-bottom: 1px dashed #e8ebea;
+}
+.prov-line:last-of-type { border-bottom: none; }
+.prov-key {
+  flex: 0 0 auto; min-width: 92px; max-width: 45%;
+  color: var(--text-muted, #6b7280); font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.prov-detail { margin: 4px 0 10px; line-height: 1.6; }
+.prov-mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px; overflow-wrap: anywhere;
+}
+.prov-sub {
+  margin: 16px 0 6px; font-size: 13.5px;
+  color: var(--accent, #0f766e); font-weight: 700;
+}
+.prov-ok { color: #047857; }
+.prov-skip { color: #6b7280; }
+.prov-pending { color: #b45309; }
+.prov-warn { color: #b91c1c; font-weight: 600; }
+.prov-orphan {
+  margin: 6px 0 10px; padding: 8px 10px;
+  background: #fff7ed; border-left: 3px solid #fdba74;
+  border-radius: 0 6px 6px 0; color: #9a3412; font-size: 13px;
+}
+.prov-history { margin: 4px 0 0; padding-left: 18px; }
+.prov-history li { margin: 3px 0; line-height: 1.65; overflow-wrap: anywhere; }
+.prov-history .prov-mono { color: var(--text-muted, #6b7280); }
+.prov-raw { margin-top: 14px; }
+.prov-raw summary {
+  cursor: pointer; font-weight: 600; color: var(--accent, #0f766e);
+  padding: 6px 0; min-height: 32px;
+}
+.prov-raw pre {
+  background: #1b1d1c; color: #e8eae9; padding: 10px 12px;
+  border-radius: 8px; overflow-x: auto; margin: 8px 0;
+  font-size: 12px; line-height: 1.6;
+}
+
+.entry-danger-zone {
+  margin-top: 28px; padding-top: 18px;
+  border-top: 1px solid #fecaca;
+  text-align: right;
+}
+.entry-delete {
+  min-height: 44px;
+  color: #b91c1c; border-color: #fecaca; background: #fff7f7;
+}
+.entry-danger-zone .sub { margin-top: 6px; color: #991b1b; }
+.merged-transcript {
+  margin: 12px 0; padding: 12px;
+  border: 1px solid #99f6e4; border-radius: var(--radius); background: #f0fdfa;
+}
+.merged-transcript > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.merged-transcript pre {
+  max-height: 280px; overflow: auto; margin: 10px 0 0; padding: 10px;
+  white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 inherit;
+  background: #fff; border-radius: 6px;
+}
+.merged-transcript.empty { background: #fafafa; border-color: var(--border); }
+
+/* 本次批次剛整理完的附件：綠邊條標示，一眼看到新結果 */
+.att-item.just-processed { border-left: 3px solid #16a34a; background: #f0fdf4; padding-left: 8px; }
+
+/* 「略過整理」：連結淡化、已略過的狀態文字淡化 */
+.skip-link { opacity: 0.55; }
+.att-transcript.skipped { color: var(--text-muted); }
+
+/* Tier 2 深度處理狀態列（PDF 專用，手動觸發） */
+.att-tier2 { font-size: 12px; margin-top: 4px; color: var(--text-muted); }
+/* 節錄版偵測警示（頁數跟目錄推算不符／來源是已知預覽站） */
+.tier2-warn { font-size: 12px; margin-top: 2px; color: #b91c1c; font-weight: 600; }
+
+/* AI 整理狀態摺疊列：預設收合只露一行狀態，附件多時頁面不會被文字撐爆 */
+.att-ai summary {
+  cursor: pointer; font-size: 12px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 2px 0; user-select: none;
+}
+.att-ai summary:hover { color: var(--text); }
+.att-ai[open] summary { color: var(--text); }
+.att-ai-body { margin: 4px 0 2px; }
+
+/* AI 背景資訊（來歷、逐字稿全文、AI 動過哪裡、操作履歷）一律預設收合。
+   摘要那一行講結論，細節點開才出現——這些是查證用的資料，不是每次都要看的。 */
+.ai-fold > summary {
+  cursor: pointer; user-select: none; padding: 6px 0; min-height: 32px;
+  list-style: none;
+}
+.ai-fold > summary::-webkit-details-marker { display: none; }
+.ai-fold > summary::before { content: "▸ "; color: var(--text-muted); }
+.ai-fold[open] > summary::before { content: "▾ "; }
+.ai-fold > summary.section-title { margin: 0; }
+.ai-fold > summary.prov-sub { margin: 10px 0 4px; }
+.prov-fold { margin: 4px 0; }
+
+/* 搬移用的資料夾選擇器：縮排＝層級，每一列都能看出自己在四層的哪一格。
+   z-index 要壓過記事詳情（.overlay 50）、全螢幕編輯框（95）與錄音浮動列（70）
+   ——所有 .overlay 同一層時是「DOM 後面的蓋前面的」，這個選擇器就在它們前面，
+   不特別提高的話會整個被壓在下面看不到。建資料夾的對話框又要再高一層，
+   因為它是從這個選擇器裡開出來的。 */
+#folder-picker-overlay { z-index: 98; }
+#create-folder-overlay { z-index: 99; }
+.folder-picker-modal { max-width: 560px; }
+.folder-picker-list {
+  max-height: 48vh; overflow-y: auto; margin: 10px 0;
+  border: 1px solid var(--border); border-radius: var(--radius); background: #fff;
+}
+.fp-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  width: 100%; min-height: 44px; padding: 8px 12px; text-align: left;
+  border: 0; border-bottom: 1px solid var(--border); background: none;
+  font: inherit; cursor: pointer;
+}
+.fp-row:last-child { border-bottom: 0; }
+.fp-row:hover:not(:disabled) { background: #f0fdfa; }
+.fp-row:disabled { cursor: default; opacity: 0.65; }
+.fp-name { font-weight: 600; overflow-wrap: anywhere; }
+.fp-meta { font-size: 12px; color: var(--text-muted); }
+.fp-here { font-size: 11px; color: var(--accent, #0f766e); border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; }
+.archive-current { font-weight: 600; overflow-wrap: anywhere; }
+
+/* 最近作業：每一列都標出「現在待在哪」與「這個位置是不是 AI 決定的」 */
+.entry-where { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.entry-ai-chip {
+  font-size: 11px; padding: 1px 7px; min-height: 24px;
+  border: 1px solid #fdba74; border-radius: 999px;
+  background: #fff7ed; color: #9a3412; cursor: pointer;
+}
+.entry-ai-chip.failed { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; cursor: default; }
+.cfp-item.cfp-staging { font-weight: 700; color: #9a3412; }
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
   width: 100%; max-width: 560px;
 }
 .modal.narrow { max-width: 340px; margin-top: 12vh; }
+.boot-loading-box { text-align: center; }
+.boot-loading-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+.boot-loading-bar { height: 10px; }
+.boot-loading-bar i { transition: width 0.25s ease; }
+#boot-loading-pct { margin: 8px 0 0; font-variant-numeric: tabular-nums; }
 .modal h2 { margin-top: 0; }
 .modal label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
 .modal input, .modal textarea, .modal select {
@@ -113,8 +600,57 @@ body {
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
 }
 .modal textarea { min-height: 90px; resize: vertical; }
+#e-body { min-height: 200px; font-size: 15px; line-height: 1.6; }
+.field-label-row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 4px; }
+.field-label-row label { margin: 0; }
+.body-format-actions { display: flex; gap: 6px; }
+.rich-editor { background: #fafbfa; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.rich-editor .ql-toolbar { border: none; border-bottom: 1px solid var(--border); }
+.rich-editor .ql-container { border: none; font-size: 15px; }
+.rich-editor .ql-editor { min-height: 260px; line-height: 1.6; }
+.rich-editor .ql-editor img { max-width: 100%; border-radius: 6px; }
+/* 貼進來的 Markdown 結構（標題／清單／程式碼／分隔線）要看得出層次，
+   不然「有轉成標題」跟「沒轉」在畫面上長得一樣。 */
+.rich-editor .ql-editor h1 { font-size: 1.5em; margin: 0.7em 0 0.3em; }
+.rich-editor .ql-editor h2 { font-size: 1.28em; margin: 0.7em 0 0.3em; }
+.rich-editor .ql-editor h3 { font-size: 1.12em; margin: 0.7em 0 0.3em; }
+.rich-editor .ql-editor blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--text-muted); }
+.rich-editor .ql-editor pre { background: #f1f5f9; border-radius: 6px; padding: 10px; overflow-x: auto; white-space: pre; }
+.rich-editor .ql-editor hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+/* 🖍 蠟筆重點。Quill 的 core CSS 也有一組 .ql-bg-*，但 index.html 是先載
+   style.css 再載 quill.snow.css，同分特異度會被它蓋掉——這裡多一層 class
+   提高特異度，顏色才是我們挑的這組（螢光筆該是淡色，不是純黃 #ff0）。 */
+.rich-editor .ql-editor .ql-bg-yellow { background-color: #fef08a; }
+.rich-editor .ql-editor .ql-bg-green { background-color: #bbf7d0; }
+.rich-editor .ql-editor .ql-bg-blue { background-color: #bfdbfe; }
+.rich-editor .ql-editor .ql-bg-pink { background-color: #fbcfe8; }
+.rich-editor .ql-editor .ql-bg-orange { background-color: #fed7aa; }
 .modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
 .modal .sub { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
+.create-folder-modal { max-width: 620px; margin-top: 5vh; padding: 24px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }
+.create-folder-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.create-folder-head h2 { margin: 0 0 3px; }
+.create-folder-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: #e6f2f0; font-size: 25px; }
+.folder-type-fieldset { margin: 18px 0 0; padding: 0; border: 0; }
+.folder-type-fieldset legend { margin-bottom: 8px; font-size: 13px; font-weight: 700; }
+.folder-type-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.folder-type-option { margin: 0 !important; cursor: pointer; }
+.folder-type-option input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.folder-type-option > span { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 11px; background: #fafbfa; transition: border-color .15s, background .15s, box-shadow .15s; }
+.folder-type-option b { grid-row: 1 / 3; font-size: 22px; font-weight: 400; }
+.folder-type-option strong { font-size: 14px; }
+.folder-type-option small { color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.folder-type-option:hover > span { border-color: #99d5ce; background: #f0fdfa; }
+.folder-type-option input:checked + span { border-color: var(--accent); background: #ecfdf9; box-shadow: 0 0 0 2px rgba(15, 118, 110, .13); }
+@media (min-width: 720px) {
+  .folder-actions .btn { padding: 5px 9px; font-size: 12px; }
+  .folders-toolbar .btn { padding: 5px 9px; font-size: 12px; }
+}
+@media (max-width: 480px) {
+  .create-folder-modal { margin-top: 0; padding: 18px; }
+  .folder-type-picker { grid-template-columns: 1fr; }
+  .folder-type-option > span { padding: 9px 10px; }
+}
 .detail-head { display: flex; gap: 10px; align-items: center; }
 .title-input { font-size: 16px; font-weight: 700; flex: 1; }
 .archive-row { margin: 10px 0; display: flex; align-items: center; gap: 8px; }
@@ -122,40 +658,45 @@ body {
 .section-title { font-size: 14px; margin: 4px 0 8px; }
 hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
-/* ===== 內文／速記：Markdown 渲染 ===== */
-.body-toggle { font-weight: 400; font-size: 12px; margin-left: 4px; }
-.md-content {
-  min-height: 90px; padding: 9px 10px; font-size: 14px; line-height: 1.6;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background: #fafbfa; cursor: text;
-}
-.md-content > *:first-child { margin-top: 0; }
-.md-content > *:last-child { margin-bottom: 0; }
-.md-content h1, .md-content h2, .md-content h3 { margin: 10px 0 6px; line-height: 1.3; }
-.md-content h1 { font-size: 19px; }
-.md-content h2 { font-size: 17px; }
-.md-content h3 { font-size: 15px; }
-.md-content p { margin: 6px 0; }
-.md-content ul, .md-content ol { margin: 6px 0; padding-left: 22px; }
-.md-content li { margin: 2px 0; }
-.md-content blockquote {
-  margin: 6px 0; padding: 4px 10px; border-left: 3px solid var(--accent);
-  color: var(--text-muted); background: #f0f4f3;
-}
-.md-content code { background: #eef0ee; border-radius: 4px; padding: 1px 5px; font-family: "SF Mono", Consolas, monospace; font-size: 13px; }
-.md-content pre { background: #1b1d1c; color: #e6e8e6; padding: 10px 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0; }
-.md-content pre code { background: none; padding: 0; color: inherit; }
-.md-content a { color: var(--accent-dark); }
-
 /* ===== 附件 ===== */
 .att-list { display: flex; flex-direction: column; gap: 10px; }
 .att-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .att-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; gap: 8px; }
 .att-delete { color: #b91c1c; }
 .att-offset { color: var(--accent-dark); font-weight: 600; }
-.att-thumb { max-width: 100%; max-height: 220px; border-radius: 6px; display: block; }
+/* 只用 max-width 卡住寬度（貼齊卡片框），不額外設 max-height——原本的
+   220px 高度上限會把橫幅照片硬壓扁，框框明明比較寬也用不到，看起來像是
+   被縮圖了。拿掉高度上限後圖片依原始比例撐滿寬度，也不會超過框框
+   （max-width: 100% 本身就擋住放大溢出）。 */
+.att-thumb { max-width: 100%; border-radius: 6px; display: block; }
+/* 90°／270° 會讓橫幅變直幅（或反過來），視覺上的外框跟著換邊——如果直接
+   對這種長寬比的縮圖做 transform: rotate()，旋轉後的畫面會比原本的版位還
+   高／還寬，可能疊到下一張縮圖。轉成正方形外框＋object-fit: contain 之後，
+   90°／270° 旋轉前後外框永遠是同一個正方形，不會影響其他縮圖的版位；
+   0°／180° 沒有這個問題，維持原本「貼齊卡片框」的樣子就好。 */
+.att-thumb[data-rotation="90"], .att-thumb[data-rotation="270"] {
+  aspect-ratio: 1; width: 100%; object-fit: contain; background: var(--bg);
+}
+.att-thumb[data-rotation="90"] { transform: rotate(90deg); }
+.att-thumb[data-rotation="180"] { transform: rotate(180deg); }
+.att-thumb[data-rotation="270"] { transform: rotate(270deg); }
 .att-transcript { font-size: 13px; line-height: 1.6; margin: 6px 0 0; white-space: pre-line; color: var(--text-muted); }
 .att-transcribe { display: inline-block; margin-top: 6px; font-size: 13px; }
+
+/* ===== 關聯（記事與記事的交叉引用）===== */
+.section-title { display: flex; align-items: center; gap: 8px; }
+.relation-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 6px; font-size: 13px;
+}
+.relation-arrow { color: var(--text-muted); font-weight: 700; }
+.relation-type { background: var(--accent-light, #eef2ff); color: var(--accent-dark); border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+.relation-link { font-weight: 600; }
+.relation-del { margin-left: auto; color: #b91c1c; }
+.relation-search-results { max-height: 220px; overflow-y: auto; margin: 6px 0; }
+.relation-result { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.relation-result:hover { border-color: var(--accent-dark); }
+.relation-picked { margin-top: 8px; }
 
 /* ===== 現場採集模式（同 Medtec 款式）===== */
 .capture-overlay { position: fixed; inset: 0; z-index: 80; background: #000; display: flex; flex-direction: column; }
@@ -224,9 +765,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 /* ===== 🎙 錄音浮動列：不開鏡頭，畫面照常滑手機，收在右下角拇指範圍 ===== */
 .audio-badge {
   position: fixed; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 70;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   background: rgba(20, 22, 21, 0.9); color: #fff;
-  padding: 8px 11px; border-radius: 999px; font-size: 13px;
+  padding: 8px 11px; border-radius: 20px; font-size: 13px;
   box-shadow: 0 3px 10px rgba(0,0,0,0.3);
   font-variant-numeric: tabular-nums;
 }
@@ -237,6 +778,25 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   display: flex; align-items: center; justify-content: center; padding: 0;
 }
 .audio-badge button:active { background: rgba(255,255,255,0.3); }
+.audio-live-transcript {
+  flex: 1 0 100%; width: min(330px, calc(100vw - 50px)); max-height: 150px;
+  overflow-y: auto; padding: 2px 2px 6px; border-bottom: 1px solid rgba(255,255,255,0.2);
+  font-size: 12px; line-height: 1.45;
+}
+.audio-live-transcript strong { display: block; margin-bottom: 4px; color: #99f6e4; }
+.audio-live-transcript p { margin: 4px 0; overflow-wrap: anywhere; }
+.audio-live-transcript time { margin-right: 7px; color: #99f6e4; font-variant-numeric: tabular-nums; }
+.audio-live-transcript[hidden] { display: none; }
+.audio-status {
+  position: absolute; right: 0; bottom: calc(100% + 8px);
+  width: max-content; max-width: min(320px, calc(100vw - 28px));
+  padding: 8px 11px; border-radius: 10px;
+  background: #fff7ed; color: #9a3412; border: 1px solid #fdba74;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.18); line-height: 1.35;
+  white-space: normal; font-size: 12px; font-weight: 600;
+}
+.audio-status.interrupted { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+.audio-status[hidden] { display: none; }
 
 /* ===== Toast ===== */
 .toast {
@@ -244,5 +804,230 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   background: var(--text); color: #fff; padding: 10px 18px;
   border-radius: var(--radius); font-size: 13px; opacity: 0;
   pointer-events: none; transition: opacity 0.2s; z-index: 90;
+  display: flex; align-items: center; gap: 12px; max-width: min(420px, calc(100vw - 28px));
 }
 .toast.show { opacity: 1; }
+.toast.has-action { pointer-events: auto; }
+.toast-action {
+  border: none; background: rgba(255,255,255,0.18); color: #fff; cursor: pointer;
+  padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; flex: none;
+}
+.toast-action:active { background: rgba(255,255,255,0.32); }
+
+/* ===== 四層知識架構 ===== */
+/* 子資料夾卡片上的「第N層」標籤 */
+.folder-level-chip {
+  display: inline-flex; align-items: center; margin-left: 6px;
+  padding: 2px 7px; border-radius: 999px;
+  background: #e0e7ff; color: #3730a3; font-size: 11px; font-weight: 600;
+}
+
+/* ===== 歸檔區塊標籤 ===== */
+.archive-section-label {
+  margin: 14px 0 8px; color: var(--text-muted, #64748b);
+  font-size: 13px; font-weight: 700; letter-spacing: .04em;
+}
+.archive-note-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+/* 已歸檔的筆記不再提供拖曳／移動／合併／刪除——歸檔後要改請進去記事裡改 */
+.archive-note-list .entry-drag,
+.archive-note-list .entry-move,
+.archive-note-list .entry-merge,
+.archive-note-list .entry-del { display: none; }
+.archive-note-list .entry-row::before { content: '📝'; font-size: 18px; }
+
+/* 多檔案記事（分段錄音、錄音夾照片…）歸檔後整筆顯示成一張卡片，跟子資料夾
+   共用 .child-folder-card 樣式（同一套視覺語言：圖示＋標題＋摘要），看起來
+   就是資料夾把附件包在裡面，不是被拆散成一堆各自獨立的檔案列，也不會像
+   借用 note 那組 entry-row 樣式時被 grid-view 的 min-height/flex-wrap
+   撐得歪七扭八。點卡片開整筆記事詳情，右上角保留單獨的刪除鈕。 */
+.record-group-card { position: relative; padding-right: 34px; }
+.record-group-del {
+  position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
+}
+.record-group-del:hover { opacity: 1; }
+
+/* ===== 資料夾內的檔案列（一列＝一份檔案，可拖曳搬移）===== */
+.folder-file-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto 40px 40px;
+  align-items: center; gap: 8px;
+}
+.folder-file-row[draggable="true"] { cursor: grab; }
+.folder-file-row.dragging { opacity: .42; }
+.folder-file-icon { grid-column: 1; grid-row: 1; cursor: grab; }
+.folder-file-name { grid-column: 2; grid-row: 1; min-width: 0; overflow-wrap: anywhere; }
+.folder-file-meta { grid-column: 3; grid-row: 1; white-space: nowrap; }
+.folder-file-delete,
+.folder-file-manage {
+  width: 40px; height: 36px; padding: 0;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: #fff; cursor: pointer;
+}
+.folder-file-delete { grid-column: 4; grid-row: 1; color: #b91c1c; }
+.folder-file-manage { grid-column: 5; grid-row: 1; justify-self: end; white-space: nowrap; }
+/* 拖曳中的放置目標提示 */
+.child-folder-card.file-drop-target {
+  outline: 3px solid #0f766e; outline-offset: 2px; background: #ecfdf9;
+}
+@media (max-width: 719px) {
+  .folder-file-row { grid-template-columns: 26px minmax(0, 1fr) 38px 38px; gap: 6px; }
+  .folder-file-meta { display: none; }
+  .folder-file-delete { grid-column: 3; }
+  .folder-file-manage { grid-column: 4; }
+}
+@media (min-width: 720px) {
+  .folder-file-list.grid-view {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    align-items: stretch;
+  }
+  .folder-file-list.grid-view .folder-file-row {
+    min-height: 180px;
+    grid-template-columns: minmax(0, 1fr) 40px 40px;
+    grid-template-rows: 36px minmax(0, 1fr) auto;
+    align-content: stretch; align-items: start;
+    gap: 8px; padding: 14px; overflow: hidden;
+  }
+  .folder-file-list.grid-view .folder-file-icon {
+    grid-column: 1; grid-row: 1; text-align: left; font-size: 24px; align-self: center;
+  }
+  .folder-file-list.grid-view .folder-file-delete { grid-column: 2; grid-row: 1; justify-self: end; }
+  .folder-file-list.grid-view .folder-file-manage { grid-column: 3; grid-row: 1; justify-self: end; }
+  .folder-file-list.grid-view .folder-file-name {
+    grid-column: 1 / 4; grid-row: 2;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+    overflow: hidden; line-height: 1.45; max-height: 5.8em; align-self: start;
+  }
+  .folder-file-list.grid-view .folder-file-meta {
+    grid-column: 1 / 4; grid-row: 3; align-self: end;
+    margin: 0; padding-top: 8px; border-top: 1px solid var(--border);
+  }
+}
+
+/* ===== 單一檔案詳情 ===== */
+.file-primary-actions {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px; margin: 14px 0;
+}
+.file-primary-actions button,
+.file-primary-actions a {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: #fff; color: var(--text); text-decoration: none;
+  cursor: pointer; font-weight: 600;
+}
+.file-primary-actions button:hover,
+.file-primary-actions a:hover { border-color: var(--accent); background: #f0fdfa; }
+.file-primary-actions .disabled { opacity: .45; pointer-events: none; }
+.file-category-panel {
+  display: none; margin: 0 0 14px; padding: 12px;
+  border: 1px solid var(--border); border-radius: 9px; background: #f8faf9;
+}
+.file-category-panel.open { display: block; }
+.file-category-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 7px;
+}
+.file-category-row select {
+  min-width: 0; width: 100%; padding: 9px;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+}
+.file-category-current { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }
+.file-note-box { margin: 14px 0; }
+.file-note-box textarea { min-height: 130px; }
+.file-detail-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0 14px;
+}
+.file-detail-danger {
+  margin-top: 22px; padding-top: 14px;
+  border-top: 1px solid #fecaca; text-align: right;
+}
+@media (max-width: 719px) {
+  .file-primary-actions { grid-template-columns: 1fr 1fr; }
+  .file-category-row { grid-template-columns: 1fr; }
+}
+
+/* ===== 管理分類 ===== */
+.category-manager-modal { max-width: 620px; }
+.cat-tabs { display: flex; gap: 8px; margin: 12px 0 16px; }
+.cat-group { margin-bottom: 18px; }
+.cat-group h4 {
+  margin: 0 0 8px; font-size: 12px; letter-spacing: .04em;
+  color: var(--text-muted); text-transform: none;
+}
+.cat-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center; gap: 8px;
+  padding: 8px 10px; margin-bottom: 6px;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+}
+.cat-icon { font-size: 18px; }
+.cat-name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.cat-name small { display: block; font-weight: 400; color: var(--text-muted); font-size: 11px; }
+.cat-add {
+  margin-top: 8px; padding: 14px;
+  border: 1px solid var(--border); border-radius: 9px; background: #f8faf9;
+}
+.cat-add h4 { margin: 0 0 10px; font-size: 13px; }
+.cat-add label { display: block; margin: 8px 0 4px; font-size: 12px; color: var(--text-muted); }
+.cat-add input, .cat-add select {
+  width: 100%; padding: 9px; border: 1px solid var(--border);
+  border-radius: 8px; background: #fff;
+}
+.cat-add button { margin-top: 12px; }
+
+/* ===== 站內圖片檢視器 =====
+   照片本來是 <a target="_blank"> 開原始圖片 URL。在 PWA（display:standalone）裡
+   那會變成一個沒有瀏覽器介面的畫面——沒有返回、沒有關閉，使用者只能強制關掉 App。
+   改成在這個覆蓋層裡看，關閉鈕永遠在右上角。 */
+.image-viewer-overlay {
+  z-index: 96; padding: 0; align-items: stretch;
+  background: rgba(12, 14, 13, 0.92);
+}
+.image-viewer { display: flex; flex-direction: column; width: 100%; min-height: 0; }
+.image-viewer-bar {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; min-height: 52px;
+  background: rgba(0, 0, 0, 0.55);
+  /* iPhone 的動態島／劉海區域 */
+  padding-top: calc(8px + env(safe-area-inset-top));
+}
+.image-viewer-name {
+  flex: 1; min-width: 0; color: #fff; font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.image-viewer-bar .btn {
+  flex-shrink: 0; min-width: 44px; height: 44px;
+  background: rgba(255, 255, 255, 0.12); color: #fff;
+  border-color: rgba(255, 255, 255, 0.3); text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.image-viewer-bar .btn:hover { background: rgba(255, 255, 255, 0.22); }
+.image-viewer-body {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  padding: 10px; overflow: auto; overscroll-behavior: contain;
+}
+.image-viewer-body img {
+  max-width: 100%; max-height: 100%;
+  object-fit: contain; border-radius: 6px;
+}
+/* 全螢幕檢視器本來就是唯一內容、外層有 overflow: auto 兜底，90°／270° 旋轉後
+   外框跟著變寬變高不會疊到別的東西，不用像縮圖列那樣特別框成正方形。 */
+.image-viewer-body img[data-rotation="90"] { transform: rotate(90deg); }
+.image-viewer-body img[data-rotation="180"] { transform: rotate(180deg); }
+.image-viewer-body img[data-rotation="270"] { transform: rotate(270deg); }
+/* 照片縮圖／檔案列的照片可點，游標要看得出來 */
+.att-photo-link, .folder-file-row .folder-file-name.is-photo { cursor: zoom-in; }
+
+/* ===== 版本印記與舊版警示 ===== */
+/* 曾經發生「Cloudflare 部署是最新版，但瀏覽器跑的是快取住的舊 app.js」，
+   而畫面上完全看不出版本，只能靠反覆試誤才找到原因。版本號常駐顯示，
+   對不上時直接在畫面最上面講清楚並提供一鍵清除。 */
+.app-version { margin-left: 6px; opacity: 0.6; font-variant-numeric: tabular-nums; }
+.stale-banner {
+  margin: 0 0 14px; padding: 13px 15px;
+  border: 1px solid #fdba74; border-radius: var(--radius);
+  background: #fff7ed; color: #9a3412;
+}
+.stale-banner[hidden] { display: none; }
+.stale-banner strong { display: block; margin-bottom: 5px; }
+.stale-banner p { margin: 0 0 11px; font-size: 13px; line-height: 1.6; }

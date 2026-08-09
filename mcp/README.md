@@ -9,12 +9,14 @@
 | `list_fieldlog_folders`／`list_fieldlog_entries`／`list_attachments` | 目錄層：資料夾、資料夾底下的紀錄與附件檔名清單，不用猜關鍵字 | fieldlog D1（共綁，只下 SELECT） |
 | `search_fieldlog`／`get_fieldlog_entry`／`get_fieldlog_attachment` | 隨身記紀錄、逐字稿、照片文字、附件全文（超長時可分段讀）——含每日同步進來的 LitDB 文獻/專利與 AI 深度解析內容（見下方說明） | fieldlog D1（共綁，只下 SELECT） |
 | `get_fieldlog_image`／`image_probe` | 照片附件的原始圖片（MCP ImageContent；4MB 內 JPEG/PNG/GIF/WebP，邊長超過 1568px 自動縮圖）＋圖片通道診斷 | fieldlog 的 `/api/attachments/:id/raw`（Service Binding＋PIN）；probe 為內建圖不讀資料 |
+| `get_fieldlog_image_base64` | 同一批照片附件的原始位元組，改以純文字（base64）回傳——給組 HTML 報告或核對位元組一致性用；同樣 4MB 上限，但不縮圖 | fieldlog 的 `/api/attachments/:id/raw`（同上） |
 | `get_related` | 兩筆記事之間的關聯（交叉比對） | fieldlog D1 的 `relations` 表 |
 | `create_fieldlog_entry`／`create_relation` | 可寫入工具（之一、之二）：新增一筆記事／建立兩筆記事的關聯 | fieldlog D1（只 INSERT，見下方說明） |
 | `create_fieldlog_attachment` | 可寫入工具（之三）：把檔案（Word／Excel／PDF／圖片等，base64 傳入）上傳掛到一筆已存在的記事底下 | fieldlog 的 `/api/upload`（Service Binding＋PIN，只 INSERT，見下方說明） |
 | `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files`／`list_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR）＋不用猜關鍵字的附件目錄 | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
 | `sync_status` | 外部知識庫（litdb 等）的最後同步時間與最近同步紀錄——懷疑資料過時直接查事實 | fieldlog D1 的 `sources`／`sync_log` 表 |
-| `add_synonym` | **第四支能寫入的工具**：搜不到但確定是「用詞沒對上」時，當場補一組同義詞對照，立刻生效 | fieldlog D1 的 `synonyms` 表（只 INSERT） |
+| `add_synonym` | 可寫入工具（之四）：搜不到但確定是「用詞沒對上」時，當場補一組同義詞對照，立刻生效 | fieldlog D1 的 `synonyms` 表（只 INSERT） |
+| `update_folder`／`move_folder`／`move_entry`／`delete_folder` | **資料夾整理工具**（2026-08-08 新增）：改資料夾名稱／色系分類／排序、搬資料夾、搬記事歸檔位置、刪除資料夾（不遺失資料，見下方說明） | fieldlog 的 `/api/folders`、`/api/entries`（Service Binding＋PIN，代理呼叫 fieldlog 既有的 PUT／DELETE 端點，見下方說明） |
 
 > **LitDB（`chiuchangru/litdb`，長儒另一個獨立文獻/專利知識庫）已併入
 > fieldlog**（2026-07-26，「LitDB 文獻庫」資料夾，152 筆親水塗層／活檢針
@@ -29,16 +31,31 @@
 > AI 沒有「看得見架上有什麼」的工具，只能反覆猜詞，猜不中就誤判成「沒有資料」。
 > `list_fieldlog_entries`／`list_attachments`／`list_exhibitor_files` 就是為此而加。
 
-**鐵律：預設唯讀，例外全部鎖死在「只能新增」。** 其餘 18 個工具程式碼裡
-只有 SELECT 與 fetch；`create_fieldlog_entry`／`create_fieldlog_attachment`／
-`create_relation`／`add_synonym` 是僅有的四支會寫入的工具（`create_fieldlog_attachment`
-是透過 fieldlog 自己的 `/api/upload` 新增一筆附件，其餘三支各自只做一次
-直接 INSERT D1），程式碼裡沒有任何 `UPDATE`／`DELETE` 語句碰得到 entries／
-attachments／folders／relations／synonyms——也就是說就算透過 claude.ai 對話
-下指令，也不可能改掉或刪掉既有的任何一筆資料，只能加新的。想改內容、刪東西，
-一律要回隨身記前台親自操作；wiki 收錄一律走 git 人審。（外部來源的同步
-更新走 fieldlog 自己的 cron，不經過 MCP。）三個系統的前台怎麼改版
-都不受影響；只有**資料表結構**變動時才需要回頭同步這裡的查詢。
+**鐵律：對記事的實際內容預設唯讀，例外分兩組。** 其餘 19 個工具程式碼裡
+只有 SELECT 與 fetch。
+
+第一組（**只能新增**）：`create_fieldlog_entry`／`create_fieldlog_attachment`／
+`create_relation`／`add_synonym`（`create_fieldlog_attachment` 是透過
+fieldlog 自己的 `/api/upload` 新增一筆附件，其餘三支各自只做一次直接
+INSERT D1），這四支程式碼裡沒有任何 `UPDATE`／`DELETE` 語句碰得到 entries
+的內容／attachments／relations／synonyms——只會加新的，不會改掉或刪掉
+既有的任何一筆資料。
+
+第二組（**限定資料夾結構整理，2026-08-08 新增**）：`update_folder`／
+`move_folder`／`move_entry`／`delete_folder`。這四支會造成真正的
+UPDATE／DELETE 效果，但範圍鎖死在「資料夾的名稱／色系分類／排序／
+巢狀位置」與「一筆記事歸檔在哪個資料夾」，不會動到任何記事或附件的
+標題、內文、附件內容。做法是透過 FIELDLOG Service Binding 呼叫 fieldlog
+自己既有、App 前台本來就在用的 `PUT`／`DELETE /api/folders/:id`、
+`PUT /api/entries/:id`——重用同一套已經上線、有巢狀深度檢查／防循環／
+歷史紀錄的邏輯，MCP 這邊沒有另外寫一份會分歧的版本，`delete_folder`
+也完全比照 App 的刪除按鈕：底下的記事與子資料夾一律搬到上一層（最上層
+的話搬回收件匣），不會遺失任何資料。
+
+除了這兩組之外，想改記事內容、刪除記事、wiki 收錄，一律要回隨身記
+前台親自操作或走 git 人審。（外部來源的同步更新走 fieldlog 自己的
+cron，不經過 MCP。）三個系統的前台怎麼改版都不受影響；只有**資料表
+結構**變動時才需要回頭同步這裡的查詢。
 
 ## 圖片會自動縮圖（控制 token 消耗）
 
