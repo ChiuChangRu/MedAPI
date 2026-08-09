@@ -48,12 +48,22 @@
         <div id="home-search-results" class="home-search-results" hidden></div>
       </div>
 
-      <div class="home-section home-toolbar-col home-toolbar-wiki">
+      <!-- 「Wiki 檔案」＝隨身記自己的資料夾／檔案歸檔（不是 wiki.html 那個獨立的
+           策略地圖 Wiki，那是另一套系統）。2026-08-09：從原本的「檔案」區塊
+           搬過來，id 全部不變。 -->
+      <div class="home-section home-toolbar-col home-toolbar-files">
         <h2 class="home-section-title">📖 Wiki 檔案</h2>
-        <a class="toolbar-link-card" href="wiki.html">
-          <span class="toolbar-link-icon" aria-hidden="true">🗺</span>
-          <span class="toolbar-link-text"><strong>策略地圖 Wiki</strong><small>個人知識庫・PIN 保護</small></span>
-        </a>
+        <div class="home-file-stack">
+          <section class="panel folders-panel home-files-panel">
+            <div class="folders-toolbar">
+              <h2>📂 已歸檔資料夾</h2>
+              <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
+              <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
+              <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
+            </div>
+            <div id="folder-list" class="folder-list"></div>
+          </section>
+        </div>
       </div>
 
       <div class="home-section home-toolbar-col home-toolbar-tools">
@@ -119,27 +129,6 @@
         </div>
         <div id="inbox-list" class="entry-list"></div>
       </section>
-    </section>
-
-    <section class="home-section home-files-section" aria-labelledby="home-files-title">
-      <div class="home-section-head">
-        <h2 class="home-section-title" id="home-files-title">檔案</h2>
-      </div>
-
-      <div class="home-file-stack">
-        <section class="panel folders-panel home-files-panel">
-          <!-- 2026-08-09：卡片模式拿掉了（跟清單模式完全同一組資料、只是換個排版，
-               沒有提供額外功能）。清單模式改成縮排樹狀，一次看到整棵四層資料夾樹，
-               不用再點進去才看得到子資料夾。 -->
-          <div class="folders-toolbar">
-            <h2>📂 已歸檔資料夾</h2>
-            <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
-            <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
-            <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
-          </div>
-          <div id="folder-list" class="folder-list"></div>
-        </section>
-      </div>
     </section>
     </div>
   </div>

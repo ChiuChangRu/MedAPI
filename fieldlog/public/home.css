@@ -73,7 +73,9 @@ body {
    用 grid 預設的 stretch 會逼其他三欄陪著拉高、留一堆空白。 */
 .home-toolbar-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* 「Wiki 檔案」欄放的是四層資料夾樹，縮排比連結清單／搜尋結果吃版面，
+     多分一點寬度給它，其餘三欄平分剩下的。 */
+  grid-template-columns: 1fr 1.6fr 1fr 1fr;
   gap: 12px;
   align-items: start;
 }
