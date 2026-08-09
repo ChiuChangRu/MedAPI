@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "100";
+const APP_VERSION = "101";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -717,6 +717,7 @@ function renderFolders() {
       </div>
       <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
       <div class="folder-menu" hidden>
+        <button type="button" data-act="add-child">新增子資料夾</button>
         <button type="button" data-act="rename">編輯（名稱／類型）</button>
         <button type="button" data-act="move">移動到其他資料夾</button>
         <button type="button" data-act="merge">合併至其他資料夾</button>
@@ -738,6 +739,14 @@ function renderFolders() {
       ev.stopPropagation();
       wrap.querySelectorAll(".folder-menu").forEach((m) => { if (m !== el.querySelector(".folder-menu")) m.hidden = true; });
       el.querySelector(".folder-menu").hidden = !el.querySelector(".folder-menu").hidden;
+    };
+    el.querySelector('[data-act="add-child"]').onclick = async () => {
+      const id = Number(el.dataset.id);
+      const createdId = await createSubfolderUnder(id);
+      // createSubfolderUnder() 內部已經 loadFolders() 重繪過一次，但那時
+      // EXPANDED_FOLDER_IDS 還沒加進這個 id，剛建好的子資料夾會被收合藏起來、
+      // 看起來像沒建成功——這裡補加狀態後要再重繪一次才看得到
+      if (createdId) { EXPANDED_FOLDER_IDS.add(id); renderFolders(); }
     };
     el.querySelector('[data-act="rename"]').onclick = () => renameFolder(Number(el.dataset.id));
     el.querySelector('[data-act="move"]').onclick = () => moveFolder(Number(el.dataset.id));
@@ -1277,25 +1286,38 @@ async function newFolder() {
   loadFolders();
 }
 
-async function newSubfolder() {
-  if (!CURRENT_FOLDER) return;
-  const parentId = CURRENT_FOLDER.id;
-  const nextLevel = folderDepthOf(CURRENT_FOLDER) + 1;
+/**
+ * 在指定資料夾底下建一個子資料夾。抽出來是因為現在有兩個入口都要用同一套
+ * 邏輯（深度檢查／問名稱類型／建立／重新整理）：資料夾內頁的「＋ 子資料夾」
+ * 按鈕（parent 就是目前開著的 CURRENT_FOLDER），跟首頁樹狀清單每一列
+ * 「⋯」選單新增的「新增子資料夾」（parent 是選單所在那一列，不用先點進去）。
+ * 回傳新建資料夾的 id；使用者取消或超過層數上限則回傳 null。
+ */
+async function createSubfolderUnder(parentId) {
+  const parent = FOLDERS.find((f) => Number(f.id) === Number(parentId));
+  if (!parent) return null;
+  const nextLevel = folderDepthOf(parent) + 1;
   if (nextLevel > MAX_FOLDER_DEPTH) {
-    showToast(`資料夾最多 ${MAX_FOLDER_DEPTH} 層，這一層不能再新增子資料夾`);
-    syncSubfolderButton();
-    return;
+    showToast(`資料夾最多 ${MAX_FOLDER_DEPTH} 層，「${parent.name}」這一層不能再新增子資料夾`);
+    return null;
   }
   const details = await askFolderDetails({
     title: `新增第 ${nextLevel} 層資料夾`,
-    desc: `建立在「${CURRENT_FOLDER.name}」裡面`,
+    desc: `建立在「${parent.name}」裡面`,
     parentId,
   });
-  if (!details) return;
-  await api("/folders", { method: "POST", body: JSON.stringify({ ...details, parent_id: parentId }) });
+  if (!details) return null;
+  const created = await api("/folders", { method: "POST", body: JSON.stringify({ ...details, parent_id: parentId }) });
   await loadFolders();
   showToast(`已建立第 ${nextLevel} 層資料夾`);
-  openFolder(parentId);
+  return Number(created.id);
+}
+
+async function newSubfolder() {
+  if (!CURRENT_FOLDER) return;
+  const parentId = CURRENT_FOLDER.id;
+  const createdId = await createSubfolderUnder(parentId);
+  if (createdId) openFolder(parentId);
 }
 
 /** 已經在第 4 層時就藏起「＋ 子資料夾」，而不是讓使用者按下去才被拒絕 */
