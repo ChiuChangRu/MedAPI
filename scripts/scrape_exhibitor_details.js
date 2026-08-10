@@ -18,9 +18,11 @@
  *      去做別的事，但別關掉；中途重整或關分頁沒關係，進度存在 localStorage，
  *      重新貼一次腳本再 run() 會自動接續）
  *   4. 隨時可打 __medtecDetails.status() 看進度
- *   5. 跑完（或等不及了）打 __medtecDetails.download()，會下載兩個檔案：
- *      exhibitor_details.json（乾淨結果，直接拿去合併用）
- *      exhibitor_details_debug.json（每家抓到的候選清單，方便抽查官網抓錯了沒）
+ *   5. 跑完（或等不及了）打 __medtecDetails.download()，會下載一個檔案：
+ *      exhibitor_details.json（乾淨結果＋每家的候選清單都在裡面）
+ *      2026-08-10 改成只下載一個檔案：原本一次觸發兩個下載，手機瀏覽器
+ *      常會把第二個悄悄擋掉（不會跳警告，看起來像沒事發生），使用者以為
+ *      兩個都下載了、其實只拿到一個。
  *   6. 把 exhibitor_details.json 傳回來給我
  *
  * ── 三項資料各用什麼線索判斷 ────────────────────────────────
@@ -224,22 +226,20 @@
   }
 
   function download() {
-    const mapping = {};
-    const debug = {};
+    // 只下載一個檔案：手機瀏覽器常把同一個操作裡觸發的「第二個」下載悄悄
+    // 擋掉，使用者不會看到任何警告，會誤以為兩個檔案都拿到了。合併資料
+    // 也順便讓合併腳本（merge_exhibitor_details.py）跟人工抽查用同一份
+    // 檔案，不用另外對應兩個檔案裡的 id。
+    const out = {};
     for (const item of LIST) {
       const r = store[item.id];
-      mapping[item.id] = r ? { photo: r.photo, website: r.website, pdf: r.pdf } : null;
-      if (r) debug[item.id] = r;
+      out[item.id] = r ? { photo: r.photo, website: r.website, pdf: r.pdf, candidates: r.candidates } : null;
     }
-    const save = (name, obj) => {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" }));
-      a.download = name;
-      a.click();
-    };
-    save("exhibitor_details.json", mapping);
-    save("exhibitor_details_debug.json", debug);
-    console.log("[medtec] 已下載 exhibitor_details.json（id -> {photo,website,pdf}）與 exhibitor_details_debug.json（含候選清單，方便抽查官網有沒有抓錯）");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" }));
+    a.download = "exhibitor_details.json";
+    a.click();
+    console.log("[medtec] 已下載 exhibitor_details.json（每家的 photo/website/pdf 與候選清單 candidates 都在同一個檔案裡）");
   }
 
   function stop() { stopRequested = true; console.log("[medtec] 已要求停止，會在跑完目前這家後停下"); }
