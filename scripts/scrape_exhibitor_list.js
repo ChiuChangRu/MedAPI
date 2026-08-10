@@ -223,6 +223,19 @@
       a.click();
       console.log(`已下載 ${rows.length} 家 → exhibitor_list.csv`);
     },
+    // 2026-08-10 加的：run() 期間（尤其是切到「顯示全部」那一下）攔到的
+    // API 回應本身，把它整批下載下來。診斷展商詳情頁時發現這個清單小工具
+    // 的原始碼裡直接寫著 StandNoStr（攤位號）／ProductCategory（分類）／
+    // ExhibitorNameChs（中文名）這些欄位名稱——如果 API 回應真的帶這些
+    // 欄位，攤位號、分類、中文名可以一次從這裡拿到，不用再逐頁抓 DOM。
+    downloadCaptured: () => {
+      if (!CAPTURED.length) return console.warn("目前沒有攔到任何 API 回應。若剛貼上腳本就呼叫這個，請先跑過 run()（尤其是切到「顯示全部」那一步）再試一次");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(CAPTURED, null, 2)], { type: "application/json" }));
+      a.download = "exhibitor_list_captured_api.json";
+      a.click();
+      console.log(`已下載 ${CAPTURED.length} 筆攔到的 API 回應 → exhibitor_list_captured_api.json`);
+    },
     // 撈不到時的據實回報：列出這一頁真正有的連結長相，讓我照實際結構改。
     // v3：加上 iframe 檢查——展商清單很常包在 iframe 裡，同源的話直接連內容
     // 一起掃；跨網域摸不到內容時，至少把 src 網址報出來，那個網址本身可以
