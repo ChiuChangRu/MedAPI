@@ -225,3 +225,46 @@ test("同一份 CSV 裡同一個官方數字 id 出現兩次，只新增一筆�
   assert.equal(data.exhibitors.length, 1,
     "同一個 id 在同一批 CSV 裡出現兩次，不該因為 id_index 沒即時更新而重複新增");
 });
+
+/**
+ * 2026-08-10：長儒問「有些公司只有英文名，能不能檢索出中文名（簡體即可）」。
+ * 官方目錄本身有中文（zh-CN）語系頁面，用同一支 scrape_exhibitor_list.js
+ * 重跑一次那個網址就能拿到中文名——但那個語系頁面的 name_en 是從網址 slug
+ * 硬猜出來的（例如中文 slug 猜出來的英文字串），品質比既有的英文名差，
+ * 不能整批覆蓋。--fields name_zh 就是為了只取需要的那一欄。
+ */
+
+test("--fields 限制只更新指定欄位：既有的 name_en 不會被較差的猜測值覆蓋", () => {
+  const { dataFile } = setup([{
+    ...ex("ex-0001", ""),
+    name_en: "Lonyi Medicath Co., Ltd",
+    directory_url: "https://x/event/2026Medtec/en-US/exhibitor/467193/lonyi-medicath",
+  }]);
+  const { data } = runImport(dataFile,
+    "name_zh,name_en,directory_url\n" +
+    "深圳朗醫科技,亂猜的英文名,https://x/event/2026Medtec/en-US/exhibitor/467193/lonyi-medicath\n",
+    ["--fields", "name_zh"]);
+
+  assert.equal(data.exhibitors[0].name_zh, "深圳朗醫科技", "指定的欄位要正常更新");
+  assert.equal(data.exhibitors[0].name_en, "Lonyi Medicath Co., Ltd",
+    "沒被列進 --fields 的欄位，就算 CSV 裡有值也不該套用");
+});
+
+test("--fields 限制欄位時，不會把「CSV 沒提到的公司」誤標成不在名單——這種局部增補不是完整名單", () => {
+  const { dataFile } = setup([ex("ex-0001", "甲公司"), ex("ex-0002", "乙公司")]);
+  const { data } = runImport(dataFile, "name_zh\n甲公司\n", ["--fields", "name_zh"]);
+
+  assert.equal(data.exhibitors.find((e) => e.id === "ex-0002").in_directory, undefined,
+    "乙公司沒出現在這份局部 CSV 裡，不代表牠真的不在展商名單上，不該被標記");
+});
+
+test("--fields 限制欄位時，真的配不到既有公司的新列仍然保留 directory_url（不然這筆資料無從追查來源）", () => {
+  const { dataFile } = setup([]);
+  const { data } = runImport(dataFile,
+    "name_zh,directory_url\n" +
+    "全新公司,https://x/event/2026Medtec/en-US/exhibitor/999009/new-co\n",
+    ["--fields", "name_zh"]);
+
+  assert.equal(data.exhibitors.length, 1);
+  assert.equal(data.exhibitors[0].directory_url, "https://x/event/2026Medtec/en-US/exhibitor/999009/new-co");
+});

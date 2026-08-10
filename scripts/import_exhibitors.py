@@ -175,19 +175,29 @@ def next_id_maker(existing):
     return make
 
 
-def merge(existing, rows):
+def merge(existing, rows, only_fields=None):
+    """only_fields：只允許更新這些欄位，其餘 CSV 裡有值也不套用。
+
+    2026-08-10 加的用途：官方目錄的中文（zh-CN）版本拿來補既有公司缺的
+    name_zh 時，那個語系頁面的 name_en 是從網址 slug 硬猜的，品質比既有
+    的英文名差——只想要 name_zh 這一欄，不想讓猜出來的英文名覆蓋掉原本
+    正確的。比對用的官方數字 id 一律從 row 的 directory_url 讀，不受這個
+    限制影響（只影響「會不會被寫進 payload」，不影響「用什麼比對」）。
+    """
     index, id_index, dupes = build_index(existing)
     make_id = next_id_maker(existing)
     by_id = {ex["id"]: ex for ex in existing}
+    allowed = set(only_fields) if only_fields else None
 
     matched_ids, added, updated, unchanged = set(), [], [], 0
     id_matched, name_matched = 0, 0
 
     for row in rows:
-        payload = {f: (row.get(f) or "").strip() for f in CSV_FIELDS}
+        fields = [f for f in CSV_FIELDS if allowed is None or f in allowed]
+        payload = {f: (row.get(f) or "").strip() for f in fields}
         if "name_en" in payload:
             payload["name_en"] = clean_name_en(payload["name_en"], row.get("directory_url"))
-        payload.update({f: split_multi(row.get(f)) for f in MULTI_FIELDS})
+        payload.update({f: split_multi(row.get(f)) for f in MULTI_FIELDS if allowed is None or f in allowed})
 
         key = name_key(row.get("name_zh")) or name_key(payload.get("name_en"))
         oid = official_id(row.get("directory_url"))
@@ -219,6 +229,10 @@ def merge(existing, rows):
                 unchanged += 1
         else:
             new_ex = {"id": make_id(), **payload, "in_directory": True}
+            # 就算 only_fields 限制了要更新哪些欄位，全新的一筆至少要留得住
+            # directory_url——不然這筆記錄以後既對不到官方數字 id，也沒有
+            # 連結可以人工查證，形同一筆來歷不明的資料
+            new_ex.setdefault("directory_url", (row.get("directory_url") or "").strip())
             new_ex.setdefault("tags", [])
             existing.append(new_ex)
             by_id[new_ex["id"]] = new_ex
@@ -231,12 +245,17 @@ def merge(existing, rows):
             matched_ids.add(new_ex["id"])
             added.append((new_ex["id"], new_ex.get("name_zh") or new_ex.get("name_en")))
 
+    # 「這次名單沒有的公司標成 in_directory=false」的前提是這份 CSV 代表
+    # 「完整的官方名單」。only_fields 限制欄位時通常是拿某個補充來源（例如
+    # 中文語系頁面只想補 name_zh）局部增補，不是完整重新匯入，這時候用同一套
+    # 邏輯會把「這次沒抓進來的公司」全部誤標成不在名單——跳過這一步。
     missing = []
-    for ex in existing:
-        if ex["id"] in matched_ids:
-            continue
-        ex["in_directory"] = False
-        missing.append((ex["id"], ex.get("name_zh")))
+    if allowed is None:
+        for ex in existing:
+            if ex["id"] in matched_ids:
+                continue
+            ex["in_directory"] = False
+            missing.append((ex["id"], ex.get("name_zh")))
 
     return {
         "added": added, "updated": updated, "unchanged": unchanged,
@@ -251,9 +270,13 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="只印差異，不寫檔")
     ap.add_argument("--data-file", type=Path, action="append",
                     help="覆寫要寫入的 exhibitors.json（測試用，可重複指定）")
+    ap.add_argument("--fields",
+                    help="只更新這些欄位（逗號分隔，例如 name_zh），其餘欄位有值也不套用；"
+                         "同時停用「這次名單沒有就標記不在名單」的判斷（這種局部增補不代表完整名單）")
     args = ap.parse_args()
 
     targets = args.data_file or DATA_FILES
+    only_fields = [f.strip() for f in args.fields.split(",") if f.strip()] if args.fields else None
 
     with open(args.csv_path, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
@@ -262,7 +285,7 @@ def main():
         data = json.load(f)
 
     before_count = len(data["exhibitors"])
-    report = merge(data["exhibitors"], rows)
+    report = merge(data["exhibitors"], rows, only_fields=only_fields)
 
     print(f"CSV 讀入 {len(rows)} 列｜既有 {before_count} 家 → 現在 {len(data['exhibitors'])} 家")
     print(f"  用官方數字 id 對應到既有公司：{report['id_matched']} 家（可靠，不受名稱標點/縮寫差異影響）")
