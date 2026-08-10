@@ -131,13 +131,44 @@
   // ── C. 自動捲動 / 翻頁 ─────────────────────────────────────
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // v4：console 違規訊息看到 jquery.dataTables.min.js 在跑——這頁是用
+  // DataTables 這套外掛渲染的。它的「下一頁」按鈕 class 是 paginate_button
+  // （不是我原本猜的 pagination，兩個字串不互相包含，選擇器完全沒對到，
+  // 這才是卡在 24 家的真正原因）。DataTables 也常見「每頁顯示筆數」下拉
+  // 選單，切到最大值／全部一次就能把整份名單攤開，比一頁一頁點按鈕更穩，
+  // 優先試這條路。
+  function trySetPageLengthToMax(doc) {
+    const sel = doc.querySelector('select[name$="_length"], .dataTables_length select');
+    if (!sel) return false;
+    const options = [...sel.options];
+    // DataTables「全部」選項的 value 慣例是 -1；沒有的話挑數值最大的那個
+    const all = options.find((o) => o.value === "-1");
+    const target = all || options.reduce((a, b) => (Number(b.value) > Number(a.value) ? b : a), options[0]);
+    if (!target || target.selected) return false;
+    sel.value = target.value;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
   function clickMore() {
-    const sels = ['[class*="load-more" i]', '[class*="loadmore" i]', 'button[aria-label*="next" i]',
-      'a[aria-label*="next" i]', '[class*="pagination" i] [class*="next" i]', '[class*="show-more" i]'];
+    for (const { doc } of accessibleDocs()) {
+      if (trySetPageLengthToMax(doc)) return true;
+    }
+    const sels = [
+      // DataTables 專用：next 按鈕平常長這樣 <a class="paginate_button next">
+      // 或 id="xxx_next"；沒有下一頁時會多一個 disabled class（不是 disabled
+      // 屬性，用 el.disabled 判斷不出來，要另外檢查 classList）
+      '.paginate_button.next', '[id$="_next"]',
+      '[class*="load-more" i]', '[class*="loadmore" i]', 'button[aria-label*="next" i]',
+      'a[aria-label*="next" i]', '[class*="pagination" i] [class*="next" i]', '[class*="show-more" i]',
+    ];
     for (const { doc } of accessibleDocs()) {
       for (const s of sels) {
         const el = doc.querySelector(s);
-        if (el && !el.disabled && el.offsetParent !== null) { el.click(); return true; }
+        if (el && !el.disabled && !el.classList.contains("disabled") && el.offsetParent !== null) {
+          el.click();
+          return true;
+        }
       }
     }
     return false;
@@ -159,8 +190,10 @@
       for (const { doc, win } of accessibleDocs()) {
         (win.scrollTo || window.scrollTo)(0, doc.body ? doc.body.scrollHeight : 0);
       }
-      clickMore();
-      await sleep(1100);
+      const clicked = clickMore();
+      // 切到「顯示全部」後 DataTables 要重繪上千列，比平常翻一頁慢很多，
+      // 多等一下再收，不然會太早判定成「沒有新資料」而提早停下
+      await sleep(clicked ? 2500 : 1100);
       harvestDom();
       if (RECORDS.size === before) idleRounds++; else idleRounds = 0;
       if (RECORDS.size && RECORDS.size % 100 < 4) console.log(`[medtec] 已收集 ${RECORDS.size} 家…`);
