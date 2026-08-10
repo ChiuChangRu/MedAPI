@@ -73,6 +73,61 @@
     return docs;
   }
 
+  // 2026-08-10 診斷確認的真實卡片結構（先前三輪都在猜，這次是實際看到的）：
+  //   <div class="col-xs-12 col-sm-6 col-md-4 col-lg-3 odd">   ← 整張卡片
+  //     <a class="card-image"><span class="logourl" data="...縮圖網址..."><img></span></a>
+  //     <div class="name"><h4 class="card-title"><a>A2MediteX Corporation</a></h4>
+  //       <div class="ExhList_Desc hide">公司簡介…</div></div>
+  //     <div class="info …">
+  //       COUNTRY/REGION: JAPAN
+  //       PRODUCT CATEGORIES: 2. Metallic Raw Materials and Components
+  //       BOOTH NUMBER : 2F310
+  //     </div>
+  //   </div>
+  //
+  // 兩個先前踩到的坑：
+  // 1. 卡片容器不能用 closest('[class*="card"]') 找——那會命中
+  //    <h4 class="card-title">（class 剛好含 card），只拿到公司名那一小塊。
+  //    真正的容器是 Bootstrap 的 col-* 格線欄位，改用 [class*="col-"] 找。
+  // 2. 攤位號格式是 2F310（館別數字＋區域字母＋編號），不是舊資料的
+  //    N2-F310。先前的比對規則要求開頭是 N/W/E，所以 881 家一個都沒抓到。
+  //    這裡統一正規化成舊資料的 N#-X### 寫法，兩批資料才能混在一起用。
+  const LABEL_PATTERNS = {
+    // 中英文版頁面的標籤字樣不同，兩種都認
+    country: /(?:COUNTRY\s*\/\s*REGION|國家\s*\/?\s*地區|国家\s*\/?\s*地区)\s*[:：]\s*(.+)/i,
+    categories: /(?:PRODUCT\s+CATEGORIES|產品類別|产品类别)\s*[:：]\s*(.+)/i,
+    booth: /(?:BOOTH\s+NUMBER|展位號|展位号|攤位號)\s*[:：]\s*(.+)/i,
+  };
+
+  // 2F310 → N2-F310；已經是 N2-F310 的原樣保留；認不出來的原樣回傳，
+  // 寧可留著原始字串讓人看得到，也不要因為格式沒對上就默默丟掉資料
+  function normalizeBooth(raw) {
+    const s = (raw || "").trim();
+    if (!s) return "";
+    if (/^[NWE]\d-/i.test(s)) return s.toUpperCase();
+    const m = s.match(/^(\d)\s*([A-Za-z])\s*(\d{2,4})$/);
+    if (m) return `N${m[1]}-${m[2].toUpperCase()}${m[3]}`;
+    return s;
+  }
+
+  // "2. Metallic Raw Materials and Components" → cat-02
+  // "8.3 Energy and Signal Transmission" → cat-08-3（8.x 有子分類）
+  // 多個分類用逗號分隔時全部取出，第一個當主分類
+  function parseCategories(raw) {
+    const out = [];
+    for (const m of (raw || "").matchAll(/(\d{1,2})(?:\.(\d))?\s*\./g)) {
+      const main = m[1].padStart(2, "0");
+      out.push(m[2] ? `cat-${main}-${m[2]}` : `cat-${main}`);
+    }
+    // 上面的寫法要求「數字後面接點」，8.3 這種寫法（8.3 後面沒有第二個點）
+    // 會漏掉，補一次專門抓 8.x 的
+    for (const m of (raw || "").matchAll(/\b(\d{1,2})\.(\d)\b/g)) {
+      const id = `cat-${m[1].padStart(2, "0")}-${m[2]}`;
+      if (!out.includes(id)) out.push(id);
+    }
+    return [...new Set(out)];
+  }
+
   function harvestFrom(doc, frameLabel) {
     let added = 0;
     doc.querySelectorAll('a[href*="/exhibitor/"]').forEach((a) => {
@@ -82,18 +137,39 @@
       const [, id, slug] = m;
       if (RECORDS.has(id)) return;
 
-      // 卡片上通常還印著中文名與攤位號，能撈就撈，撈不到就用 slug 還原的英文名
-      const card = a.closest('[class*="card" i], li, article, tr, div');
-      const text = (card?.innerText || a.innerText || "").trim();
-      const lines = text.split("\n").map((s) => s.trim()).filter(Boolean);
-      const zh = lines.find((s) => /[一-鿿]/.test(s)) || "";
-      const booth = (text.match(/\b[NWE]?\d[\w-]*[A-Z]\d{2,4}\b/) || [])[0] || "";
+      // 真正的卡片容器是 Bootstrap col-* 格線欄位（見上方結構說明）；
+      // 找不到就退回往上兩層，總比只拿到 <h4> 那一小塊好
+      const card = a.closest('[class*="col-"]') || a.parentElement?.parentElement || a;
+      const text = (card.innerText || "").trim();
+
+      const grab = (re) => (text.match(re) || [])[1]?.trim() || "";
+      const country = grab(LABEL_PATTERNS.country);
+      const categoriesRaw = grab(LABEL_PATTERNS.categories);
+      const booth = normalizeBooth(grab(LABEL_PATTERNS.booth));
+      const cats = parseCategories(categoriesRaw);
+
+      // 公司名優先取標題元素（結構明確），沒有才退回連結文字／slug 還原
+      const titleEl = card.querySelector("h4.card-title a, h4.card-title, .card-title");
+      const displayName = (titleEl?.textContent || a.textContent || "").trim() || slugToName(slug);
+      const hasCjk = /[一-鿿]/.test(displayName);
+
+      const photoEl = card.querySelector("span.logourl[data], img[src]");
+      const photo = photoEl?.getAttribute("data") || photoEl?.getAttribute("src") || "";
+      const desc = (card.querySelector(".ExhList_Desc")?.textContent || "").trim();
 
       RECORDS.set(id, {
         ex_id: id,
-        name_zh: zh,
-        name_en: (lines.find((s) => /^[A-Za-z0-9][\w\s.,&()'-]{3,}$/.test(s)) || slugToName(slug)),
+        // 中文版頁面抓到的是中文名、英文版是英文名，用字元判斷放進對的欄位，
+        // 兩個語系各跑一次就能兩邊都補齊
+        name_zh: hasCjk ? displayName : "",
+        name_en: hasCjk ? "" : displayName,
         booth_no: booth,
+        country,
+        category: cats[0] || "",
+        categories_all: cats.join(" "),
+        categories_raw: categoriesRaw,
+        photo,
+        description: desc,
         directory_url: href.split(/[?#]/)[0],
         __frame: frameLabel,
       });
@@ -238,7 +314,10 @@
   }
 
   // ── D. 匯出 ────────────────────────────────────────────
-  const COLS = ["name_zh", "name_en", "booth_no", "directory_url", "ex_id"];
+  // 欄位名對齊 import_exhibitors.py 吃的 CSV 欄位，抓回來可以直接匯入。
+  // categories_all／categories_raw 是多分類與原始文字，給人工核對用
+  const COLS = ["name_zh", "name_en", "booth_no", "country", "category",
+    "categories_all", "categories_raw", "photo", "description", "directory_url", "ex_id"];
   const cell = (v) => {
     const s = String(v ?? "");
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
