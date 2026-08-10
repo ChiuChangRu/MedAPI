@@ -583,6 +583,12 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   width: 100%; max-width: 560px;
 }
 .modal.narrow { max-width: 340px; margin-top: 12vh; }
+/* 記事詳情／編輯視窗（#entry-modal）在桌機版本來就有空間，560px 太窄——
+   富文字編輯框、表格轉出來的 <pre>、附件縮圖都被硬擠在一欄。桌機加寬到
+   960px 增加視野；手機螢幕本來就 <560px，母規則的 100% 寬度不受影響。 */
+@media (min-width: 720px) {
+  .modal.wide { max-width: 960px; }
+}
 .boot-loading-box { text-align: center; }
 .boot-loading-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
 .boot-loading-bar { height: 10px; }
