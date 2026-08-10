@@ -481,6 +481,39 @@ async function showCacheReport() {
     items.map((t) => `<p class="cache-item">${t}</p>`).join("");
 }
 
+// 展商名冊每次重新匯入的前後差異記錄（不是團隊拜訪紀錄，那個在「團隊動態」）。
+// 內容來自 data-changelog.json，之後要加新的一則直接編那個檔案，不用改這裡的程式。
+let DATA_CHANGELOG_CACHE = null;
+async function showDataChangelog() {
+  $("data-changelog-overlay").classList.add("open");
+  const wrap = $("data-changelog-body");
+  if (!DATA_CHANGELOG_CACHE) {
+    wrap.innerHTML = '<p class="sub">載入中…</p>';
+    try {
+      const res = await fetch("data/data-changelog.json");
+      DATA_CHANGELOG_CACHE = await res.json();
+    } catch {
+      wrap.innerHTML = '<p class="sub">目前沒有網路，且這台裝置還沒有成功載入過異動記錄。</p>';
+      return;
+    }
+  }
+  if (!DATA_CHANGELOG_CACHE.length) {
+    wrap.innerHTML = '<p class="sub">目前還沒有異動記錄。</p>';
+    return;
+  }
+  // 新的在最上面，跟 App 其他地方的時間排序習慣一致
+  const entries = [...DATA_CHANGELOG_CACHE].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  wrap.innerHTML = entries.map((e) => `
+    <div class="changelog-entry">
+      <div class="changelog-date">${esc(e.date || "")}</div>
+      <h3>${esc(e.title || "")}</h3>
+      ${e.summary ? `<p class="sub">${esc(e.summary)}</p>` : ""}
+      ${(e.details || []).length ? `<ul class="changelog-details">${e.details.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
+      ${e.note ? `<p class="changelog-note">✅ ${esc(e.note)}</p>` : ""}
+    </div>
+  `).join("");
+}
+
 function forceOffline() {
   if (!me()) { showToast("請先登入再測試離線模式"); return; }
   const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
@@ -587,6 +620,11 @@ async function init() {
   $("mode-light").onclick = showCacheReport;
   $("cache-close").onclick = () => $("cache-overlay").classList.remove("open");
   closeOnBackdropClick("cache-overlay", () => $("cache-overlay").classList.remove("open"));
+
+  // 資料異動記錄（展商名冊重新匯入的前後差異，不是團隊拜訪紀錄）
+  $("btn-data-changelog").onclick = showDataChangelog;
+  $("data-changelog-close").onclick = () => $("data-changelog-overlay").classList.remove("open");
+  closeOnBackdropClick("data-changelog-overlay", () => $("data-changelog-overlay").classList.remove("open"));
 
   // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
   $("capture-photo-btn").onclick = openCapturePhotoPopup;
