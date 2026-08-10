@@ -109,12 +109,25 @@
     return added;
   }
 
-  // ── B. 網路攔截（輔助）──────────────────────────────────────
-  // 頁面之後若還有翻頁請求，順便收；但整支不依賴它（v1 就是栽在這裡）。
-  // 同源 iframe 有自己獨立的 window，要另外對它的 fetch/XHR 各補一份。
+  // ── B. 網路攔截（輔助，但這次其實是關鍵）──────────────────────
+  // 2026-08-10 實測：downloadCaptured() 完全是空的。原因是這裡本來只補了
+  // fetch，沒補 XMLHttpRequest——診斷展商詳情頁時洩漏的原始碼裡看得到
+  // jQuery（$("#cmbProductCategory")）跟 DataTables，這類舊式元件的 AJAX
+  // 預設走 $.ajax，底層用的是 XMLHttpRequest 不是 fetch，難怪攔不到。
+  // 這裡註解本來就寫「要對 fetch/XHR 各補一份」，但先前只做了一半，
+  // 這次補齊 XHR 那一半。
+  function pushCaptured(url, label, bodyText) {
+    try {
+      const d = JSON.parse(bodyText);
+      CAPTURED.push({ url, label, d });
+      if (CAPTURED.length > 40) CAPTURED.shift();
+    } catch (e) { /* 不是 JSON（例如 HTML 片段），略過 */ }
+  }
+
   function patchFrame(win, label) {
     if (win.__medtecPatched) return;
     win.__medtecPatched = true;
+
     const origFetch = win.fetch;
     win.fetch = async function (...args) {
       const res = await origFetch.apply(this, args);
@@ -125,6 +138,28 @@
         }
       } catch (e) {}
       return res;
+    };
+
+    const XHR = win.XMLHttpRequest;
+    if (!XHR) return; // iframe 還沒真的有自己的 window 時可能拿不到，略過即可
+    const origOpen = XHR.prototype.open;
+    const origSend = XHR.prototype.send;
+    XHR.prototype.open = function (method, url, ...rest) {
+      this.__medtecUrl = url;
+      return origOpen.call(this, method, url, ...rest);
+    };
+    XHR.prototype.send = function (...args) {
+      this.addEventListener("load", () => {
+        const ct = this.getResponseHeader("content-type") || "";
+        if (ct.includes("json") || /\.json(\?|$)/i.test(this.__medtecUrl || "")) {
+          pushCaptured(this.__medtecUrl, label, this.responseText);
+        } else if (typeof this.responseText === "string" && /^\s*[[{]/.test(this.responseText)) {
+          // 有些後端不老實回報 content-type，但內容本身看起來就是 JSON
+          // （開頭是 [ 或 {），順手也收進來，總比因為標頭沒填對而漏抓好
+          pushCaptured(this.__medtecUrl, label, this.responseText);
+        }
+      });
+      return origSend.apply(this, args);
     };
   }
 
