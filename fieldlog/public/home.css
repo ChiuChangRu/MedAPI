@@ -68,51 +68,33 @@ body {
   gap: 12px;
 }
 
-/* 首頁四欄工具列（2026-08-09）：檢索／Wiki／開發工具／Cloudflare 用量。
-   align-items: start——四欄高度本來就不一樣（搜尋結果一多會拉高第一欄），
-   用 grid 預設的 stretch 會逼其他三欄陪著拉高、留一堆空白。 */
-.home-toolbar-grid {
+/* 第三列「待處理｜Wiki 檔案」左右兩欄。align-items: start——兩欄高度本來
+   就不一樣，用 grid 預設的 stretch 會逼矮的那欄陪著拉高、留一堆空白。
+   minmax(0, …) 而不是裸的 fr——fr 軌預設下限是 auto（內容的 min-content），
+   資料夾卡片內容一長會把軌道撐開，逼另一欄跟著變窄甚至整排溢出版面，
+   這是上一版「顏色樹狀格式」會亂掉的根因之一。 */
+.home-row-split {
   display: grid;
-  /* 「Wiki 檔案」欄放的是四層資料夾樹，縮排比連結清單／搜尋結果吃版面，
-     多分一點寬度給它，其餘三欄平分剩下的。minmax(0, …) 而不是裸的 fr——
-     fr 軌預設下限是 auto（內容的 min-content），資料夾卡片內容一長，
-     軌道會被撐開，逼其他欄跟著變窄甚至整排溢出版面。裸 fr 是這次「顏色
-     樹狀格式」會亂掉的根因之一，跟下面 .home-toolbar-files 的窄版排版
-     一起修，兩個缺一個都不夠。 */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
 
-.home-toolbar-col {
-  padding: 13px;
-  min-width: 0;
-}
-
-.home-toolbar-col .home-section-title {
-  font-size: 14px;
-  margin: 0 0 10px;
-}
-
-.home-toolbar-search .home-search-bar {
-  padding: 0 12px;
-  min-height: 40px;
-}
-
-.home-toolbar-search .home-search-results {
-  margin-top: 10px;
+@media (max-width: 719px) {
+  .home-row-split {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 資料夾樹的縮排＋色系底（folder-card，見 style.css）原本假設「夠寬才用
    CSS Grid 排一列（類型｜名稱｜筆數｜日期），撐不下才在 719px 那個*視窗*
-   寬度斷點切換成 flex-wrap」。問題是這欄的實際寬度是工具列的 1.6 份，
-   桌機開著大視窗、視窗寬度遠超過 719px，也還是可能只有兩三百像素——
-   媒體查詢量的是視窗，量不到「這一欄」，所以 719px 斷點不會生效，
-   date／count／type 這些 white-space:nowrap 的欄位會把 minmax(0,1fr) 的
-   名稱欄擠到看不見、色系底跟著被撐爛。這裡不管視窗多寬，直接對這一欄
-   套用手機版那套「名稱獨占一行、日期藏起來」的窄版排版——跟 style.css
-   719px 那組規則是同一套值，只是拿掉視窗寬度的前提，改成「這一欄本來
-   就窄」。 */
+   寬度斷點切換成 flex-wrap」。但這欄的實際寬度只有這一列的一半，桌機開著
+   大視窗、視窗寬度遠超過 719px，也還是可能只有三四百像素——媒體查詢量的
+   是視窗，量不到「這一欄」，所以 719px 斷點不會生效，date／count／type
+   這些 white-space:nowrap 的欄位會把名稱擠到看不見、色系底跟著被撐爛。
+   這裡不管視窗多寬，直接對這一欄套用手機版那套「名稱獨占一行、日期藏
+   起來」的窄版排版——跟 style.css 719px 那組規則是同一套值，只是拿掉
+   視窗寬度的前提，改成「這一欄本來就窄」。 */
 .home-toolbar-files .folder-card-main {
   display: flex;
   flex-wrap: wrap;
@@ -131,9 +113,15 @@ body {
   display: none;
 }
 
+/* 開發工具：一整列，橫向排三張連結卡，窄螢幕自動換行 */
 .toolbar-link-list {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.toolbar-link-list .toolbar-link-card {
+  flex: 1 1 200px;
 }
 
 .toolbar-link-card {
@@ -172,23 +160,6 @@ body {
 .toolbar-link-text small {
   color: var(--text-muted);
   font-size: 11.5px;
-}
-
-@media (max-width: 1099px) {
-  .home-toolbar-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 719px) {
-  .home-toolbar-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .home-toolbar-col {
-    padding: 12px;
-  }
 }
 
 .home-search-results {
@@ -308,12 +279,6 @@ body {
   line-height: 1.35;
 }
 
-.home-input-section,
-.home-files-section,
-.home-usage-section {
-  background: #fff;
-}
-
 /* 快速輸入改為工具列，不再使用四張彩色展示卡 */
 .home-input-section .capture-grid {
   display: grid;
@@ -355,40 +320,6 @@ body {
   color: var(--text);
   font-size: 13px;
   font-weight: 600;
-}
-
-.home-section .panel {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.home-inbox-panel {
-  padding: 12px 0 0 !important;
-  border-top: 1px solid var(--border) !important;
-}
-
-.home-inbox-panel h2 {
-  margin: 0 0 9px;
-  font-size: 14px;
-}
-
-.home-files-panel {
-  padding: 0 !important;
-}
-
-.home-files-panel .folders-toolbar {
-  margin-bottom: 12px;
-}
-
-.home-files-panel .folders-toolbar h2 {
-  font-size: 14px;
-}
-
-.home-file-stack {
-  display: block;
 }
 
 .home-knowledge-card {
@@ -514,7 +445,7 @@ body {
     min-height: 42px;
   }
 
-  .home-files-panel .folders-toolbar {
-    align-items: stretch;
+  .home-toolbar-files .folders-toolbar {
+    flex-wrap: wrap;
   }
 }
