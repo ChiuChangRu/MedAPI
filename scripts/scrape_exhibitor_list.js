@@ -55,9 +55,27 @@
       .join(" ");
   }
 
-  function harvestDom() {
+  // 展商清單很可能包在 iframe 裡（v2 實測：外層頁面連結數 98、攔到的 API
+  // 數 0，反而有 1 個 iframe——外層根本沒有清單，清單在裡面）。同源的 iframe
+  // 可以直接伸進去撈；跨網域的 iframe 瀏覽器會擋（同源政策），這時候至少要
+  // 把 iframe 實際指到哪個網址報出來，讓使用者能直接開那個網址繞過外層頁面。
+  function accessibleDocs() {
+    const docs = [{ doc: document, win: window, label: "top" }];
+    document.querySelectorAll("iframe").forEach((f, i) => {
+      try {
+        const doc = f.contentDocument;
+        if (doc) docs.push({ doc, win: f.contentWindow, label: `iframe#${i}(${f.src || "同源、無src"})` });
+      } catch (e) {
+        // 跨網域，摸不到——留給 diagnose() 把 f.src 報出來，這個 src 屬性
+        // 本身是可以讀的，即使內容被同源政策擋住
+      }
+    });
+    return docs;
+  }
+
+  function harvestFrom(doc, frameLabel) {
     let added = 0;
-    document.querySelectorAll('a[href*="/exhibitor/"]').forEach((a) => {
+    doc.querySelectorAll('a[href*="/exhibitor/"]').forEach((a) => {
       const href = a.href || a.getAttribute("href") || "";
       const m = href.match(EX_HREF);
       if (!m) return;
@@ -77,26 +95,38 @@
         name_en: (lines.find((s) => /^[A-Za-z0-9][\w\s.,&()'-]{3,}$/.test(s)) || slugToName(slug)),
         booth_no: booth,
         directory_url: href.split(/[?#]/)[0],
+        __frame: frameLabel,
       });
       added++;
     });
+    return added;
+  }
+
+  function harvestDom() {
+    let added = 0;
+    for (const { doc, label } of accessibleDocs()) added += harvestFrom(doc, label);
     if (added) idleRounds = 0;
     return added;
   }
 
   // ── B. 網路攔截（輔助）──────────────────────────────────────
   // 頁面之後若還有翻頁請求，順便收；但整支不依賴它（v1 就是栽在這裡）。
-  const origFetch = window.fetch;
-  window.fetch = async function (...args) {
-    const res = await origFetch.apply(this, args);
-    try {
-      if (res.headers.get("content-type")?.includes("json")) {
-        const url = typeof args[0] === "string" ? args[0] : args[0]?.url;
-        res.clone().json().then((d) => { CAPTURED.push({ url, d }); if (CAPTURED.length > 40) CAPTURED.shift(); }).catch(() => {});
-      }
-    } catch (e) {}
-    return res;
-  };
+  // 同源 iframe 有自己獨立的 window，要另外對它的 fetch/XHR 各補一份。
+  function patchFrame(win, label) {
+    if (win.__medtecPatched) return;
+    win.__medtecPatched = true;
+    const origFetch = win.fetch;
+    win.fetch = async function (...args) {
+      const res = await origFetch.apply(this, args);
+      try {
+        if (res.headers.get("content-type")?.includes("json")) {
+          const url = typeof args[0] === "string" ? args[0] : args[0]?.url;
+          res.clone().json().then((d) => { CAPTURED.push({ url, label, d }); if (CAPTURED.length > 40) CAPTURED.shift(); }).catch(() => {});
+        }
+      } catch (e) {}
+      return res;
+    };
+  }
 
   // ── C. 自動捲動 / 翻頁 ─────────────────────────────────────
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -104,9 +134,11 @@
   function clickMore() {
     const sels = ['[class*="load-more" i]', '[class*="loadmore" i]', 'button[aria-label*="next" i]',
       'a[aria-label*="next" i]', '[class*="pagination" i] [class*="next" i]', '[class*="show-more" i]'];
-    for (const s of sels) {
-      const el = document.querySelector(s);
-      if (el && !el.disabled && el.offsetParent !== null) { el.click(); return true; }
+    for (const { doc } of accessibleDocs()) {
+      for (const s of sels) {
+        const el = doc.querySelector(s);
+        if (el && !el.disabled && el.offsetParent !== null) { el.click(); return true; }
+      }
     }
     return false;
   }
@@ -115,6 +147,7 @@
   async function run() {
     if (running) return;
     running = true;
+    for (const { win, label } of accessibleDocs()) patchFrame(win, label);
     harvestDom();
     console.log(`[medtec] 起始畫面撈到 ${RECORDS.size} 家，開始自動翻頁…`);
     if (!RECORDS.size) {
@@ -123,7 +156,9 @@
     }
     while (idleRounds < 10) {
       const before = RECORDS.size;
-      window.scrollTo(0, document.body.scrollHeight);
+      for (const { doc, win } of accessibleDocs()) {
+        (win.scrollTo || window.scrollTo)(0, doc.body ? doc.body.scrollHeight : 0);
+      }
       clickMore();
       await sleep(1100);
       harvestDom();
@@ -156,22 +191,37 @@
       console.log(`已下載 ${rows.length} 家 → exhibitor_list.csv`);
     },
     // 撈不到時的據實回報：列出這一頁真正有的連結長相，讓我照實際結構改。
+    // v3：加上 iframe 檢查——展商清單很常包在 iframe 裡，同源的話直接連內容
+    // 一起掃；跨網域摸不到內容時，至少把 src 網址報出來，那個網址本身可以
+    // 讀（同源政策只擋內容，不擋 src 屬性），使用者能直接開新分頁打開它，
+    // 等於直接繞過外層頁面，對著真正的清單頁重跑一次腳本。
     diagnose: () => {
-      const hrefs = [...document.querySelectorAll("a[href]")].map((a) => a.href);
-      const groups = {};
-      hrefs.forEach((h) => {
-        const p = h.replace(location.origin, "").split(/[?#]/)[0]
-          .replace(/\/\d+/g, "/<數字>").split("/").slice(0, 5).join("/");
-        groups[p] = (groups[p] || 0) + 1;
+      const scan = (doc, label) => {
+        const hrefs = [...doc.querySelectorAll("a[href]")].map((a) => a.href);
+        const groups = {};
+        hrefs.forEach((h) => {
+          const p = h.replace(/^https?:\/\/[^/]+/, "").split(/[?#]/)[0]
+            .replace(/\/\d+/g, "/<數字>").split("/").slice(0, 5).join("/");
+          groups[p] = (groups[p] || 0) + 1;
+        });
+        return {
+          frame: label,
+          連結總數: hrefs.length,
+          連結格式分布: Object.entries(groups).sort((a, b) => b[1] - a[1]).slice(0, 20),
+          含exhibitor字樣的連結範例: hrefs.filter((h) => /exhibitor/i.test(h)).slice(0, 5),
+        };
+      };
+      const iframeInfo = [...document.querySelectorAll("iframe")].map((f, i) => {
+        let inner = null;
+        try { if (f.contentDocument) inner = scan(f.contentDocument, `iframe#${i}`); } catch (e) {}
+        return { index: i, src: f.src || "(無 src，可能是同源動態寫入)", 內容可存取: !!inner, 內容掃描結果: inner };
       });
-      const top = Object.entries(groups).sort((a, b) => b[1] - a[1]).slice(0, 25);
       const out = {
         目前網址: location.href,
-        頁面連結總數: hrefs.length,
-        連結格式分布: top,
-        含exhibitor字樣的連結範例: hrefs.filter((h) => /exhibitor/i.test(h)).slice(0, 5),
-        攔到的API網址: CAPTURED.map((c) => c.url).slice(-10),
-        iframe數量: document.querySelectorAll("iframe").length,
+        外層頁面: scan(document, "top"),
+        iframe數量: iframeInfo.length,
+        iframe詳情: iframeInfo,
+        攔到的API網址: CAPTURED.map((c) => `[${c.label}] ${c.url}`).slice(-15),
       };
       console.log(JSON.stringify(out, null, 2));
       return out;
