@@ -68,6 +68,25 @@ test("sanitizeEntryHtml: HTML 註解被清掉（body_format=html 不承載同步
   assert.equal(sanitizeEntryHtml(html), "<p>文字</p>");
 });
 
+// 2026-08-10 回報：貼上含表格的內容存檔重開後，表格擠成一整行看不出欄位。
+// table/tr/td 不在 ALLOWED_TAGS，若只是單純把標籤拿掉、留下文字，儲存格之間
+// 完全沒有分隔會黏在一起；sanitizeEntryHtml 現在把 <table> 轉成 <pre>（列換行、
+// 儲存格用 " | " 分隔）保留下來，而不是任由標籤白名單迴圈把結構整個吃掉。
+test("sanitizeEntryHtml: <table> 轉成 <pre>，欄位用 \" | \" 分隔，不會黏成一整行", () => {
+  const html = "<table><tbody><tr><td>待辦事項</td><td>負責人</td></tr><tr><td>確認規格</td><td>宗銘</td></tr></tbody></table>";
+  assert.equal(sanitizeEntryHtml(html), "<pre>待辦事項 | 負責人\n確認規格 | 宗銘</pre>");
+});
+
+test("sanitizeEntryHtml: <table> 內的儲存格格式標籤與多餘空白被清乾淨", () => {
+  const html = '<table><tr><th>欄位</th></tr><tr><td>  <strong>粗體文字</strong>  </td></tr></table>';
+  assert.equal(sanitizeEntryHtml(html), "<pre>欄位\n粗體文字</pre>");
+});
+
+test("sanitizeEntryHtml: table 與其他段落混合時，前後段落不受影響", () => {
+  const html = "<p>前言</p><table><tr><td>A</td><td>B</td></tr></table><p>後記</p>";
+  assert.equal(sanitizeEntryHtml(html), "<p>前言</p><pre>A | B</pre><p>後記</p>");
+});
+
 test("textToHtml: 空白分隔段落，單一換行變 <br>", () => {
   assert.equal(textToHtml("第一行\n第二行\n\n第二段"), "<p>第一行<br>第二行</p><p>第二段</p>");
 });

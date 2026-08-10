@@ -70,6 +70,30 @@
     return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   }
 
+  /**
+   * 2026-08-10 回報：從 Word／Excel／網頁複製一份含表格的內容貼進來，畫面上
+   * 看起來是表格，存檔重開後整個擠成一行。原因是這種貼上剪貼簿裡本來就帶
+   * text/html（跟下面 mdToHtml 處理的「純文字裡的 Markdown 表格」是不同路徑），
+   * 直接交給 Quill 的話會把裸 <table> 塞進編輯框——Quill 沒有表格格式可以正確
+   * 顯示／編輯它，而後端 sanitizeEntryHtml 的標籤白名單也不收 table/tr/td，
+   * 存檔那一刻結構就沒了。這裡跟 mdToHtml 對 Markdown 表格的處理一致：貼上當下
+   * 就把 <table> 轉成 <pre>（列換行、儲存格用 " | " 分隔），至少保留看得出
+   * 欄位分界的原始資料，而不是等存檔才悄悄丟掉。
+   */
+  function convertPastedTables(html) {
+    if (!/<table[\s>]/i.test(html)) return html;
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("table").forEach((table) => {
+      const rows = Array.from(table.querySelectorAll("tr"))
+        .map((tr) => Array.from(tr.querySelectorAll("td,th")).map((cell) => cell.textContent.trim()).join(" | "))
+        .filter((row) => row.length > 0);
+      const pre = doc.createElement("pre");
+      pre.textContent = rows.join("\n");
+      table.replaceWith(pre);
+    });
+    return doc.body.innerHTML;
+  }
+
   // 行內語法。輸入已經 escapeHtml 過，所以這裡只是在安全字串上做替換，
   // 不可能因為使用者內容產生新的可執行標記。
   function inlineMd(line) {
@@ -209,8 +233,18 @@
       if (Array.from(data.items || []).some((it) => it.kind === "file" && (it.type || "").startsWith("image/"))) return;
       const html = data.getData("text/html");
       // 從網頁／Word 複製來的內容本來就有 HTML 格式，交給 Quill 原本的流程；
-      // 這裡只處理「來源只有純文字、但內容其實是 Markdown」的情況
-      if (html && html.trim()) return;
+      // 這裡只處理「來源只有純文字、但內容其實是 Markdown」的情況——除非
+      // 這段 HTML 裡帶了 <table>，那個一定要攔下來轉成 <pre>（見上面
+      // convertPastedTables 的說明），不能讓裸 table 標籤直接進 Quill。
+      if (html && html.trim()) {
+        if (/<table[\s>]/i.test(html)) {
+          ev.preventDefault();
+          const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+          quill.deleteText(range.index, range.length, "user");
+          quill.clipboard.dangerouslyPasteHTML(range.index, convertPastedTables(html), "user");
+        }
+        return;
+      }
       const text = data.getData("text/plain");
       if (!looksLikeMarkdown(text)) return;
       ev.preventDefault();

@@ -41,3 +41,18 @@ test("richtext-editor.js：貼上不是自己插入的 <img>（沒有 data-att-i
   assert.match(matcher, /hasAttribute\("data-att-id"\)/, "要用 data-att-id 判斷是不是這篇記事自己透過附件流程插入的圖片");
   assert.match(matcher, /new Delta\(\)/, "沒有 data-att-id 的圖片要整個丟掉（回傳空 Delta），不能原樣保留破圖");
 });
+
+// 2026-08-10 回報：貼上含表格的內容（Word/Excel/網頁複製），畫面上看起來是
+// 表格，存檔重開後整個擠成一行。原因是這種貼上帶 text/html，原本的邏輯看到
+// html 就整段交給 Quill 預設流程處理——Quill 沒有表格格式，裸 <table> 進了
+// 編輯框，後端 sanitizeEntryHtml 的標籤白名單又不收 table/tr/td，存檔那一刻
+// 結構就沒了。修法是貼上當下先攔截含 <table> 的 HTML，轉成 <pre>（跟既有的
+// mdToHtml 對 Markdown 表格的處理一致）。
+test("richtext-editor.js：貼上含 <table> 的 HTML 要攔截並轉成 <pre>，不能讓裸 table 標籤直接進 Quill", async () => {
+  const src = await readFile(new URL("../fieldlog/public/richtext-editor.js", import.meta.url), "utf8");
+  assert.match(src, /function convertPastedTables\(html\)/, "要有把貼上的 <table> 轉成 <pre> 的函式");
+  const pasteHandler = src.match(/quill\.root\.addEventListener\("paste"[\s\S]*?\n\s*\}, true\);/)?.[0] || "";
+  assert.match(pasteHandler, /<table\[\\s>\]\/i\.test\(html\)/, "貼上事件要檢查剪貼簿 HTML 裡有沒有 <table>");
+  assert.match(pasteHandler, /convertPastedTables\(html\)/, "偵測到 table 時要呼叫轉換函式，而不是把裸 HTML 原樣交給 Quill");
+  assert.match(pasteHandler, /ev\.preventDefault\(\)/, "要 preventDefault，不能讓 Quill 用預設行為處理裸 table HTML");
+});

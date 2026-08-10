@@ -87,6 +87,41 @@ export function htmlToPlainText(html) {
   return text.replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * 2026-08-10 回報：貼上一份含 Word/Excel 表格的會議紀錄，畫面上表格好好的，
+ * 存檔重開後整個表格擠成一行看不出欄位分界。原因是 ALLOWED_TAGS 沒有
+ * table/tr/td 這些標籤——Quill 沒有表格編輯格式（見 richtext-editor.js 的
+ * mdToHtml 說明），使用者貼上真正的 <table> HTML 時前端沒攔，直接讓它進了
+ * 編輯框；存檔這一步下面的標籤白名單迴圈會把 table/tr/td 整個拿掉，儲存格
+ * 文字沒有任何分隔就黏在一起。這裡在標籤白名單生效之前，先把每個 <table>
+ * 轉成 <pre>（列用換行、儲存格用 " | " 分隔）：跟 mdToHtml 對貼上的 Markdown
+ * 表格做的事一樣，維持「至少讀得出原始資料」而不是整段吃掉。
+ */
+function convertTablesToPre(html) {
+  return html.replace(/<table\b[^>]*>([\s\S]*?)<\/table>/gi, (_, inner) => {
+    const rows = [];
+    const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+    let rowMatch;
+    while ((rowMatch = rowRe.exec(inner))) {
+      const cells = [];
+      const cellRe = /<(?:td|th)\b[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
+      let cellMatch;
+      while ((cellMatch = cellRe.exec(rowMatch[1]))) {
+        cells.push(decodeEntities(cellMatch[1].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim());
+      }
+      if (cells.length) rows.push(cells.join(" | "));
+    }
+    return rows.length ? `<pre>${escapeHtml(rows.join("\n"))}</pre>` : "";
+  });
+}
+
 /**
  * 白名單式清理：只留 ALLOWED_TAGS 裡的標籤，每個標籤只留 ALLOWED_ATTRS
  * 允許的屬性，其餘標籤與屬性整個拿掉（不是跳過，是連同標籤語法一起移除，
@@ -98,6 +133,7 @@ export function sanitizeEntryHtml(html) {
   let text = String(html);
   text = text.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "");
   text = text.replace(/<!--[\s\S]*?-->/g, ""); // body_format='html' 不承載同步標記，註解一律清掉
+  text = convertTablesToPre(text);
   text = text.replace(/<(\/?)([a-zA-Z0-9]+)([^>]*)>/g, (full, closing, rawTag, rawAttrs) => {
     const tag = rawTag.toLowerCase();
     if (!ALLOWED_TAGS.has(tag)) return "";
