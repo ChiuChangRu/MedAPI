@@ -145,3 +145,83 @@ test("腳本不再用『列序』決定 id——擋住有人改回舊寫法", as
     "整個陣列直接換掉會連同既有 id 一起丟掉");
   assert.match(src, /def name_key/, "要保留以名稱對應既有 id 的機制");
 });
+
+/**
+ * 2026-08-10：長儒實際拿官方目錄跑出 881 家的 CSV 餵進來，發現名稱比對
+ * 不夠用——「Lonyi Medicath Co., Ltd」（既有）跟「Lonyi Medicath CO LTD」
+ * （新抓的）因為標點不同，name_key() 對不上，581 家裡有數百家會被誤判成
+ * 新公司，重複塞進資料庫。兩邊的 directory_url 裡其實都藏著同一組官方
+ * 數字 id（.../exhibitor/467193/...），這組 id 比公司名穩，改成優先用它
+ * 比對。同一份 CSV 也混進了 54 筆沒解碼的 URL 編碼公司名（例如
+ * "Aixway3d%EF%BC%88jiangsu%EF%BC%89co LTD"），這裡一併鎖住清理邏輯。
+ */
+
+test("官方數字 id 比對優先於名稱比對：公司名標點/縮寫不同也認得出是同一家，不會重複新增", () => {
+  const { dataFile } = setup([{
+    ...ex("ex-0001", ""),
+    name_en: "Lonyi Medicath Co., Ltd",
+    directory_url: "https://exhibitors.informamarkets-info.com/event/2026Medtec/en-US/exhibitor/467193/lonyi-medicath-co-ltd",
+  }]);
+  const { data } = runImport(dataFile,
+    "name_en,directory_url\n" +
+    'Lonyi Medicath CO LTD,https://exhibitors.informamarkets-info.com/event/2026Medtec/en-US/exhibitor/467193/lonyi-medicath-co---ltd\n');
+
+  assert.equal(data.exhibitors.length, 1,
+    "同一個官方數字 id（467193）就是同一家公司，不該因為標點不同被當成新公司");
+  assert.equal(data.exhibitors[0].id, "ex-0001");
+});
+
+test("沒有官方數字 id 可用時（例如手動補的資料），仍然退回用名稱比對", () => {
+  const { dataFile } = setup([ex("ex-0001", "甲公司")]);
+  const { data } = runImport(dataFile, "name_zh,booth_no\n甲公司,B9\n");
+  assert.equal(data.exhibitors.length, 1);
+  assert.equal(data.exhibitors[0].id, "ex-0001");
+  assert.equal(data.exhibitors[0].booth_no, "B9");
+});
+
+test("公司名含未解碼的 URL 編碼時，直接解碼還原（%EF%BC%88／%89 其實是全形括號）", () => {
+  // 真實案例：長儒 2026-08-10 掃到的 881 家名單裡有 54 筆長這樣，都是公司
+  // 英文名帶全形括號「（　）」，網頁抓取時沒解碼就存進來了
+  const { dataFile } = setup([]);
+  const { data } = runImport(dataFile,
+    "name_en,directory_url\n" +
+    "Aixway3d%EF%BC%88jiangsu%EF%BC%89co LTD,https://x/event/2026Medtec/en-US/exhibitor/466959/aixway3d%EF%BC%88jiangsu%EF%BC%89co--ltd\n");
+
+  assert.equal(data.exhibitors.length, 1);
+  assert.doesNotMatch(data.exhibitors[0].name_en, /%[0-9A-Fa-f]{2}/,
+    "不該把沒解碼的 URL 編碼原樣存進資料庫");
+  assert.equal(data.exhibitors[0].name_en, "Aixway3d（jiangsu）co LTD",
+    "直接解碼就乾淨的話，比丟掉重編更保留原意");
+});
+
+test("雙重編碼（解一次後還是留著合法的 %XX）時，才退回用 directory_url 的 slug 還原", () => {
+  // %25EF 解一次只會變成 %EF（%25 本身就是「%」的編碼），這種雙重編碼
+  // 解一次還不夠乾淨，要能認得出「解完仍然是 %XX」而不是照單全收
+  const { dataFile } = setup([]);
+  const { data } = runImport(dataFile,
+    "name_en,directory_url\n" +
+    "Aixway3d%25EF%25BC%2588jiangsu%25EF%25BC%2589co LTD,https://x/event/2026Medtec/en-US/exhibitor/999001/aixway3d-jiangsu-co-ltd\n");
+
+  assert.equal(data.exhibitors.length, 1);
+  assert.doesNotMatch(data.exhibitors[0].name_en, /%[0-9A-Fa-f]{2}/,
+    "解一次不乾淨就該退回用 slug，不能把雙重編碼的殘渣留著");
+  assert.match(data.exhibitors[0].name_en, /Aixway3d/i);
+});
+
+test("公司名是乾淨的英文時，不會被誤判成亂碼而被 slug 蓋掉（只在真的有 %XX 時才處理）", () => {
+  const { dataFile } = setup([]);
+  const { data } = runImport(dataFile,
+    "name_en,directory_url\n" +
+    "3M China,https://x/event/2026Medtec/en-US/exhibitor/999002/3m-china\n");
+  assert.equal(data.exhibitors[0].name_en, "3M China");
+});
+
+test("同一份 CSV 裡同一個官方數字 id 出現兩次，只新增一筆——id_index 要在新增當下就更新", () => {
+  const { dataFile } = setup([]);
+  const { data } = runImport(dataFile,
+    "name_en,directory_url\n" +
+    "Foo Co,https://x/event/2026Medtec/en-US/exhibitor/999003/foo-co\n" +
+    "Foo Co.,https://x/event/2026Medtec/en-US/exhibitor/999003/foo-co\n");
+  assert.equal(data.exhibitors.length, 1,
+    "同一個 id 在同一批 CSV 裡出現兩次，不該因為 id_index 沒即時更新而重複新增");
+});

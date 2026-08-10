@@ -43,6 +43,7 @@ import csv
 import json
 import re
 from pathlib import Path
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_FILES = [
@@ -74,14 +75,75 @@ def name_key(name):
     return re.sub(r"\s+", "", (name or "")).lower()
 
 
+DIRECTORY_ID_RE = re.compile(r"/exhibitor/(\d+)/")
+
+
+def official_id(directory_url):
+    """從官方展商目錄網址抓出數字 id（.../exhibitor/467193/公司名-slug）。
+
+    2026-08-10 實測發現：這組數字 id 比公司名穩得多。同一家「Lonyi
+    Medicath」，舊資料存的英文名是 "Lonyi Medicath Co., Ltd"，新抓的是
+    "Lonyi Medicath CO LTD"——name_key() 只正規化空白跟大小寫，不動標點，
+    這兩個字串對不上，會被誤判成新公司。但兩邊的 directory_url 裡都是
+    同一個數字 467193，抓這個來比對完全不會有這種標點/縮寫差異的問題。
+    """
+    if not directory_url:
+        return ""
+    m = DIRECTORY_ID_RE.search(directory_url)
+    return m.group(1) if m else ""
+
+
+def slug_to_name(slug):
+    """把網址 slug 還原成看得懂的英文名，公司名亂碼/缺漏時的保底用。
+
+    例：yi-plus-one-medical-technology-co-ltd
+        → Yi Plus One Medical Technology Co Ltd
+
+    slug 裡偶爾還留著未解碼的 URL 編碼（公司名含中文全形符號時常見，見
+    clean_name_en 的說明），先解碼一次再切詞，不然那段會被當成一個超長的
+    英數字混雜詞，切不開也還原不了。
+    """
+    slug = unquote(slug or "")
+    words = [w for w in re.split(r"[-_]+", slug) if w]
+    return " ".join(w.upper() if len(w) <= 3 else w[:1].upper() + w[1:] for w in words)
+
+
+def clean_name_en(name_en, directory_url):
+    """公司名含未解碼的 URL 編碼（%XX）時解碼；解不乾淨就改用網址 slug 還原。
+
+    2026-08-10 實測：881 筆裡有 54 筆 name_en 混進了像
+    "Aixway3d%EF%BC%88jiangsu%EF%BC%89co LTD" 這種東西——擷取腳本在網頁上
+    抓到的是還沒解碼的網址片段（%EF%BC%88／%EF%BC%89 其實是全形括號
+    「（」「）」的 UTF-8 編碼）。先試著直接解碼：大多數情況解完就乾淨了
+    （"Aixway3d（jiangsu）co LTD"），比丟掉重編更保留原意；只有解碼後仍然
+    留著 %XX（代表這不是單純的編碼問題）才退回用 directory_url 的 slug
+    重新還原一個乾淨版本。
+    """
+    name_en = (name_en or "").strip()
+    if name_en:
+        if not re.search(r"%[0-9A-Fa-f]{2}", name_en):
+            return name_en
+        decoded = unquote(name_en).strip()
+        if not re.search(r"%[0-9A-Fa-f]{2}", decoded):
+            return decoded
+    m = DIRECTORY_ID_RE.search(directory_url or "")
+    if not m:
+        return name_en  # 亂碼但也沒有網址可還原，只能原樣留著讓人工看
+    slug = directory_url.rstrip("/").split("/")[-1]
+    return slug_to_name(slug) or name_en
+
+
 def build_index(existing):
-    """既有展商的 名稱 → id 對照表。
+    """既有展商的 名稱 → id、官方數字 id → id 兩份對照表。
 
     同一個 key 出現兩次（舊資料本來就有重複公司）時保留第一筆，並回報，
     因為第二筆之後不管配到誰都是猜的，要讓人知道去處理。
     """
-    index, dupes = {}, []
+    index, id_index, dupes = {}, {}, []
     for ex in existing:
+        oid = official_id(ex.get("directory_url"))
+        if oid:
+            id_index.setdefault(oid, ex["id"])
         for field in ("name_zh", "name_en"):
             key = name_key(ex.get(field))
             if not key:
@@ -90,7 +152,7 @@ def build_index(existing):
                 dupes.append((key, index[key], ex["id"]))
                 continue
             index[key] = ex["id"]
-    return index, dupes
+    return index, id_index, dupes
 
 
 def next_id_maker(existing):
@@ -114,20 +176,33 @@ def next_id_maker(existing):
 
 
 def merge(existing, rows):
-    index, dupes = build_index(existing)
+    index, id_index, dupes = build_index(existing)
     make_id = next_id_maker(existing)
     by_id = {ex["id"]: ex for ex in existing}
 
     matched_ids, added, updated, unchanged = set(), [], [], 0
+    id_matched, name_matched = 0, 0
 
     for row in rows:
-        key = name_key(row.get("name_zh")) or name_key(row.get("name_en"))
-        if not key:
-            continue  # 沒有名字的列直接跳過，不可能安全對應
         payload = {f: (row.get(f) or "").strip() for f in CSV_FIELDS}
+        if "name_en" in payload:
+            payload["name_en"] = clean_name_en(payload["name_en"], row.get("directory_url"))
         payload.update({f: split_multi(row.get(f)) for f in MULTI_FIELDS})
 
-        ex_id = index.get(key)
+        key = name_key(row.get("name_zh")) or name_key(payload.get("name_en"))
+        oid = official_id(row.get("directory_url"))
+        # 官方數字 id 優先——不受公司名標點/縮寫差異影響（見 official_id 的
+        # 說明）。抓不到 id 的列（例如手動補的資料）才退回用名稱比對。
+        ex_id = id_index.get(oid) if oid else None
+        if ex_id:
+            id_matched += 1
+        elif key:
+            ex_id = index.get(key)
+            if ex_id:
+                name_matched += 1
+        elif not key:
+            continue  # 既沒有可用的 id 也沒有名字，不可能安全對應
+
         if ex_id and ex_id in by_id:
             target = by_id[ex_id]
             matched_ids.add(ex_id)
@@ -147,7 +222,12 @@ def merge(existing, rows):
             new_ex.setdefault("tags", [])
             existing.append(new_ex)
             by_id[new_ex["id"]] = new_ex
-            index[key] = new_ex["id"]
+            if key:
+                index[key] = new_ex["id"]
+            if oid:
+                # 同一份 CSV 裡若同一家公司出現兩次（同一個 oid），第二次要
+                # 認得出剛剛才新增的這筆，不能因為 id_index 沒更新而重複新增
+                id_index[oid] = new_ex["id"]
             matched_ids.add(new_ex["id"])
             added.append((new_ex["id"], new_ex.get("name_zh") or new_ex.get("name_en")))
 
@@ -161,6 +241,7 @@ def merge(existing, rows):
     return {
         "added": added, "updated": updated, "unchanged": unchanged,
         "missing": missing, "dupes": dupes,
+        "id_matched": id_matched, "name_matched": name_matched,
     }
 
 
@@ -184,6 +265,8 @@ def main():
     report = merge(data["exhibitors"], rows)
 
     print(f"CSV 讀入 {len(rows)} 列｜既有 {before_count} 家 → 現在 {len(data['exhibitors'])} 家")
+    print(f"  用官方數字 id 對應到既有公司：{report['id_matched']} 家（可靠，不受名稱標點/縮寫差異影響）")
+    print(f"  沒有 id 可用、退回用名稱對應到既有公司：{report['name_matched']} 家")
     print(f"  沿用既有 id 並更新欄位：{len(report['updated'])} 家")
     print(f"  沿用既有 id、內容無變化：{report['unchanged']} 家")
     print(f"  新增（配不到既有公司）：{len(report['added'])} 家")
