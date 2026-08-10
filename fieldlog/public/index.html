@@ -63,37 +63,37 @@
         <div id="home-search-results" class="home-search-results" hidden></div>
       </section>
 
-      <!-- 第三列：待處理、草稿與 Wiki 檔案（左右兩欄）。
+      <!-- 第三列：待處理、草稿與 Wiki 檔案——直向堆疊，待處理在上、已分類
+           的 Wiki 檔案在下（2026-08-09 三次修正：原本排成左右兩欄，改回
+           上下順序）。
            待處理：只列還沒真正歸檔的東西（收件匣＋暫存區＋歷史上 AI 歸類過
            還沒確認的），不是「最近動過的全部東西」——理由見 app.js
            loadRecent() 的註解。
            Wiki 檔案＝隨身記自己的資料夾歸檔（不是 wiki.html 那個獨立的
            策略地圖 Wiki，那是另一套系統）。 -->
-      <div class="home-row-split">
-        <section class="home-section home-inbox-section" id="inbox-panel" aria-labelledby="home-inbox-title">
-          <div class="home-section-head">
-            <h2 class="home-section-title" id="home-inbox-title">📥 待處理 <span id="inbox-count" class="count"></span></h2>
-            <div class="folder-view-toggle" aria-label="待處理顯示模式">
-              <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">▦ 卡片</button>
-              <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
-            </div>
+      <section class="home-section home-inbox-section" id="inbox-panel" aria-labelledby="home-inbox-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="home-inbox-title">📥 待處理 <span id="inbox-count" class="count"></span></h2>
+          <div class="folder-view-toggle" aria-label="待處理顯示模式">
+            <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">▦ 卡片</button>
+            <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
           </div>
-          <div id="inbox-list" class="entry-list"></div>
-        </section>
+        </div>
+        <div id="inbox-list" class="entry-list"></div>
+      </section>
 
-        <section class="home-section home-toolbar-files">
-          <h2 class="home-section-title">📖 Wiki 檔案</h2>
-          <!-- 2026-08-09：卡片模式拿掉了（跟清單模式完全同一組資料、只是換個排版，
-               沒有提供額外功能）。清單模式改成縮排樹狀，一次看到整棵四層資料夾樹，
-               不用再點進去才看得到子資料夾。 -->
-          <div class="folders-toolbar">
-            <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
-            <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
-            <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
-          </div>
-          <div id="folder-list" class="folder-list"></div>
-        </section>
-      </div>
+      <section class="home-section home-toolbar-files">
+        <h2 class="home-section-title">📖 Wiki 檔案</h2>
+        <!-- 2026-08-09：卡片模式拿掉了（跟清單模式完全同一組資料、只是換個排版，
+             沒有提供額外功能）。清單模式改成縮排樹狀，一次看到整棵四層資料夾樹，
+             不用再點進去才看得到子資料夾。 -->
+        <div class="folders-toolbar">
+          <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
+          <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
+          <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
+        </div>
+        <div id="folder-list" class="folder-list"></div>
+      </section>
 
       <!-- 第四列：開發工具 -->
       <section class="home-section home-tools-section">

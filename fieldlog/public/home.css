@@ -68,51 +68,6 @@ body {
   gap: 12px;
 }
 
-/* 第三列「待處理｜Wiki 檔案」左右兩欄。align-items: start——兩欄高度本來
-   就不一樣，用 grid 預設的 stretch 會逼矮的那欄陪著拉高、留一堆空白。
-   minmax(0, …) 而不是裸的 fr——fr 軌預設下限是 auto（內容的 min-content），
-   資料夾卡片內容一長會把軌道撐開，逼另一欄跟著變窄甚至整排溢出版面，
-   這是上一版「顏色樹狀格式」會亂掉的根因之一。 */
-.home-row-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-@media (max-width: 719px) {
-  .home-row-split {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* 資料夾樹的縮排＋色系底（folder-card，見 style.css）原本假設「夠寬才用
-   CSS Grid 排一列（類型｜名稱｜筆數｜日期），撐不下才在 719px 那個*視窗*
-   寬度斷點切換成 flex-wrap」。但這欄的實際寬度只有這一列的一半，桌機開著
-   大視窗、視窗寬度遠超過 719px，也還是可能只有三四百像素——媒體查詢量的
-   是視窗，量不到「這一欄」，所以 719px 斷點不會生效，date／count／type
-   這些 white-space:nowrap 的欄位會把名稱擠到看不見、色系底跟著被撐爛。
-   這裡不管視窗多寬，直接對這一欄套用手機版那套「名稱獨占一行、日期藏
-   起來」的窄版排版——跟 style.css 719px 那組規則是同一套值，只是拿掉
-   視窗寬度的前提，改成「這一欄本來就窄」。 */
-.home-toolbar-files .folder-card-main {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  padding: 12px;
-}
-
-.home-toolbar-files .folder-name {
-  order: -1;
-  flex: 1 1 100%;
-}
-
-.home-toolbar-files .folder-date,
-.home-toolbar-files .folder-drag {
-  display: none;
-}
-
 /* 開發工具：一整列，橫向排三張連結卡，窄螢幕自動換行 */
 .toolbar-link-list {
   display: flex;
