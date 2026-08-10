@@ -268,3 +268,56 @@ test("--fields 限制欄位時，真的配不到既有公司的新列仍然保�
   assert.equal(data.exhibitors.length, 1);
   assert.equal(data.exhibitors[0].directory_url, "https://x/event/2026Medtec/en-US/exhibitor/999009/new-co");
 });
+
+/**
+ * 2026-08-10：合併 GPT 整理的 xlsx（881 家、含簡體中文名）與本專案獨立
+ * 抓到的 CSV 時發現——新來源的中文名是簡體，但這個專案早期特意把展商
+ * 資料全面轉成繁體（臺灣用語）。無條件套用會讓 520 家從繁體變簡體，
+ * 對台灣團隊是退步；而且有些公司兩邊取名層級不同（母公司 vs 合資公司，
+ * 例如 海目星雷射科技集團 vs 海星瑞光，兩者英文名都是 Hymson Novolas AG，
+ * 對應沒錯，只是取名不同）。
+ * --fill-only 就是為了「這些欄位只補空值，不覆蓋既有」而加的。
+ */
+
+test("--fill-only：既有已經有值的欄位不被覆蓋（保住人工整理過的繁體名）", () => {
+  const { dataFile } = setup([{
+    ...ex("ex-0001", "海目星雷射科技集團股份有限公司"),
+    directory_url: "https://x/event/2026Medtec/en-US/exhibitor/466914/hymson-novolas-ag",
+  }]);
+  const { data } = runImport(dataFile,
+    "name_zh,booth_no,directory_url\n" +
+    "海星瑞光,N2-A101,https://x/event/2026Medtec/en-US/exhibitor/466914/hymson-novolas-ag\n",
+    ["--fill-only", "name_zh"]);
+
+  assert.equal(data.exhibitors[0].name_zh, "海目星雷射科技集團股份有限公司",
+    "列在 --fill-only 的欄位，既有有值就不該被覆蓋");
+  assert.equal(data.exhibitors[0].booth_no, "N2-A101",
+    "沒列在 --fill-only 的欄位照常更新（攤位號是會變動的事實，要跟著官方走）");
+});
+
+test("--fill-only：既有是空的欄位仍然會被補上", () => {
+  const { dataFile } = setup([{
+    ...ex("ex-0001", ""),
+    directory_url: "https://x/event/2026Medtec/en-US/exhibitor/466914/hymson-novolas-ag",
+  }]);
+  const { data } = runImport(dataFile,
+    "name_zh,directory_url\n" +
+    "海星瑞光,https://x/event/2026Medtec/en-US/exhibitor/466914/hymson-novolas-ag\n",
+    ["--fill-only", "name_zh"]);
+  assert.equal(data.exhibitors[0].name_zh, "海星瑞光", "既有是空的就要補上，不然這個選項等於整欄停用");
+});
+
+test("--fill-only 可以同時指定多個欄位", () => {
+  const { dataFile } = setup([{
+    ...ex("ex-0001", "既有中文名"),
+    description: "既有簡介",
+    directory_url: "https://x/event/2026Medtec/en-US/exhibitor/466914/a",
+  }]);
+  const { data } = runImport(dataFile,
+    "name_zh,description,country,directory_url\n" +
+    "新中文名,新簡介,JAPAN,https://x/event/2026Medtec/en-US/exhibitor/466914/a\n",
+    ["--fill-only", "name_zh,description"]);
+  assert.equal(data.exhibitors[0].name_zh, "既有中文名");
+  assert.equal(data.exhibitors[0].description, "既有簡介");
+  assert.equal(data.exhibitors[0].country, "JAPAN", "沒列進去的欄位照常更新");
+});

@@ -175,7 +175,7 @@ def next_id_maker(existing):
     return make
 
 
-def merge(existing, rows, only_fields=None):
+def merge(existing, rows, only_fields=None, fill_only_fields=None):
     """only_fields：只允許更新這些欄位，其餘 CSV 裡有值也不套用。
 
     2026-08-10 加的用途：官方目錄的中文（zh-CN）版本拿來補既有公司缺的
@@ -188,6 +188,7 @@ def merge(existing, rows, only_fields=None):
     make_id = next_id_maker(existing)
     by_id = {ex["id"]: ex for ex in existing}
     allowed = set(only_fields) if only_fields else None
+    fill_only = set(fill_only_fields or [])
 
     matched_ids, added, updated, unchanged = set(), [], [], 0
     id_matched, name_matched = 0, 0
@@ -220,6 +221,15 @@ def merge(existing, rows, only_fields=None):
             # CSV 沒填的欄位不要把既有值洗成空字串——官方目錄有時候某些
             # 欄位是空的，但我們手上可能已經有更完整的資料
             changes = {k: v for k, v in payload.items() if v and v != before.get(k)}
+            # fill_only 欄位：既有已經有值就不動，只補空的。
+            # 2026-08-10 的實際需求：新來源的中文名是簡體，但這個專案早期
+            # 特意把展商資料全面轉成繁體（臺灣用語），無條件覆蓋會讓 520 家
+            # 從繁體變簡體，是退步；而且有些公司兩邊取名層級不同（母公司 vs
+            # 合資公司），既有的人工整理結果通常比較貼近團隊實際認知。
+            # 攤位號、分類這種「會變動的事實」則照常更新，不套用這個限制。
+            for k in list(changes):
+                if k in fill_only and before.get(k):
+                    del changes[k]
             if changes:
                 target.update(changes)
                 target["in_directory"] = True
@@ -273,10 +283,15 @@ def main():
     ap.add_argument("--fields",
                     help="只更新這些欄位（逗號分隔，例如 name_zh），其餘欄位有值也不套用；"
                          "同時停用「這次名單沒有就標記不在名單」的判斷（這種局部增補不代表完整名單）")
+    ap.add_argument("--fill-only",
+                    help="這些欄位（逗號分隔）只補空值，既有已經有值就不覆蓋。"
+                         "用在「新來源某些欄位品質不一定比既有好」的情況，例如既有中文名是"
+                         "人工整理過的繁體、新來源是簡體")
     args = ap.parse_args()
 
     targets = args.data_file or DATA_FILES
     only_fields = [f.strip() for f in args.fields.split(",") if f.strip()] if args.fields else None
+    fill_only_fields = [f.strip() for f in args.fill_only.split(",") if f.strip()] if args.fill_only else None
 
     with open(args.csv_path, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
@@ -285,7 +300,7 @@ def main():
         data = json.load(f)
 
     before_count = len(data["exhibitors"])
-    report = merge(data["exhibitors"], rows, only_fields=only_fields)
+    report = merge(data["exhibitors"], rows, only_fields=only_fields, fill_only_fields=fill_only_fields)
 
     print(f"CSV 讀入 {len(rows)} 列｜既有 {before_count} 家 → 現在 {len(data['exhibitors'])} 家")
     print(f"  用官方數字 id 對應到既有公司：{report['id_matched']} 家（可靠，不受名稱標點/縮寫差異影響）")

@@ -99,6 +99,32 @@ test("分類：一家掛多個分類時全部取出，不會只留第一個", as
   assert.ok(got.includes("cat-15"));
 });
 
+test("分類：官方 8.x 子分類的真實寫法「8.2Sensing…」（數字後直接接字母）要對到 cat-08-2", async () => {
+  // 2026-08-10 實測 881 家：官方主分類寫成 "2. Metallic…"（有點有空格），
+  // 但 8.x 子分類寫成 "8.2Sensing and Actuation：…"——數字後面沒有空格、
+  // 也沒有第二個點，直接接英文字母。先前的規則用 \b 當結尾，而 "2" 跟 "S"
+  // 都是文字字元、中間沒有邊界，整條配不到，導致 77 家全部退化成
+  // 「cat-08」這個我們系統裡根本不存在的分類。
+  const { parseCategories } = await loadFns();
+  const cases = {
+    "8.1Intelligent Control and Computing：Main control chips": "cat-08-1",
+    "8.2Sensing and Actuation：Biosensors，Physical sensors": "cat-08-2",
+    "8.3Energy and Signal Transmission：Power supplies": "cat-08-3",
+    "8.6Microfluidic systems，Precision structural components": "cat-08-6",
+  };
+  for (const [raw, expect] of Object.entries(cases)) {
+    const got = Array.from(parseCategories(raw));
+    assert.deepEqual(got, [expect], `「${raw.slice(0, 20)}…」應該只對到 ${expect}`);
+    assert.ok(!got.includes("cat-08"), "不能產生 cat-08——我們的分類系統只有 cat-08-1～6，沒有純 cat-08");
+  }
+});
+
+test("攤位號：同一攤位再細分的「4G102-8」也要正規化（先前這 4 筆整個匹配失敗）", async () => {
+  const { normalizeBooth } = await loadFns();
+  assert.equal(normalizeBooth("4G102-8"), "N4-G102-8");
+  assert.equal(normalizeBooth("4G102-1"), "N4-G102-1");
+});
+
 test("分類：沒有分類資訊時回空陣列，不會硬湊一個假分類", async () => {
   const { parseCategories } = await loadFns();
   assert.deepEqual(Array.from(parseCategories("")), []);

@@ -105,25 +105,35 @@
     const s = (raw || "").trim();
     if (!s) return "";
     if (/^[NWE]\d-/i.test(s)) return s.toUpperCase();
-    const m = s.match(/^(\d)\s*([A-Za-z])\s*(\d{2,4})$/);
-    if (m) return `N${m[1]}-${m[2].toUpperCase()}${m[3]}`;
+    // 尾巴可能還有「-8」這種同一攤位再細分的編號（實測 4G102-1、4G102-8），
+    // 先前沒收這一段，那 4 筆就整個匹配失敗、原字串直接留著沒被正規化
+    const m = s.match(/^(\d)\s*([A-Za-z])\s*(\d{2,4})(-\d+)?$/);
+    if (m) return `N${m[1]}-${m[2].toUpperCase()}${m[3]}${m[4] || ""}`;
     return s;
   }
 
   // "2. Metallic Raw Materials and Components" → cat-02
   // "8.3 Energy and Signal Transmission" → cat-08-3（8.x 有子分類）
   // 多個分類用逗號分隔時全部取出，第一個當主分類
+  // 官方實際寫法（實測 881 家）：主分類是 "2. Metallic Raw Materials…"
+  // （數字＋點＋空格），8.x 子分類是 "8.2Sensing and Actuation：…"
+  // ——注意子分類的數字後面「沒有空格也沒有第二個點」，直接接英文字母。
+  // 先前的寫法用 \b 當結尾，但 "2" 跟 "S" 都是文字字元、中間沒有邊界，
+  // 整條規則配不到，結果 77 家 8.x 全部退化成不存在的 cat-08。
+  // 所以先抓 8.x（較specific），再抓主分類，且主分類要排除已被 8.x 用掉的。
   function parseCategories(raw) {
+    const text = raw || "";
     const out = [];
-    for (const m of (raw || "").matchAll(/(\d{1,2})(?:\.(\d))?\s*\./g)) {
+    const subMainSeen = new Set();
+    for (const m of text.matchAll(/(\d{1,2})\.(\d)(?!\d)/g)) {
       const main = m[1].padStart(2, "0");
-      out.push(m[2] ? `cat-${main}-${m[2]}` : `cat-${main}`);
+      out.push(`cat-${main}-${m[2]}`);
+      subMainSeen.add(m[1]);
     }
-    // 上面的寫法要求「數字後面接點」，8.3 這種寫法（8.3 後面沒有第二個點）
-    // 會漏掉，補一次專門抓 8.x 的
-    for (const m of (raw || "").matchAll(/\b(\d{1,2})\.(\d)\b/g)) {
-      const id = `cat-${m[1].padStart(2, "0")}-${m[2]}`;
-      if (!out.includes(id)) out.push(id);
+    // 主分類：數字後面接點，且不是剛剛已經當成 8.x 處理掉的那個編號
+    for (const m of text.matchAll(/(?:^|[^\d.])(\d{1,2})\.(?!\d)/g)) {
+      if (subMainSeen.has(m[1])) continue;
+      out.push(`cat-${m[1].padStart(2, "0")}`);
     }
     return [...new Set(out)];
   }
