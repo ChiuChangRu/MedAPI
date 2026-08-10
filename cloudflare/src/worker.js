@@ -67,6 +67,25 @@ const SCHEMA = [
     user_id TEXT PRIMARY KEY,
     added_at TEXT NOT NULL
   )`,
+  // 官方展商目錄以外、團隊自己想追蹤的廠商（例如評估中的 CDMO 候選，根本
+  // 沒有參展）。2026-08-10 長儒指出：官方名冊要靠重新爬網站才能更新，
+  // 團隊不可能為了追蹤幾家沒參展的廠商就一直要求重新匯入整份名冊。這張表
+  // 讓任何人直接在 App 裡新增，id 前綴跟官方的 ex-XXXX 分開避免撞號，
+  // 其餘欄位刻意跟 exhibitors.json 的形狀一致，才能原封不動併進同一個
+  // EXHIBITORS 陣列，指派／筆記／PDF 報告全部沿用既有邏輯不用另外處理。
+  `CREATE TABLE IF NOT EXISTS custom_exhibitors (
+    id TEXT PRIMARY KEY,
+    name_zh TEXT DEFAULT '',
+    name_en TEXT DEFAULT '',
+    booth_no TEXT DEFAULT '',
+    country TEXT DEFAULT '',
+    category TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    website TEXT DEFAULT '',
+    added_by TEXT DEFAULT '',
+    deleted INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_notes_ex ON notes(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
@@ -201,6 +220,8 @@ async function buildDailyDigest(env) {
     const assetRes = await env.ASSETS.fetch(new Request("https://assets.internal/data/exhibitors.json"));
     const data = await assetRes.json();
     for (const e of data.exhibitors) exMap[e.id] = e.name_zh;
+    const { results: customEx } = await db.prepare("SELECT id, name_zh, name_en FROM custom_exhibitors WHERE deleted = 0").all();
+    for (const row of customEx) exMap[row.id] = row.name_zh || row.name_en;
   } catch { /* 展商目錄抓不到時退回顯示 ID，不影響摘要送出 */ }
 
   // 同一家被反覆儲存會產生多筆相同紀錄，摘要只列一次
@@ -235,6 +256,10 @@ async function notifyRealtimeSave(env, exhibitorId, author, detail) {
       const data = await assetRes.json();
       const ex = data.exhibitors.find((e) => e.id === exhibitorId);
       if (ex) name = ex.name_zh;
+      else {
+        const custom = await db.prepare("SELECT name_zh, name_en FROM custom_exhibitors WHERE id = ? AND deleted = 0").bind(exhibitorId).first();
+        if (custom) name = custom.name_zh || custom.name_en;
+      }
     } catch { /* 展商目錄抓不到時退回顯示 ID，不影響通知送出 */ }
 
     const parts = [];
@@ -272,6 +297,20 @@ async function sendDailyDigest(env) {
 
 function bad(message, status = 400) {
   return json({ error: message }, status);
+}
+
+// 把 custom_exhibitors 的資料列整形成跟 exhibitors.json 裡的展商物件同一種
+// 形狀（tags/products/pdfs 補空陣列），前端才能原封不動塞進 EXHIBITORS
+// 陣列，指派/篩選/搜尋/PDF 報告全部沿用既有邏輯，不用另外判斷來源。
+// custom:true 讓前端知道要標「自訂」徽章，不會被誤以為是官方展商目錄資料。
+function toCustomExhibitor(row) {
+  return {
+    id: row.id, name_zh: row.name_zh || "", name_en: row.name_en || "",
+    booth_no: row.booth_no || "", hall: "", country: row.country || "",
+    category: row.category || "", tags: [], description: row.description || "",
+    products: [], website: row.website || "", directory_url: "", pdfs: [],
+    added_by: row.added_by || "", custom: true, in_directory: true,
+  };
 }
 
 function fmtSecsRange(s) {
@@ -354,6 +393,51 @@ async function handleApi(request, env, url, ctx) {
   // ---- 前端功能開關 ----
   if (path === "/config" && method === "GET") {
     return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI) });
+  }
+
+  // ---- 自訂廠商（官方展商目錄以外，團隊自己追蹤的）----
+  if (path === "/custom-exhibitors" && method === "GET") {
+    const { results } = await db
+      .prepare("SELECT * FROM custom_exhibitors WHERE deleted = 0 ORDER BY id")
+      .all();
+    return json(results.map(toCustomExhibitor));
+  }
+  if (path === "/custom-exhibitors" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const name_zh = (body.name_zh || "").trim();
+    const name_en = (body.name_en || "").trim();
+    if (!name_zh && !name_en) return bad("公司名稱（中文或英文）至少要填一個");
+    const author = (body.author || "").trim() || "匿名";
+    // custom- 前綴跟官方展商目錄的 ex-XXXX 分開，避免同一個 id 意外對到
+    // 兩種來源不同的資料——那會讓指派/筆記/附件全部混在一起分不出來
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const row = {
+      id, name_zh, name_en,
+      booth_no: (body.booth_no || "").trim(),
+      country: (body.country || "").trim(),
+      category: (body.category || "").trim(),
+      description: (body.description || "").trim(),
+      website: (body.website || "").trim(),
+    };
+    await db
+      .prepare("INSERT INTO custom_exhibitors (id, name_zh, name_en, booth_no, country, category, description, website, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, row.name_zh, row.name_en, row.booth_no, row.country, row.category, row.description, row.website, author, now())
+      .run();
+    await logHistory(db, id, author, "新增自訂廠商", `${name_zh || name_en}${row.booth_no ? `（${row.booth_no}）` : ""}`);
+    return json(toCustomExhibitor({ ...row, added_by: author }));
+  }
+  const customExMatch = path.match(/^\/custom-exhibitors\/([\w-]+)$/);
+  if (customExMatch && method === "DELETE") {
+    const id = customExMatch[1];
+    const old = await db.prepare("SELECT * FROM custom_exhibitors WHERE id = ? AND deleted = 0").bind(id).first();
+    if (!old) return bad("找不到這筆自訂廠商", 404);
+    const author = (new URL(request.url).searchParams.get("author") || "匿名").trim();
+    // 軟刪除：這家廠商底下可能已經有指派狀態／現場紀錄／照片，直接刪掉
+    // 這筆會讓那些紀錄變成查不到名字的孤兒 id，跟官方展商目錄下架時
+    // 標記 in_directory=false（保留不刪）是同一個顧慮
+    await db.prepare("UPDATE custom_exhibitors SET deleted = 1 WHERE id = ?").bind(id).run();
+    await logHistory(db, id, author, "刪除自訂廠商", old.name_zh || old.name_en);
+    return json({ ok: true });
   }
 
   // ---- 附件（照片/錄音/影片，存 R2）----
@@ -764,6 +848,14 @@ async function handleApi(request, env, url, ctx) {
     const data = await assetRes.json();
     const exMap = {};
     for (const e of data.exhibitors) exMap[e.id] = e;
+    // 自訂廠商（官方展商目錄以外，見 custom_exhibitors 表）也要併進來，
+    // 不然被指派、被寫過紀錄的自訂廠商會在下面的 .filter((x) => x.ex) 被
+    // 悄悄濾掉，個人報告裡完全看不到這家——這正是這張表加進來之後容易漏改
+    // 的地方，任何地方組 exMap 都要記得兩邊一起讀
+    const { results: customEx } = await db
+      .prepare("SELECT * FROM custom_exhibitors WHERE deleted = 0")
+      .all();
+    for (const row of customEx) exMap[row.id] = toCustomExhibitor(row);
     const catMap = {};
     for (const c of data.categories) catMap[c.id] = c.name_zh;
 
@@ -869,6 +961,12 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     const data = await assetRes.json();
     const exMap = {};
     for (const e of data.exhibitors) exMap[e.id] = e;
+    // 自訂廠商也要併進來，不然這裡的 exMap[id] || {} 會讓自訂廠商那幾列
+    // 匯出成「廠商」欄空白的紀錄，看起來像資料壞掉，其實只是查表沒查到
+    const { results: customExForCsv } = await db
+      .prepare("SELECT * FROM custom_exhibitors WHERE deleted = 0")
+      .all();
+    for (const row of customExForCsv) exMap[row.id] = toCustomExhibitor(row);
 
     const { results: states } = await db.prepare("SELECT * FROM exhibitor_state").all();
     const { results: notes } = await db

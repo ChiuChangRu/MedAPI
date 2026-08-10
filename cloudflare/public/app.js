@@ -1,6 +1,7 @@
 // ===== Medtec China 2026 展商作戰地圖（團隊版）=====
 
 let EXHIBITORS = [];
+let CUSTOM_EXHIBITORS = [];  // 官方展商目錄以外，團隊自己新增的（見 setCustomExhibitors）
 let CATEGORIES = [];
 let CAT_MAP = {};
 let LINE_MATCHES = {};      // lineId -> Set(exhibitorId)
@@ -596,6 +597,11 @@ async function init() {
   $("btn-my-list").onclick = openMyList;
   $("btn-my-report").onclick = openMyReport;
   $("btn-clear").onclick = clearAll;
+  $("btn-add-custom").onclick = openAddCustomExhibitor;
+  $("add-custom-save").onclick = saveCustomExhibitor;
+  $("add-custom-cancel").onclick = () => $("add-custom-overlay").classList.remove("open");
+  $("add-custom-close").onclick = () => $("add-custom-overlay").classList.remove("open");
+  closeOnBackdropClick("add-custom-overlay", () => $("add-custom-overlay").classList.remove("open"));
   document.querySelectorAll(".view-tab[data-view]").forEach((btn) => { btn.onclick = () => setView(btn.dataset.view); });
   $("btn-mylist-pdf").onclick = printMyList;
   $("btn-export").onclick = exportCsv;
@@ -697,6 +703,13 @@ async function connectBackend() {
     API_OK = true;
     OFFLINE = false;
     try {
+      setCustomExhibitors(await api("/custom-exhibitors"));
+    } catch {
+      // 偶發失敗（手機網路不穩）時退回上次快取的自訂廠商，不影響其他登入流程
+      setCustomExhibitors(JSON.parse(localStorage.getItem("medtec_custom_exhibitors") || "[]"));
+    }
+    buildEntrySection(); // 自訂廠商可能命中產品／科別關鍵字，重建入口卡片數字
+    try {
       const cfg = await api("/config");
       UPLOADS_ENABLED = cfg.uploads;
       TRANSCRIBE_ENABLED = cfg.transcribe;
@@ -728,6 +741,7 @@ async function connectBackend() {
       OFFLINE = true;
       STATE = snap.state;
       MEMBERS = snap.members || [];
+      setCustomExhibitors(JSON.parse(localStorage.getItem("medtec_custom_exhibitors") || "[]"));
       document.body.classList.remove("locked");
       $("user-chip").textContent = me() + "（離線）";
       renderRecommendBar();
@@ -814,6 +828,19 @@ function exhibitorText(e) {
   return [e.name_zh, e.name_en, e.description, ...(e.products || []), ...(e.tags || []), EXTRA_TEXT[e.id] || ""]
     .join(" ")
     .toLowerCase();
+}
+
+// 官方展商目錄以外，團隊自己新增的廠商（見 cloudflare/src/worker.js 的
+// custom_exhibitors 表）。合併方式：EXHIBITORS 裡先濾掉舊的自訂項目
+// （用 e.custom 旗標認），再接上最新一批——這樣不管呼叫幾次都是乾淨的
+// 全量替換，不會累積出重複項目，也不用額外追蹤「這次新增了誰」。
+// 合併完一定要重跑 computeLineMatches()，不然新加的公司不會出現在
+// 「產品／科別」入口的計數與行程重點標記裡。
+function setCustomExhibitors(list) {
+  CUSTOM_EXHIBITORS = list || [];
+  try { localStorage.setItem("medtec_custom_exhibitors", JSON.stringify(CUSTOM_EXHIBITORS)); } catch { /* 空間不足時放棄快取，不影響本次瀏覽 */ }
+  EXHIBITORS = EXHIBITORS.filter((e) => !e.custom).concat(CUSTOM_EXHIBITORS);
+  computeLineMatches();
 }
 
 function computeLineMatches() {
@@ -1261,6 +1288,55 @@ function clearAll() {
   refreshEntryCards(); refreshChips(); refreshPresetBar(); refreshPocketBtn(); render();
 }
 
+// 新增自訂廠商：官方展商目錄要重新爬網站才能更新，團隊自己想追蹤的公司
+// （例如評估中、根本沒參展的 CDMO 候選）不必等我們重新匯入整份名冊
+function openAddCustomExhibitor() {
+  if (!me()) { showLogin(); return; }
+  $("add-custom-name-zh").value = "";
+  $("add-custom-name-en").value = "";
+  $("add-custom-booth").value = "";
+  $("add-custom-note").value = "";
+  $("add-custom-error").style.display = "none";
+  $("add-custom-overlay").classList.add("open");
+  $("add-custom-name-zh").focus();
+}
+
+async function saveCustomExhibitor() {
+  const errEl = $("add-custom-error");
+  errEl.style.display = "none";
+  const name_zh = $("add-custom-name-zh").value.trim();
+  const name_en = $("add-custom-name-en").value.trim();
+  if (!name_zh && !name_en) {
+    errEl.textContent = "中文或英文名稱至少要填一個";
+    errEl.style.display = "block";
+    return;
+  }
+  const btn = $("add-custom-save");
+  btn.disabled = true;
+  try {
+    const created = await api("/custom-exhibitors", {
+      method: "POST",
+      body: JSON.stringify({
+        name_zh, name_en,
+        booth_no: $("add-custom-booth").value.trim(),
+        description: $("add-custom-note").value.trim(),
+        author: me(),
+      }),
+    });
+    setCustomExhibitors([...CUSTOM_EXHIBITORS, created]);
+    buildEntrySection();
+    $("add-custom-overlay").classList.remove("open");
+    showToast(`已新增「${created.name_zh || created.name_en}」`);
+    render();
+    openDetail(created.id); // 直接開詳情頁，方便馬上指派負責人／設定狀態
+  } catch (err) {
+    errEl.textContent = "新增失敗：" + err.message;
+    errEl.style.display = "block";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- 主列表 ----------
 function getState(id) {
   return STATE[id] || { status: "未排定", assignee: "", dept_tags: [], collected: [], goal_tags: [], quals: [], post_class: "", pocket: false, note_count: 0, visit_record: {} };
@@ -1419,7 +1495,7 @@ function renderTable(list) {
       ? `<span class="comp-badge comp-${comp}" title="拜訪成果完整度 ${comp}/4">${comp}/4</span>` : "";
     tr.innerHTML = `
       <td><span class="row-star ${st.pocket ? "on" : ""}" title="口袋名單">${st.pocket ? "★" : "☆"}</span></td>
-      <td class="co"><div class="co-inner"><div class="co-photo-slot">${e.photo ? `<img class="co-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}</div><div class="co-text"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${esc(e.name_zh)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}${compBadge}</div><div class="en">${esc(e.name_en || "")}</div></div></div></td>
+      <td class="co"><div class="co-inner"><div class="co-photo-slot">${e.photo ? `<img class="co-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}</div><div class="co-text"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${e.custom ? '<span class="badge custom">自訂</span> ' : ""}${esc(e.name_zh || e.name_en)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}${compBadge}</div><div class="en">${esc(e.name_en || "")}</div></div></div></td>
       <td class="booth-cell">${esc(e.booth_no)}</td>
       <td class="col-cat">${esc(cat ? cat.name_zh : e.category)}</td>
       <td class="col-country">${esc(e.country)}</td>
@@ -1489,13 +1565,14 @@ async function openDetail(id) {
       <div class="detail-head-main">
         ${e.photo ? `<img class="detail-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
         <div>
-        <h2>${esc(e.name_zh)} <button class="star big ${st.pocket ? "on" : ""}" id="d-star">${st.pocket ? "★" : "☆"}</button></h2>
+        <h2>${esc(e.name_zh || e.name_en)} ${e.custom ? '<span class="custom-badge" title="團隊自行新增，不是官方展商目錄裡的資料">🆕 自訂</span>' : ""} <button class="star big ${st.pocket ? "on" : ""}" id="d-star">${st.pocket ? "★" : "☆"}</button></h2>
         <p class="sub">${esc(e.name_en || "")}｜${esc(cat ? cat.name_zh : "")}｜攤位 ${esc(e.booth_no)}｜${esc(e.country)}</p>
         <p class="sub link-row">
           ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">公司官網</a>` : ""}
           ${(e.pdfs || []).map((p, i) => `<a class="directory-link" href="${p}" target="_blank" rel="noopener">型錄 PDF${e.pdfs.length > 1 ? " " + (i + 1) : ""}</a>`).join("")}
           ${e.directory_url ? `<a class="directory-link" href="${e.directory_url}" target="_blank" rel="noopener">官方展商頁</a>` : ""}
           <a class="directory-link" href="#" id="d-share">🔗 複製分享連結</a>
+          ${e.custom ? `<a class="directory-link danger" href="#" id="d-delete-custom">🗑 移除這筆自訂廠商</a>` : ""}
         </p>
         ${visit ? `<p class="sub visit-info"><strong>行程重點</strong>：${esc(visit.when)}${visit.contact ? `｜${esc(visit.contact)}` : ""}${visit.note ? `｜${esc(visit.note)}` : ""}</p>` : ""}
         ${lineHits.length ? `<p class="sub">產品／科別關聯：${lineHits.map((l) => l.name).join("、")}</p>` : ""}
@@ -1650,6 +1727,22 @@ async function openDetail(id) {
       showToast("複製失敗，請手動複製網址列");
     }
   };
+
+  if (e.custom) {
+    $("d-delete-custom").onclick = async (ev) => {
+      ev.preventDefault();
+      if (!confirm(`確定要移除自訂廠商「${e.name_zh || e.name_en}」？\n這家底下如果已經有指派狀態或現場紀錄，資料庫裡不會真的刪掉，只會從清單上消失。`)) return;
+      try {
+        await api(`/custom-exhibitors/${encodeURIComponent(id)}?author=${encodeURIComponent(me())}`, { method: "DELETE" });
+        setCustomExhibitors(CUSTOM_EXHIBITORS.filter((x) => x.id !== id));
+        closeDetail();
+        render();
+        showToast("已移除");
+      } catch (err) {
+        showToast("移除失敗：" + err.message);
+      }
+    };
+  }
 
   // 狀態選單與拜訪成果表單：連線、離線都能填（離線先存手機）
   if (API_OK || (OFFLINE && me())) {

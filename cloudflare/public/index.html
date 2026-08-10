@@ -89,6 +89,7 @@
     <button class="btn small" id="btn-visit-filter">行程重點</button>
     <button class="btn small" id="btn-pocket-filter">★ 口袋名單</button>
     <button class="btn small ghost" id="btn-clear">清除全部條件</button>
+    <button class="btn small ghost offline-dim" id="btn-add-custom" title="展商目錄要重新爬官網才能更新，不想等的話可以自己先加一筆，之後照樣能指派、寫紀錄、進 PDF 報告">＋ 自訂廠商</button>
   </div>
 
   <div class="active-preset" id="active-preset" style="display:none;"></div>
@@ -120,6 +121,29 @@
 <div class="overlay" id="detail-overlay">
   <div class="modal wide" id="detail-modal">
     <!-- 動態填入 -->
+  </div>
+</div>
+
+<!-- 新增自訂廠商：官方展商目錄要重新爬網站才能更新，這裡讓團隊自己先加一筆
+     （例如評估中、根本沒參展的 CDMO 候選），加進來後照樣能指派/寫紀錄/進 PDF 報告 -->
+<div class="overlay" id="add-custom-overlay">
+  <div class="modal narrow">
+    <div class="modal-close-float"><button class="btn small ghost" id="add-custom-close" type="button" aria-label="關閉">✕</button></div>
+    <h2>＋ 新增自訂廠商</h2>
+    <p class="sub">不在官方展商目錄裡的公司也可以先加進來追蹤，會標上「🆕 自訂」跟官方資料區分。</p>
+    <label for="add-custom-name-zh">中文名稱</label>
+    <input id="add-custom-name-zh" maxlength="80" autocomplete="off" placeholder="中文或英文至少填一個" />
+    <label for="add-custom-name-en">英文名稱</label>
+    <input id="add-custom-name-en" maxlength="120" autocomplete="off" />
+    <label for="add-custom-booth">攤位／位置（選填）</label>
+    <input id="add-custom-booth" maxlength="40" autocomplete="off" />
+    <label for="add-custom-note">備註（選填，例如為什麼要追蹤這家）</label>
+    <textarea id="add-custom-note" maxlength="500"></textarea>
+    <p class="sub" id="add-custom-error" style="display:none;color:#b91c1c;"></p>
+    <div class="modal-actions">
+      <button class="btn ghost" id="add-custom-cancel" type="button">取消</button>
+      <button class="btn primary" id="add-custom-save" type="button">新增</button>
+    </div>
   </div>
 </div>
 

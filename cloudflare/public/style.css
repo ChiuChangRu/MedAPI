@@ -397,6 +397,13 @@ body.todo-view #recommend-bar { display: none !important; }
   font-weight: 600;
 }
 
+.badge.custom {
+  background: #fff7e6;
+  color: #b45309;
+  border-color: #f0dfa8;
+  font-weight: 600;
+}
+
 .visit-info {
   background: #fdf0f1;
   border: 1px solid #f3c2c9;
@@ -438,6 +445,10 @@ body.todo-view #recommend-bar { display: none !important; }
 .link-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .directory-link { font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 500; }
 .directory-link:hover { text-decoration: underline; }
+.directory-link.danger { color: #b91c1c; }
+
+/* 自訂廠商（不在官方展商目錄裡，團隊自己加的）*/
+.custom-badge { display: inline-block; font-size: 11px; font-weight: 700; color: #b45309; background: #fff7e6; border: 1px solid #f0dfa8; border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
 
 .card button.ask {
   margin-top: 4px; padding: 8px;
