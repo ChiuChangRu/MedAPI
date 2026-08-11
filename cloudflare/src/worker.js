@@ -402,11 +402,11 @@ const STATE_LABELS = {
 };
 
 // ---- 論壇議程（sessions）----
-const SESSION_FIELDS = ["owner", "status", "priority", "track", "reason", "must_ask", "related_exhibitor_ids", "speaker", "institution", "need_precontact"];
+const SESSION_FIELDS = ["owner", "status", "priority", "track", "reason", "time_slot", "must_ask", "related_exhibitor_ids", "speaker", "institution", "need_precontact"];
 const SESSION_JSON_FIELDS = ["must_ask", "related_exhibitor_ids"];
 const SESSION_LABELS = {
   owner: "負責人", status: "狀態", priority: "優先序", track: "技術鏈", reason: "關注原因",
-  must_ask: "三個必問", related_exhibitor_ids: "關聯展商", speaker: "講者", institution: "任職機構",
+  time_slot: "時段", must_ask: "三個必問", related_exhibitor_ids: "關聯展商", speaker: "講者", institution: "任職機構",
   need_precontact: "需會前聯繫",
 };
 

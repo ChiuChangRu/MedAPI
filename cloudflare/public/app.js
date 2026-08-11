@@ -2813,7 +2813,7 @@ function sessionCardHtml(s) {
   const color = SESSION_STATUS_COLORS[s.status] || "#8a8a82";
   return `<div class="agenda-card" data-session="${esc(s.id)}">
     <div class="agenda-card-head">
-      <span class="agenda-place">${esc(s.hall || "")}${s.room ? " · " + esc(s.room) : ""}</span>
+      <span class="agenda-place">${s.time_slot ? esc(s.time_slot) + "｜" : "時段未定｜"}${esc(s.hall || "")}${s.room ? " · " + esc(s.room) : ""}</span>
       ${s.priority ? `<span class="agenda-priority">優先 ${esc(s.priority)}</span>` : ""}
     </div>
     <h3>${esc(s.title)}</h3>
@@ -2850,7 +2850,7 @@ async function openSessionDetail(id) {
     <div class="modal-close-float"><button class="btn small ghost" id="s-close">✕</button></div>
     <div class="detail-head">
       <h2>${esc(s.title)}</h2>
-      <p class="sub">${esc(s.date || "")}｜${esc(s.hall || "")}${s.room ? " · " + esc(s.room) : ""}${s.source_url ? ` ｜<a class="directory-link" href="${esc(s.source_url)}" target="_blank" rel="noopener">官網頁面</a>` : ""}</p>
+      <p class="sub">${esc(s.date || "")}｜${s.time_slot ? esc(s.time_slot) : "時段未定"}｜${esc(s.hall || "")}${s.room ? " · " + esc(s.room) : ""}${s.source_url ? ` ｜<a class="directory-link" href="${esc(s.source_url)}" target="_blank" rel="noopener">官網頁面</a>` : ""}</p>
       ${s.reason ? `<p class="sub">關注原因：${esc(s.reason)}</p>` : ""}
     </div>
 
@@ -2874,6 +2874,10 @@ async function openSessionDetail(id) {
             return names.map((n) => `<label class="check-chip ${n === current ? "on" : ""}"><input type="radio" name="s-owner-${id}" value="${esc(n)}" ${n === current ? "checked" : ""}>${esc(n)}</label>`).join("");
           })()}
         </div>
+      </div>
+      <div>
+        <label>時段（官方議程手冊確認後填入，例：14:00–15:30）</label>
+        <input id="s-time-slot" value="${esc(s.time_slot || "")}" placeholder="尚未公布時段" />
       </div>
       <div>
         <label>技術鏈／主題</label>
@@ -2914,6 +2918,7 @@ async function openSessionDetail(id) {
   $("s-save-fields").onclick = () => {
     const mustAsk = $("s-must-ask").value.split("\n").map((x) => x.trim()).filter(Boolean);
     saveSessionField(id, {
+      time_slot: $("s-time-slot").value.trim(),
       track: $("s-track").value.trim(),
       priority: $("s-priority").value,
       must_ask: mustAsk,
