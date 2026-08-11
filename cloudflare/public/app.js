@@ -2817,7 +2817,8 @@ function sessionCardHtml(s) {
       ${s.priority ? `<span class="agenda-priority">優先 ${esc(s.priority)}</span>` : ""}
     </div>
     <h3>${esc(s.title)}</h3>
-    ${s.reason ? `<p class="agenda-reason">${esc(s.reason)}</p>` : ""}
+    ${s.reason ? `<p class="agenda-reason"><strong>關注原因：</strong>${esc(s.reason)}</p>` : ""}
+    ${s.outline ? `<p class="agenda-outline">${esc(s.outline)}</p>` : ""}
     <div class="agenda-meta-row">
       ${s.track ? `<span class="badge">${esc(s.track)}</span>` : ""}
       <span class="badge status" style="background:${color};border-color:${color};color:#fff;">${esc(s.status)}</span>
@@ -2852,6 +2853,7 @@ async function openSessionDetail(id) {
       <h2>${esc(s.title)}</h2>
       <p class="sub">${esc(s.date || "")}｜${s.time_slot ? esc(s.time_slot) : "時段未定"}｜${esc(s.hall || "")}${s.room ? " · " + esc(s.room) : ""}${s.source_url ? ` ｜<a class="directory-link" href="${esc(s.source_url)}" target="_blank" rel="noopener">官網頁面</a>` : ""}</p>
       ${s.reason ? `<p class="sub">關注原因：${esc(s.reason)}</p>` : ""}
+      ${s.outline ? `<p class="detail-desc">${esc(s.outline)}</p>` : ""}
     </div>
 
     ${API_OK ? `
