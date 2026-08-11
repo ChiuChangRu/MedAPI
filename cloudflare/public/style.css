@@ -68,6 +68,14 @@ header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 .cache-verdict.warn { color: #b45309; }
 .cache-item { font-size: 13px; line-height: 1.7; margin: 6px 0; padding: 8px 10px; background: #f7f7f5; border: 1px solid #e4e4e0; border-radius: 6px; }
 
+/* 資料異動記錄（展商名冊每次重新匯入的前後差異，跟團隊拜訪紀錄無關） */
+.changelog-entry { padding: 10px 0; border-bottom: 1px solid #e4e4e0; }
+.changelog-entry:last-child { border-bottom: none; }
+.changelog-entry h3 { margin: 2px 0 4px; font-size: 15px; }
+.changelog-date { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.changelog-details { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.7; color: var(--text); }
+.changelog-note { font-size: 13px; color: var(--green, #15803d); margin: 8px 0 0; }
+
 /* 攤位分組標題列（依館別・區域，減少展場繞路） */
 tr.group-header-row td {
   background: #fbeaec; color: #a00d24; font-weight: 700; font-size: 13px;
@@ -424,6 +432,13 @@ body.agenda-view #agenda-section { display: block; }
   font-weight: 600;
 }
 
+.badge.custom {
+  background: #fff7e6;
+  color: #b45309;
+  border-color: #f0dfa8;
+  font-weight: 600;
+}
+
 .visit-info {
   background: #fdf0f1;
   border: 1px solid #f3c2c9;
@@ -465,6 +480,10 @@ body.agenda-view #agenda-section { display: block; }
 .link-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .directory-link { font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 500; }
 .directory-link:hover { text-decoration: underline; }
+.directory-link.danger { color: #b91c1c; }
+
+/* 自訂廠商（不在官方展商目錄裡，團隊自己加的）*/
+.custom-badge { display: inline-block; font-size: 11px; font-weight: 700; color: #b45309; background: #fff7e6; border: 1px solid #f0dfa8; border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
 
 .card button.ask {
   margin-top: 4px; padding: 8px;
