@@ -63,6 +63,7 @@
     <button class="view-tab" data-view="assigned">📌 分派清單<span class="tab-count" id="tab-count-assigned"></span></button>
     <button class="view-tab" data-view="visited">✅ 完成拜訪清單<span class="tab-count" id="tab-count-visited"></span></button>
     <button class="view-tab" data-view="agenda">🗣 論壇議程</button>
+    <button class="view-tab" data-view="prep">📝 參訪前報告</button>
     <button class="view-tab pdf-tab" id="btn-mylist-pdf" title="產出可列印的分派清單（存成 PDF 當紙本備援，軟體完全失效也知道要去哪）">🖨 PDF</button>
   </div>
 
@@ -90,6 +91,16 @@
       <p class="itin-sub">8/31（一）– 9/05（六）　6 天 5 夜　·　依 2026-07-27 簽呈附件行程表</p>
     </div>
     <div class="itin-list" id="itinerary-list"></div>
+  </section>
+
+  <!-- 參訪前報告：每位隨行同事的攤位關注重點（分析在 config.js 的 PREP_REPORT），
+       每人另有一欄自由文字存進 D1 的 prep_notes -->
+  <section class="prep-section" id="prep-section">
+    <div class="itin-head">
+      <h2>參訪前報告──各人攤位關注重點</h2>
+      <p class="itin-sub">依職掌與五年技術地圖整理　·　家數即時取自 881 家官方名冊，點晶片可直接篩出該群廠商</p>
+    </div>
+    <div class="prep-list" id="prep-list"></div>
   </section>
 
   <!-- 篩選列 -->

@@ -347,6 +347,94 @@ body.itinerary-view #itinerary-section { display: block; }
   .itin-shortcuts, .itin-link { display: none !important; }
 }
 
+/* ===== 參訪前報告（各人攤位關注重點）===== */
+body.prep-view #entry-section,
+body.prep-view #recommend-bar,
+body.prep-view .controls,
+body.prep-view .active-preset,
+body.prep-view .stats,
+body.prep-view .grid,
+body.prep-view #empty { display: none !important; }
+#prep-section { display: none; }
+body.prep-view #prep-section { display: block; }
+
+.prep-list { display: flex; flex-direction: column; gap: 12px; }
+
+.prep-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--text-muted);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(28, 28, 26, 0.05);
+}
+/* 與五年技術地圖直接相關的兩位（長儒＝披膜、宗銘＝編織管／球囊）用藍色，
+   跟首頁策略地圖入口卡的藍色是同一套語彙 */
+.prep-card.prep-strategic { border-left-color: #1d4ed8; }
+.prep-card.prep-me { box-shadow: 0 0 0 2px rgba(200, 16, 46, 0.18), 0 1px 3px rgba(28, 28, 26, 0.08); }
+
+.prep-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.prep-name { font-size: 17px; font-weight: 700; }
+.prep-duty { font-size: 12px; color: var(--text-muted); }
+.prep-me-tag {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent); color: #fff;
+}
+.prep-strategic-tag {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+}
+.prep-theme { font-size: 13px; font-weight: 600; color: #1d4ed8; margin: 7px 0 0; line-height: 1.6; }
+.prep-card:not(.prep-strategic) .prep-theme { color: var(--text); }
+.prep-summary { font-size: 13px; color: var(--text-muted); line-height: 1.7; margin: 4px 0 10px; }
+
+.prep-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.prep-chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  font-size: 12px; font-weight: 500; cursor: pointer; user-select: none;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 5px 10px; transition: border-color 0.12s, color 0.12s;
+}
+.prep-chip:hover { border-color: var(--accent); color: var(--accent); }
+.prep-chip em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 11px; }
+.prep-chip.prep-chip-tech { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+.prep-chip.prep-chip-tech:hover { border-color: #1d4ed8; }
+.prep-chip.prep-chip-tech em { color: #60a5fa; }
+
+.prep-block { background: #fbfbf9; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; }
+.prep-block-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--text-muted); margin-bottom: 6px;
+}
+.prep-block ul { margin: 0; padding-left: 18px; }
+.prep-block li { font-size: 13px; line-height: 1.75; }
+.prep-asks { background: #fff8e6; border-color: #f0dfa8; }
+.prep-asks .prep-block-label { color: #92600a; }
+.prep-related { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin: 8px 0 0; }
+
+.prep-note { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.prep-textarea {
+  width: 100%; min-height: 70px; resize: vertical;
+  font-family: inherit; font-size: 13px; line-height: 1.6;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: #fff; color: var(--text);
+}
+.prep-textarea:focus { outline: none; border-color: var(--accent); }
+.prep-note-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.prep-note-meta { flex: 1; font-size: 11px; color: var(--text-muted); }
+
+/* 參訪前報告列印：收起頁首與可編輯元素，卡片不跨頁切斷 */
+@media print {
+  body.prep-view header.top,
+  body.prep-view .view-tabs,
+  body.prep-view .trip-banner,
+  body.prep-view .ai-usage-banner,
+  body.prep-view .offline-banner { display: none !important; }
+  .prep-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none; }
+  .prep-save { display: none !important; }
+  .prep-textarea { border-color: #ccc; }
+}
+
 /* 今日行程橫幅裡的「看完整行程」連結 */
 .trip-more { color: #1e40af; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .trip-more:hover { text-decoration: underline; }

@@ -1152,6 +1152,8 @@ function setActiveViewTab(view) {
   document.body.classList.toggle("agenda-view", view === "agenda");
   // 行程總覽：同理，切過去時整頁只有六天行程
   document.body.classList.toggle("itinerary-view", view === "itinerary");
+  // 參訪前報告：同理
+  document.body.classList.toggle("prep-view", view === "prep");
 }
 
 // 設定負責人篩選值；選單裡沒有這個名字就補一個 option，
@@ -1185,6 +1187,9 @@ function setView(view, { scroll = true } = {}) {
     loadSessions();
   } else if (view === "itinerary") {
     renderItinerary();
+  } else if (view === "prep") {
+    renderPrepReport();
+    loadPrepNotes();
   }
   setActiveViewTab(view);
   if (!scroll) return;
@@ -1192,6 +1197,8 @@ function setView(view, { scroll = true } = {}) {
     $("agenda-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (view === "itinerary") {
     $("itinerary-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (view === "prep") {
+    $("prep-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } else {
     $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
   }
@@ -3031,6 +3038,143 @@ function renderItinerary() {
   wrap.querySelectorAll(".itin-shortcut[data-go]").forEach((a) => {
     a.onclick = (ev) => { ev.preventDefault(); setView(a.dataset.go); };
   });
+}
+
+// ---------- 參訪前報告（分析內容在 config.js 的 PREP_REPORT）----------
+// 每個人的「關注面向」晶片家數即時算出，不寫死數字；點晶片直接套用該篩選，
+// 跟登入後「依你的職掌推薦」那排晶片是同一套 applyXxxPreset 行為。
+function prepChipInfo(chip) {
+  if (chip.k === "dept") {
+    const d = DEPT_PRESETS.find((x) => x.id === chip.id);
+    return { label: d.name, count: EXHIBITORS.filter((e) => deptMatch(d, e)).length, apply: () => applyDeptPreset(chip.id) };
+  }
+  if (chip.k === "line") {
+    const l = PRODUCT_LINES.find((x) => x.id === chip.id);
+    return { label: l.name, count: (LINE_MATCHES[chip.id] || new Set()).size, apply: () => applyLinePreset(chip.id) };
+  }
+  if (chip.k === "tech") {
+    const t = TECH_MAP.find((x) => x.id === chip.id);
+    const count = EXHIBITORS.filter((e) => t.keywords.some((k) => exhibitorText(e).includes(k.toLowerCase()))).length;
+    return { label: t.label, count, tech: true, apply: () => applyTechPreset(chip.id) };
+  }
+  // chip.k === "cats"
+  return {
+    label: chip.label,
+    count: EXHIBITORS.filter((e) => chip.ids.includes(e.category)).length,
+    apply: () => {
+      ACTIVE_DEPT = "";
+      ACTIVE_CATS = new Set(chip.ids);
+      refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
+      $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+  };
+}
+
+let PREP_NOTES = {};   // member -> { content, updated_by, updated_at }
+
+function renderPrepReport() {
+  const wrap = $("prep-list");
+  if (!wrap) return;
+
+  wrap.innerHTML = PREP_ORDER.map((name) => {
+    const profile = MEMBER_PROFILES.find((p) => p.name === name);
+    const rep = PREP_REPORT[name] || {};
+    if (!profile) return "";
+    const isMe = isSameName(name, me());
+    const chips = profile.chips.map((c, i) => {
+      const info = prepChipInfo(c);
+      return `<span class="prep-chip${info.tech ? " prep-chip-tech" : ""}" data-member="${esc(name)}" data-chip="${i}">${esc(info.label)}<em>${info.count}</em></span>`;
+    }).join("");
+
+    return `<article class="prep-card${rep.strategic ? " prep-strategic" : ""}${isMe ? " prep-me" : ""}" data-member="${esc(name)}">
+      <header class="prep-head">
+        <span class="prep-name">${esc(name)}</span>
+        <span class="prep-duty">${esc(profile.duty || "")}</span>
+        ${isMe ? '<span class="prep-me-tag">你</span>' : ""}
+        ${rep.strategic ? '<span class="prep-strategic-tag">五年技術地圖</span>' : ""}
+      </header>
+      ${rep.theme ? `<div class="prep-theme">${esc(rep.theme)}</div>` : ""}
+      ${rep.summary ? `<p class="prep-summary">${esc(rep.summary)}</p>` : ""}
+      <div class="prep-chips">${chips}</div>
+      ${(rep.points || []).length ? `
+        <div class="prep-block">
+          <div class="prep-block-label">攤位觀察重點</div>
+          <ul>${rep.points.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+        </div>` : ""}
+      ${(rep.asks || []).length ? `
+        <div class="prep-block prep-asks">
+          <div class="prep-block-label">現場必問</div>
+          <ul>${rep.asks.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+        </div>` : ""}
+      ${rep.related ? `<div class="prep-related">🔗 ${esc(rep.related)}</div>` : ""}
+      <div class="prep-note" data-note="${esc(name)}">
+        <div class="prep-block-label">個人補充（可編輯，全隊看得到）</div>
+        <textarea class="prep-textarea" id="prep-ta-${esc(name)}" placeholder="出發前想補的重點、要帶的樣品、想額外確認的事…"></textarea>
+        <div class="prep-note-foot">
+          <span class="prep-note-meta" id="prep-meta-${esc(name)}"></span>
+          <button class="btn small primary prep-save" data-save="${esc(name)}">儲存</button>
+        </div>
+      </div>
+    </article>`;
+  }).join("");
+
+  wrap.querySelectorAll(".prep-chip").forEach((el) => {
+    el.onclick = () => {
+      const profile = MEMBER_PROFILES.find((p) => p.name === el.dataset.member);
+      // 先切回檢索視圖再套篩選，否則篩選生效了但展商清單還被這一頁蓋著，看起來像沒反應
+      setActiveViewTab("search");
+      prepChipInfo(profile.chips[Number(el.dataset.chip)]).apply();
+    };
+  });
+  wrap.querySelectorAll(".prep-save").forEach((btn) => {
+    btn.onclick = () => savePrepNote(btn.dataset.save, btn);
+  });
+  paintPrepNotes();
+}
+
+// 把已載入的內容填回各人的欄位（渲染與載入分開，離線也能先用快取顯示）
+function paintPrepNotes() {
+  for (const name of PREP_ORDER) {
+    const ta = $(`prep-ta-${name}`);
+    const meta = $(`prep-meta-${name}`);
+    if (!ta) continue;
+    const n = PREP_NOTES[name] || {};
+    if (document.activeElement !== ta) ta.value = n.content || "";
+    if (meta) meta.textContent = n.updated_at ? `最後編輯：${n.updated_by || "匿名"}　${n.updated_at}` : "尚未填寫";
+  }
+}
+
+async function loadPrepNotes() {
+  // 先用快取畫上去，連線後再以伺服器版本覆蓋——離線也看得到別人寫過的內容
+  try { PREP_NOTES = JSON.parse(localStorage.getItem("medtec_prep_notes") || "{}"); } catch { PREP_NOTES = {}; }
+  paintPrepNotes();
+  if (!API_OK) return;
+  try {
+    PREP_NOTES = await api("/prep-notes");
+    localStorage.setItem("medtec_prep_notes", JSON.stringify(PREP_NOTES));
+    paintPrepNotes();
+  } catch { /* 讀不到就維持快取內容，不擋畫面 */ }
+}
+
+async function savePrepNote(name, btn) {
+  if (!API_OK) { showToast("共筆後端未連線，無法儲存"); return; }
+  const ta = $(`prep-ta-${name}`);
+  if (!ta) return;
+  btn.disabled = true;
+  try {
+    const saved = await api(`/prep-notes/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify({ content: ta.value, author: me() || "匿名" }),
+    });
+    PREP_NOTES[name] = { content: saved.content, updated_by: saved.updated_by, updated_at: saved.updated_at };
+    localStorage.setItem("medtec_prep_notes", JSON.stringify(PREP_NOTES));
+    paintPrepNotes();
+    showToast(`已儲存 ${name} 的補充`);
+  } catch (err) {
+    showToast("儲存失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ---------- 論壇議程（Medtec 官網研討會場次，跟展商無關的獨立實體）----------

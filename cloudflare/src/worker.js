@@ -120,6 +120,14 @@ const SCHEMA = [
     created_at TEXT NOT NULL,
     updated_at TEXT
   )`,
+  // 參訪前報告：每位同事一欄自由文字（出發前補充自己的關注重點）。
+  // 一人一列、以名字為主鍵，覆寫式更新；改動走 history 留痕，跟展商共筆一致。
+  `CREATE TABLE IF NOT EXISTS prep_notes (
+    member TEXT PRIMARY KEY,
+    content TEXT DEFAULT '',
+    updated_by TEXT DEFAULT '',
+    updated_at TEXT
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_notes_ex ON notes(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
@@ -1225,6 +1233,33 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     await db.prepare("UPDATE session_notes SET deleted = 1, updated_at = ? WHERE id = ?").bind(now(), id).run();
     await logHistory(db, null, author, "議程刪除紀錄", `${old.session_id}：[${old.type}] ${String(old.content).slice(0, 80)}`);
     return json({ ok: true });
+  }
+
+  // ---- 參訪前報告：每位同事的自由文字欄（見 config.js 的 PREP_REPORT）----
+  if (path === "/prep-notes" && method === "GET") {
+    const { results } = await db.prepare("SELECT * FROM prep_notes").all();
+    const out = {};
+    for (const r of results) out[r.member] = { content: r.content || "", updated_by: r.updated_by || "", updated_at: r.updated_at || "" };
+    return json(out);
+  }
+  const prepMatch = path.match(/^\/prep-notes\/(.+)$/);
+  if (prepMatch && method === "PUT") {
+    const member = decodeURIComponent(prepMatch[1]).trim();
+    if (!member) return bad("缺少成員名稱");
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const content = (body.content || "").trim();
+    const old = await db.prepare("SELECT content FROM prep_notes WHERE member = ?").bind(member).first();
+    await db
+      .prepare(
+        "INSERT INTO prep_notes (member, content, updated_by, updated_at) VALUES (?, ?, ?, ?) " +
+        "ON CONFLICT(member) DO UPDATE SET content = excluded.content, updated_by = excluded.updated_by, updated_at = excluded.updated_at"
+      )
+      .bind(member, content, author, now())
+      .run();
+    // exhibitor_id 留空：這不是掛在某家展商底下的紀錄，前端會標示成「參訪前報告」
+    await logHistory(db, null, author, "編輯參訪前報告", `${member}：「${(old?.content ? "原：" + String(old.content).slice(0, 40) + "　→　" : "")}${content.slice(0, 60)}」`);
+    return json({ member, content, updated_by: author, updated_at: now() });
   }
 
   // ---- LINE 每日摘要：手動立即測試觸發（不用等排程的晚上 8 點）----
