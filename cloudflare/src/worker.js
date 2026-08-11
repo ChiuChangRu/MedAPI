@@ -67,9 +67,56 @@ const SCHEMA = [
     user_id TEXT PRIMARY KEY,
     added_at TEXT NOT NULL
   )`,
+  // 論壇議程（官網研討會場次，跟展商無關的獨立實體，見 REPORT.md 分析）：
+  // 場次基本資料＋團隊共筆（負責人／狀態／必問／技術鏈），欄位命名比照 exhibitor_state
+  `CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    date TEXT DEFAULT '',
+    time_slot TEXT DEFAULT '',
+    hall TEXT DEFAULT '',
+    room TEXT DEFAULT '',
+    title TEXT NOT NULL,
+    track TEXT DEFAULT '',
+    priority INTEGER,
+    reason TEXT DEFAULT '',
+    must_ask TEXT DEFAULT '[]',
+    speaker TEXT DEFAULT '',
+    institution TEXT DEFAULT '',
+    need_precontact INTEGER DEFAULT 0,
+    related_exhibitor_ids TEXT DEFAULT '[]',
+    owner TEXT DEFAULT '',
+    status TEXT DEFAULT '未排定',
+    source_url TEXT DEFAULT '',
+    updated_by TEXT DEFAULT '',
+    updated_at TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS session_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    author TEXT NOT NULL,
+    type TEXT DEFAULT '現場紀錄',
+    content TEXT NOT NULL,
+    deleted INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_notes_ex ON notes(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_sess_notes_sess ON session_notes(session_id)`,
+];
+
+// 種子資料：Medtec China 2026 官網「優先論壇與場次」表（見 REPORT.md 二、三節）。
+// 用 INSERT OR IGNORE，已存在（id 相同）就跳過，不會覆蓋團隊之後編輯的內容。
+const SESSION_SEED = [
+  ["f1", "9/1", "N2", "會議室 A", "材料創新／創新醫療材料／零件", "材料", 1, "抗菌、抗發炎、改質塑膠與植入材料", "https://en.medtecchina.com/forum/material/material-1/"],
+  ["f2", "9/2", "N2", "會議室 A", "高分子材料創新應用", "材料", 2, "ePTFE、醫材材料安全與全球法規", "https://en.medtecchina.com/forum/material/material-2/"],
+  ["f3", "9/2", "N3", "會議室 B", "醫療接合與焊接先進技術", "製程與製造", 3, "導管接合、UV 膠、疲勞與品質控制", "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-3/"],
+  ["f4", "9/1", "N4", "會議室 D", "Pack & Ster Hub", "製程與製造", 4, "滅菌製程、屏障包裝、PPWR、低溫電漿", "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-2/"],
+  ["f5", "9/2", "N4", "會議室 E", "產品合規與上市實務", "品質與法規", 5, "FDA、MDR、ISO 10993、UDI、微粒與多市場註冊", "https://en.medtecchina.com/forum/quality-regulatory/quality-regulatory-1/"],
+  ["f6", "9/1", "N4", "會議室 D", "高階醫材數位製造", "製程與製造", 6, "自動化、數位生產與智慧工廠", "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-1/"],
+  ["f7", "9/2", "N2", "會議室 A", "植入與介入醫材前沿設計與轉化", "R&D", 7, "介入產品的新材料與精密製造", "https://en.medtecchina.com/forum/rd/rd-2/"],
+  ["f8", "9/3", "N4", "會議室 C", "醫材企業海外拓展服務", "全球市場", 8, "全球品牌與出海方法", "https://en.medtecchina.com/forum/opportunities/opportunities-2/"],
 ];
 
 // 後續新增的欄位（既有資料表用 ALTER 補上，新表已含在下方 MIGRATIONS 對既有表無害）
@@ -111,6 +158,15 @@ async function ensureSchema(db) {
       if (!String(err.message || err).includes("duplicate column")) throw err;
     }
   }
+  await db.batch(
+    SESSION_SEED.map(([id, date, hall, room, title, track, priority, reason, source_url]) =>
+      db
+        .prepare(
+          "INSERT OR IGNORE INTO sessions (id, date, hall, room, title, track, priority, reason, source_url, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(id, date, hall, room, title, track, priority, reason, source_url, now())
+    )
+  );
   schemaReady = true;
 }
 
@@ -344,6 +400,25 @@ const STATE_LABELS = {
   pocket: "口袋名單", goal_tags: "觀展目標", quals: "資質確認", post_class: "展後分類",
   visit_record: "拜訪成果",
 };
+
+// ---- 論壇議程（sessions）----
+const SESSION_FIELDS = ["owner", "status", "priority", "track", "reason", "must_ask", "related_exhibitor_ids", "speaker", "institution", "need_precontact"];
+const SESSION_JSON_FIELDS = ["must_ask", "related_exhibitor_ids"];
+const SESSION_LABELS = {
+  owner: "負責人", status: "狀態", priority: "優先序", track: "技術鏈", reason: "關注原因",
+  must_ask: "三個必問", related_exhibitor_ids: "關聯展商", speaker: "講者", institution: "任職機構",
+  need_precontact: "需會前聯繫",
+};
+
+function sessionOut(row) {
+  return {
+    ...row,
+    priority: row.priority === null || row.priority === undefined ? null : Number(row.priority),
+    must_ask: JSON.parse(row.must_ask || "[]"),
+    related_exhibitor_ids: JSON.parse(row.related_exhibitor_ids || "[]"),
+    need_precontact: !!row.need_precontact,
+  };
+}
 
 async function handleApi(request, env, url, ctx) {
   const db = env.DB;
@@ -921,6 +996,99 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
         "content-disposition": "attachment; filename=medtec_team_records.csv",
       },
     });
+  }
+
+  // ---- 論壇議程（sessions）：官網研討會場次，跟展商無關的獨立實體 ----
+  if (path === "/sessions" && method === "GET") {
+    const { results } = await db.prepare("SELECT * FROM sessions ORDER BY date, priority IS NULL, priority").all();
+    return json(results.map(sessionOut));
+  }
+  const sessionMatch = path.match(/^\/sessions\/([\w-]+)$/);
+  if (sessionMatch && method === "PUT") {
+    const sessionId = sessionMatch[1];
+    const existing = await db.prepare("SELECT id FROM sessions WHERE id = ?").bind(sessionId).first();
+    if (!existing) return bad("找不到這個場次", 404);
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+
+    const updates = {};
+    for (const f of SESSION_FIELDS) {
+      if (!(f in body)) continue;
+      let v = body[f];
+      if (SESSION_JSON_FIELDS.includes(f)) v = JSON.stringify(Array.isArray(v) ? v : []);
+      if (f === "need_precontact") v = v ? 1 : 0;
+      if (f === "priority") v = v === "" || v === null || v === undefined ? null : Number(v);
+      updates[f] = v;
+    }
+    if (!Object.keys(updates).length) return bad("沒有可更新的欄位");
+
+    const sets = Object.keys(updates).map((f) => `${f} = ?`).join(", ");
+    await db
+      .prepare(`UPDATE sessions SET ${sets}, updated_by = ?, updated_at = ? WHERE id = ?`)
+      .bind(...Object.values(updates), author, now(), sessionId)
+      .run();
+
+    const detail = Object.entries(updates)
+      .map(([f, v]) => {
+        if (f === "must_ask" || f === "related_exhibitor_ids") return `${SESSION_LABELS[f]} → ${JSON.parse(v).join("、") || "（清空）"}`;
+        if (f === "need_precontact") return `${SESSION_LABELS[f]} → ${v ? "是" : "否"}`;
+        return `${SESSION_LABELS[f] || f} → ${v || "（清空）"}`;
+      })
+      .join("；");
+    await logHistory(db, null, author, "更新議程場次", `${sessionId}：${detail}`);
+
+    const row = await db.prepare("SELECT * FROM sessions WHERE id = ?").bind(sessionId).first();
+    return json(sessionOut(row));
+  }
+
+  // ---- 議程場次的現場紀錄（session_notes，結構比照展商 notes）----
+  if (path === "/session-notes" && method === "GET") {
+    const sessionId = url.searchParams.get("session_id");
+    if (!sessionId) {
+      const { results } = await db.prepare("SELECT * FROM session_notes WHERE deleted = 0 ORDER BY session_id, id DESC").all();
+      return json(results);
+    }
+    const { results } = await db
+      .prepare("SELECT * FROM session_notes WHERE session_id = ? AND deleted = 0 ORDER BY id DESC")
+      .bind(sessionId)
+      .all();
+    return json(results);
+  }
+  if (path === "/session-notes" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const sessionId = (body.session_id || "").trim();
+    const author = (body.author || "").trim();
+    const content = (body.content || "").trim();
+    if (!sessionId || !author || !content) return bad("session_id、author、content 為必填");
+    const type = (body.type || "現場紀錄").trim();
+    const result = await db
+      .prepare("INSERT INTO session_notes (session_id, author, type, content, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(sessionId, author, type, content, now())
+      .run();
+    await logHistory(db, null, author, "議程新增紀錄", `${sessionId}：[${type}] ${content.slice(0, 80)}`);
+    return json({ id: result.meta.last_row_id, ok: true });
+  }
+  const sessionNoteMatch = path.match(/^\/session-notes\/(\d+)$/);
+  if (sessionNoteMatch && method === "PUT") {
+    const id = Number(sessionNoteMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const content = (body.content || "").trim();
+    if (!content) return bad("content 為必填");
+    const old = await db.prepare("SELECT * FROM session_notes WHERE id = ? AND deleted = 0").bind(id).first();
+    if (!old) return bad("找不到這筆紀錄", 404);
+    await db.prepare("UPDATE session_notes SET content = ?, updated_at = ? WHERE id = ?").bind(content, now(), id).run();
+    await logHistory(db, null, author, "議程修改紀錄", `${old.session_id}：原：「${String(old.content).slice(0, 60)}」→ 新：「${content.slice(0, 60)}」`);
+    return json({ ok: true });
+  }
+  if (sessionNoteMatch && method === "DELETE") {
+    const id = Number(sessionNoteMatch[1]);
+    const author = (url.searchParams.get("author") || "").trim() || "匿名";
+    const old = await db.prepare("SELECT * FROM session_notes WHERE id = ? AND deleted = 0").bind(id).first();
+    if (!old) return bad("找不到這筆紀錄", 404);
+    await db.prepare("UPDATE session_notes SET deleted = 1, updated_at = ? WHERE id = ?").bind(now(), id).run();
+    await logHistory(db, null, author, "議程刪除紀錄", `${old.session_id}：[${old.type}] ${String(old.content).slice(0, 80)}`);
+    return json({ ok: true });
   }
 
   // ---- LINE 每日摘要：手動立即測試觸發（不用等排程的晚上 8 點）----

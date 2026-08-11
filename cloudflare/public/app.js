@@ -21,6 +21,7 @@ let VISIT_ONLY = false;
 let KEY_VISIT_MAP = {};     // exhibitorId -> KEY_VISITS 項目
 
 let CURRENT_ID = null;      // detail modal 顯示中的展商
+let SESSIONS = [];          // 論壇議程（官網研討會場次，跟展商無關的獨立實體）
 
 const $ = (id) => document.getElementById(id);
 
@@ -575,6 +576,7 @@ async function init() {
   $("login-overlay").addEventListener("click", (e) => e.stopPropagation());
   closeOnBackdropClick("detail-overlay", closeDetail);
   attachSwipeToClose("detail-overlay", "#detail-modal", closeDetail, "#d-attachments, .att-thumb, .att-video, audio");
+  closeOnBackdropClick("session-overlay", closeSessionDetail);
   $("lightbox-close").onclick = closeLightbox;
   closeOnBackdropClick("lightbox-overlay", closeLightbox);
 
@@ -1069,6 +1071,8 @@ function setActiveViewTab(view) {
   // 分派清單／完成拜訪清單：當成個人代辦頁面，不是在檢索頁上疊一個篩選條件，
   // 所以把逛全部展商用的入口收起來，畫面上看起來就是「我的清單」這一頁
   document.body.classList.toggle("todo-view", view === "assigned" || view === "visited");
+  // 論壇議程：跟展商是不同的實體，切過去時蓋掉整個展商清單畫面
+  document.body.classList.toggle("agenda-view", view === "agenda");
 }
 
 // 設定負責人篩選值；選單裡沒有這個名字就補一個 option，
@@ -1096,9 +1100,15 @@ function setView(view) {
     $("status-filter").value = "已拜訪";
     SORT_KEY = "booth"; SORT_DIR = 1;
     render();
+  } else if (view === "agenda") {
+    loadSessions();
   }
   setActiveViewTab(view);
-  $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+  if (view === "agenda") {
+    $("agenda-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  } else {
+    $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 }
 
 // 我的清單：指派給我的廠商，依攤位排路線
@@ -2758,6 +2768,14 @@ async function openActivity() {
     const exMap = {};
     for (const e of EXHIBITORS) exMap[e.id] = e;
     wrap.innerHTML = rows.map((h) => {
+      // exhibitor_id 是 null 的是論壇議程動態（見 logHistory(db, null, ...)），沒有對應展商可點開
+      if (!h.exhibitor_id) {
+        return `<div class="activity-row">
+          <span class="act-time">${esc(h.created_at)}</span>
+          <strong>${esc(h.author)}</strong>｜${esc(h.action)}｜<span class="act-ex">🗣 論壇議程</span>
+          <div class="act-detail">${esc(h.detail)}</div>
+        </div>`;
+      }
       const ex = exMap[h.exhibitor_id];
       return `<div class="activity-row" data-ex="${esc(h.exhibitor_id)}">
         <span class="act-time">${esc(h.created_at)}</span>
@@ -2765,7 +2783,7 @@ async function openActivity() {
         <div class="act-detail">${esc(h.detail)}</div>
       </div>`;
     }).join("");
-    wrap.querySelectorAll(".activity-row").forEach((row) => {
+    wrap.querySelectorAll(".activity-row[data-ex]").forEach((row) => {
       row.onclick = () => {
         $("activity-overlay").classList.remove("open");
         openDetail(row.dataset.ex);
@@ -2773,6 +2791,220 @@ async function openActivity() {
     });
   } catch (err) {
     wrap.innerHTML = `<p class="sub">載入失敗：${esc(err.message)}</p>`;
+  }
+}
+
+// ---------- 論壇議程（Medtec 官網研討會場次，跟展商無關的獨立實體）----------
+// 場次熱度只反映主辦方公開內容密度，不是市場機會，所以不跟展商自動比對，
+// 團隊只手動填負責人／狀態／必問／技術鏈，屬性沿用展商共筆的欄位風格。
+async function loadSessions() {
+  const wrap = $("agenda-list");
+  if (!API_OK) { wrap.innerHTML = '<p class="sub">共筆後端未連線，無法載入議程。</p>'; return; }
+  wrap.innerHTML = "載入中...";
+  try {
+    SESSIONS = await api("/sessions");
+    renderAgenda();
+  } catch (err) {
+    wrap.innerHTML = `<p class="sub">載入失敗：${esc(err.message)}</p>`;
+  }
+}
+
+function sessionCardHtml(s) {
+  const color = SESSION_STATUS_COLORS[s.status] || "#8a8a82";
+  return `<div class="agenda-card" data-session="${esc(s.id)}">
+    <div class="agenda-card-head">
+      <span class="agenda-place">${esc(s.hall || "")}${s.room ? " · " + esc(s.room) : ""}</span>
+      ${s.priority ? `<span class="agenda-priority">優先 ${esc(s.priority)}</span>` : ""}
+    </div>
+    <h3>${esc(s.title)}</h3>
+    ${s.reason ? `<p class="agenda-reason">${esc(s.reason)}</p>` : ""}
+    <div class="agenda-meta-row">
+      ${s.track ? `<span class="badge">${esc(s.track)}</span>` : ""}
+      <span class="badge status" style="background:${color};border-color:${color};color:#fff;">${esc(s.status)}</span>
+      <span class="badge">${s.owner ? "👤 " + esc(s.owner) : "未指派"}</span>
+    </div>
+  </div>`;
+}
+
+function renderAgenda() {
+  const wrap = $("agenda-list");
+  if (!SESSIONS.length) { wrap.innerHTML = '<p class="sub">目前沒有議程資料。</p>'; return; }
+  const byDate = {};
+  for (const s of SESSIONS) (byDate[s.date || "日期未定"] = byDate[s.date || "日期未定"] || []).push(s);
+  const dates = Object.keys(byDate).sort();
+  wrap.innerHTML = dates.map((d) => `
+    <div class="agenda-day">${esc(d)}</div>
+    <div class="agenda-grid">${byDate[d].map(sessionCardHtml).join("")}</div>
+  `).join("");
+  wrap.querySelectorAll("[data-session]").forEach((card) => {
+    card.onclick = () => openSessionDetail(card.dataset.session);
+  });
+}
+
+async function openSessionDetail(id) {
+  const s = SESSIONS.find((x) => x.id === id);
+  if (!s) return;
+
+  const modal = $("session-modal");
+  modal.innerHTML = `
+    <div class="modal-close-float"><button class="btn small ghost" id="s-close">✕</button></div>
+    <div class="detail-head">
+      <h2>${esc(s.title)}</h2>
+      <p class="sub">${esc(s.date || "")}｜${esc(s.hall || "")}${s.room ? " · " + esc(s.room) : ""}${s.source_url ? ` ｜<a class="directory-link" href="${esc(s.source_url)}" target="_blank" rel="noopener">官網頁面</a>` : ""}</p>
+      ${s.reason ? `<p class="sub">關注原因：${esc(s.reason)}</p>` : ""}
+    </div>
+
+    ${API_OK ? `
+    <hr/>
+    <div class="state-grid" id="s-state-grid">
+      <div>
+        <label>狀態</label>
+        <div class="check-row" id="s-status">
+          ${SESSION_STATUS_OPTIONS.map((v) => `<label class="check-chip ${v === s.status ? "on" : ""}"><input type="radio" name="s-status-${id}" value="${esc(v)}" ${v === s.status ? "checked" : ""}>${esc(v)}</label>`).join("")}
+        </div>
+      </div>
+      <div>
+        <label>負責同事</label>
+        <div class="check-row" id="s-owner">
+          <label class="check-chip ${!s.owner ? "on" : ""}"><input type="radio" name="s-owner-${id}" value="" ${!s.owner ? "checked" : ""}>未指派</label>
+          ${(() => {
+            const names = assignableNames();
+            const current = s.owner ? (names.find((n) => isSameName(n, s.owner)) || s.owner) : "";
+            if (current && !names.includes(current)) names.push(current);
+            return names.map((n) => `<label class="check-chip ${n === current ? "on" : ""}"><input type="radio" name="s-owner-${id}" value="${esc(n)}" ${n === current ? "checked" : ""}>${esc(n)}</label>`).join("");
+          })()}
+        </div>
+      </div>
+      <div>
+        <label>技術鏈／主題</label>
+        <input id="s-track" value="${esc(s.track || "")}" placeholder="材料／製程與製造／品質與法規／R&D／全球市場" />
+      </div>
+      <div>
+        <label>優先序（1 最優先，可留空）</label>
+        <input id="s-priority" type="number" min="1" value="${s.priority ?? ""}" />
+      </div>
+      <div>
+        <label>三個必問（一行一題，到現場要問的問題）</label>
+        <textarea id="s-must-ask" placeholder="例：貴單位的證據能不能同時用在美歐中三個市場？">${esc((s.must_ask || []).join("\n"))}</textarea>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn primary small" id="s-save-fields">儲存欄位</button></div>
+
+    <hr/>
+    <h3 class="section-title">現場紀錄（任何人可新增）</h3>
+    <div class="note-form">
+      <select id="s-note-type">
+        ${SESSION_NOTE_TYPES.map((t) => `<option>${t}</option>`).join("")}
+      </select>
+      <textarea id="s-note-content" placeholder="這場聽到什麼？跟邦特哪個機會有關？Go／Hold／Stop 判定？"></textarea>
+      <button class="btn primary small" id="s-note-add">送出</button>
+    </div>
+    <div id="s-notes" class="notes-list">載入中...</div>
+    ` : `<p class="sub">共筆後端未連線，僅供瀏覽。</p>`}
+  `;
+
+  $("session-overlay").classList.add("open");
+  lockBodyScroll();
+  $("s-close").onclick = closeSessionDetail;
+
+  if (!API_OK) return;
+
+  bindRadioRow("s-status", (value) => saveSessionField(id, { status: value }));
+  bindRadioRow("s-owner", (value) => saveSessionField(id, { owner: value }));
+  $("s-save-fields").onclick = () => {
+    const mustAsk = $("s-must-ask").value.split("\n").map((x) => x.trim()).filter(Boolean);
+    saveSessionField(id, {
+      track: $("s-track").value.trim(),
+      priority: $("s-priority").value,
+      must_ask: mustAsk,
+    });
+  };
+  $("s-note-add").onclick = () => addSessionNote(id);
+  loadSessionNotes(id);
+}
+
+function closeSessionDetail() {
+  $("session-overlay").classList.remove("open");
+  unlockBodyScroll();
+}
+
+async function saveSessionField(id, patch) {
+  if (!API_OK) { showToast("共筆後端未連線，無法儲存"); return; }
+  try {
+    const updated = await api(`/sessions/${id}`, { method: "PUT", body: JSON.stringify({ ...patch, author: me() }) });
+    const idx = SESSIONS.findIndex((x) => x.id === id);
+    if (idx >= 0) SESSIONS[idx] = updated;
+    renderAgenda();
+    showToast("已儲存");
+  } catch (err) {
+    showToast("儲存失敗：" + err.message);
+  }
+}
+
+async function loadSessionNotes(id) {
+  const wrap = $("s-notes");
+  try {
+    const notes = await api(`/session-notes?session_id=${id}`);
+    if (!notes.length) { wrap.innerHTML = '<p class="sub">還沒有任何紀錄，寫下第一筆吧。</p>'; return; }
+    wrap.innerHTML = notes.map((n) => `
+      <div class="note" data-id="${n.id}">
+        <div class="note-meta">
+          <strong>${esc(n.author)}</strong> · ${esc(n.type)} · ${esc(n.created_at)}${n.updated_at ? "（已編輯）" : ""}
+          <span class="note-actions">
+            <a href="#" data-act="edit">編輯</a> <a href="#" data-act="del">刪除</a>
+          </span>
+        </div>
+        <div class="note-content">${esc(n.content)}</div>
+      </div>`).join("");
+    wrap.querySelectorAll("a[data-act]").forEach((a) => {
+      a.onclick = (ev) => {
+        ev.preventDefault();
+        const noteEl = a.closest(".note");
+        const noteId = noteEl.dataset.id;
+        if (a.dataset.act === "edit") editSessionNote(id, noteId, noteEl.querySelector(".note-content").textContent);
+        else deleteSessionNote(id, noteId);
+      };
+    });
+  } catch (err) {
+    wrap.innerHTML = `<p class="sub">（線上紀錄暫時無法載入）</p>`;
+  }
+}
+
+async function addSessionNote(id) {
+  const content = $("s-note-content").value.trim();
+  if (!content) { showToast("請先輸入內容"); return; }
+  try {
+    await api("/session-notes", {
+      method: "POST",
+      body: JSON.stringify({ session_id: id, author: me(), type: $("s-note-type").value, content }),
+    });
+    $("s-note-content").value = "";
+    loadSessionNotes(id);
+    showToast("已新增紀錄");
+  } catch (err) {
+    showToast("新增失敗：" + err.message);
+  }
+}
+
+async function editSessionNote(sessionId, noteId, oldContent) {
+  const content = prompt("修改紀錄內容：", oldContent);
+  if (content === null || !content.trim()) return;
+  try {
+    await api(`/session-notes/${noteId}`, { method: "PUT", body: JSON.stringify({ content: content.trim(), author: me() }) });
+    loadSessionNotes(sessionId);
+    showToast("已修改");
+  } catch (err) {
+    showToast("修改失敗：" + err.message);
+  }
+}
+
+async function deleteSessionNote(sessionId, noteId) {
+  if (!confirm("確定刪除這筆紀錄？")) return;
+  try {
+    await api(`/session-notes/${noteId}?author=${encodeURIComponent(me())}`, { method: "DELETE" });
+    loadSessionNotes(sessionId);
+  } catch (err) {
+    showToast("刪除失敗：" + err.message);
   }
 }
 
