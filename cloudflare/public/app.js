@@ -2955,7 +2955,7 @@ async function openActivity() {
   }
 }
 
-// ---------- 六天行程總覽（資料在 config.js 的 TRIP_DAYS，依簽呈附件行程表）----------
+// ---------- 六天行程總覽（資料在 config.js 的 TRIP_DAYS，依內部行程表）----------
 // 純前端渲染、不打 API，離線一樣看得到。每一天的會談／拜訪對象只要有 ex（展商 id），
 // 就直接連回該展商的詳情頁——現場才不用先回清單搜尋一次才能寫紀錄。
 function itinItemHtml(item) {
