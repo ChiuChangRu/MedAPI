@@ -523,6 +523,35 @@ async function showDataChangelog() {
   `).join("");
 }
 
+// 一次性：匯入昌毅整理的 5 家廠商＋現場必問（見 worker.js /import-changyi-vendors）。
+// 後端用固定 id／內容比對做過 idempotent，這顆按鈕按幾次都不會重複新增，
+// 全隊都匯入完可以整段刪掉（這個函式、下面的按鈕綁定、index.html 的按鈕、
+// worker.js 對應路由）。
+async function importChangyiVendors() {
+  if (!API_OK) { showToast("共筆後端未連線，無法匯入"); return; }
+  if (!confirm("匯入昌毅整理的 5 家廠商＋現場必問？（可重複按，不會重複新增）")) return;
+  try {
+    const result = await api("/import-changyi-vendors", {
+      method: "POST",
+      body: JSON.stringify({ author: me() || "匿名" }),
+    });
+    const parts = [];
+    if (result.vendors_created.length) parts.push(`新增自訂廠商 ${result.vendors_created.length} 家`);
+    if (result.vendors_skipped.length) parts.push(`廠商已存在 ${result.vendors_skipped.length} 家（略過）`);
+    if (result.notes_added.length) parts.push(`新增問題紀錄 ${result.notes_added.length} 筆`);
+    if (result.notes_skipped.length) parts.push(`問題已存在 ${result.notes_skipped.length} 筆（略過）`);
+    showToast(`匯入完成：${parts.join("、") || "沒有變動"}`);
+    // 可能新增了自訂廠商，重新拉一次清單才會馬上出現在頁面上
+    try {
+      const list = await api("/custom-exhibitors");
+      setCustomExhibitors(list);
+      render();
+    } catch { /* 重新整理頁面也看得到，不影響已匯入的結果 */ }
+  } catch (err) {
+    showToast("匯入失敗：" + err.message);
+  }
+}
+
 function forceOffline() {
   if (!me()) { showToast("請先登入再測試離線模式"); return; }
   const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
@@ -640,6 +669,9 @@ async function init() {
   $("btn-data-changelog").onclick = showDataChangelog;
   $("data-changelog-close").onclick = () => $("data-changelog-overlay").classList.remove("open");
   closeOnBackdropClick("data-changelog-overlay", () => $("data-changelog-overlay").classList.remove("open"));
+
+  // 一次性：匯入昌毅整理的 5 家廠商＋現場必問（見 worker.js /import-changyi-vendors）
+  $("btn-import-changyi").onclick = importChangyiVendors;
 
   // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
   $("capture-photo-btn").onclick = openCapturePhotoPopup;
