@@ -206,6 +206,37 @@ body.locked header.top .header-actions {
 body.todo-view #entry-section,
 body.todo-view #recommend-bar { display: none !important; }
 
+/* 論壇議程頁籤：跟展商是不同的實體，切過去時整個蓋掉展商清單相關區塊 */
+body.agenda-view #entry-section,
+body.agenda-view #recommend-bar,
+body.agenda-view .controls,
+body.agenda-view .active-preset,
+body.agenda-view .stats,
+body.agenda-view .grid,
+body.agenda-view #empty { display: none !important; }
+#agenda-section { display: none; }
+body.agenda-view #agenda-section { display: block; }
+
+.agenda-day { margin: 18px 0 8px; font-size: 14px; font-weight: 700; color: var(--text); }
+.agenda-day:first-child { margin-top: 0; }
+.agenda-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.agenda-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--card-bg);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(28, 28, 26, 0.05);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.agenda-card:hover { border-color: var(--accent); box-shadow: 0 2px 5px rgba(28, 28, 26, 0.1); }
+.agenda-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.agenda-card h3 { margin: 4px 0 4px; font-size: 14px; line-height: 1.4; }
+.agenda-priority { font-family: ui-monospace, monospace; font-size: 11px; color: #fff; background: var(--accent); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.agenda-place { font-size: 12px; color: var(--text-muted); }
+.agenda-reason { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 4px 0 6px; }
+.agenda-meta-row { display: flex; flex-wrap: wrap; gap: 5px; }
+
 .entry-block {
   background: var(--card-bg);
   border: 1px solid var(--border);
