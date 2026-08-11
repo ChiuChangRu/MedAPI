@@ -351,6 +351,11 @@ const NEXT_STEP_OPTIONS = ["無需跟進", "索取報價", "安排寄樣", "進�
 // 紀錄類型
 const NOTE_TYPES = ["現場紀錄", "想詢問的問題", "RFQ 需求", "索取資料備註", "後續追蹤"];
 
+// 論壇議程（官網研討會場次）狀態與現場紀錄類型
+const SESSION_STATUS_OPTIONS = ["未排定", "已排定", "已完成"];
+const SESSION_STATUS_COLORS = { "未排定": "#8a8a82", "已排定": "#1d4ed8", "已完成": "#15803d" };
+const SESSION_NOTE_TYPES = ["現場紀錄", "Go／Hold／Stop 判定", "後續追蹤"];
+
 // 照片分類（上傳後點一下自己分類，方便展後整理）
 const ATT_CATEGORIES = ["型錄", "產品", "展場", "設備", "名片", "證書", "合照"];
 
