@@ -79,6 +79,7 @@ const SCHEMA = [
     track TEXT DEFAULT '',
     priority INTEGER,
     reason TEXT DEFAULT '',
+    outline TEXT DEFAULT '',
     must_ask TEXT DEFAULT '[]',
     speaker TEXT DEFAULT '',
     institution TEXT DEFAULT '',
@@ -107,16 +108,43 @@ const SCHEMA = [
 ];
 
 // 種子資料：Medtec China 2026 官網「優先論壇與場次」表（見 REPORT.md 二、三節）。
-// 用 INSERT OR IGNORE，已存在（id 相同）就跳過，不會覆蓋團隊之後編輯的內容。
+// outline（內容大綱）取自 REPORT.md「二、七條可與邦特連結的機會」對應優先專案的
+// 邦特連結／官網訊號／專案目標，只看場次標題看不出內容，補進這段脈絡。
+// 用 INSERT OR IGNORE，已存在（id 相同）就跳過，不會覆蓋團隊之後編輯的內容；
+// outline 另外用 UPDATE 補到既有資料列（見下方 ensureSchema），因為這欄是後補的。
 const SESSION_SEED = [
-  ["f1", "9/1", "N2", "會議室 A", "材料創新／創新醫療材料／零件", "材料", 1, "抗菌、抗發炎、改質塑膠與植入材料", "https://en.medtecchina.com/forum/material/material-1/"],
-  ["f2", "9/2", "N2", "會議室 A", "高分子材料創新應用", "材料", 2, "ePTFE、醫材材料安全與全球法規", "https://en.medtecchina.com/forum/material/material-2/"],
-  ["f3", "9/2", "N3", "會議室 B", "醫療接合與焊接先進技術", "製程與製造", 3, "導管接合、UV 膠、疲勞與品質控制", "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-3/"],
-  ["f4", "9/1", "N4", "會議室 D", "Pack & Ster Hub", "製程與製造", 4, "滅菌製程、屏障包裝、PPWR、低溫電漿", "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-2/"],
-  ["f5", "9/2", "N4", "會議室 E", "產品合規與上市實務", "品質與法規", 5, "FDA、MDR、ISO 10993、UDI、微粒與多市場註冊", "https://en.medtecchina.com/forum/quality-regulatory/quality-regulatory-1/"],
-  ["f6", "9/1", "N4", "會議室 D", "高階醫材數位製造", "製程與製造", 6, "自動化、數位生產與智慧工廠", "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-1/"],
-  ["f7", "9/2", "N2", "會議室 A", "植入與介入醫材前沿設計與轉化", "R&D", 7, "介入產品的新材料與精密製造", "https://en.medtecchina.com/forum/rd/rd-2/"],
-  ["f8", "9/3", "N4", "會議室 C", "醫材企業海外拓展服務", "全球市場", 8, "全球品牌與出海方法", "https://en.medtecchina.com/forum/opportunities/opportunities-2/"],
+  ["f1", "9/1", "N2", "會議室 A", "材料創新／創新醫療材料／零件", "材料", 1,
+    "抗菌、抗發炎、改質塑膠與植入材料",
+    "對應優先機會①長期植入 TPU／矽膠導管＋功能塗層。邦特連結：TPU 體內導管、血管通路、透析、泌尿與經皮引流，官方亦提到長期植入矽膠與 TPU 導管開發。官網訊號：抗菌／抗發炎材料、改質塑膠、ePTFE、ISO 10993、電漿功能塗層。專案目標：建立「材料 × 滅菌 × 塗層」相容性矩陣，選出 1–2 組可進樣品測試的組合。",
+    "https://en.medtecchina.com/forum/material/material-1/"],
+  ["f2", "9/2", "N2", "會議室 A", "高分子材料創新應用", "材料", 2,
+    "ePTFE、醫材材料安全與全球法規",
+    "延續材料主題，聚焦 ePTFE 與醫材材料安全、全球法規，跟優先機會①（材料×滅菌×塗層矩陣）同一批人適合一起聽；材料安全數據能否直接沿用到優先機會⑤（美歐中多市場證據包）也在這場一併確認。",
+    "https://en.medtecchina.com/forum/material/material-2/"],
+  ["f3", "9/2", "N3", "會議室 B", "醫療接合與焊接先進技術", "製程與製造", 3,
+    "導管接合、UV 膠、疲勞與品質控制",
+    "對應優先機會②導管接合、焊接與精密點膠平台。邦特連結：血液迴路管、IV 延長管、球囊、導管組裝與醫療零件。官網訊號：聚合物焊接疲勞、低毒 UV 膠、難黏材料、精密焊接品質控制與精密點膠。專案目標：完成接合製程比較與一個小型 DOE，鎖定可降低漏氣、脫離風險的方案。",
+    "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-3/"],
+  ["f4", "9/1", "N4", "會議室 D", "Pack & Ster Hub", "製程與製造", 4,
+    "滅菌製程、屏障包裝、PPWR、低溫電漿",
+    "對應優先機會④包裝與滅菌相容性工程。邦特連結：血液迴路、呼吸、透析、引流與泌尿等無菌耗材。官網訊號：滅菌製程控制、無菌屏障、PPWR、低溫過氧化氫電漿。專案目標：完成材料、接合、塗層、包材對滅菌方式的變更評估清單，避免新品最後階段才發現不相容。",
+    "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-2/"],
+  ["f5", "9/2", "N4", "會議室 E", "產品合規與上市實務", "品質與法規", 5,
+    "FDA、MDR、ISO 10993、UDI、微粒與多市場註冊",
+    "對應優先機會⑤多市場法規共用證據包。邦特連結：官方指出產品具 CE、製造體系符合 ISO 13485、FDA GMP／QSR，也發展 CDMO。官網訊號：FDA 更新、EU MDR 2026、ISO 10993、UDI、微粒、CRDMO／CTDMO 風險管理與多市場註冊。專案目標：建立美歐中三市場共用證據索引，先套用到 1 個 2026–2028 優先產品。",
+    "https://en.medtecchina.com/forum/quality-regulatory/quality-regulatory-1/"],
+  ["f6", "9/1", "N4", "會議室 D", "高階醫材數位製造", "製程與製造", 6,
+    "自動化、數位生產與智慧工廠",
+    "對應優先機會③自動化組裝＋CCD／3D 視覺＋全程追溯。邦特連結：高量醫療耗材、宜蘭新廠與 CDMO，官方提到導入智慧化與自動化系統。官網訊號：精實數位生產、醫材自動化、智慧工廠、UDI 與完整追溯。專案目標：選 1 個高人工、高檢驗成本站做自動化 PoC，讓量測結果可回寫批次履歷。",
+    "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-1/"],
+  ["f7", "9/2", "N2", "會議室 A", "植入與介入醫材前沿設計與轉化", "R&D", 7,
+    "介入產品的新材料與精密製造",
+    "對應優先機會⑥介入與球囊導管平台化。邦特連結：血管通路、A.V. shunt 擴張球囊、經皮引流、胃腸與泌尿導管。官網訊號：腫瘤介入裝置的新材料與精密製造、定位影像、植入與介入產品轉化。專案目標：選定 1 個導管平台概念，完成材料、押出、編織、Tip、雷射、組裝、檢測的供應鏈可行性圖。",
+    "https://en.medtecchina.com/forum/rd/rd-2/"],
+  ["f8", "9/3", "N4", "會議室 C", "醫材企業海外拓展服務", "全球市場", 8,
+    "全球品牌與出海方法",
+    "對應優先機會⑦海外市場與供應鏈韌性。邦特連結：台灣與菲律賓製造、全球客戶與 CDMO 合作。官網訊號：全球品牌、醫材出海 0→1→1→N、投融資趨勢與全球資本市場。專案目標：在自有品牌、ODM、CDMO 三種模式中選 1 個優先模式與 1 個目標市場，避免展後名單無法轉成商機。",
+    "https://en.medtecchina.com/forum/opportunities/opportunities-2/"],
 ];
 
 // 後續新增的欄位（既有資料表用 ALTER 補上，新表已含在下方 MIGRATIONS 對既有表無害）
@@ -144,6 +172,9 @@ const MIGRATIONS = [
   // page_no 是第幾頁，兩者都空＝不是深度處理產生的附件。
   `ALTER TABLE attachments ADD COLUMN source_pdf_id INTEGER`,
   `ALTER TABLE attachments ADD COLUMN page_no INTEGER`,
+  // sessions 表在議程功能第一版就建立了，outline（內容大綱）是後補欄位，既有的
+  // sessions 資料列要用 ALTER 補上，CREATE TABLE IF NOT EXISTS 對已存在的表無效
+  `ALTER TABLE sessions ADD COLUMN outline TEXT DEFAULT ''`,
 ];
 
 let schemaReady = false;
@@ -159,12 +190,19 @@ async function ensureSchema(db) {
     }
   }
   await db.batch(
-    SESSION_SEED.map(([id, date, hall, room, title, track, priority, reason, source_url]) =>
+    SESSION_SEED.map(([id, date, hall, room, title, track, priority, reason, outline, source_url]) =>
       db
         .prepare(
-          "INSERT OR IGNORE INTO sessions (id, date, hall, room, title, track, priority, reason, source_url, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT OR IGNORE INTO sessions (id, date, hall, room, title, track, priority, reason, outline, source_url, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
-        .bind(id, date, hall, room, title, track, priority, reason, source_url, now())
+        .bind(id, date, hall, room, title, track, priority, reason, outline, source_url, now())
+    )
+  );
+  // outline 是議程功能上線後才補的欄位，第一版已經跑過 seed 的環境不會再進 INSERT OR
+  // IGNORE，用 UPDATE 補齊既有資料列的內容大綱（outline 目前不開放前端編輯，安全覆寫）
+  await db.batch(
+    SESSION_SEED.map(([id, , , , , , , , outline]) =>
+      db.prepare("UPDATE sessions SET outline = ? WHERE id = ?").bind(outline, id)
     )
   );
   schemaReady = true;

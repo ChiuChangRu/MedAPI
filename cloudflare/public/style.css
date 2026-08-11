@@ -235,6 +235,10 @@ body.agenda-view #agenda-section { display: block; }
 .agenda-priority { font-family: ui-monospace, monospace; font-size: 11px; color: #fff; background: var(--accent); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
 .agenda-place { font-size: 12px; color: var(--text-muted); }
 .agenda-reason { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 4px 0 6px; }
+.agenda-outline {
+  font-size: 12px; color: var(--text); line-height: 1.6; margin: 0 0 8px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
 .agenda-meta-row { display: flex; flex-wrap: wrap; gap: 5px; }
 
 .entry-block {
