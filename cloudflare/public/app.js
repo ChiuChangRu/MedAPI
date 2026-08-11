@@ -22,6 +22,13 @@ let VISIT_ONLY = false;
 let KEY_VISIT_MAP = {};     // exhibitorId -> KEY_VISITS 項目
 
 let CURRENT_ID = null;      // detail modal 顯示中的展商
+
+// 官方名冊重新匯入後，有 16 家舊資料不在最新的 881 家名單裡（保留不刪除，
+// 避免既有拜訪紀錄變孤兒，見 data-changelog.json）。「共 N 家展商」這種
+// 對外的總數要算最新名單的 881 家，不是資料庫裡全部 897 筆
+function currentDirectoryCount() {
+  return EXHIBITORS.filter((e) => e.in_directory !== false).length;
+}
 let SESSIONS = [];          // 論壇議程（官網研討會場次，跟展商無關的獨立實體）
 
 const $ = (id) => document.getElementById(id);
@@ -575,7 +582,7 @@ async function init() {
   CATEGORIES = data.categories;
   for (const c of CATEGORIES) CAT_MAP[c.id] = c;
 
-  $("event-sub").textContent = `團隊內部版 · ${data.event.dates} · ${data.event.venue_zh} · 共 ${EXHIBITORS.length} 家展商`;
+  $("event-sub").textContent = `團隊內部版 · ${data.event.dates} · ${data.event.venue_zh} · 共 ${currentDirectoryCount()} 家展商`;
 
   // 舊版可能存了全名（邱長儒）當登入名，開機時自動校正成正式短名，
   // 否則負責人篩選對不上，「分派清單」會靜默失效變成整串 585 家
@@ -1436,7 +1443,7 @@ function render() {
   const kpi = { "已拜訪": 0, "已排定": 0, "需追蹤": 0 };
   for (const s of allStates) if (s.status in kpi) kpi[s.status]++;
   $("stats").textContent =
-    `共 ${EXHIBITORS.length} 家展商，符合條件 ${list.length} 家` +
+    `共 ${currentDirectoryCount()} 家展商，符合條件 ${list.length} 家` +
     ((API_OK || OFFLINE) ? `｜已拜訪 ${kpi["已拜訪"]}・已排定 ${kpi["已排定"]}・需追蹤 ${kpi["需追蹤"]}｜口袋名單 ${pocketCount} 家` : "");
 
   const grid = $("grid");
@@ -1505,7 +1512,7 @@ function renderTable(list) {
       ? `<span class="comp-badge comp-${comp}" title="拜訪成果完整度 ${comp}/4">${comp}/4</span>` : "";
     tr.innerHTML = `
       <td><span class="row-star ${st.pocket ? "on" : ""}" title="口袋名單">${st.pocket ? "★" : "☆"}</span></td>
-      <td class="co"><div class="co-inner"><div class="co-photo-slot">${e.photo ? `<img class="co-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}</div><div class="co-text"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${e.custom ? '<span class="badge custom">自訂</span> ' : ""}${esc(e.name_zh || e.name_en)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}${compBadge}</div><div class="en">${esc(e.name_en || "")}</div></div></div></td>
+      <td class="co"><div class="co-inner"><div class="co-photo-slot">${e.photo ? `<img class="co-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}</div><div class="co-text"><div class="zh">${KEY_VISIT_MAP[e.id] ? '<span class="badge visit">行程</span> ' : ""}${e.custom ? '<span class="badge custom">自訂</span> ' : ""}${e.in_directory === false ? '<span class="badge not-in-directory" title="最新官方名冊已無此公司，保留舊紀錄不刪除">非本屆</span> ' : ""}${esc(e.name_zh || e.name_en)}${hasData ? ' <span class="data-dot" title="已有團隊紀錄"></span>' : ""}${compBadge}</div><div class="en">${esc(e.name_en || "")}</div></div></div></td>
       <td class="booth-cell">${esc(e.booth_no)}</td>
       <td class="col-cat">${esc(cat ? cat.name_zh : e.category)}</td>
       <td class="col-country">${esc(e.country)}</td>
@@ -1575,7 +1582,7 @@ async function openDetail(id) {
       <div class="detail-head-main">
         ${e.photo ? `<img class="detail-photo" src="${esc(e.photo)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
         <div>
-        <h2>${esc(e.name_zh || e.name_en)} ${e.custom ? '<span class="custom-badge" title="團隊自行新增，不是官方展商目錄裡的資料">🆕 自訂</span>' : ""} <button class="star big ${st.pocket ? "on" : ""}" id="d-star">${st.pocket ? "★" : "☆"}</button></h2>
+        <h2>${esc(e.name_zh || e.name_en)} ${e.custom ? '<span class="custom-badge" title="團隊自行新增，不是官方展商目錄裡的資料">🆕 自訂</span>' : ""} ${e.in_directory === false ? '<span class="custom-badge not-in-directory" title="最新官方展商名冊已無此公司，保留舊紀錄不刪除">⚠️ 非本屆</span>' : ""} <button class="star big ${st.pocket ? "on" : ""}" id="d-star">${st.pocket ? "★" : "☆"}</button></h2>
         <p class="sub">${esc(e.name_en || "")}｜${esc(cat ? cat.name_zh : "")}｜攤位 ${esc(e.booth_no)}｜${esc(e.country)}</p>
         <p class="sub link-row">
           ${e.website ? `<a class="directory-link" href="${e.website}" target="_blank" rel="noopener">公司官網</a>` : ""}

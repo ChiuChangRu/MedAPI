@@ -439,6 +439,15 @@ body.agenda-view #agenda-section { display: block; }
   font-weight: 600;
 }
 
+/* 已不在最新官方名冊、但保留舊紀錄不刪除的展商（見 data-changelog.json） */
+.badge.not-in-directory {
+  background: #f4f4f2;
+  color: var(--text-muted);
+  border-color: var(--border);
+  font-weight: 600;
+}
+.custom-badge.not-in-directory { color: var(--text-muted); background: #f4f4f2; border-color: var(--border); }
+
 .visit-info {
   background: #fdf0f1;
   border: 1px solid #f3c2c9;
