@@ -61,6 +61,7 @@
     <button class="view-tab" data-view="search">🔍 檢索清單</button>
     <button class="view-tab" data-view="assigned">📌 分派清單<span class="tab-count" id="tab-count-assigned"></span></button>
     <button class="view-tab" data-view="visited">✅ 完成拜訪清單<span class="tab-count" id="tab-count-visited"></span></button>
+    <button class="view-tab" data-view="agenda">🗣 論壇議程</button>
     <button class="view-tab pdf-tab" id="btn-mylist-pdf" title="產出可列印的分派清單（存成 PDF 當紙本備援，軟體完全失效也知道要去哪）">🖨 PDF</button>
   </div>
 
@@ -74,6 +75,12 @@
   </section>
 
   <div class="recommend-bar" id="recommend-bar" style="display:none;"></div>
+
+  <!-- 論壇議程：官網研討會場次，跟展商目錄是不同的實體，切到這個頁籤時整個取代下面的展商清單 -->
+  <section class="agenda-section" id="agenda-section">
+    <p class="entry-sub">Medtec China 2026 官網技術研討會議程──場次熱度不等於市場機會，僅供展前分工與現場記錄使用。</p>
+    <div class="agenda-list" id="agenda-list">載入中...</div>
+  </section>
 
   <!-- 篩選列 -->
   <div class="controls">
@@ -144,6 +151,13 @@
       <button class="btn ghost" id="add-custom-cancel" type="button">取消</button>
       <button class="btn primary" id="add-custom-save" type="button">新增</button>
     </div>
+  </div>
+</div>
+
+<!-- 議程場次詳情 modal -->
+<div class="overlay" id="session-overlay">
+  <div class="modal wide" id="session-modal">
+    <!-- 動態填入 -->
   </div>
 </div>
 
