@@ -62,6 +62,7 @@
     <button class="view-tab" data-view="assigned">📌 分派清單<span class="tab-count" id="tab-count-assigned"></span></button>
     <button class="view-tab" data-view="visited">✅ 完成拜訪清單<span class="tab-count" id="tab-count-visited"></span></button>
     <button class="view-tab" data-view="agenda">🗣 論壇議程</button>
+    <button class="view-tab" data-view="itinerary">📅 行程總覽</button>
     <button class="view-tab pdf-tab" id="btn-mylist-pdf" title="產出可列印的分派清單（存成 PDF 當紙本備援，軟體完全失效也知道要去哪）">🖨 PDF</button>
   </div>
 
@@ -80,6 +81,15 @@
   <section class="agenda-section" id="agenda-section">
     <p class="entry-sub">Medtec China 2026 官網技術研討會議程──場次熱度不等於市場機會，僅供展前分工與現場記錄使用。</p>
     <div class="agenda-list" id="agenda-list">載入中...</div>
+  </section>
+
+  <!-- 六天行程總覽：資料來自 config.js 的 TRIP_DAYS（依簽呈附件行程表），純前端、離線可看 -->
+  <section class="itinerary-section" id="itinerary-section">
+    <div class="itin-head">
+      <h2>2026 上海 MEDTEC 暨考察行程</h2>
+      <p class="itin-sub">8/31（一）– 9/05（六）　6 天 5 夜　·　依 2026-07-27 簽呈附件行程表</p>
+    </div>
+    <div class="itin-list" id="itinerary-list"></div>
   </section>
 
   <!-- 篩選列 -->

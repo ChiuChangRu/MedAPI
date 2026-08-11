@@ -368,10 +368,14 @@ function renderTripBanner() {
     el.style.display = "block";
   } else if (phase === "during") {
     const today = new Date().toLocaleDateString("sv"); // YYYY-MM-DD（當地時區，滬台同為 +8）
-    const item = TRIP_PLAN.find((p) => p.date === today);
-    if (item) {
-      el.innerHTML = `📍 <strong>今日行程</strong>｜${esc(item.plan)}`;
+    const day = TRIP_DAYS.find((d) => d.date === today);
+    if (day) {
+      // 橫幅只給一行摘要，細節在「📅 行程總覽」頁籤；點橫幅直接跳過去
+      el.innerHTML = `📍 <strong>今日行程</strong>｜${esc(day.kindLabel)}　${esc(day.headline)}` +
+        `　<a href="#" class="trip-more" id="trip-banner-more">看完整行程 →</a>`;
       el.style.display = "block";
+      const more = $("trip-banner-more");
+      if (more) more.onclick = (ev) => { ev.preventDefault(); setView("itinerary"); };
     } else {
       el.style.display = "none";
     }
@@ -1146,6 +1150,8 @@ function setActiveViewTab(view) {
   document.body.classList.toggle("todo-view", view === "assigned" || view === "visited");
   // 論壇議程：跟展商是不同的實體，切過去時蓋掉整個展商清單畫面
   document.body.classList.toggle("agenda-view", view === "agenda");
+  // 行程總覽：同理，切過去時整頁只有六天行程
+  document.body.classList.toggle("itinerary-view", view === "itinerary");
 }
 
 // 設定負責人篩選值；選單裡沒有這個名字就補一個 option，
@@ -1175,10 +1181,14 @@ function setView(view) {
     render();
   } else if (view === "agenda") {
     loadSessions();
+  } else if (view === "itinerary") {
+    renderItinerary();
   }
   setActiveViewTab(view);
   if (view === "agenda") {
     $("agenda-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (view === "itinerary") {
+    $("itinerary-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } else {
     $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
   }
@@ -2931,6 +2941,91 @@ async function openActivity() {
   } catch (err) {
     wrap.innerHTML = `<p class="sub">載入失敗：${esc(err.message)}</p>`;
   }
+}
+
+// ---------- 六天行程總覽（資料在 config.js 的 TRIP_DAYS，依簽呈附件行程表）----------
+// 純前端渲染、不打 API，離線一樣看得到。每一天的會談／拜訪對象只要有 ex（展商 id），
+// 就直接連回該展商的詳情頁——現場才不用先回清單搜尋一次才能寫紀錄。
+function itinItemHtml(item) {
+  const ex = item.ex ? EXHIBITORS.find((e) => e.id === item.ex) : null;
+  const time = item.time ? `<span class="itin-time">${esc(item.time)}</span>` : `<span class="itin-time itin-time-empty">—</span>`;
+  const meta = [
+    item.booth ? `<span class="itin-booth">${esc(item.booth)}</span>` : "",
+    item.sub ? `<span>${esc(item.sub)}</span>` : "",
+    item.addr ? `<span>📍 ${esc(item.addr)}</span>` : "",
+    item.contact ? `<span>☎️ ${esc(item.contact)}</span>` : "",
+  ].filter(Boolean).join("");
+  return `<div class="itin-item">
+    ${time}
+    <div class="itin-body">
+      <div class="itin-title"><span class="itin-icon">${item.icon || "•"}</span>${esc(item.title)}</div>
+      ${meta ? `<div class="itin-meta">${meta}</div>` : ""}
+      ${item.warn ? `<div class="itin-warn">⚠️ ${esc(item.warn)}</div>` : ""}
+      ${ex ? `<a href="#" class="itin-link" data-ex="${esc(ex.id)}">開啟展商頁寫紀錄 →</a>` : ""}
+    </div>
+  </div>`;
+}
+
+function itinHalfHtml(label, items) {
+  if (!items || !items.length) return "";
+  return `<div class="itin-half">
+    <div class="itin-half-label">${label}</div>
+    ${items.map(itinItemHtml).join("")}
+  </div>`;
+}
+
+function renderItinerary() {
+  const wrap = $("itinerary-list");
+  if (!wrap) return;
+  const today = new Date().toLocaleDateString("sv");
+
+  wrap.innerHTML = TRIP_DAYS.map((d, i) => {
+    const isToday = d.date === today;
+    const shuttle = (d.shuttle || []).length ? `
+      <div class="itin-shuttle">
+        <div class="itin-half-label">🚐 宜蘭包車接駁</div>
+        <table class="itin-shuttle-table">
+          <tbody>
+            ${d.shuttle.map((s) => `<tr><td class="itin-time">${esc(s.time)}</td><td class="itin-who">${esc(s.who)}</td><td>${esc(s.at)}</td></tr>`).join("")}
+          </tbody>
+        </table>
+        ${d.shuttleNote ? `<div class="itin-shuttle-note">${esc(d.shuttleNote)}</div>` : ""}
+      </div>` : "";
+
+    // 看展日多給兩個捷徑：直接跳論壇議程、跳自己的分派清單
+    const shortcuts = d.kind === "expo" ? `
+      <div class="itin-shortcuts">
+        <a href="#" class="itin-shortcut" data-go="agenda">🗣 今日論壇議程</a>
+        <a href="#" class="itin-shortcut" data-go="assigned">📌 我的分派清單</a>
+      </div>` : "";
+
+    return `<article class="itin-day itin-${esc(d.kind)}${isToday ? " itin-today" : ""}">
+      <header class="itin-day-head">
+        <div class="itin-daynum">Day ${i + 1}</div>
+        <div class="itin-date">${esc(d.label)}<span class="itin-weekday">（${esc(d.weekday)}）</span></div>
+        <span class="itin-kind">${esc(d.kindLabel)}</span>
+        ${isToday ? '<span class="itin-today-tag">今天</span>' : ""}
+      </header>
+      <div class="itin-headline">${esc(d.headline)}</div>
+      ${shuttle}
+      <div class="itin-halves">
+        ${itinHalfHtml("上午", d.am)}
+        ${itinHalfHtml("下午", d.pm)}
+      </div>
+      ${shortcuts}
+      <footer class="itin-foot">
+        <span>🏨 ${esc(d.stay)}</span>
+        <span>🚗 ${esc(d.transit)}</span>
+      </footer>
+    </article>`;
+  }).join("");
+
+  wrap.querySelectorAll(".itin-link[data-ex]").forEach((a) => {
+    a.onclick = (ev) => { ev.preventDefault(); openDetail(a.dataset.ex); };
+  });
+  wrap.querySelectorAll(".itin-shortcut[data-go]").forEach((a) => {
+    a.onclick = (ev) => { ev.preventDefault(); setView(a.dataset.go); };
+  });
 }
 
 // ---------- 論壇議程（Medtec 官網研討會場次，跟展商無關的獨立實體）----------

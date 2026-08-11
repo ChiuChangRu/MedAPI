@@ -225,6 +225,128 @@ body.agenda-view #empty { display: none !important; }
 #agenda-section { display: none; }
 body.agenda-view #agenda-section { display: block; }
 
+/* ===== 行程總覽頁籤（六天，資料在 config.js 的 TRIP_DAYS）===== */
+body.itinerary-view #entry-section,
+body.itinerary-view #recommend-bar,
+body.itinerary-view .controls,
+body.itinerary-view .active-preset,
+body.itinerary-view .stats,
+body.itinerary-view .grid,
+body.itinerary-view #empty { display: none !important; }
+#itinerary-section { display: none; }
+body.itinerary-view #itinerary-section { display: block; }
+
+.itin-head { margin-bottom: 16px; }
+.itin-head h2 { margin: 0 0 4px; font-size: 19px; font-weight: 700; letter-spacing: 0.01em; }
+.itin-sub { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+.itin-list { display: flex; flex-direction: column; gap: 12px; }
+
+.itin-day {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--text-muted);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(28, 28, 26, 0.05);
+}
+/* 左緣色條分辨當天性質：移動＝灰、看展＝展會紅、拜訪＝藍 */
+.itin-day.itin-move { border-left-color: #8a8a82; }
+.itin-day.itin-expo { border-left-color: var(--accent); }
+.itin-day.itin-visit { border-left-color: #1d4ed8; }
+.itin-day.itin-today { box-shadow: 0 0 0 2px rgba(200, 16, 46, 0.25), 0 2px 6px rgba(28, 28, 26, 0.1); }
+
+.itin-day-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.itin-daynum {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #fff;
+  background: var(--text); border-radius: 4px; padding: 2px 7px;
+}
+.itin-date { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.itin-weekday { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.itin-kind {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--border); background: #f4f4f2; color: var(--text-muted);
+}
+.itin-expo .itin-kind { background: #fdf0f1; border-color: #f3c2c9; color: var(--accent-dark); }
+.itin-visit .itin-kind { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.itin-today-tag {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent); color: #fff;
+}
+.itin-headline { font-size: 13px; color: var(--text); margin: 6px 0 12px; line-height: 1.6; }
+
+/* 上午／下午兩欄，手機自動疊成一欄 */
+.itin-halves { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 640px) { .itin-halves { grid-template-columns: 1fr; } }
+.itin-half { background: #fbfbf9; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.itin-half-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--text-muted); margin-bottom: 8px;
+}
+
+.itin-item { display: flex; gap: 10px; padding: 6px 0; }
+.itin-item + .itin-item { border-top: 1px dashed var(--border); }
+.itin-time {
+  flex: none; width: 44px; font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 12px; font-weight: 600; color: var(--text); padding-top: 1px;
+}
+.itin-time-empty { color: #c8c8c2; font-weight: 400; }
+.itin-body { min-width: 0; flex: 1; }
+.itin-title { font-size: 13px; font-weight: 600; line-height: 1.5; }
+.itin-icon { margin-right: 5px; }
+.itin-meta { font-size: 12px; color: var(--text-muted); line-height: 1.7; margin-top: 2px; }
+.itin-meta > span + span::before { content: "・"; }
+.itin-booth {
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-weight: 600; color: var(--text);
+  border: 1px solid var(--text); border-radius: 4px; padding: 0 5px; margin-right: 2px;
+}
+.itin-meta > .itin-booth + span::before { content: none; }
+.itin-warn { font-size: 12px; color: #b45309; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; padding: 3px 7px; margin-top: 4px; line-height: 1.5; }
+.itin-link { display: inline-block; margin-top: 4px; font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 600; }
+.itin-link:hover { text-decoration: underline; }
+
+/* Day 1 宜蘭包車接駁 */
+.itin-shuttle { background: #fbfbf9; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.itin-shuttle-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.itin-shuttle-table td { padding: 4px 0; border-bottom: 1px dashed var(--border); vertical-align: baseline; }
+.itin-shuttle-table tr:last-child td { border-bottom: none; }
+/* 前兩欄縮到剛好包住內容（width:1% + nowrap 的收縮寫法），
+   否則表格會把時間與姓名撐到兩端、中間拉出一大片空白 */
+.itin-shuttle-table td.itin-time,
+.itin-shuttle-table td.itin-who { width: 1%; white-space: nowrap; padding-right: 16px; }
+.itin-who { font-weight: 600; }
+.itin-shuttle-note { font-size: 12px; color: var(--accent-dark); font-weight: 600; margin-top: 8px; }
+
+.itin-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.itin-shortcut {
+  font-size: 12px; font-weight: 600; text-decoration: none;
+  color: var(--text); background: #fff; border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 5px 10px;
+}
+.itin-shortcut:hover { border-color: var(--accent); color: var(--accent); }
+
+.itin-foot {
+  display: flex; flex-wrap: wrap; gap: 6px 18px;
+  margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted); line-height: 1.6;
+}
+
+/* 行程總覽列印（存 PDF 給主管看）：收起頁首／頁籤，卡片不跨頁切斷 */
+@media print {
+  body.itinerary-view header.top,
+  body.itinerary-view .view-tabs,
+  body.itinerary-view .trip-banner,
+  body.itinerary-view .ai-usage-banner,
+  body.itinerary-view .offline-banner { display: none !important; }
+  .itin-day { break-inside: avoid; page-break-inside: avoid; box-shadow: none; }
+  .itin-shortcuts, .itin-link { display: none !important; }
+}
+
+/* 今日行程橫幅裡的「看完整行程」連結 */
+.trip-more { color: #1e40af; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.trip-more:hover { text-decoration: underline; }
+
 .agenda-day { margin: 18px 0 8px; font-size: 14px; font-weight: 700; color: var(--text); }
 .agenda-day:first-child { margin-top: 0; }
 .agenda-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
