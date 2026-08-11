@@ -697,7 +697,7 @@ async function init() {
     updateOfflineBanner();
     render();
     renderTaskSummary();
-    autoMyList();
+    autoLandingView();
     showToast("行程期間：已自動切換離線版（按 🔄 重新連線可嘗試連網）");
   } else {
     await connectBackend();
@@ -743,7 +743,7 @@ async function connectBackend() {
     updateOfflineBanner();
     render();
     renderTaskSummary();
-    autoMyList();
+    autoLandingView();
     syncPending();
     loadSearchTexts(); // 背景載入照片擷取文字＋錄音逐字稿，搜尋框連照片裡的字都搜得到
   } catch (err) {
@@ -761,7 +761,7 @@ async function connectBackend() {
       renderRecommendBar();
       render();
       renderTaskSummary();
-      autoMyList();
+      autoLandingView();
     }
     updateOfflineBanner();
     if (!me()) $("offline-banner").style.display = "block";
@@ -820,8 +820,8 @@ async function doLogin() {
     updateOfflineBanner();
     render();
     renderTaskSummary();
-    AUTO_LIST_DONE = false; // 剛登入，重新帶一次我的清單
-    autoMyList();
+    AUTO_LANDING_DONE = false; // 剛登入，重新帶一次落地頁
+    autoLandingView();
     syncPending();
   } catch (err) {
     errEl.textContent = err.message;
@@ -1140,8 +1140,8 @@ function refreshPocketBtn() {
   $("btn-visit-filter").classList.toggle("primary", VISIT_ONLY);
 }
 
-// 視圖切換：檢索清單／分派給我／我已完成拜訪
-let CURRENT_VIEW = "search";
+// 視圖切換：行程總覽（首頁）／檢索清單／分派給我／我已完成拜訪／論壇議程
+let CURRENT_VIEW = "itinerary";   // 落地頁＝行程總覽（見 autoLandingView）
 function setActiveViewTab(view) {
   CURRENT_VIEW = view;
   document.querySelectorAll(".view-tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
@@ -1168,7 +1168,9 @@ function setAssigneeFilter(name) {
   }
 }
 
-function setView(view) {
+// scroll=false 用在「開頁自動落地」：頁面本來就在最上面，這時再捲動反而
+// 會把頁首與頁籤推出畫面，看起來像跳掉一截
+function setView(view, { scroll = true } = {}) {
   clearAll();
   if (view === "assigned") {
     setAssigneeFilter(me());
@@ -1185,6 +1187,7 @@ function setView(view) {
     renderItinerary();
   }
   setActiveViewTab(view);
+  if (!scroll) return;
   if (view === "agenda") {
     $("agenda-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (view === "itinerary") {
@@ -1201,14 +1204,16 @@ function openMyList() {
   showToast(`我的清單：指派給 ${me()} 的廠商（依攤位排序）`);
 }
 
-// 登入／開啟後自動帶入我的清單（有指派才套，僅套一次，不蓋掉使用中的篩選）
-let AUTO_LIST_DONE = false;
-function autoMyList() {
-  if (AUTO_LIST_DONE || !me()) return;
-  AUTO_LIST_DONE = true;
-  const hasMine = Object.values(STATE).some((st) => isSameName(st.assignee, me()));
-  setView(hasMine ? "assigned" : "search");
-  if (hasMine) showToast(`已顯示你的名單（${me()}），可切上方頁籤看其他清單`);
+// 登入／開啟後的落地頁＝行程總覽（首頁）。六天行程是全隊每天都要看的東西，
+// 比展商清單更適合當第一眼；有分派給自己的廠商時只用 toast 提示，不強制
+// 把人帶去分派清單（想看自己按頁籤或頁首「我的清單」一下就到）。僅套一次。
+let AUTO_LANDING_DONE = false;
+function autoLandingView() {
+  if (AUTO_LANDING_DONE || !me()) return;
+  AUTO_LANDING_DONE = true;
+  setView("itinerary", { scroll: false });
+  const mine = Object.values(STATE).filter((st) => isSameName(st.assignee, me())).length;
+  if (mine) showToast(`分派給你的有 ${mine} 家，切上方「📌 分派清單」查看`);
 }
 
 // 分派清單 PDF：純前端產生可列印頁（離線也能印），當紙本備援——
