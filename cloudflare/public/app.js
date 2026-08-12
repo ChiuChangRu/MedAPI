@@ -1474,6 +1474,9 @@ function render() {
   $("empty").style.display = list.length ? "none" : "block";
   if (list.length) grid.appendChild(renderTable(list));
   renderTripBanner();
+  // 報告頁仍可能開著廠商詳情並修改負責人／狀態；共筆狀態一變就立即重算七人清單，
+  // 不必切走再切回才看到結果。renderPrepReport 會保留尚未儲存的個人補充草稿。
+  if (document.body.classList.contains("prep-view")) renderPrepReport();
 }
 
 // ---------- 列表（唯一檢視，欄位標題可排序）----------
@@ -1967,6 +1970,7 @@ async function loadNotes(id) {
     const notes = await api(`/notes?exhibitor_id=${id}`);
     const cache = notesCache(); cache[id] = notes; setNotesCache(cache);
     renderQuestions(id, notes);
+    if (document.body.classList.contains("prep-view")) renderPrepReport();
     if (!notes.length && !pendingHtml) { wrap.innerHTML = '<p class="sub">還沒有任何紀錄，寫下第一筆吧。</p>'; return; }
     wrap.innerHTML = pendingHtml + notes.map((n) => `
       <div class="note" data-id="${n.id}">
@@ -2002,6 +2006,7 @@ async function addNote(id) {
     $("d-note-content").value = "";
     renderPendingNotes(id);
     renderQuestions(id, notesCache()[id] || []);
+    if (document.body.classList.contains("prep-view")) renderPrepReport();
     showToast("沒有網路，已存在手機（連線後自動同步）");
     return;
   }
@@ -3040,73 +3045,106 @@ function renderItinerary() {
   });
 }
 
-// ---------- 參訪前報告（分析內容在 config.js 的 PREP_REPORT）----------
-// 每個人的「關注面向」晶片家數即時算出，不寫死數字；點晶片直接套用該篩選，
-// 跟登入後「依你的職掌推薦」那排晶片是同一套 applyXxxPreset 行為。
-function prepChipInfo(chip) {
-  if (chip.k === "dept") {
-    const d = DEPT_PRESETS.find((x) => x.id === chip.id);
-    return { label: d.name, count: EXHIBITORS.filter((e) => deptMatch(d, e)).length, apply: () => applyDeptPreset(chip.id) };
-  }
-  if (chip.k === "line") {
-    const l = PRODUCT_LINES.find((x) => x.id === chip.id);
-    return { label: l.name, count: (LINE_MATCHES[chip.id] || new Set()).size, apply: () => applyLinePreset(chip.id) };
-  }
-  if (chip.k === "tech") {
-    const t = TECH_MAP.find((x) => x.id === chip.id);
-    const count = EXHIBITORS.filter((e) => t.keywords.some((k) => exhibitorText(e).includes(k.toLowerCase()))).length;
-    return { label: t.label, count, tech: true, apply: () => applyTechPreset(chip.id) };
-  }
-  // chip.k === "cats"
-  return {
-    label: chip.label,
-    count: EXHIBITORS.filter((e) => chip.ids.includes(e.category)).length,
-    apply: () => {
-      ACTIVE_DEPT = "";
-      ACTIVE_CATS = new Set(chip.ids);
-      refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
-      $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
-    },
-  };
+// ---------- 參訪前報告（主體＝七人實際指派的廠商）----------
+// 「選了哪些廠商」只認共筆狀態的 assignee；不能再用職掌關鍵字命中的數百家
+// 候選廠商代替。STATE 在連線時來自 D1，離線時來自手機快照，所以不新增 API、
+// 不改資料表，也不破壞展場離線閱讀。
+function prepAssignedExhibitors(name) {
+  return EXHIBITORS
+    .filter((e) => isSameName(getState(e.id).assignee, name))
+    .sort((a, b) => {
+      const byBooth = (a.booth_no || "").localeCompare(b.booth_no || "");
+      return byBooth || (a.name_zh || a.name_en || "").localeCompare(b.name_zh || b.name_en || "");
+    });
+}
+
+function prepQuestionsFor(exhibitorId) {
+  const saved = (notesCache()[exhibitorId] || []).filter((n) => n.type === "想詢問的問題");
+  const pending = getPending().filter((n) => n.exhibitor_id === exhibitorId && n.type === "想詢問的問題");
+  return [...saved, ...pending];
+}
+
+function prepVendorHtml(e) {
+  const st = getState(e.id);
+  const cat = CAT_MAP[e.category];
+  const products = (e.products || []).slice(0, 2);
+  const focus = (st.goal_tags || []).length
+    ? st.goal_tags
+    : products.length ? products : [cat ? cat.name_zh : "尚未填拜訪目標"];
+  const questions = prepQuestionsFor(e.id);
+  const statusColor = STATUS_COLORS[st.status] || "#8a8a82";
+
+  return `<button type="button" class="prep-vendor" data-exhibitor="${esc(e.id)}">
+    <span class="prep-vendor-main">
+      <span class="prep-vendor-name">${esc(e.name_zh || e.name_en)}</span>
+      <span class="prep-vendor-booth">${esc(e.booth_no || "攤位未定")}</span>
+    </span>
+    <span class="prep-vendor-meta">${esc([cat ? cat.name_zh : "", e.country].filter(Boolean).join(" · "))}</span>
+    <span class="prep-vendor-focus">${focus.map((t) => `<span>${esc(t)}</span>`).join("")}</span>
+    <span class="prep-vendor-foot">
+      <span class="prep-status"><i style="background:${statusColor}"></i>${esc(st.status || "未排定")}</span>
+      <span class="prep-question-count${questions.length ? " has-questions" : ""}">${questions.length ? `🙋 ${questions.length} 則代問` : "尚無代問"}</span>
+    </span>
+    ${questions.length ? `<span class="prep-vendor-questions">${questions.map((q) => `<span><strong>${esc(q.author || "匿名")}</strong>：${esc(q.content)}</span>`).join("")}</span>` : ""}
+  </button>`;
 }
 
 let PREP_NOTES = {};   // member -> { content, updated_by, updated_at }
 
 function renderPrepReport() {
   const wrap = $("prep-list");
-  if (!wrap) return;
+  const overview = $("prep-overview");
+  if (!wrap || !overview) return;
+  const drafts = {};
+  for (const name of PREP_ORDER) {
+    const ta = $(`prep-ta-${name}`);
+    if (ta) drafts[name] = ta.value;
+  }
 
-  wrap.innerHTML = PREP_ORDER.map((name) => {
+  const groups = PREP_ORDER.map((name) => ({ name, vendors: prepAssignedExhibitors(name) }));
+  const total = groups.reduce((sum, g) => sum + g.vendors.length, 0);
+  const questions = groups.reduce((sum, g) => sum + g.vendors.reduce((n, e) => n + prepQuestionsFor(e.id).length, 0), 0);
+  const unassignedMembers = groups.filter((g) => !g.vendors.length).length;
+
+  overview.innerHTML = `
+    <div class="prep-kpis">
+      <div><strong>${total}</strong><span>已選／已指派廠商</span></div>
+      <div><strong>${questions}</strong><span>現場代問</span></div>
+      <div><strong>${unassignedMembers}</strong><span>尚無廠商的人</span></div>
+    </div>
+    <div class="prep-member-nav" aria-label="跳到同事">
+      ${groups.map((g) => `<button type="button" data-prep-jump="${esc(g.name)}" class="${isSameName(g.name, me()) ? "is-me" : ""}">${esc(g.name)} <strong>${g.vendors.length}</strong></button>`).join("")}
+    </div>`;
+
+  wrap.innerHTML = groups.map(({ name, vendors }) => {
     const profile = MEMBER_PROFILES.find((p) => p.name === name);
     const rep = PREP_REPORT[name] || {};
     if (!profile) return "";
     const isMe = isSameName(name, me());
-    const chips = profile.chips.map((c, i) => {
-      const info = prepChipInfo(c);
-      return `<span class="prep-chip${info.tech ? " prep-chip-tech" : ""}" data-member="${esc(name)}" data-chip="${i}">${esc(info.label)}<em>${info.count}</em></span>`;
-    }).join("");
+    const statusCounts = STATUS_OPTIONS
+      .map((status) => [status, vendors.filter((e) => getState(e.id).status === status).length])
+      .filter(([, count]) => count);
 
     return `<article class="prep-card${rep.strategic ? " prep-strategic" : ""}${isMe ? " prep-me" : ""}" data-member="${esc(name)}">
       <header class="prep-head">
         <span class="prep-name">${esc(name)}</span>
         <span class="prep-duty">${esc(profile.duty || "")}</span>
+        <span class="prep-count">${vendors.length} 家</span>
         ${isMe ? '<span class="prep-me-tag">你</span>' : ""}
         ${rep.strategic ? '<span class="prep-strategic-tag">五年技術地圖</span>' : ""}
       </header>
-      ${rep.theme ? `<div class="prep-theme">${esc(rep.theme)}</div>` : ""}
-      ${rep.summary ? `<p class="prep-summary">${esc(rep.summary)}</p>` : ""}
-      <div class="prep-chips">${chips}</div>
-      ${(rep.points || []).length ? `
-        <div class="prep-block">
-          <div class="prep-block-label">攤位觀察重點</div>
-          <ul>${rep.points.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
-        </div>` : ""}
-      ${(rep.asks || []).length ? `
-        <div class="prep-block prep-asks">
-          <div class="prep-block-label">現場必問</div>
-          <ul>${rep.asks.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
-        </div>` : ""}
-      ${rep.related ? `<div class="prep-related">🔗 ${esc(rep.related)}</div>` : ""}
+      ${statusCounts.length ? `<div class="prep-status-summary">${statusCounts.map(([status, count]) => `<span><i style="background:${STATUS_COLORS[status] || "#8a8a82"}"></i>${esc(status)} ${count}</span>`).join("")}</div>` : ""}
+      <div class="prep-vendors">
+        ${vendors.length ? vendors.map(prepVendorHtml).join("") : `<div class="prep-empty"><strong>尚未選擇／指派廠商</strong><span>請先到展商詳情設定「負責同事」，這裡會自動更新。</span></div>`}
+      </div>
+      ${(rep.points || []).length || (rep.asks || []).length ? `
+        <details class="prep-guidance">
+          <summary>${rep.theme ? esc(rep.theme) : "依職掌整理的共通檢查清單"}</summary>
+          ${rep.summary ? `<p class="prep-summary">${esc(rep.summary)}</p>` : ""}
+          ${(rep.points || []).length ? `<div class="prep-block"><div class="prep-block-label">共通觀察重點</div><ul>${rep.points.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>` : ""}
+          ${(rep.asks || []).length ? `<div class="prep-block prep-asks"><div class="prep-block-label">共通必問</div><ul>${rep.asks.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>` : ""}
+          ${rep.related ? `<div class="prep-related">🔗 ${esc(rep.related)}</div>` : ""}
+        </details>` : ""}
       <div class="prep-note" data-note="${esc(name)}">
         <div class="prep-block-label">個人補充（可編輯，全隊看得到）</div>
         <textarea class="prep-textarea" id="prep-ta-${esc(name)}" placeholder="出發前想補的重點、要帶的樣品、想額外確認的事…"></textarea>
@@ -3118,18 +3156,22 @@ function renderPrepReport() {
     </article>`;
   }).join("");
 
-  wrap.querySelectorAll(".prep-chip").forEach((el) => {
-    el.onclick = () => {
-      const profile = MEMBER_PROFILES.find((p) => p.name === el.dataset.member);
-      // 先切回檢索視圖再套篩選，否則篩選生效了但展商清單還被這一頁蓋著，看起來像沒反應
-      setActiveViewTab("search");
-      prepChipInfo(profile.chips[Number(el.dataset.chip)]).apply();
-    };
+  overview.querySelectorAll("[data-prep-jump]").forEach((btn) => {
+    btn.onclick = () => [...wrap.querySelectorAll("[data-member]")]
+      .find((card) => card.dataset.member === btn.dataset.prepJump)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  wrap.querySelectorAll("[data-exhibitor]").forEach((btn) => {
+    btn.onclick = () => openDetail(btn.dataset.exhibitor);
   });
   wrap.querySelectorAll(".prep-save").forEach((btn) => {
     btn.onclick = () => savePrepNote(btn.dataset.save, btn);
   });
   paintPrepNotes();
+  for (const [name, content] of Object.entries(drafts)) {
+    const ta = $(`prep-ta-${name}`);
+    if (ta) ta.value = content;
+  }
 }
 
 // 把已載入的內容填回各人的欄位（渲染與載入分開，離線也能先用快取顯示）
