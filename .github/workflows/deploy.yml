@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      # PR #48 的專用安全預覽；命令層仍會把非 main 分支限制為 Version Preview。
+      - agent/prep-report-by-selected-vendors
     paths:
       - "cloudflare/**"
       # 這個 workflow 自己改動時也要跑一次，否則「改好了但沒觸發」會看起來像沒修好
