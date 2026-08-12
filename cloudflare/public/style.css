@@ -405,7 +405,7 @@ body.prep-view #prep-section { display: block; }
 .prep-member-nav button:hover, .prep-member-nav button.is-me { border-color: var(--accent); color: var(--accent); }
 .prep-member-nav button strong { margin-left: 3px; font-variant-numeric: tabular-nums; }
 
-/* 研發策略投影片：四段式拜訪決策鏈 */
+/* 七人策略投影片：四段式拜訪決策鏈 */
 .prep-strategy-deck { margin: 18px 0 24px; }
 .prep-deck-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; margin: 0 2px 10px; }
 .prep-deck-head span { font-size: 18px; font-weight: 800; }
