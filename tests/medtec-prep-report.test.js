@@ -24,12 +24,15 @@ test("參訪前報告以七人實際 assignee 為主，不再用職掌關鍵字�
   assert.match(config, /const PREP_ORDER = \["長儒", "宗銘", "政哲", "昌毅", "帛辰", "柏宏", "灝翰"\]/);
 });
 
-test("參訪前報告保留個人補充與離線可讀資料，不新增寫入路徑", async () => {
+test("參訪前報告保留個人補充、人工修正與離線快取", async () => {
   const app = await read("cloudflare/public/app.js");
 
   assert.match(app, /let PREP_NOTES = \{\}/);
   assert.match(app, /localStorage\.getItem\("medtec_prep_notes"\)/);
   assert.match(app, /api\(`\/prep-notes\/\$\{encodeURIComponent\(name\)\}`/);
+  assert.match(app, /let PREP_OVERRIDES = \{\}/);
+  assert.match(app, /localStorage\.getItem\("medtec_prep_overrides"\)/);
+  assert.match(app, /api\(`\/prep-overrides\/\$\{encodeURIComponent\(memberName\)\}`/);
   assert.match(app, /STATE 在連線時來自 D1，離線時來自手機快照/);
 });
 
@@ -125,6 +128,39 @@ test("個人補充只加強相關廠商，不把名下所有廠商硬連到同�
   assert.deepEqual(Array.from(luer.evidences, (e) => e.vendor.id), ["luer"]);
 });
 
+test("個人補充中的抗菌、親水、抗結痂導管即使尚無廠商也要顯示策略缺口", async () => {
+  const { analyze } = await prepDemandRuntime({
+    prepNotes: { "長儒": { content: "三個重要主題：抗菌導管、親水導管、抗結痂導管" } },
+  });
+  const result = analyze("長儒", []);
+  assert.deepEqual(Array.from(result.demands, (d) => d.topic.code), [
+    "antimicrobial-catheter",
+    "hydrophilic-catheter",
+    "anti-encrustation-catheter",
+  ]);
+  assert.ok(result.demands.every((d) => d.sourceLabel === "個人補充"));
+  assert.ok(result.demands.every((d) => d.needsVendor === true));
+});
+
+test("四階段每欄可人工修正，廠商身分仍沿用實際指派並可還原", async () => {
+  const [app, html, worker] = await Promise.all([
+    read("cloudflare/public/app.js"),
+    read("cloudflare/public/index.html"),
+    read("cloudflare/src/worker.js"),
+  ]);
+  assert.match(html, /id="prep-override-map"/);
+  assert.match(html, /id="prep-override-demands"/);
+  assert.match(html, /id="prep-override-vendors"/);
+  assert.match(html, /id="prep-override-landing"/);
+  assert.match(app, /function openPrepOverrideEditor\(memberName\)/);
+  assert.match(app, /data-override-vendor=/, "每家實際指派廠商都可修正其需求對應");
+  assert.match(app, /function resetPrepOverride\(btn\)/);
+  assert.match(worker, /CREATE TABLE IF NOT EXISTS prep_overrides/);
+  assert.match(worker, /path === "\/prep-overrides" && method === "GET"/);
+  assert.match(worker, /prepOverrideMatch && method === "PUT"/);
+  assert.match(worker, /prepOverrideMatch && method === "DELETE"/);
+});
+
 test("政哲無本人留言時，仍可依已選廠商顯示 EO／檢測與 CCD 設備推定", async () => {
   const { analyze } = await prepDemandRuntime();
   const result = analyze("政哲", [
@@ -158,7 +194,7 @@ test("四階段圖卡明確分成研發策略地圖／生產問題、訴求、�
   assert.match(app, /依選商推定/);
   assert.match(app, /data-strategy-exhibitor=/, "投影片內的廠商應能直接開啟詳情");
   assert.match(app, /rankedVendors\.map\(\(\{ vendor, matches \}\)/, "所有已選廠商都要逐家列出");
-  assert.match(app, /matches\.length \? "is-matched" : "is-pending"/);
+  assert.match(app, /matches\.length \|\| isManual \? "is-matched" : "is-pending"/);
   assert.match(app, /選商目的待補/);
   assert.match(style, /\.prep-strategy-slide/);
   assert.match(style, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);

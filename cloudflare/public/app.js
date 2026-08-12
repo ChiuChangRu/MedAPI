@@ -644,6 +644,7 @@ async function init() {
   $("btn-data-changelog").onclick = showDataChangelog;
   $("data-changelog-close").onclick = () => $("data-changelog-overlay").classList.remove("open");
   closeOnBackdropClick("data-changelog-overlay", () => $("data-changelog-overlay").classList.remove("open"));
+  closeOnBackdropClick("prep-override-overlay", closePrepOverrideEditor);
 
 
   // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
@@ -1190,6 +1191,7 @@ function setView(view, { scroll = true } = {}) {
   } else if (view === "prep") {
     renderPrepReport();
     loadPrepNotes();
+    loadPrepOverrides();
   }
   setActiveViewTab(view);
   if (!scroll) return;
@@ -3114,6 +3116,27 @@ const PREP_DEMAND_CATALOG = [
     landing: "帶實際樣品試測，完成測項／法規／精度／報價比較與設備驗收表。",
   },
   {
+    code: "antimicrobial-catheter",
+    label: "抗菌導管",
+    keywords: ["抗菌導管", "抗菌 cvc", "抗菌／抗沾附", "抗菌抗沾附", "antimicrobial catheter", "antibacterial catheter"],
+    demand: "尋找可用於 TPU／矽膠導管的非抗生素、固定型或低釋放抗菌技術，確認滅菌後效力與保存期。",
+    landing: "取得塗層／材料樣品及效力方法，以附著、EO 後效力、生物相容性與保存期設立技術 Gate。",
+  },
+  {
+    code: "hydrophilic-catheter",
+    label: "親水導管",
+    keywords: ["親水導管", "亲水导管", "濕態低摩擦", "湿态低摩擦", "double j", "pigtail stent", "pigtail drainage", "hydrophilic catheter"],
+    demand: "建立 Double J、Pigtail 支架／引流與 TPU 導管的親水低摩擦方案，確認耐磨、低顆粒與浸泡後性能。",
+    landing: "以實際導管基材試塗，完成濕態摩擦、耐磨脫落、浸泡耐久、微粒與生物相容性比較。",
+  },
+  {
+    code: "anti-encrustation-catheter",
+    label: "抗結痂導管",
+    keywords: ["抗結痂導管", "抗结痂导管", "抗結痂", "抗结痂", "tmao", "sbma", "抗污導管", "抗污涂层", "anti-encrustation"],
+    demand: "評估泌尿導管／輸尿管支架的抗結痂與抗污塗層，確認內外腔膜厚、彎曲耐久及滅菌相容性。",
+    landing: "先以實際管件完成附著、膜厚均勻、彎曲裂紋、滅菌後耐久與殘留風險，再進結痂模型驗證。",
+  },
+  {
     code: "coating-liquid",
     label: "披膜液供應商",
     keywords: ["披膜液", "塗層液", "涂层液", "親水披膜", "親水塗層", "亲水涂层", "hydrophilic coating"],
@@ -3261,10 +3284,23 @@ function prepEvidenceExcerpt(evidences) {
 }
 
 function prepMemberDemandAnalysis(memberName, vendors) {
+  const supplement = String((PREP_NOTES[memberName] || {}).content || "").trim();
   const demands = PREP_DEMAND_CATALOG.map((topic) => {
     const evidences = vendors
       .map((vendor) => prepDemandEvidenceFor(memberName, vendor, topic))
       .filter(Boolean);
+    // 個人補充本身就是明確需求。即使目前還沒有任何已選廠商能對應，也必須
+    // 顯示成「待補廠商」的策略缺口，不能因選商尚未完成而整個消失。
+    if (!evidences.length && prepDemandMatchesText(topic, supplement)) {
+      return {
+        topic,
+        evidences: [],
+        source: "direct",
+        sourceLabel: "個人補充",
+        excerpt: prepNoteExcerpt(supplement, 92),
+        needsVendor: true,
+      };
+    }
     if (!evidences.length) return null;
     return {
       topic,
@@ -3287,7 +3323,38 @@ function prepMemberDemandAnalysis(memberName, vendors) {
   return { demands, rankedVendors };
 }
 
+function prepOverrideContent(memberName) {
+  const content = (PREP_OVERRIDES[memberName] || {}).content;
+  return content && typeof content === "object" && !Array.isArray(content) ? content : {};
+}
+
+function prepAutoEditValues(memberName, vendors, analysis = prepMemberDemandAnalysis(memberName, vendors)) {
+  return {
+    map: analysis.demands.map((demand) => demand.topic.label),
+    demands: analysis.demands.map((demand) => demand.topic.demand),
+    landing: analysis.demands.map((demand) => `${demand.topic.label}｜${demand.topic.landing}`),
+    vendors: Object.fromEntries(analysis.rankedVendors.map(({ vendor, matches }) => [
+      vendor.id,
+      matches.length ? matches.map((item) => item.demand.topic.label).join(" · ") : "選商目的待補",
+    ])),
+  };
+}
+
+function prepOverrideHasContent(memberName) {
+  const content = prepOverrideContent(memberName);
+  return ["map", "demands", "landing"].some((key) => Object.prototype.hasOwnProperty.call(content, key)) ||
+    !!Object.keys(content.vendors || {}).length;
+}
+
 function prepDemandHtml(memberName, vendor) {
+  const manualVendorMap = prepOverrideContent(memberName).vendors || {};
+  if (Object.prototype.hasOwnProperty.call(manualVendorMap, vendor.id)) {
+    return `<span class="prep-rd prep-rd-match prep-rd-manual">
+      <span class="prep-rd-title">人工修正的需求對應</span>
+      <span class="prep-rd-topics"><span>${esc(manualVendorMap[vendor.id])}</span></span>
+      <span class="prep-rd-basis"><strong>來源：</strong>團隊人工修正</span>
+    </span>`;
+  }
   const matches = PREP_DEMAND_CATALOG
     .map((topic) => prepDemandEvidenceFor(memberName, vendor, topic))
     .filter(Boolean);
@@ -3307,11 +3374,27 @@ function prepDemandHtml(memberName, vendor) {
 function prepStrategySlideHtml(memberName, vendors, index) {
   const profile = MEMBER_PROFILES.find((p) => p.name === memberName);
   if (!profile) return "";
-  const { demands, rankedVendors } = prepMemberDemandAnalysis(memberName, vendors);
+  const analysis = prepMemberDemandAnalysis(memberName, vendors);
+  const { demands, rankedVendors } = analysis;
+  const auto = prepAutoEditValues(memberName, vendors, analysis);
+  const override = prepOverrideContent(memberName);
+  const overrideRecord = PREP_OVERRIDES[memberName] || {};
+  const hasManual = prepOverrideHasContent(memberName);
+  const mapItems = Array.isArray(override.map) ? override.map : auto.map;
+  const demandItems = Array.isArray(override.demands) ? override.demands : auto.demands;
+  const landingItems = Array.isArray(override.landing) ? override.landing : auto.landing;
+  const manualMap = Array.isArray(override.map);
+  const manualDemands = Array.isArray(override.demands);
+  const manualLanding = Array.isArray(override.landing);
+  const manualVendors = override.vendors || {};
   const isProduction = PREP_PRODUCTION_MEMBERS.has(memberName);
   const mapLabel = isProduction ? "生產問題" : "研發策略地圖";
   const directCount = demands.filter((d) => d.source !== "inferred").length;
   const inferredCount = demands.filter((d) => d.source === "inferred").length;
+  const manualVendorText = Object.values(manualVendors).join(" ");
+  const missingVendorTopics = demands
+    .filter((demand) => demand.needsVendor && !prepDemandMatchesText(demand.topic, manualVendorText))
+    .map((demand) => demand.topic.label);
 
   return `<article class="prep-strategy-slide" data-strategy-member="${esc(memberName)}">
     <header class="prep-slide-head">
@@ -3320,36 +3403,54 @@ function prepStrategySlideHtml(memberName, vendors, index) {
         <strong>${esc(memberName)}</strong>
         <span>${esc(profile.duty || "")}</span>
       </span>
-      <span class="prep-slide-role${inferredCount && !directCount ? " is-inferred" : ""}">${esc(isProduction ? "生產單位" : "研發單位")}</span>
+      <span class="prep-slide-actions">
+        <span class="prep-slide-role${inferredCount && !directCount ? " is-inferred" : ""}">${esc(isProduction ? "生產單位" : "研發單位")}</span>
+        ${hasManual ? `<span class="prep-slide-manual" title="${esc(`最後編輯：${overrideRecord.updated_by || "匿名"} ${overrideRecord.updated_at || ""}`)}">人工修正</span>` : ""}
+        <button type="button" class="prep-slide-edit" data-prep-override-edit="${esc(memberName)}">✎ 修正</button>
+      </span>
     </header>
-    <p class="prep-slide-mission">依系統內的本人留言、訴求欄、觀展目標與 ${vendors.length} 家已選廠商歸納。${inferredCount ? `其中 ${inferredCount} 項只有選商證據，已標示為推定。` : ""}</p>
+    <p class="prep-slide-mission">依系統內的本人留言、個人補充、訴求欄與 ${vendors.length} 家已選廠商歸納。${inferredCount ? `其中 ${inferredCount} 項只有選商證據，已標示為推定。` : ""}${hasManual ? " 團隊人工改過的欄位已另外標示。" : ""}</p>
     <div class="prep-slide-flow" aria-label="${esc(memberName)}的需求落地路徑">
       <section class="prep-slide-step prep-slide-map">
         <span class="prep-step-label"><i>1</i>${esc(mapLabel)}</span>
-        ${demands.length ? `<div class="prep-slide-topics">
-          ${demands.map((demand) => `<span class="is-${demand.source}"><strong>${demand.source === "inferred" ? "推定" : "有據"}</strong>${esc(demand.topic.label)}</span>`).join("")}
+        ${mapItems.length ? `<div class="prep-slide-topics">
+          ${manualMap
+            ? mapItems.map((item) => `<span class="is-manual"><strong>人工</strong>${esc(item)}</span>`).join("")
+            : demands.map((demand) => `<span class="is-${demand.source}"><strong>${demand.source === "inferred" ? "推定" : "有據"}</strong>${esc(demand.topic.label)}</span>`).join("")}
         </div>` : `<p class="prep-slide-empty">已有選商，但系統資料尚不足以歸納問題。</p>`}
       </section>
       <section class="prep-slide-step prep-slide-demands">
-        <span class="prep-step-label"><i>2</i>訴求 <small>${demands.length} 項</small></span>
-        ${demands.length ? `<div class="prep-slide-demand-list">${demands.map((demand) => `
-          <div class="prep-slide-demand is-${demand.source}">
-            <strong>${esc(demand.topic.demand)}</strong>
-            <span><em>${esc(demand.sourceLabel)}</em>${esc(demand.excerpt)}</span>
-          </div>`).join("")}</div>` : `<p class="prep-slide-empty">請在廠商留言或訴求欄補上「要解決什麼」。</p>`}
+        <span class="prep-step-label"><i>2</i>訴求 <small>${demandItems.length} 項</small></span>
+        ${demandItems.length ? `<div class="prep-slide-demand-list">${manualDemands
+          ? demandItems.map((item) => `<div class="prep-slide-demand is-manual"><strong>${esc(item)}</strong><span><em>人工修正</em>由團隊確認</span></div>`).join("")
+          : demands.map((demand) => `
+            <div class="prep-slide-demand is-${demand.source}">
+              <strong>${esc(demand.topic.demand)}</strong>
+              <span><em>${esc(demand.sourceLabel)}</em>${esc(demand.excerpt)}</span>
+            </div>`).join("")}</div>` : `<p class="prep-slide-empty">請在廠商留言或訴求欄補上「要解決什麼」。</p>`}
       </section>
       <section class="prep-slide-step prep-slide-vendors">
         <span class="prep-step-label"><i>3</i>對應廠商 <small>已選 ${rankedVendors.length} 家</small></span>
         ${rankedVendors.length ? `<div class="prep-slide-vendor-list">
-          ${rankedVendors.map(({ vendor, matches }) => `<button type="button" class="${matches.length ? "is-matched" : "is-pending"}" data-strategy-exhibitor="${esc(vendor.id)}">
+          ${rankedVendors.map(({ vendor, matches }) => {
+            const isManual = Object.prototype.hasOwnProperty.call(manualVendors, vendor.id);
+            const mapping = isManual ? manualVendors[vendor.id] : auto.vendors[vendor.id];
+            return `<button type="button" class="${matches.length || isManual ? "is-matched" : "is-pending"}${isManual ? " is-manual" : ""}" data-strategy-exhibitor="${esc(vendor.id)}">
             <span><strong>${esc(vendor.name_zh || vendor.name_en)}</strong><small>${esc([vendor.booth_no || "攤位未定", ...(getState(vendor.id).goal_tags || [])].join(" · "))}</small></span>
-            <em>${matches.length ? matches.map((item) => item.demand.topic.label).join(" · ") : "選商目的待補"}</em>
-          </button>`).join("")}
+            <em>${isManual ? `<b>人工</b> ${esc(mapping)}` : esc(mapping)}</em>
+          </button>`;
+          }).join("")}
         </div>` : `<p class="prep-slide-empty">尚未選擇／指派廠商。</p>`}
+        ${missingVendorTopics.length ? `<p class="prep-slide-unmapped"><strong>尚缺對應廠商：</strong>${esc(missingVendorTopics.join("、"))}</p>` : ""}
       </section>
       <section class="prep-slide-step prep-slide-landing">
         <span class="prep-step-label"><i>4</i>落地</span>
-        ${demands.length ? `<div class="prep-slide-landing-list">${demands.map((demand) => `<div><strong>${esc(demand.topic.label)}</strong><span>${esc(demand.topic.landing)}</span></div>`).join("")}</div>` : `<p class="prep-slide-empty">先補選商目的與驗收條件，再排定後續行動。</p>`}
+        ${landingItems.length ? `<div class="prep-slide-landing-list">${manualLanding
+          ? landingItems.map((item) => {
+            const [label, ...detail] = String(item).split("｜");
+            return `<div class="is-manual"><strong><em>人工</em>${esc(detail.length ? label : "人工落地")}</strong><span>${esc(detail.length ? detail.join("｜") : label)}</span></div>`;
+          }).join("")
+          : demands.map((demand) => `<div><strong>${esc(demand.topic.label)}</strong><span>${esc(demand.topic.landing)}</span></div>`).join("")}</div>` : `<p class="prep-slide-empty">先補選商目的與驗收條件，再排定後續行動。</p>`}
       </section>
     </div>
   </article>`;
@@ -3388,7 +3489,9 @@ function prepVendorHtml(e, memberName = "") {
   </button>`;
 }
 
-let PREP_NOTES = {};   // member -> { content, updated_by, updated_at }
+let PREP_NOTES = {};       // member -> { content, updated_by, updated_at }
+let PREP_OVERRIDES = {};   // member -> { content: { map, demands, vendors, landing }, updated_by, updated_at }
+let PREP_OVERRIDE_EDITING = "";
 
 function renderPrepReport() {
   const wrap = $("prep-list");
@@ -3480,6 +3583,9 @@ function renderPrepReport() {
   strategyDeck.querySelectorAll("[data-strategy-exhibitor]").forEach((btn) => {
     btn.onclick = () => openDetail(btn.dataset.strategyExhibitor);
   });
+  strategyDeck.querySelectorAll("[data-prep-override-edit]").forEach((btn) => {
+    btn.onclick = () => openPrepOverrideEditor(btn.dataset.prepOverrideEdit);
+  });
   wrap.querySelectorAll(".prep-save").forEach((btn) => {
     btn.onclick = () => savePrepNote(btn.dataset.save, btn);
   });
@@ -3510,7 +3616,9 @@ async function loadPrepNotes() {
   try {
     PREP_NOTES = await api("/prep-notes");
     localStorage.setItem("medtec_prep_notes", JSON.stringify(PREP_NOTES));
-    paintPrepNotes();
+    // 個人補充也會參與四階段歸納，載入伺服器版本後必須重算圖卡。
+    if (document.body.classList.contains("prep-view")) renderPrepReport();
+    else paintPrepNotes();
   } catch { /* 讀不到就維持快取內容，不擋畫面 */ }
 }
 
@@ -3533,6 +3641,120 @@ async function savePrepNote(name, btn) {
   } finally {
     btn.disabled = false;
   }
+}
+
+function prepNormalizeLines(value) {
+  return String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function prepSameLines(a, b) {
+  return JSON.stringify(a || []) === JSON.stringify(b || []);
+}
+
+function closePrepOverrideEditor() {
+  $("prep-override-overlay")?.classList.remove("open");
+  PREP_OVERRIDE_EDITING = "";
+}
+
+function openPrepOverrideEditor(memberName) {
+  if (!API_OK) { showToast("共筆後端未連線，無法儲存人工修正"); return; }
+  const vendors = prepAssignedExhibitors(memberName);
+  const analysis = prepMemberDemandAnalysis(memberName, vendors);
+  const auto = prepAutoEditValues(memberName, vendors, analysis);
+  const override = prepOverrideContent(memberName);
+  const record = PREP_OVERRIDES[memberName] || {};
+  PREP_OVERRIDE_EDITING = memberName;
+  $("prep-override-title").textContent = `${memberName}｜人工修正四階段圖卡`;
+  $("prep-override-meta").textContent = record.updated_at
+    ? `目前版本：${record.updated_by || "匿名"}　${record.updated_at}`
+    : "目前使用系統自動分析，尚無人工覆寫。";
+  $("prep-override-map").value = (override.map || auto.map).join("\n");
+  $("prep-override-demands").value = (override.demands || auto.demands).join("\n");
+  $("prep-override-landing").value = (override.landing || auto.landing).join("\n");
+  $("prep-override-vendors").innerHTML = vendors.length
+    ? vendors.map((vendor) => {
+      const mapping = Object.prototype.hasOwnProperty.call(override.vendors || {}, vendor.id)
+        ? override.vendors[vendor.id] : auto.vendors[vendor.id];
+      return `<label class="prep-override-vendor-row">
+        <span><strong>${esc(vendor.name_zh || vendor.name_en)}</strong><small>${esc(vendor.booth_no || "攤位未定")}</small></span>
+        <input type="text" value="${esc(mapping || "")}" data-override-vendor="${esc(vendor.id)}" aria-label="${esc(vendor.name_zh || vendor.name_en)}對應訴求" />
+      </label>`;
+    }).join("")
+    : '<p class="sub">尚未選擇／指派廠商；先保留策略、訴求與落地修正。</p>';
+  $("prep-override-close").onclick = closePrepOverrideEditor;
+  $("prep-override-save").onclick = () => savePrepOverride($("prep-override-save"));
+  $("prep-override-reset").onclick = () => resetPrepOverride($("prep-override-reset"));
+  $("prep-override-overlay").classList.add("open");
+}
+
+async function savePrepOverride(btn) {
+  const memberName = PREP_OVERRIDE_EDITING;
+  if (!memberName || !API_OK) return;
+  const vendors = prepAssignedExhibitors(memberName);
+  const auto = prepAutoEditValues(memberName, vendors);
+  const entered = {
+    map: prepNormalizeLines($("prep-override-map").value),
+    demands: prepNormalizeLines($("prep-override-demands").value),
+    landing: prepNormalizeLines($("prep-override-landing").value),
+    vendors: {},
+  };
+  const content = {};
+  if (!prepSameLines(entered.map, auto.map)) content.map = entered.map;
+  if (!prepSameLines(entered.demands, auto.demands)) content.demands = entered.demands;
+  if (!prepSameLines(entered.landing, auto.landing)) content.landing = entered.landing;
+  $("prep-override-vendors").querySelectorAll("[data-override-vendor]").forEach((input) => {
+    const value = input.value.trim() || "選商目的待補";
+    if (value !== (auto.vendors[input.dataset.overrideVendor] || "")) {
+      entered.vendors[input.dataset.overrideVendor] = value;
+    }
+  });
+  if (Object.keys(entered.vendors).length) content.vendors = entered.vendors;
+  btn.disabled = true;
+  try {
+    const saved = await api(`/prep-overrides/${encodeURIComponent(memberName)}`, {
+      method: "PUT",
+      body: JSON.stringify({ content, author: me() || "匿名" }),
+    });
+    PREP_OVERRIDES[memberName] = { content: saved.content || {}, updated_by: saved.updated_by, updated_at: saved.updated_at };
+    localStorage.setItem("medtec_prep_overrides", JSON.stringify(PREP_OVERRIDES));
+    closePrepOverrideEditor();
+    renderPrepReport();
+    showToast(Object.keys(content).length ? `已儲存 ${memberName} 的人工修正` : `${memberName} 與自動分析相同，未保留多餘覆寫`);
+  } catch (err) {
+    showToast("儲存失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function resetPrepOverride(btn) {
+  const memberName = PREP_OVERRIDE_EDITING;
+  if (!memberName || !API_OK) return;
+  if (!confirm(`要清除 ${memberName} 的人工修正，改回系統自動分析嗎？`)) return;
+  btn.disabled = true;
+  try {
+    await api(`/prep-overrides/${encodeURIComponent(memberName)}?author=${encodeURIComponent(me() || "匿名")}`, { method: "DELETE" });
+    delete PREP_OVERRIDES[memberName];
+    localStorage.setItem("medtec_prep_overrides", JSON.stringify(PREP_OVERRIDES));
+    closePrepOverrideEditor();
+    renderPrepReport();
+    showToast(`已將 ${memberName} 還原為自動分析`);
+  } catch (err) {
+    showToast("還原失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadPrepOverrides() {
+  try { PREP_OVERRIDES = JSON.parse(localStorage.getItem("medtec_prep_overrides") || "{}"); } catch { PREP_OVERRIDES = {}; }
+  if (document.body.classList.contains("prep-view")) renderPrepReport();
+  if (!API_OK) return;
+  try {
+    PREP_OVERRIDES = await api("/prep-overrides");
+    localStorage.setItem("medtec_prep_overrides", JSON.stringify(PREP_OVERRIDES));
+    if (document.body.classList.contains("prep-view")) renderPrepReport();
+  } catch { /* 讀不到就維持快取內容，不擋畫面 */ }
 }
 
 // ---------- 論壇議程（Medtec 官網研討會場次，跟展商無關的獨立實體）----------
