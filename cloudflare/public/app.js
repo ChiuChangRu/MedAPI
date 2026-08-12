@@ -3064,6 +3064,23 @@ function prepQuestionsFor(exhibitorId) {
   return [...saved, ...pending];
 }
 
+// 報告卡片只摘出非「代問」的團隊 Note；代問已經有自己的黃色區塊，重複顯示會
+// 把真正的拜訪線索淹沒。保留最近兩則、每則擷取第一段精華，完整內容仍可點廠商查看。
+// notesCache 與 getPending 分別涵蓋已同步快照及手機待同步紀錄，斷網時也不漏掉剛寫的 Note。
+function prepNoteExcerpt(content, limit = 120) {
+  const text = String(content || "").replace(/\s+/g, " ").trim();
+  if (text.length <= limit) return text;
+  return text.slice(0, limit).trimEnd() + "…";
+}
+
+function prepNoteHighlightsFor(exhibitorId) {
+  const isHighlight = (n) => n.type !== "想詢問的問題" && String(n.content || "").trim();
+  const saved = (notesCache()[exhibitorId] || []).filter(isHighlight);
+  const pending = getPending().filter((n) => n.exhibitor_id === exhibitorId && isHighlight(n));
+  return [...saved, ...pending]
+    .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
+}
+
 function prepVendorHtml(e) {
   const st = getState(e.id);
   const cat = CAT_MAP[e.category];
@@ -3072,6 +3089,8 @@ function prepVendorHtml(e) {
     ? st.goal_tags
     : products.length ? products : [cat ? cat.name_zh : "尚未填拜訪目標"];
   const questions = prepQuestionsFor(e.id);
+  const noteHighlights = prepNoteHighlightsFor(e.id);
+  const visibleHighlights = noteHighlights.slice(0, 2);
   const statusColor = STATUS_COLORS[st.status] || "#8a8a82";
 
   return `<button type="button" class="prep-vendor" data-exhibitor="${esc(e.id)}">
@@ -3083,8 +3102,13 @@ function prepVendorHtml(e) {
     <span class="prep-vendor-focus">${focus.map((t) => `<span>${esc(t)}</span>`).join("")}</span>
     <span class="prep-vendor-foot">
       <span class="prep-status"><i style="background:${statusColor}"></i>${esc(st.status || "未排定")}</span>
+      <span class="prep-note-count${noteHighlights.length ? " has-notes" : ""}">${noteHighlights.length ? `📝 ${noteHighlights.length} 則 Note` : "尚無 Note"}</span>
       <span class="prep-question-count${questions.length ? " has-questions" : ""}">${questions.length ? `🙋 ${questions.length} 則代問` : "尚無代問"}</span>
     </span>
+    ${visibleHighlights.length ? `<span class="prep-vendor-highlights">
+      <span class="prep-highlights-title">Note 精華${noteHighlights.length > visibleHighlights.length ? `（最近 ${visibleHighlights.length}／${noteHighlights.length} 則）` : ""}</span>
+      ${visibleHighlights.map((n) => `<span class="prep-highlight"><strong>${esc(n.author || "匿名")} · ${esc(n.type || "現場紀錄")}</strong><span>${esc(prepNoteExcerpt(n.content))}</span></span>`).join("")}
+    </span>` : ""}
     ${questions.length ? `<span class="prep-vendor-questions">${questions.map((q) => `<span><strong>${esc(q.author || "匿名")}</strong>：${esc(q.content)}</span>`).join("")}</span>` : ""}
   </button>`;
 }
