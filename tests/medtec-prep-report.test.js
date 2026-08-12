@@ -49,55 +49,95 @@ test("參訪前報告顯示現有拜訪 Note 精華，代問不重複混入", as
   assert.match(style, /\.prep-vendor-highlights/);
 });
 
-async function prepRdMatcher({ notes = {}, pending = [], state = {}, categories = {} } = {}) {
+async function prepDemandRuntime({ notes = {}, pending = [], state = {}, categories = {}, prepNotes = {} } = {}) {
   const app = await read("cloudflare/public/app.js");
-  const start = app.indexOf("const PREP_RD_TOPICS");
+  const start = app.indexOf("const PREP_DEMAND_CATALOG");
   const end = app.indexOf("function prepVendorHtml", start);
-  assert.ok(start >= 0 && end > start, "應能擷取研發關聯的純判斷邏輯");
+  assert.ok(start >= 0 && end > start, "應能擷取需求歸納的純判斷邏輯");
   const sandbox = {
     CAT_MAP: categories,
     getState: (id) => state[id] || {},
     notesCache: () => notes,
     getPending: () => pending,
+    isSameName: (a, b) => !!a && !!b && (a === b || (a.length >= 2 && b.length >= 2 && (a.includes(b) || b.includes(a)))),
+    prepNoteExcerpt: (content, limit = 120) => String(content || "").replace(/\s+/g, " ").trim().slice(0, limit),
+    PREP_NOTES: prepNotes,
   };
-  vm.runInNewContext(`${app.slice(start, end)}\nglobalThis.__match = prepRAndDRelationshipsFor;`, sandbox);
-  return sandbox.__match;
+  vm.runInNewContext(`${app.slice(start, end)}\nglobalThis.__analyze = prepMemberDemandAnalysis;\nglobalThis.__evidence = prepDemandEvidenceFor;`, sandbox);
+  return { analyze: sandbox.__analyze, evidence: sandbox.__evidence };
 }
 
-test("研發關聯以四位同事與廠商／Note 證據動態比對，沒有證據就待確認", async () => {
-  const match = await prepRdMatcher({
+test("灝翰的本人留言可分出針具第二來源與 Luer 檢測設備", async () => {
+  const { analyze } = await prepDemandRuntime({
     notes: {
-      verify: [{ type: "現場紀錄", content: "供應商可提供抗菌披膜的 EO 滅菌後檢驗報告" }],
+      needle: [{ author: "灝翰", type: "想詢問的問題", content: "活檢針內/外針價格、規格、法規？" }],
+      luer: [{ author: "灝翰", type: "想詢問的問題", content: "ISO 9626、ISO 7864、ISO 80369 相關檢測設備" }],
     },
   });
-
-  assert.deepEqual(Array.from(match("長儒", { id: "coat", products: ["親水塗層"] }).matches, (x) => x.no), [2]);
-  assert.deepEqual(Array.from(match("宗銘", { id: "tube", products: ["編織增強導管", "TPU 球囊"] }).matches, (x) => x.no), [4, 6]);
-  assert.deepEqual(Array.from(match("灝翰", { id: "laser", description: "精密激光打孔與雷射切割" }).matches, (x) => x.no), [1]);
-  assert.deepEqual(Array.from(match("政哲", { id: "verify" }).matches, (x) => x.no), [8]);
-  assert.equal(match("政哲", { id: "unknown", products: ["一般醫療耗材"] }).matches.length, 0);
-  assert.equal(match("昌毅", { id: "laser", products: ["雷射加工"] }).role, null, "只對指定四位加入研發關聯");
+  const vendors = [
+    { id: "needle", name_zh: "針具廠", products: ["活檢針"] },
+    { id: "luer", name_zh: "測試儀廠", products: ["Luer 綜合測試儀"] },
+  ];
+  const result = analyze("灝翰", vendors);
+  assert.deepEqual(Array.from(result.demands, (d) => d.topic.code), ["needle-source", "luer-inspection"]);
+  assert.ok(result.demands.every((d) => d.source === "direct"));
+  assert.ok(result.demands.every((d) => d.sourceLabel === "本人留言"));
+  assert.equal(result.rankedVendors.length, 2, "所有已選廠商都要保留");
 });
 
-test("研發關聯卡片顯示拜訪依據、現場查證與待確認狀態", async () => {
-  const [app, style] = await Promise.all([
-    read("cloudflare/public/app.js"),
-    read("cloudflare/public/style.css"),
+test("長儒的披膜液留言與 Parylene／管內鍍層選商要分別呈現", async () => {
+  const { analyze } = await prepDemandRuntime({
+    notes: {
+      liquid: [{ author: "邱長儒", type: "索取資料備註", content: "索取披膜液" }],
+    },
+  });
+  const result = analyze("長儒", [
+    { id: "liquid", name_zh: "披膜材料廠", products: ["親水披膜液"] },
+    { id: "parylene", name_zh: "派拉綸新材料", products: ["Parylene 管內鍍層"] },
   ]);
-
-  assert.match(app, /"長儒"[\s\S]*topicNos: \[2, 7, 8\]/);
-  assert.match(app, /"宗銘"[\s\S]*topicNos: \[3, 4, 5, 6\]/);
-  assert.match(app, /"灝翰"[\s\S]*kind: "製圖／模治具支援"/);
-  assert.match(app, /"政哲"[\s\S]*kind: "滅菌／檢驗驗證"/);
-  assert.match(app, /研發關聯待確認/);
-  assert.match(app, /<strong>拜訪依據：<\/strong>/);
-  assert.match(app, /<strong>現場查證：<\/strong>/);
-  assert.match(app, /prepVendorHtml\(e, name\)/);
-  assert.match(style, /\.prep-rd-match/);
-  assert.match(style, /\.prep-rd-pending/);
+  const demands = Object.fromEntries(Array.from(result.demands, (d) => [d.topic.code, d]));
+  assert.equal(demands["coating-liquid"].source, "direct");
+  assert.equal(demands["coating-service"].source, "inferred");
+  assert.equal(demands["coating-service"].sourceLabel, "依選商推定");
 });
 
-test("研發策略投影片依序連起策略地圖、問題、廠商與落地策略", async () => {
+test("他人留言不得被算成負責人的本人訴求", async () => {
+  const { analyze } = await prepDemandRuntime({
+    notes: {
+      shared: [{ author: "長儒", type: "想詢問的問題", content: "Luer ISO 80369 檢測設備" }],
+    },
+  });
+  const vendor = { id: "shared", name_zh: "一般耗材廠", products: ["一般醫療耗材"] };
+  assert.equal(analyze("帛辰", [vendor]).demands.length, 0, "長儒的留言不能歸到帛辰");
+  assert.equal(analyze("長儒", [vendor]).demands[0].source, "direct");
+});
+
+test("個人補充只加強相關廠商，不把名下所有廠商硬連到同一訴求", async () => {
+  const { analyze } = await prepDemandRuntime({
+    prepNotes: { "灝翰": { content: "需要 Luer ISO 80369 檢測設備" } },
+  });
+  const result = analyze("灝翰", [
+    { id: "luer", name_zh: "Luer 測試儀廠", products: ["Luer 綜合測試儀"] },
+    { id: "needle", name_zh: "針具廠", products: ["活檢針"] },
+  ]);
+  const luer = result.demands.find((d) => d.topic.code === "luer-inspection");
+  assert.equal(luer.source, "direct");
+  assert.deepEqual(Array.from(luer.evidences, (e) => e.vendor.id), ["luer"]);
+});
+
+test("政哲無本人留言時，仍可依已選廠商顯示 EO／檢測與 CCD 設備推定", async () => {
+  const { analyze } = await prepDemandRuntime();
+  const result = analyze("政哲", [
+    { id: "eo", name_zh: "檢測機構", description: "第三方檢測，具 CNAS／CMA 資質" },
+    { id: "ccd", name_zh: "球囊設備廠", products: ["球囊 AI 檢測機"], description: "CCD 視覺檢測" },
+  ]);
+  const codes = Array.from(result.demands, (d) => d.topic.code);
+  assert.ok(codes.includes("sterilization-testing"));
+  assert.ok(codes.includes("automated-inspection"));
+  assert.ok(result.demands.every((d) => d.source === "inferred"));
+});
+
+test("四階段圖卡明確分成研發策略地圖／生產問題、訴求、廠商、落地", async () => {
   const [app, html, style] = await Promise.all([
     read("cloudflare/public/app.js"),
     read("cloudflare/public/index.html"),
@@ -106,42 +146,25 @@ test("研發策略投影片依序連起策略地圖、問題、廠商與落地�
 
   assert.match(html, /id="prep-strategy-deck"/);
   assert.match(app, /const PREP_STRATEGY_ORDER = \["灝翰", "長儒", "宗銘", "政哲", "昌毅", "帛辰", "柏宏"\]/);
-  assert.match(app, /const PREP_FIELD_STRATEGY_ROLES = \{/);
-  assert.match(app, /"昌毅"[\s\S]*kind: "生產／材料導入"/);
-  assert.match(app, /"帛辰"[\s\S]*kind: "電子／自動化檢測"/);
-  assert.match(app, /"柏宏"[\s\S]*kind: "工業工程／設備採購"/);
-  assert.match(app, /職能策略地圖（推定）/, "沒有正式策略地圖的三人必須標明是推定");
+  assert.match(app, /const PREP_PRODUCTION_MEMBERS = new Set\(\["昌毅", "帛辰", "柏宏"\]\)/);
+  assert.match(app, /isProduction \? "生產問題" : "研發策略地圖"/);
   assert.match(app, /function prepStrategySlideHtml\(memberName, vendors, index\)/);
   assert.match(app, /研發策略地圖/);
-  assert.match(app, /要回答的問題/);
+  assert.match(app, /<i>2<\/i>訴求/);
   assert.match(app, /對應廠商/);
-  assert.match(app, /落地策略/);
-  assert.match(app, /prepStrategyRelationshipsFor\(memberName, vendor\)/, "七人的投影片都要依廠商資料比對關聯");
+  assert.match(app, /<i>4<\/i>落地/);
+  assert.match(app, /function prepMemberNotesFor\(memberName, exhibitorId\)/);
+  assert.match(app, /isSameName\(n\.author, memberName\)/, "本人留言必須先核對作者");
+  assert.match(app, /依選商推定/);
   assert.match(app, /data-strategy-exhibitor=/, "投影片內的廠商應能直接開啟詳情");
-  assert.match(app, /ranked\.map\(\(\{ vendor, matches \}\)/, "所有已選廠商都要逐家列出，不能只列命中的前五家");
+  assert.match(app, /rankedVendors\.map\(\(\{ vendor, matches \}\)/, "所有已選廠商都要逐家列出");
   assert.match(app, /matches\.length \? "is-matched" : "is-pending"/);
-  assert.match(app, /matches\.length \? matches\.map\(prepStrategyTopicMark\)\.join\(" · "\) : "待確認"/);
+  assert.match(app, /選商目的待補/);
   assert.match(style, /\.prep-strategy-slide/);
   assert.match(style, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(style, /\.prep-slide-vendor-list[\s\S]*max-height: 245px; overflow-y: auto/, "廠商全列時卡內捲動，避免投影片無限拉長");
-});
-
-test("三位現場主管的推定策略可依廠商資料找出職能關聯", async () => {
-  const app = await read("cloudflare/public/app.js");
-  const start = app.indexOf("const PREP_RD_TOPICS");
-  const end = app.indexOf("function prepVendorHtml", start);
-  const sandbox = {
-    CAT_MAP: {},
-    getState: () => ({}),
-    notesCache: () => ({}),
-    getPending: () => [],
-  };
-  vm.runInNewContext(`${app.slice(start, end)}\nglobalThis.__match = prepStrategyRelationshipsFor;`, sandbox);
-  const match = sandbox.__match;
-
-  assert.deepEqual(Array.from(match("昌毅", { id: "chem", products: ["醫療 UV 黏著膠"] }).matches, (x) => x.code), ["接合"]);
-  assert.deepEqual(Array.from(match("帛辰", { id: "vision", description: "CCD 視覺檢測與 MES 批次追溯" }).matches, (x) => x.code), ["檢測", "追溯"]);
-  assert.deepEqual(Array.from(match("柏宏", { id: "line", description: "自動化設備，提供 UPH 與 IQ OQ 驗證" }).matches, (x) => x.code), ["設備", "產能", "採購"]);
+  assert.match(style, /\.prep-slide-demand-list/);
+  assert.match(style, /\.prep-slide-landing-list/);
 });
 
 test("首頁六天行程以大標題與明顯文字控制逐日折疊", async () => {

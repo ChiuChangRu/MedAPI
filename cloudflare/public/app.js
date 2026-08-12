@@ -3095,258 +3095,261 @@ function prepNoteHighlightsFor(exhibitorId) {
     .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
 }
 
-// 研發技術地圖的 8 個題目。關聯只從廠商資料、拜訪目標與既有 Note 的明確關鍵字產生；
-// 沒有證據時標成「待確認」，不因職務相近就替廠商硬寫一個拜訪理由。
-const PREP_RD_TOPICS = [
-  { no: 1, label: "雷射加工", keywords: ["雷射", "激光", "laser", "打孔", "鑽孔", "微孔", "雷射切割"], ask: "可否提供加工尺寸、公差、熱影響區與量產良率的實測資料？" },
-  { no: 2, label: "親水披膜", keywords: ["親水", "hydrophilic", "潤滑塗層", "低摩擦塗層"], ask: "可否提供摩擦係數、耐久循環、基材附著力及滅菌後衰減數據？" },
-  { no: 3, label: "薄壁繞簧管", keywords: ["繞簧", "彈簧管", "coil", "薄壁鞘管", "coil reinforced"], ask: "可否提供最小壁厚、線徑、節距、抗扭與推送性的實測資料？" },
-  { no: 4, label: "編織管", keywords: ["編織", "braid", "增強導管", "braided"], ask: "可否提供編織密度、線材規格、抗扭與推送性數據？" },
-  { no: 5, label: "變徑／異型管", keywords: ["變徑", "異型", "錐形", "taper", "多腔", "多層共擠", "共擠", "押出模具", "擠出模具"], ask: "可否提供最小壁厚、尺寸公差、模具流道與製程能力資料？" },
-  { no: 6, label: "TPU 球囊導管", keywords: ["球囊", "balloon", "爆破壓", "球囊成型", "tpu"], ask: "可否提供成型窗口、壁厚均勻性、爆破壓與疲勞測試報告？" },
-  { no: 7, label: "抗結痂披膜", keywords: ["抗結痂", "結晶沉積", "尿鹽", "encrust", "抗生物膜"], ask: "可否提供結晶沉積、生物膜、耐久性及長期使用條件的比較數據？" },
-  { no: 8, label: "抗菌披膜", keywords: ["抗菌", "抗微生物", "antimicrobial", "抑菌", "銀離子"], ask: "可否提供菌種、試驗方法、抑菌效果、溶出物與生物相容性報告？" },
+// 四階段圖卡只用系統裡的「本人留言／個人補充、訴求欄、觀展目標、
+// 已選廠商資料」歸納。不再以職稱模板替某人生出需求，也不把他人留言
+// 算到負責人名下。只靠選商資料命中時，畫面會明示「依選商推定」。
+const PREP_DEMAND_CATALOG = [
+  {
+    code: "needle-source",
+    label: "活檢針內／外針第二來源",
+    keywords: ["活檢針", "檢體針", "穿刺針", "内/外针", "內/外針", "內外針", "内外针", "biopsy needle"],
+    demand: "找活檢針內／外針第二來源，比較自製能力、規格、價格與法規證據。",
+    landing: "取得規格／報價／法規文件與樣品，排入第二來源試樣及承認。",
+  },
+  {
+    code: "luer-inspection",
+    label: "Luer／針具檢測設備",
+    keywords: ["luer", "魯爾", "鲁尔", "80369", "9626", "7864", "圓錐接頭", "圆锥接头", "綜合測試儀", "综合测试仪"],
+    demand: "評估 Luer／針具檢測設備，確認 ISO 80369、9626、7864 的適用性、測項與價格。",
+    landing: "帶實際樣品試測，完成測項／法規／精度／報價比較與設備驗收表。",
+  },
+  {
+    code: "coating-liquid",
+    label: "披膜液供應商",
+    keywords: ["披膜液", "塗層液", "涂层液", "親水披膜", "親水塗層", "亲水涂层", "hydrophilic coating"],
+    demand: "檢索披膜液供應商，索取樣品、配方規格、檢驗方法與法規文件。",
+    landing: "用我方基材安排小量試塗，以摩擦、附著、耐久與滅菌後性能建立准入門檻。",
+  },
+  {
+    code: "coating-service",
+    label: "Parylene／管內鍍層代工",
+    keywords: ["派瑞林", "派拉綸", "parylene", "管內鍍層", "管内镀层", "鍍層技術", "镀层技术", "塗層代工", "涂层代工"],
+    demand: "尋找 Parylene／管內鍍層代工廠，確認可做基材、內徑、膜厚、均勻性與驗證能力。",
+    landing: "選定實際管件試鍍，取得膜厚／均勻性／附著力數據後再決定代工承認。",
+  },
+  {
+    code: "catheter-material",
+    label: "導管材料／管材來源",
+    keywords: ["管材", "pebax", "peek", "ptfe", "fep", "tpu", "矽膠管", "硅胶管", "多腔管", "聚醯亞胺", "聚酰亚胺", "導管原料", "管材擠出"],
+    demand: "補齊導管材料／管材來源，確認材料、公差、MOQ、交期與量產經驗。",
+    landing: "取得材料證書、尺寸能力與樣管，依實測結果建立候選供應清單。",
+  },
+  {
+    code: "catheter-structure",
+    label: "編織／繞簧／共擠導管",
+    keywords: ["編織管", "编织管", "編織機", "编织机", "繞簧", "绕簧", "鞘管", "多層共擠", "多层共挤", "多腔導管", "負壓抽吸鞘管", "扁狀線絲", "扁状线丝"],
+    demand: "確認編織、繞簧、共擠與抽吸鞘管的結構能力及尺寸上限。",
+    landing: "取得結構樣品、線材／節距／壁厚公差與性能報告，排出打樣驗證路徑。",
+  },
+  {
+    code: "catheter-cdmo",
+    label: "導管 CDMO／組裝代工",
+    keywords: ["cdmo", "oem", "bom", "成品組裝", "成品组装", "自行組裝", "自行组装", "導管代工", "定製導管"],
+    demand: "評估導管 CDMO／組裝代工，確認從 BOM、打樣、組裝、檢測到量產的邊界。",
+    landing: "用一項實際產品拆解圖面、材料、治具、驗證與報價責任，形成打樣計畫。",
+  },
+  {
+    code: "process-equipment",
+    label: "球囊／導管製程設備",
+    keywords: ["球囊成形機", "球囊成型機", "球囊拉伸機", "摺葉機", "fluter", "wrapper", "reflow", "tip forming", "heat forming", "尖端成形", "擠出設備", "挤出设备", "擠出生產線", "挤出生产线", "繞簧機", "编织机", "球囊焊接機"],
+    demand: "評估球囊／導管製程設備，確認參數窗口、公差、換模、備品與售後支援。",
+    landing: "帶我方規格實機試做，留下參數、節拍、良率、報價及 IQ／OQ／PQ 驗收條件。",
+  },
+  {
+    code: "automated-inspection",
+    label: "CCD／自動化檢驗",
+    keywords: ["ccd", "視覺檢測", "视觉检测", "ai 檢測", "ai檢測", "測漏", "漏氣", "漏气", "拉力檢測", "扭矩檢測", "尺寸監測", "自動檢測", "vision inspection"],
+    demand: "導入 CCD／自動化檢驗，涵蓋尺寸、外觀、漏氣、拉力或扭矩並保留可追溯數據。",
+    landing: "帶良品／缺陷品試測，依檢出率、誤判率、GR&R 與資料介面定義驗收。",
+  },
+  {
+    code: "sterilization-testing",
+    label: "EO／法規檢測驗證",
+    keywords: ["eo", "環氧乙烷", "環氧乙烷", "滅菌", "灭菌", "sterilization", "無菌檢驗", "无菌检验", "生物相容", "第三方檢測", "第三方检测", "cnas", "cma", "安規測試", "醫療器械註冊"],
+    demand: "確認 EO／法規檢測驗證範圍，補齊方法、允收標準、資質與正式報告。",
+    landing: "依產品列出滅菌前後關鍵測項與文件缺口，確認委外報價、樣品數及時程。",
+  },
+  {
+    code: "assembly-automation",
+    label: "自動組裝／產線整合",
+    keywords: ["全自動", "自動組裝", "自动组装", "自動化生產線", "自动化生产线", "上下料", "自動上料", "自动上料", "產線整合", "生产线", "機器人", "机器人"],
+    demand: "評估自動組裝／產線整合，確認節拍、上下料、換線、良率與現有工站介接。",
+    landing: "以我方產品試跑 cycle time／UPH，完成人力、治具、維護、交期與回收期比較。",
+  },
 ];
 
-const PREP_RD_ROLES = {
-  "長儒": {
-    kind: "直接技術",
-    topicNos: [2, 7, 8],
-    basis: "確認披膜材料、塗佈條件、耐久性與可試塗樣品，支援題目 2／7／8 的技術選型。",
-    mission: "把披膜從功能宣稱，推進到可比較、可試塗、可量產的技術方案。",
-    questions: [
-      "性能：摩擦、附著與耐久數據怎麼測？",
-      "相容：TPU／矽膠／PEBAX 與滅菌後是否穩定？",
-      "導入：能否小量試塗，樣品、NRE 與交期為何？",
-    ],
-    landing: ["取得塗層規格與測試方法", "安排我方管材小量試塗", "建立候選技術與驗收門檻"],
-  },
-  "宗銘": {
-    kind: "直接技術",
-    topicNos: [3, 4, 5, 6],
-    basis: "確認導管結構、押出／編織／成型能力與量產數據，支援題目 3～6 的平台開發。",
-    mission: "把管材、編織與球囊能力串成可打樣、可驗證、可移轉的導管平台。",
-    questions: [
-      "能力：最小壁厚、外徑公差與可加工材料到哪裡？",
-      "性能：抗扭、推送、爆破壓與疲勞數據能否提供？",
-      "移轉：模治具、MOQ、打樣交期與責任邊界怎麼切？",
-    ],
-    landing: ["取得材料與製程能力表", "帶回結構樣品與性能報告", "排出打樣到量產的驗證路徑"],
-  },
-  "灝翰": {
-    kind: "製圖／模治具支援",
-    topicNos: [1, 3, 4, 5, 6],
-    basis: "確認雷射、押出、編織與球囊成型所需圖面、公差、模治具及可製造性證據。",
-    mission: "把研發構想翻成廠商看得懂、做得出、量產時守得住的圖面與治具條件。",
-    questions: [
-      "圖面：關鍵尺寸、公差堆疊與材料資料要到什麼程度？",
-      "工法：模具與治具由誰設計、製作與維護？",
-      "量產：打樣到量產的良率與可製造性如何證明？",
-    ],
-    landing: ["整理 DFM 與圖面輸入清單", "取得模治具方案與關鍵公差", "定義試模、修模與量產交付物"],
-  },
-  "政哲": {
-    kind: "滅菌／檢驗驗證",
-    topicNos: [1, 2, 3, 4, 5, 6, 7, 8],
-    basis: "確認技術導入後的滅菌相容性、檢驗方法、允收標準與正式報告能否取得。",
-    mission: "把每項技術主張轉成可追溯的滅菌條件、檢驗方法與允收證據。",
-    questions: [
-      "滅菌：EO／輻照前後哪些材料與性能已驗證？",
-      "檢驗：方法、抽樣、允收標準與批次一致性怎麼定？",
-      "文件：哪些正式報告可提供，客製後要補哪些驗證？",
-    ],
-    landing: ["建立每項技術的證據清單", "確認滅菌後的關鍵驗收規格", "列出文件缺口、責任人與補件時程"],
-  },
-};
+const PREP_STRATEGY_ORDER = ["灝翰", "長儒", "宗銘", "政哲", "昌毅", "帛辰", "柏宏"];
+const PREP_PRODUCTION_MEMBERS = new Set(["昌毅", "帛辰", "柏宏"]);
 
-// 另外三位現場主管沒有正式研發策略地圖。以下只依既有職掌與參訪報告推定
-// 「職能策略」，畫面會明確標示為推定，不能冒充主管本人核准的正式路線。
-const PREP_FIELD_STRATEGY_ROLES = {
-  "昌毅": {
-    kind: "生產／材料導入",
-    inferred: true,
-    mission: "把材料與接合方案從供應商宣稱，推進到可試作、可驗證、可建立第二來源。",
-    topics: [
-      { code: "材料", label: "醫療級材料與第二供應", keywords: ["材料", "原料", "樹脂", "tpu", "pebax", "ptfe", "矽膠", "silicone", "polymer"] },
-      { code: "接合", label: "黏著與接合工法", keywords: ["膠", "黏著", "接合", "焊接", "uv", "adhesive", "bonding"] },
-      { code: "量產", label: "製程穩定與量產驗證", keywords: ["製程", "生產", "設備", "自動化", "良率", "量產", "cpk"] },
-    ],
-    questions: [
-      "材料：醫用牌號、生物相容性與供應穩定性是否有文件？",
-      "接合：對實際基材的拉力、氣密、微粒與固化條件如何？",
-      "導入：能否用我方實際件試作，MOQ、交期與驗證責任怎麼切？",
-    ],
-    landing: ["建立材料／工法候選清單", "安排實際件試接合與量測", "形成第二供應與變更驗證計畫"],
-  },
-  "帛辰": {
-    kind: "電子／自動化檢測",
-    inferred: true,
-    mission: "把電子與檢測設備能力轉成可量測、可追溯、可接入產線資料的方案。",
-    topics: [
-      { code: "電子", label: "電子模組與感測控制", keywords: ["電子", "電路", "感測", "sensor", "控制", "模組", "馬達", "閥"] },
-      { code: "檢測", label: "視覺／自動化檢測", keywords: ["視覺", "ccd", "影像", "檢測", "量測", "自動化", "inspection", "vision"] },
-      { code: "追溯", label: "量測資料與批次追溯", keywords: ["mes", "udi", "追溯", "資料", "批次", "序號", "介接", "gr&r"] },
-    ],
-    questions: [
-      "檢出：最小缺陷、漏判率、誤判率與 GR&R 的實測值？",
-      "整合：電子／感測模組如何與現有設備或產品介接？",
-      "追溯：量測結果能否綁定 lot／序號並輸出到 MES？",
-    ],
-    landing: ["帶回介面與量測能力規格", "安排我方良品／缺陷樣品實測", "定義設備驗收與資料串接需求"],
-  },
-  "柏宏": {
-    kind: "工業工程／設備採購",
-    inferred: true,
-    mission: "把設備展示轉成可比較的節拍、產能、維護與投資回收資料。",
-    topics: [
-      { code: "設備", label: "自動化設備與產線整合", keywords: ["設備", "機台", "自動化", "產線", "組裝", "上下料", "automation"] },
-      { code: "產能", label: "節拍、稼動與製程能力", keywords: ["節拍", "產能", "uph", "稼動", "cpk", "良率", "換線", "cycle"] },
-      { code: "採購", label: "驗證維護與投資回收", keywords: ["採購", "報價", "成本", "回收", "iq", "oq", "pq", "維護", "保固", "備品"] },
-    ],
-    questions: [
-      "產能：用我方產品時的 cycle time、UPH、Cpk 與換線時間？",
-      "驗證：IQ／OQ／PQ、教育訓練、備品與售後服務包含哪些？",
-      "投資：設備、治具、維護與人力節省如何形成完整回收期？",
-    ],
-    landing: ["建立設備比較表與瓶頸站假設", "取得實測節拍、報價與交期", "完成驗收條件與投資回收試算"],
-  },
-};
+function prepAllNotesFor(exhibitorId) {
+  const saved = notesCache()[exhibitorId] || [];
+  const pending = getPending().filter((n) => n.exhibitor_id === exhibitorId);
+  return [...saved, ...pending].filter((n) => String(n.content || "").trim());
+}
 
-function prepRAndDSourceText(e) {
-  const st = getState(e.id);
-  const cat = CAT_MAP[e.category];
-  const notes = [
-    ...(notesCache()[e.id] || []),
-    ...getPending().filter((n) => n.exhibitor_id === e.id),
-  ];
+function prepMemberNotesFor(memberName, exhibitorId) {
+  return prepAllNotesFor(exhibitorId).filter((n) => isSameName(n.author, memberName));
+}
+
+function prepDemandMatchesText(topic, text) {
+  const source = String(text || "").toLowerCase();
+  return !!source && topic.keywords.some((keyword) => {
+    const needle = keyword.toLowerCase();
+    // EO、CMA、BOM 這類短縮寫不能用單純 includes，否則英文公司名中的
+    // 連續字母也可能被誤判。純英數關鍵字改用字界比對。
+    if (/^[a-z0-9]+$/.test(needle)) {
+      const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(source);
+    }
+    return source.includes(needle);
+  });
+}
+
+function prepVendorProfileText(vendor) {
+  const cat = CAT_MAP[vendor.category];
   return [
-    e.name_zh,
-    e.name_en,
-    e.description,
-    ...(e.products || []),
+    vendor.name_zh,
+    vendor.name_en,
+    vendor.description,
+    ...(vendor.products || []),
     cat ? cat.name_zh : "",
     cat ? cat.name_en : "",
-    ...(st.goal_tags || []),
-    ...notes.flatMap((n) => [n.type, n.content]),
-  ].filter(Boolean).join(" ").toLowerCase();
+  ].filter(Boolean).join(" ");
 }
 
-function prepRAndDRelationshipsFor(memberName, e) {
-  const role = PREP_RD_ROLES[memberName];
-  if (!role) return { role: null, matches: [] };
-  const source = prepRAndDSourceText(e);
-  const matches = PREP_RD_TOPICS.filter((topic) =>
-    role.topicNos.includes(topic.no) &&
-    topic.keywords.some((keyword) => source.includes(keyword.toLowerCase()))
-  );
-  return { role, matches };
+function prepVisitDemandText(state) {
+  const visit = state.visit_record || {};
+  return [visit.solves, visit.note, visit.diff, visit.next_step].filter(Boolean).join(" ");
 }
 
-function prepRAndDQuestion(role, topic) {
-  if (role.kind === "製圖／模治具支援") {
-    return `題目 ${topic.no}：可否提供關鍵圖面、公差堆疊、模治具方案與量產可製造性證據？`;
-  }
-  if (role.kind === "滅菌／檢驗驗證") {
-    return `題目 ${topic.no}：可否提供 EO／輻照後的材料相容性、檢驗方法、允收標準與正式報告？`;
-  }
-  return `題目 ${topic.no}：${topic.ask}`;
+function prepDemandEvidenceFor(memberName, vendor, topic) {
+  const state = getState(vendor.id);
+  const memberNotes = prepMemberNotesFor(memberName, vendor.id)
+    .filter((note) => prepDemandMatchesText(topic, `${note.type || ""} ${note.content || ""}`));
+  const supplement = String((PREP_NOTES[memberName] || {}).content || "").trim();
+  const supplementMatch = prepDemandMatchesText(topic, supplement);
+  const visitText = prepVisitDemandText(state);
+  const visitMatch = prepDemandMatchesText(topic, visitText);
+  const vendorMatch = prepDemandMatchesText(topic, prepVendorProfileText(vendor));
+  const goalTags = state.goal_tags || [];
+  // 個人補充是「全人」的需求說明，不能因此把名下所有廠商都硬連到
+  // 同一訴求；只在該廠商自身資料／訴求欄／本人留言也有關聯時才加強。
+  const supplementSupportsVendor = supplementMatch && (memberNotes.length || visitMatch || vendorMatch);
+
+  if (!memberNotes.length && !visitMatch && !vendorMatch) return null;
+  const source = memberNotes.length || supplementSupportsVendor
+    ? "direct"
+    : visitMatch ? "stated" : "inferred";
+  return { vendor, topic, memberNotes, supplementMatch: supplementSupportsVendor, supplement, visitMatch, visitText, vendorMatch, goalTags, source };
 }
 
-function prepRAndDHtml(memberName, e) {
-  const { role, matches } = prepRAndDRelationshipsFor(memberName, e);
-  if (!role) return "";
+function prepEvidenceLabel(evidences) {
+  if (evidences.some((e) => e.memberNotes.length || e.supplementMatch)) return "本人留言";
+  if (evidences.some((e) => e.visitMatch)) return "訴求欄";
+  return "依選商推定";
+}
+
+function prepEvidenceExcerpt(evidences) {
+  const note = evidences.flatMap((e) => e.memberNotes).find((n) => String(n.content || "").trim());
+  if (note) return prepNoteExcerpt(note.content, 92);
+  const supplement = evidences.find((e) => e.supplementMatch)?.supplement;
+  if (supplement) return prepNoteExcerpt(supplement, 92);
+  const visit = evidences.find((e) => e.visitMatch)?.visitText;
+  if (visit) return prepNoteExcerpt(visit, 92);
+  const names = evidences.slice(0, 2).map((e) => e.vendor.name_zh || e.vendor.name_en).filter(Boolean);
+  return `依已選廠商「${names.join("、")}」的產品資料推定，現場需再確認。`;
+}
+
+function prepMemberDemandAnalysis(memberName, vendors) {
+  const demands = PREP_DEMAND_CATALOG.map((topic) => {
+    const evidences = vendors
+      .map((vendor) => prepDemandEvidenceFor(memberName, vendor, topic))
+      .filter(Boolean);
+    if (!evidences.length) return null;
+    return {
+      topic,
+      evidences,
+      source: evidences.some((e) => e.source === "direct")
+        ? "direct" : evidences.some((e) => e.source === "stated") ? "stated" : "inferred",
+      sourceLabel: prepEvidenceLabel(evidences),
+      excerpt: prepEvidenceExcerpt(evidences),
+    };
+  }).filter(Boolean);
+
+  const rankedVendors = vendors.map((vendor) => {
+    const matches = demands
+      .map((demand) => ({ demand, evidence: demand.evidences.find((e) => e.vendor.id === vendor.id) }))
+      .filter((item) => item.evidence);
+    return { vendor, matches };
+  }).sort((a, b) => b.matches.length - a.matches.length ||
+    (a.vendor.booth_no || "").localeCompare(b.vendor.booth_no || ""));
+
+  return { demands, rankedVendors };
+}
+
+function prepDemandHtml(memberName, vendor) {
+  const matches = PREP_DEMAND_CATALOG
+    .map((topic) => prepDemandEvidenceFor(memberName, vendor, topic))
+    .filter(Boolean);
   if (!matches.length) {
     return `<span class="prep-rd prep-rd-pending">
-      <span class="prep-rd-title">研發關聯待確認｜${esc(role.kind)}</span>
-      <span>現有廠商資料與 Note 尚未命中研發題目；現場先確認是否有相關材料、製程或驗證證據。</span>
+      <span class="prep-rd-title">選商目的待補</span>
+      <span>已指派給 ${esc(memberName)}，但本人留言、訴求欄與廠商資料尚無法歸類。</span>
     </span>`;
   }
-  const visible = matches.slice(0, 3);
   return `<span class="prep-rd prep-rd-match">
-    <span class="prep-rd-title">研發關聯｜${esc(role.kind)}</span>
-    <span class="prep-rd-topics">${visible.map((topic) => `<span>#${topic.no} ${esc(topic.label)}</span>`).join("")}${matches.length > visible.length ? `<span>另 ${matches.length - visible.length} 題</span>` : ""}</span>
-    <span class="prep-rd-basis"><strong>拜訪依據：</strong>${esc(role.basis)}</span>
-    <span class="prep-rd-checks">${visible.map((topic) => `<span><strong>現場查證：</strong>${esc(prepRAndDQuestion(role, topic))}</span>`).join("")}</span>
+    <span class="prep-rd-title">需求對應</span>
+    <span class="prep-rd-topics">${matches.map((item) => `<span>${esc(item.topic.label)}</span>`).join("")}</span>
+    <span class="prep-rd-basis"><strong>來源：</strong>${esc(matches.some((item) => item.memberNotes.length || item.supplementMatch) ? "本人留言／個人補充" : matches.some((item) => item.visitMatch) ? "訴求欄" : "依選商推定")}</span>
   </span>`;
 }
 
-const PREP_STRATEGY_ORDER = ["灝翰", "長儒", "宗銘", "政哲", "昌毅", "帛辰", "柏宏"];
-
-function prepStrategyRoleFor(memberName) {
-  return PREP_RD_ROLES[memberName] || PREP_FIELD_STRATEGY_ROLES[memberName] || null;
-}
-
-function prepStrategyTopicsFor(memberName) {
-  const role = prepStrategyRoleFor(memberName);
-  if (!role) return [];
-  if (role.topicNos) return PREP_RD_TOPICS.filter((topic) => role.topicNos.includes(topic.no));
-  return role.topics || [];
-}
-
-function prepStrategyRelationshipsFor(memberName, vendor) {
-  if (PREP_RD_ROLES[memberName]) return prepRAndDRelationshipsFor(memberName, vendor);
-  const role = PREP_FIELD_STRATEGY_ROLES[memberName];
-  if (!role) return { role: null, matches: [] };
-  const source = prepRAndDSourceText(vendor);
-  const matches = (role.topics || []).filter((topic) =>
-    topic.keywords.some((keyword) => source.includes(keyword.toLowerCase()))
-  );
-  return { role, matches };
-}
-
-function prepStrategyVendors(memberName, vendors) {
-  return vendors
-    .map((vendor) => ({ vendor, matches: prepStrategyRelationshipsFor(memberName, vendor).matches }))
-    .sort((a, b) => b.matches.length - a.matches.length ||
-      (a.vendor.booth_no || "").localeCompare(b.vendor.booth_no || ""));
-}
-
-function prepStrategyTopicMark(topic) {
-  return topic.no ? `#${topic.no}` : topic.code || topic.label;
-}
-
 function prepStrategySlideHtml(memberName, vendors, index) {
-  const role = prepStrategyRoleFor(memberName);
   const profile = MEMBER_PROFILES.find((p) => p.name === memberName);
-  if (!role || !profile) return "";
-  const topics = prepStrategyTopicsFor(memberName);
-  const ranked = prepStrategyVendors(memberName, vendors);
-  const mapLabel = role.inferred ? "職能策略地圖（推定）" : "研發策略地圖";
-  const roleLabel = role.inferred ? `職能策略推定｜${role.kind}` : role.kind;
+  if (!profile) return "";
+  const { demands, rankedVendors } = prepMemberDemandAnalysis(memberName, vendors);
+  const isProduction = PREP_PRODUCTION_MEMBERS.has(memberName);
+  const mapLabel = isProduction ? "生產問題" : "研發策略地圖";
+  const directCount = demands.filter((d) => d.source !== "inferred").length;
+  const inferredCount = demands.filter((d) => d.source === "inferred").length;
 
   return `<article class="prep-strategy-slide" data-strategy-member="${esc(memberName)}">
     <header class="prep-slide-head">
       <span class="prep-slide-no">${String(index + 1).padStart(2, "0")}</span>
       <span class="prep-slide-person">
         <strong>${esc(memberName)}</strong>
-        <span>${esc(profile.duty || role.kind)}</span>
+        <span>${esc(profile.duty || "")}</span>
       </span>
-      <span class="prep-slide-role${role.inferred ? " is-inferred" : ""}">${esc(roleLabel)}</span>
+      <span class="prep-slide-role${inferredCount && !directCount ? " is-inferred" : ""}">${esc(isProduction ? "生產單位" : "研發單位")}</span>
     </header>
-    <p class="prep-slide-mission">${esc(role.mission)}</p>
-    <div class="prep-slide-flow" aria-label="${esc(memberName)}的策略拜訪路徑">
+    <p class="prep-slide-mission">依系統內的本人留言、訴求欄、觀展目標與 ${vendors.length} 家已選廠商歸納。${inferredCount ? `其中 ${inferredCount} 項只有選商證據，已標示為推定。` : ""}</p>
+    <div class="prep-slide-flow" aria-label="${esc(memberName)}的需求落地路徑">
       <section class="prep-slide-step prep-slide-map">
         <span class="prep-step-label"><i>1</i>${esc(mapLabel)}</span>
-        <div class="prep-slide-topics">
-          ${topics.map((topic) => `<span><strong>${esc(prepStrategyTopicMark(topic))}</strong>${esc(topic.label)}</span>`).join("")}
-        </div>
+        ${demands.length ? `<div class="prep-slide-topics">
+          ${demands.map((demand) => `<span class="is-${demand.source}"><strong>${demand.source === "inferred" ? "推定" : "有據"}</strong>${esc(demand.topic.label)}</span>`).join("")}
+        </div>` : `<p class="prep-slide-empty">已有選商，但系統資料尚不足以歸納問題。</p>`}
       </section>
-      <section class="prep-slide-step prep-slide-questions">
-        <span class="prep-step-label"><i>2</i>要回答的問題</span>
-        <ol>${role.questions.map((question) => `<li>${esc(question)}</li>`).join("")}</ol>
+      <section class="prep-slide-step prep-slide-demands">
+        <span class="prep-step-label"><i>2</i>訴求 <small>${demands.length} 項</small></span>
+        ${demands.length ? `<div class="prep-slide-demand-list">${demands.map((demand) => `
+          <div class="prep-slide-demand is-${demand.source}">
+            <strong>${esc(demand.topic.demand)}</strong>
+            <span><em>${esc(demand.sourceLabel)}</em>${esc(demand.excerpt)}</span>
+          </div>`).join("")}</div>` : `<p class="prep-slide-empty">請在廠商留言或訴求欄補上「要解決什麼」。</p>`}
       </section>
       <section class="prep-slide-step prep-slide-vendors">
-        <span class="prep-step-label"><i>3</i>對應廠商 <small>已選 ${ranked.length} 家</small></span>
-        ${ranked.length ? `<div class="prep-slide-vendor-list">
-          ${ranked.map(({ vendor, matches }) => `<button type="button" class="${matches.length ? "is-matched" : "is-pending"}" data-strategy-exhibitor="${esc(vendor.id)}">
-            <span><strong>${esc(vendor.name_zh || vendor.name_en)}</strong><small>${esc(vendor.booth_no || "攤位未定")}</small></span>
-            <em>${matches.length ? matches.map(prepStrategyTopicMark).join(" · ") : "待確認"}</em>
+        <span class="prep-step-label"><i>3</i>對應廠商 <small>已選 ${rankedVendors.length} 家</small></span>
+        ${rankedVendors.length ? `<div class="prep-slide-vendor-list">
+          ${rankedVendors.map(({ vendor, matches }) => `<button type="button" class="${matches.length ? "is-matched" : "is-pending"}" data-strategy-exhibitor="${esc(vendor.id)}">
+            <span><strong>${esc(vendor.name_zh || vendor.name_en)}</strong><small>${esc([vendor.booth_no || "攤位未定", ...(getState(vendor.id).goal_tags || [])].join(" · "))}</small></span>
+            <em>${matches.length ? matches.map((item) => item.demand.topic.label).join(" · ") : "選商目的待補"}</em>
           </button>`).join("")}
         </div>` : `<p class="prep-slide-empty">尚未選擇／指派廠商。</p>`}
       </section>
       <section class="prep-slide-step prep-slide-landing">
-        <span class="prep-step-label"><i>4</i>落地策略</span>
-        <ol>${role.landing.map((action) => `<li>${esc(action)}</li>`).join("")}</ol>
+        <span class="prep-step-label"><i>4</i>落地</span>
+        ${demands.length ? `<div class="prep-slide-landing-list">${demands.map((demand) => `<div><strong>${esc(demand.topic.label)}</strong><span>${esc(demand.topic.landing)}</span></div>`).join("")}</div>` : `<p class="prep-slide-empty">先補選商目的與驗收條件，再排定後續行動。</p>`}
       </section>
     </div>
   </article>`;
@@ -3371,7 +3374,7 @@ function prepVendorHtml(e, memberName = "") {
     </span>
     <span class="prep-vendor-meta">${esc([cat ? cat.name_zh : "", e.country].filter(Boolean).join(" · "))}</span>
     <span class="prep-vendor-focus">${focus.map((t) => `<span>${esc(t)}</span>`).join("")}</span>
-    ${prepRAndDHtml(memberName, e)}
+    ${prepDemandHtml(memberName, e)}
     <span class="prep-vendor-foot">
       <span class="prep-status"><i style="background:${statusColor}"></i>${esc(st.status || "未排定")}</span>
       <span class="prep-note-count${noteHighlights.length ? " has-notes" : ""}">${noteHighlights.length ? `📝 ${noteHighlights.length} 則 Note` : "尚無 Note"}</span>
@@ -3420,7 +3423,7 @@ function renderPrepReport() {
   strategyDeck.innerHTML = `
     <header class="prep-deck-head">
       <span>七人策略拜訪投影片</span>
-      <strong>策略地圖 → 問題 → 廠商 → 落地</strong>
+      <strong>研發策略地圖／生產問題 → 訴求 → 廠商 → 落地</strong>
     </header>
     <div class="prep-deck-list">
       ${strategyGroups.map(({ name, vendors }, index) => prepStrategySlideHtml(name, vendors, index)).join("")}
