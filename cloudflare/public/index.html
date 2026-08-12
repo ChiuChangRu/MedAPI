@@ -93,13 +93,16 @@
     <div class="itin-list" id="itinerary-list"></div>
   </section>
 
-  <!-- 參訪前報告：每位隨行同事的攤位關注重點（分析在 config.js 的 PREP_REPORT），
-       每人另有一欄自由文字存進 D1 的 prep_notes -->
+  <!-- 參訪前報告：以共筆狀態裡七位同事實際被指派的廠商為主；
+       config.js 的 PREP_REPORT 只保留共通檢查清單；個人補充存 prep_notes，
+       四階段人工覆寫另存 prep_overrides，避免混在自由文字裡難以還原 -->
   <section class="prep-section" id="prep-section">
     <div class="itin-head">
-      <h2>參訪前報告──各人攤位關注重點</h2>
-      <p class="itin-sub">依職掌與五年技術地圖整理　·　家數即時取自 881 家官方名冊，點晶片可直接篩出該群廠商</p>
+      <h2>參訪前報告──七人拜訪廠商</h2>
+      <p class="itin-sub">依目前共筆中的負責同事即時整理；點廠商可開啟詳情、代問問題與拜訪資料。離線時顯示手機最後同步版本。</p>
     </div>
+    <div class="prep-overview" id="prep-overview"></div>
+    <div class="prep-strategy-deck" id="prep-strategy-deck"></div>
     <div class="prep-list" id="prep-list"></div>
   </section>
 
@@ -212,6 +215,34 @@
       <span class="sub" id="edit-modal-count"></span>
       <button class="btn small ghost" id="edit-modal-cancel">取消</button>
       <button class="btn primary" id="edit-modal-save">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 四階段圖卡人工修正：來源資料照常重算，只保存與自動分析不同的文字 -->
+<div class="overlay" id="prep-override-overlay">
+  <div class="modal wide prep-override-modal">
+    <div class="detail-head">
+      <div>
+        <h2 id="prep-override-title">人工修正四階段圖卡</h2>
+        <p class="sub" id="prep-override-meta"></p>
+      </div>
+      <button class="btn small ghost" id="prep-override-close" type="button" aria-label="關閉">✕</button>
+    </div>
+    <p class="prep-override-help">每行一項。廠商名稱與攤位仍以共筆資料為準，這裡只修正它對應的訴求，避免產生兩套名單。</p>
+    <div class="prep-override-grid">
+      <label><strong>1　策略地圖／生產問題</strong><textarea id="prep-override-map"></textarea></label>
+      <label><strong>2　訴求</strong><textarea id="prep-override-demands"></textarea></label>
+      <div class="prep-override-vendor-field">
+        <strong>3　對應廠商</strong>
+        <div id="prep-override-vendors"></div>
+      </div>
+      <label><strong>4　落地</strong><textarea id="prep-override-landing"></textarea></label>
+    </div>
+    <div class="modal-actions prep-override-actions">
+      <button class="btn small ghost" id="prep-override-reset" type="button">還原自動分析</button>
+      <span class="sub">儲存後全隊可見，並保留最後編輯者。</span>
+      <button class="btn primary" id="prep-override-save" type="button">儲存人工修正</button>
     </div>
   </div>
 </div>

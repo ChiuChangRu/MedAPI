@@ -128,6 +128,14 @@ const SCHEMA = [
     updated_by TEXT DEFAULT '',
     updated_at TEXT
   )`,
+  // 四階段圖卡的人工覆寫：只保存與自動分析不同的欄位，保留來源資料即時重算能力。
+  // content 是 JSON（map／demands／landing 陣列與 vendors 對應文字），一人一列。
+  `CREATE TABLE IF NOT EXISTS prep_overrides (
+    member TEXT PRIMARY KEY,
+    content TEXT DEFAULT '{}',
+    updated_by TEXT DEFAULT '',
+    updated_at TEXT
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_notes_ex ON notes(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
@@ -1260,6 +1268,62 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     // exhibitor_id 留空：這不是掛在某家展商底下的紀錄，前端會標示成「參訪前報告」
     await logHistory(db, null, author, "編輯參訪前報告", `${member}：「${(old?.content ? "原：" + String(old.content).slice(0, 40) + "　→　" : "")}${content.slice(0, 60)}」`);
     return json({ member, content, updated_by: author, updated_at: now() });
+  }
+
+  // ---- 參訪前報告：四階段圖卡人工覆寫 ----
+  if (path === "/prep-overrides" && method === "GET") {
+    const { results } = await db.prepare("SELECT * FROM prep_overrides").all();
+    const out = {};
+    for (const r of results) {
+      let content = {};
+      try { content = JSON.parse(r.content || "{}"); } catch { content = {}; }
+      out[r.member] = { content, updated_by: r.updated_by || "", updated_at: r.updated_at || "" };
+    }
+    return json(out);
+  }
+  const prepOverrideMatch = path.match(/^\/prep-overrides\/(.+)$/);
+  if (prepOverrideMatch && method === "PUT") {
+    const member = decodeURIComponent(prepOverrideMatch[1]).trim();
+    if (!member) return bad("缺少成員名稱");
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const raw = body.content && typeof body.content === "object" && !Array.isArray(body.content) ? body.content : {};
+    const cleanLines = (value) => Array.isArray(value)
+      ? value.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 30).map((item) => item.slice(0, 600))
+      : undefined;
+    const content = {};
+    for (const key of ["map", "demands", "landing"]) {
+      const lines = cleanLines(raw[key]);
+      if (lines) content[key] = lines;
+    }
+    if (raw.vendors && typeof raw.vendors === "object" && !Array.isArray(raw.vendors)) {
+      const vendors = {};
+      for (const [id, value] of Object.entries(raw.vendors).slice(0, 150)) {
+        const cleanId = String(id || "").trim().slice(0, 160);
+        const cleanValue = String(value || "").trim().slice(0, 600);
+        if (cleanId && cleanValue) vendors[cleanId] = cleanValue;
+      }
+      if (Object.keys(vendors).length) content.vendors = vendors;
+    }
+    const serialized = JSON.stringify(content);
+    if (serialized.length > 40000) return bad("人工修正內容過長");
+    await db
+      .prepare(
+        "INSERT INTO prep_overrides (member, content, updated_by, updated_at) VALUES (?, ?, ?, ?) " +
+        "ON CONFLICT(member) DO UPDATE SET content = excluded.content, updated_by = excluded.updated_by, updated_at = excluded.updated_at"
+      )
+      .bind(member, serialized, author, now())
+      .run();
+    await logHistory(db, null, author, "人工修正四階段圖卡", `${member}：${Object.keys(content).join("、") || "還原自動分析"}`);
+    return json({ member, content, updated_by: author, updated_at: now() });
+  }
+  if (prepOverrideMatch && method === "DELETE") {
+    const member = decodeURIComponent(prepOverrideMatch[1]).trim();
+    if (!member) return bad("缺少成員名稱");
+    const author = (url.searchParams.get("author") || "").trim() || "匿名";
+    await db.prepare("DELETE FROM prep_overrides WHERE member = ?").bind(member).run();
+    await logHistory(db, null, author, "還原四階段圖卡", `${member}：改回系統自動分析`);
+    return json({ ok: true });
   }
 
   // ---- LINE 每日摘要：手動立即測試觸發（不用等排程的晚上 8 點）----
