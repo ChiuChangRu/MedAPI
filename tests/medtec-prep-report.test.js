@@ -105,17 +105,43 @@ test("研發策略投影片依序連起策略地圖、問題、廠商與落地�
   ]);
 
   assert.match(html, /id="prep-strategy-deck"/);
-  assert.match(app, /const PREP_STRATEGY_ORDER = \["灝翰", "長儒", "宗銘", "政哲"\]/);
+  assert.match(app, /const PREP_STRATEGY_ORDER = \["灝翰", "長儒", "宗銘", "政哲", "昌毅", "帛辰", "柏宏"\]/);
+  assert.match(app, /const PREP_FIELD_STRATEGY_ROLES = \{/);
+  assert.match(app, /"昌毅"[\s\S]*kind: "生產／材料導入"/);
+  assert.match(app, /"帛辰"[\s\S]*kind: "電子／自動化檢測"/);
+  assert.match(app, /"柏宏"[\s\S]*kind: "工業工程／設備採購"/);
+  assert.match(app, /職能策略地圖（推定）/, "沒有正式策略地圖的三人必須標明是推定");
   assert.match(app, /function prepStrategySlideHtml\(memberName, vendors, index\)/);
   assert.match(app, /研發策略地圖/);
   assert.match(app, /要回答的問題/);
   assert.match(app, /對應廠商/);
   assert.match(app, /落地策略/);
-  assert.match(app, /prepRAndDRelationshipsFor\(memberName, vendor\)/, "投影片廠商必須沿用證據比對，不可硬湊");
+  assert.match(app, /prepStrategyRelationshipsFor\(memberName, vendor\)/, "七人的投影片都要依廠商資料比對關聯");
   assert.match(app, /data-strategy-exhibitor=/, "投影片內的廠商應能直接開啟詳情");
-  assert.match(app, /另 \$\{pendingCount\} 家關聯待確認/, "沒有命中的已選廠商要明確標示待確認");
+  assert.match(app, /ranked\.map\(\(\{ vendor, matches \}\)/, "所有已選廠商都要逐家列出，不能只列命中的前五家");
+  assert.match(app, /matches\.length \? "is-matched" : "is-pending"/);
+  assert.match(app, /matches\.length \? matches\.map\(prepStrategyTopicMark\)\.join\(" · "\) : "待確認"/);
   assert.match(style, /\.prep-strategy-slide/);
   assert.match(style, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(style, /\.prep-slide-vendor-list[\s\S]*max-height: 245px; overflow-y: auto/, "廠商全列時卡內捲動，避免投影片無限拉長");
+});
+
+test("三位現場主管的推定策略可依廠商資料找出職能關聯", async () => {
+  const app = await read("cloudflare/public/app.js");
+  const start = app.indexOf("const PREP_RD_TOPICS");
+  const end = app.indexOf("function prepVendorHtml", start);
+  const sandbox = {
+    CAT_MAP: {},
+    getState: () => ({}),
+    notesCache: () => ({}),
+    getPending: () => [],
+  };
+  vm.runInNewContext(`${app.slice(start, end)}\nglobalThis.__match = prepStrategyRelationshipsFor;`, sandbox);
+  const match = sandbox.__match;
+
+  assert.deepEqual(Array.from(match("昌毅", { id: "chem", products: ["醫療 UV 黏著膠"] }).matches, (x) => x.code), ["接合"]);
+  assert.deepEqual(Array.from(match("帛辰", { id: "vision", description: "CCD 視覺檢測與 MES 批次追溯" }).matches, (x) => x.code), ["檢測", "追溯"]);
+  assert.deepEqual(Array.from(match("柏宏", { id: "line", description: "自動化設備，提供 UPH 與 IQ OQ 驗證" }).matches, (x) => x.code), ["設備", "產能", "採購"]);
 });
 
 test("首頁六天行程以大標題與明顯文字控制逐日折疊", async () => {
@@ -126,11 +152,12 @@ test("首頁六天行程以大標題與明顯文字控制逐日折疊", async ()
 
   assert.match(app, /<details class="itin-day/);
   assert.match(app, /<summary class="itin-day-summary">/);
-  assert.match(app, /itin-toggle-open">收合行程/);
-  assert.match(app, /itin-toggle-closed">展開行程/);
-  assert.match(app, /const defaultOpen = isToday \|\| \(!hasToday && i === 0\)/, "出發前只展開第一天，旅途中改展開今天");
+  assert.match(app, /itin-toggle-open">收合/);
+  assert.match(app, /itin-toggle-closed">展開/);
+  assert.match(app, /previousOpen\.has\(d\.date\) \? previousOpen\.get\(d\.date\) : false/, "六天首次進入都要收合");
   assert.match(app, /previousOpen\.has\(d\.date\)/, "切換分頁後要保留使用者剛才的展開狀態");
+  assert.match(app, /itin-today-tag/, "全部收合時仍保留今天標記");
   assert.match(style, /\.itin-date \{ font-size: clamp\(22px, 3vw, 29px\)/);
-  assert.match(style, /\.itin-toggle \{/);
+  assert.match(style, /\.itin-toggle \{[\s\S]*min-width: 68px/, "收合控制要靠近日期，不再推到卡片最右側");
   assert.match(style, /\.itin-day\[open\] \.itin-toggle-arrow/);
 });

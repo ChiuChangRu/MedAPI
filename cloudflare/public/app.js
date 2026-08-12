@@ -2995,7 +2995,6 @@ function renderItinerary() {
   const wrap = $("itinerary-list");
   if (!wrap) return;
   const today = new Date().toLocaleDateString("sv");
-  const hasToday = TRIP_DAYS.some((day) => day.date === today);
   const previousOpen = new Map([...wrap.querySelectorAll(".itin-day[data-itin-date]")]
     .map((day) => [day.dataset.itinDate, day.open]));
 
@@ -3019,10 +3018,9 @@ function renderItinerary() {
         <a href="#" class="itin-shortcut" data-go="assigned">📌 我的分派清單</a>
       </div>` : "";
 
-    // 非旅途中先展開第一天；旅途中則展開今天。其餘標題仍完整可見，讓首頁不必
-    // 一次捲過六天的所有細節。details/summary 可用鍵盤操作，也保留瀏覽器原生語意。
-    const defaultOpen = isToday || (!hasToday && i === 0);
-    const open = previousOpen.has(d.date) ? previousOpen.get(d.date) : defaultOpen;
+    // 六天首次進入一律收合；使用者展開後，頁面重算時保留當下狀態。
+    // details/summary 可用鍵盤操作，也保留瀏覽器原生語意。
+    const open = previousOpen.has(d.date) ? previousOpen.get(d.date) : false;
     return `<details class="itin-day itin-${esc(d.kind)}${isToday ? " itin-today" : ""}" data-itin-date="${esc(d.date)}"${open ? " open" : ""}>
       <summary class="itin-day-summary">
         <span class="itin-day-head">
@@ -3030,11 +3028,11 @@ function renderItinerary() {
           <span class="itin-date">${esc(d.label)}<span class="itin-weekday">（${esc(d.weekday)}）</span></span>
           <span class="itin-kind">${esc(d.kindLabel)}</span>
           ${isToday ? '<span class="itin-today-tag">今天</span>' : ""}
-        </span>
-        <span class="itin-toggle" aria-hidden="true">
-          <span class="itin-toggle-open">收合行程</span>
-          <span class="itin-toggle-closed">展開行程</span>
-          <span class="itin-toggle-arrow">⌄</span>
+          <span class="itin-toggle" aria-hidden="true">
+            <span class="itin-toggle-open">收合</span>
+            <span class="itin-toggle-closed">展開</span>
+            <span class="itin-toggle-arrow">⌄</span>
+          </span>
         </span>
         <span class="itin-headline">${esc(d.headline)}</span>
       </summary>
@@ -3161,6 +3159,59 @@ const PREP_RD_ROLES = {
   },
 };
 
+// 另外三位現場主管沒有正式研發策略地圖。以下只依既有職掌與參訪報告推定
+// 「職能策略」，畫面會明確標示為推定，不能冒充主管本人核准的正式路線。
+const PREP_FIELD_STRATEGY_ROLES = {
+  "昌毅": {
+    kind: "生產／材料導入",
+    inferred: true,
+    mission: "把材料與接合方案從供應商宣稱，推進到可試作、可驗證、可建立第二來源。",
+    topics: [
+      { code: "材料", label: "醫療級材料與第二供應", keywords: ["材料", "原料", "樹脂", "tpu", "pebax", "ptfe", "矽膠", "silicone", "polymer"] },
+      { code: "接合", label: "黏著與接合工法", keywords: ["膠", "黏著", "接合", "焊接", "uv", "adhesive", "bonding"] },
+      { code: "量產", label: "製程穩定與量產驗證", keywords: ["製程", "生產", "設備", "自動化", "良率", "量產", "cpk"] },
+    ],
+    questions: [
+      "材料：醫用牌號、生物相容性與供應穩定性是否有文件？",
+      "接合：對實際基材的拉力、氣密、微粒與固化條件如何？",
+      "導入：能否用我方實際件試作，MOQ、交期與驗證責任怎麼切？",
+    ],
+    landing: ["建立材料／工法候選清單", "安排實際件試接合與量測", "形成第二供應與變更驗證計畫"],
+  },
+  "帛辰": {
+    kind: "電子／自動化檢測",
+    inferred: true,
+    mission: "把電子與檢測設備能力轉成可量測、可追溯、可接入產線資料的方案。",
+    topics: [
+      { code: "電子", label: "電子模組與感測控制", keywords: ["電子", "電路", "感測", "sensor", "控制", "模組", "馬達", "閥"] },
+      { code: "檢測", label: "視覺／自動化檢測", keywords: ["視覺", "ccd", "影像", "檢測", "量測", "自動化", "inspection", "vision"] },
+      { code: "追溯", label: "量測資料與批次追溯", keywords: ["mes", "udi", "追溯", "資料", "批次", "序號", "介接", "gr&r"] },
+    ],
+    questions: [
+      "檢出：最小缺陷、漏判率、誤判率與 GR&R 的實測值？",
+      "整合：電子／感測模組如何與現有設備或產品介接？",
+      "追溯：量測結果能否綁定 lot／序號並輸出到 MES？",
+    ],
+    landing: ["帶回介面與量測能力規格", "安排我方良品／缺陷樣品實測", "定義設備驗收與資料串接需求"],
+  },
+  "柏宏": {
+    kind: "工業工程／設備採購",
+    inferred: true,
+    mission: "把設備展示轉成可比較的節拍、產能、維護與投資回收資料。",
+    topics: [
+      { code: "設備", label: "自動化設備與產線整合", keywords: ["設備", "機台", "自動化", "產線", "組裝", "上下料", "automation"] },
+      { code: "產能", label: "節拍、稼動與製程能力", keywords: ["節拍", "產能", "uph", "稼動", "cpk", "良率", "換線", "cycle"] },
+      { code: "採購", label: "驗證維護與投資回收", keywords: ["採購", "報價", "成本", "回收", "iq", "oq", "pq", "維護", "保固", "備品"] },
+    ],
+    questions: [
+      "產能：用我方產品時的 cycle time、UPH、Cpk 與換線時間？",
+      "驗證：IQ／OQ／PQ、教育訓練、備品與售後服務包含哪些？",
+      "投資：設備、治具、維護與人力節省如何形成完整回收期？",
+    ],
+    landing: ["建立設備比較表與瓶頸站假設", "取得實測節拍、報價與交期", "完成驗收條件與投資回收試算"],
+  },
+};
+
 function prepRAndDSourceText(e) {
   const st = getState(e.id);
   const cat = CAT_MAP[e.category];
@@ -3219,24 +3270,49 @@ function prepRAndDHtml(memberName, e) {
   </span>`;
 }
 
-const PREP_STRATEGY_ORDER = ["灝翰", "長儒", "宗銘", "政哲"];
+const PREP_STRATEGY_ORDER = ["灝翰", "長儒", "宗銘", "政哲", "昌毅", "帛辰", "柏宏"];
+
+function prepStrategyRoleFor(memberName) {
+  return PREP_RD_ROLES[memberName] || PREP_FIELD_STRATEGY_ROLES[memberName] || null;
+}
+
+function prepStrategyTopicsFor(memberName) {
+  const role = prepStrategyRoleFor(memberName);
+  if (!role) return [];
+  if (role.topicNos) return PREP_RD_TOPICS.filter((topic) => role.topicNos.includes(topic.no));
+  return role.topics || [];
+}
+
+function prepStrategyRelationshipsFor(memberName, vendor) {
+  if (PREP_RD_ROLES[memberName]) return prepRAndDRelationshipsFor(memberName, vendor);
+  const role = PREP_FIELD_STRATEGY_ROLES[memberName];
+  if (!role) return { role: null, matches: [] };
+  const source = prepRAndDSourceText(vendor);
+  const matches = (role.topics || []).filter((topic) =>
+    topic.keywords.some((keyword) => source.includes(keyword.toLowerCase()))
+  );
+  return { role, matches };
+}
 
 function prepStrategyVendors(memberName, vendors) {
   return vendors
-    .map((vendor) => ({ vendor, matches: prepRAndDRelationshipsFor(memberName, vendor).matches }))
+    .map((vendor) => ({ vendor, matches: prepStrategyRelationshipsFor(memberName, vendor).matches }))
     .sort((a, b) => b.matches.length - a.matches.length ||
       (a.vendor.booth_no || "").localeCompare(b.vendor.booth_no || ""));
 }
 
+function prepStrategyTopicMark(topic) {
+  return topic.no ? `#${topic.no}` : topic.code || topic.label;
+}
+
 function prepStrategySlideHtml(memberName, vendors, index) {
-  const role = PREP_RD_ROLES[memberName];
+  const role = prepStrategyRoleFor(memberName);
   const profile = MEMBER_PROFILES.find((p) => p.name === memberName);
   if (!role || !profile) return "";
-  const topics = PREP_RD_TOPICS.filter((topic) => role.topicNos.includes(topic.no));
+  const topics = prepStrategyTopicsFor(memberName);
   const ranked = prepStrategyVendors(memberName, vendors);
-  const matched = ranked.filter((item) => item.matches.length);
-  const pendingCount = ranked.length - matched.length;
-  const visibleVendors = matched.slice(0, 5);
+  const mapLabel = role.inferred ? "職能策略地圖（推定）" : "研發策略地圖";
+  const roleLabel = role.inferred ? `職能策略推定｜${role.kind}` : role.kind;
 
   return `<article class="prep-strategy-slide" data-strategy-member="${esc(memberName)}">
     <header class="prep-slide-head">
@@ -3245,14 +3321,14 @@ function prepStrategySlideHtml(memberName, vendors, index) {
         <strong>${esc(memberName)}</strong>
         <span>${esc(profile.duty || role.kind)}</span>
       </span>
-      <span class="prep-slide-role">${esc(role.kind)}</span>
+      <span class="prep-slide-role${role.inferred ? " is-inferred" : ""}">${esc(roleLabel)}</span>
     </header>
     <p class="prep-slide-mission">${esc(role.mission)}</p>
-    <div class="prep-slide-flow" aria-label="${esc(memberName)}的研發策略拜訪路徑">
+    <div class="prep-slide-flow" aria-label="${esc(memberName)}的策略拜訪路徑">
       <section class="prep-slide-step prep-slide-map">
-        <span class="prep-step-label"><i>1</i>研發策略地圖</span>
+        <span class="prep-step-label"><i>1</i>${esc(mapLabel)}</span>
         <div class="prep-slide-topics">
-          ${topics.map((topic) => `<span><strong>#${topic.no}</strong>${esc(topic.label)}</span>`).join("")}
+          ${topics.map((topic) => `<span><strong>${esc(prepStrategyTopicMark(topic))}</strong>${esc(topic.label)}</span>`).join("")}
         </div>
       </section>
       <section class="prep-slide-step prep-slide-questions">
@@ -3260,15 +3336,13 @@ function prepStrategySlideHtml(memberName, vendors, index) {
         <ol>${role.questions.map((question) => `<li>${esc(question)}</li>`).join("")}</ol>
       </section>
       <section class="prep-slide-step prep-slide-vendors">
-        <span class="prep-step-label"><i>3</i>對應廠商</span>
-        ${visibleVendors.length ? `<div class="prep-slide-vendor-list">
-          ${visibleVendors.map(({ vendor, matches }) => `<button type="button" data-strategy-exhibitor="${esc(vendor.id)}">
+        <span class="prep-step-label"><i>3</i>對應廠商 <small>已選 ${ranked.length} 家</small></span>
+        ${ranked.length ? `<div class="prep-slide-vendor-list">
+          ${ranked.map(({ vendor, matches }) => `<button type="button" class="${matches.length ? "is-matched" : "is-pending"}" data-strategy-exhibitor="${esc(vendor.id)}">
             <span><strong>${esc(vendor.name_zh || vendor.name_en)}</strong><small>${esc(vendor.booth_no || "攤位未定")}</small></span>
-            <em>${matches.map((topic) => `#${topic.no}`).join(" · ")}</em>
+            <em>${matches.length ? matches.map(prepStrategyTopicMark).join(" · ") : "待確認"}</em>
           </button>`).join("")}
-        </div>
-        ${matched.length > visibleVendors.length ? `<span class="prep-slide-more">另有 ${matched.length - visibleVendors.length} 家已命中</span>` : ""}` : `<p class="prep-slide-empty">已選廠商尚未命中技術題目，現場先確認能力與證據。</p>`}
-        ${pendingCount ? `<span class="prep-slide-pending">另 ${pendingCount} 家關聯待確認</span>` : ""}
+        </div>` : `<p class="prep-slide-empty">尚未選擇／指派廠商。</p>`}
       </section>
       <section class="prep-slide-step prep-slide-landing">
         <span class="prep-step-label"><i>4</i>落地策略</span>
@@ -3345,7 +3419,7 @@ function renderPrepReport() {
   }));
   strategyDeck.innerHTML = `
     <header class="prep-deck-head">
-      <span>研發策略拜訪投影片</span>
+      <span>七人策略拜訪投影片</span>
       <strong>策略地圖 → 問題 → 廠商 → 落地</strong>
     </header>
     <div class="prep-deck-list">
