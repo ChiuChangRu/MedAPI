@@ -3081,7 +3081,101 @@ function prepNoteHighlightsFor(exhibitorId) {
     .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
 }
 
-function prepVendorHtml(e) {
+// 研發技術地圖的 8 個題目。關聯只從廠商資料、拜訪目標與既有 Note 的明確關鍵字產生；
+// 沒有證據時標成「待確認」，不因職務相近就替廠商硬寫一個拜訪理由。
+const PREP_RD_TOPICS = [
+  { no: 1, label: "雷射加工", keywords: ["雷射", "激光", "laser", "打孔", "鑽孔", "微孔", "雷射切割"], ask: "可否提供加工尺寸、公差、熱影響區與量產良率的實測資料？" },
+  { no: 2, label: "親水披膜", keywords: ["親水", "hydrophilic", "潤滑塗層", "低摩擦塗層"], ask: "可否提供摩擦係數、耐久循環、基材附著力及滅菌後衰減數據？" },
+  { no: 3, label: "薄壁繞簧管", keywords: ["繞簧", "彈簧管", "coil", "薄壁鞘管", "coil reinforced"], ask: "可否提供最小壁厚、線徑、節距、抗扭與推送性的實測資料？" },
+  { no: 4, label: "編織管", keywords: ["編織", "braid", "增強導管", "braided"], ask: "可否提供編織密度、線材規格、抗扭與推送性數據？" },
+  { no: 5, label: "變徑／異型管", keywords: ["變徑", "異型", "錐形", "taper", "多腔", "多層共擠", "共擠", "押出模具", "擠出模具"], ask: "可否提供最小壁厚、尺寸公差、模具流道與製程能力資料？" },
+  { no: 6, label: "TPU 球囊導管", keywords: ["球囊", "balloon", "爆破壓", "球囊成型", "tpu"], ask: "可否提供成型窗口、壁厚均勻性、爆破壓與疲勞測試報告？" },
+  { no: 7, label: "抗結痂披膜", keywords: ["抗結痂", "結晶沉積", "尿鹽", "encrust", "抗生物膜"], ask: "可否提供結晶沉積、生物膜、耐久性及長期使用條件的比較數據？" },
+  { no: 8, label: "抗菌披膜", keywords: ["抗菌", "抗微生物", "antimicrobial", "抑菌", "銀離子"], ask: "可否提供菌種、試驗方法、抑菌效果、溶出物與生物相容性報告？" },
+];
+
+const PREP_RD_ROLES = {
+  "長儒": {
+    kind: "直接技術",
+    topicNos: [2, 7, 8],
+    basis: "確認披膜材料、塗佈條件、耐久性與可試塗樣品，支援題目 2／7／8 的技術選型。",
+  },
+  "宗銘": {
+    kind: "直接技術",
+    topicNos: [3, 4, 5, 6],
+    basis: "確認導管結構、押出／編織／成型能力與量產數據，支援題目 3～6 的平台開發。",
+  },
+  "灝翰": {
+    kind: "製圖／模治具支援",
+    topicNos: [1, 3, 4, 5, 6],
+    basis: "確認雷射、押出、編織與球囊成型所需圖面、公差、模治具及可製造性證據。",
+  },
+  "政哲": {
+    kind: "滅菌／檢驗驗證",
+    topicNos: [1, 2, 3, 4, 5, 6, 7, 8],
+    basis: "確認技術導入後的滅菌相容性、檢驗方法、允收標準與正式報告能否取得。",
+  },
+};
+
+function prepRAndDSourceText(e) {
+  const st = getState(e.id);
+  const cat = CAT_MAP[e.category];
+  const notes = [
+    ...(notesCache()[e.id] || []),
+    ...getPending().filter((n) => n.exhibitor_id === e.id),
+  ];
+  return [
+    e.name_zh,
+    e.name_en,
+    e.description,
+    ...(e.products || []),
+    cat ? cat.name_zh : "",
+    cat ? cat.name_en : "",
+    ...(st.goal_tags || []),
+    ...notes.flatMap((n) => [n.type, n.content]),
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function prepRAndDRelationshipsFor(memberName, e) {
+  const role = PREP_RD_ROLES[memberName];
+  if (!role) return { role: null, matches: [] };
+  const source = prepRAndDSourceText(e);
+  const matches = PREP_RD_TOPICS.filter((topic) =>
+    role.topicNos.includes(topic.no) &&
+    topic.keywords.some((keyword) => source.includes(keyword.toLowerCase()))
+  );
+  return { role, matches };
+}
+
+function prepRAndDQuestion(role, topic) {
+  if (role.kind === "製圖／模治具支援") {
+    return `題目 ${topic.no}：可否提供關鍵圖面、公差堆疊、模治具方案與量產可製造性證據？`;
+  }
+  if (role.kind === "滅菌／檢驗驗證") {
+    return `題目 ${topic.no}：可否提供 EO／輻照後的材料相容性、檢驗方法、允收標準與正式報告？`;
+  }
+  return `題目 ${topic.no}：${topic.ask}`;
+}
+
+function prepRAndDHtml(memberName, e) {
+  const { role, matches } = prepRAndDRelationshipsFor(memberName, e);
+  if (!role) return "";
+  if (!matches.length) {
+    return `<span class="prep-rd prep-rd-pending">
+      <span class="prep-rd-title">研發關聯待確認｜${esc(role.kind)}</span>
+      <span>現有廠商資料與 Note 尚未命中研發題目；現場先確認是否有相關材料、製程或驗證證據。</span>
+    </span>`;
+  }
+  const visible = matches.slice(0, 3);
+  return `<span class="prep-rd prep-rd-match">
+    <span class="prep-rd-title">研發關聯｜${esc(role.kind)}</span>
+    <span class="prep-rd-topics">${visible.map((topic) => `<span>#${topic.no} ${esc(topic.label)}</span>`).join("")}${matches.length > visible.length ? `<span>另 ${matches.length - visible.length} 題</span>` : ""}</span>
+    <span class="prep-rd-basis"><strong>拜訪依據：</strong>${esc(role.basis)}</span>
+    <span class="prep-rd-checks">${visible.map((topic) => `<span><strong>現場查證：</strong>${esc(prepRAndDQuestion(role, topic))}</span>`).join("")}</span>
+  </span>`;
+}
+
+function prepVendorHtml(e, memberName = "") {
   const st = getState(e.id);
   const cat = CAT_MAP[e.category];
   const products = (e.products || []).slice(0, 2);
@@ -3100,6 +3194,7 @@ function prepVendorHtml(e) {
     </span>
     <span class="prep-vendor-meta">${esc([cat ? cat.name_zh : "", e.country].filter(Boolean).join(" · "))}</span>
     <span class="prep-vendor-focus">${focus.map((t) => `<span>${esc(t)}</span>`).join("")}</span>
+    ${prepRAndDHtml(memberName, e)}
     <span class="prep-vendor-foot">
       <span class="prep-status"><i style="background:${statusColor}"></i>${esc(st.status || "未排定")}</span>
       <span class="prep-note-count${noteHighlights.length ? " has-notes" : ""}">${noteHighlights.length ? `📝 ${noteHighlights.length} 則 Note` : "尚無 Note"}</span>
@@ -3159,7 +3254,7 @@ function renderPrepReport() {
       </header>
       ${statusCounts.length ? `<div class="prep-status-summary">${statusCounts.map(([status, count]) => `<span><i style="background:${STATUS_COLORS[status] || "#8a8a82"}"></i>${esc(status)} ${count}</span>`).join("")}</div>` : ""}
       <div class="prep-vendors">
-        ${vendors.length ? vendors.map(prepVendorHtml).join("") : `<div class="prep-empty"><strong>尚未選擇／指派廠商</strong><span>請先到展商詳情設定「負責同事」，這裡會自動更新。</span></div>`}
+        ${vendors.length ? vendors.map((e) => prepVendorHtml(e, name)).join("") : `<div class="prep-empty"><strong>尚未選擇／指派廠商</strong><span>請先到展商詳情設定「負責同事」，這裡會自動更新。</span></div>`}
       </div>
       ${(rep.points || []).length || (rep.asks || []).length ? `
         <details class="prep-guidance">
