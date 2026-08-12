@@ -31,3 +31,19 @@ test("參訪前報告保留個人補充與離線可讀資料，不新增寫入�
   assert.match(app, /api\(`\/prep-notes\/\$\{encodeURIComponent\(name\)\}`/);
   assert.match(app, /STATE 在連線時來自 D1，離線時來自手機快照/);
 });
+
+test("參訪前報告顯示現有拜訪 Note 精華，代問不重複混入", async () => {
+  const [app, style] = await Promise.all([
+    read("cloudflare/public/app.js"),
+    read("cloudflare/public/style.css"),
+  ]);
+
+  assert.match(app, /function prepNoteExcerpt\(content, limit = 120\)/, "長 Note 應先壓成卡片可讀的精華");
+  assert.match(app, /function prepNoteHighlightsFor\(exhibitorId\)/);
+  assert.match(app, /n\.type !== "想詢問的問題"/, "代問已有獨立區塊，不應重複當 Note 精華");
+  assert.match(app, /notesCache\(\)\[exhibitorId\]/, "已同步 Note 應從離線快照讀取");
+  assert.match(app, /getPending\(\).*exhibitor_id === exhibitorId/, "手機待同步 Note 也應顯示");
+  assert.match(app, /noteHighlights\.slice\(0, 2\)/, "卡片只顯示最近兩則，避免重新變得難讀");
+  assert.match(app, /Note 精華/);
+  assert.match(style, /\.prep-vendor-highlights/);
+});
