@@ -2995,6 +2995,9 @@ function renderItinerary() {
   const wrap = $("itinerary-list");
   if (!wrap) return;
   const today = new Date().toLocaleDateString("sv");
+  const hasToday = TRIP_DAYS.some((day) => day.date === today);
+  const previousOpen = new Map([...wrap.querySelectorAll(".itin-day[data-itin-date]")]
+    .map((day) => [day.dataset.itinDate, day.open]));
 
   wrap.innerHTML = TRIP_DAYS.map((d, i) => {
     const isToday = d.date === today;
@@ -3016,25 +3019,38 @@ function renderItinerary() {
         <a href="#" class="itin-shortcut" data-go="assigned">📌 我的分派清單</a>
       </div>` : "";
 
-    return `<article class="itin-day itin-${esc(d.kind)}${isToday ? " itin-today" : ""}">
-      <header class="itin-day-head">
-        <div class="itin-daynum">Day ${i + 1}</div>
-        <div class="itin-date">${esc(d.label)}<span class="itin-weekday">（${esc(d.weekday)}）</span></div>
-        <span class="itin-kind">${esc(d.kindLabel)}</span>
-        ${isToday ? '<span class="itin-today-tag">今天</span>' : ""}
-      </header>
-      <div class="itin-headline">${esc(d.headline)}</div>
-      ${shuttle}
-      <div class="itin-halves">
-        ${itinHalfHtml("上午", d.am)}
-        ${itinHalfHtml("下午", d.pm)}
+    // 非旅途中先展開第一天；旅途中則展開今天。其餘標題仍完整可見，讓首頁不必
+    // 一次捲過六天的所有細節。details/summary 可用鍵盤操作，也保留瀏覽器原生語意。
+    const defaultOpen = isToday || (!hasToday && i === 0);
+    const open = previousOpen.has(d.date) ? previousOpen.get(d.date) : defaultOpen;
+    return `<details class="itin-day itin-${esc(d.kind)}${isToday ? " itin-today" : ""}" data-itin-date="${esc(d.date)}"${open ? " open" : ""}>
+      <summary class="itin-day-summary">
+        <span class="itin-day-head">
+          <span class="itin-daynum">Day ${i + 1}</span>
+          <span class="itin-date">${esc(d.label)}<span class="itin-weekday">（${esc(d.weekday)}）</span></span>
+          <span class="itin-kind">${esc(d.kindLabel)}</span>
+          ${isToday ? '<span class="itin-today-tag">今天</span>' : ""}
+        </span>
+        <span class="itin-toggle" aria-hidden="true">
+          <span class="itin-toggle-open">收合行程</span>
+          <span class="itin-toggle-closed">展開行程</span>
+          <span class="itin-toggle-arrow">⌄</span>
+        </span>
+        <span class="itin-headline">${esc(d.headline)}</span>
+      </summary>
+      <div class="itin-day-content">
+        ${shuttle}
+        <div class="itin-halves">
+          ${itinHalfHtml("上午", d.am)}
+          ${itinHalfHtml("下午", d.pm)}
+        </div>
+        ${shortcuts}
+        <footer class="itin-foot">
+          <span>🏨 ${esc(d.stay)}</span>
+          <span>🚗 ${esc(d.transit)}</span>
+        </footer>
       </div>
-      ${shortcuts}
-      <footer class="itin-foot">
-        <span>🏨 ${esc(d.stay)}</span>
-        <span>🚗 ${esc(d.transit)}</span>
-      </footer>
-    </article>`;
+    </details>`;
   }).join("");
 
   wrap.querySelectorAll(".itin-link[data-ex]").forEach((a) => {
@@ -3099,21 +3115,49 @@ const PREP_RD_ROLES = {
     kind: "直接技術",
     topicNos: [2, 7, 8],
     basis: "確認披膜材料、塗佈條件、耐久性與可試塗樣品，支援題目 2／7／8 的技術選型。",
+    mission: "把披膜從功能宣稱，推進到可比較、可試塗、可量產的技術方案。",
+    questions: [
+      "性能：摩擦、附著與耐久數據怎麼測？",
+      "相容：TPU／矽膠／PEBAX 與滅菌後是否穩定？",
+      "導入：能否小量試塗，樣品、NRE 與交期為何？",
+    ],
+    landing: ["取得塗層規格與測試方法", "安排我方管材小量試塗", "建立候選技術與驗收門檻"],
   },
   "宗銘": {
     kind: "直接技術",
     topicNos: [3, 4, 5, 6],
     basis: "確認導管結構、押出／編織／成型能力與量產數據，支援題目 3～6 的平台開發。",
+    mission: "把管材、編織與球囊能力串成可打樣、可驗證、可移轉的導管平台。",
+    questions: [
+      "能力：最小壁厚、外徑公差與可加工材料到哪裡？",
+      "性能：抗扭、推送、爆破壓與疲勞數據能否提供？",
+      "移轉：模治具、MOQ、打樣交期與責任邊界怎麼切？",
+    ],
+    landing: ["取得材料與製程能力表", "帶回結構樣品與性能報告", "排出打樣到量產的驗證路徑"],
   },
   "灝翰": {
     kind: "製圖／模治具支援",
     topicNos: [1, 3, 4, 5, 6],
     basis: "確認雷射、押出、編織與球囊成型所需圖面、公差、模治具及可製造性證據。",
+    mission: "把研發構想翻成廠商看得懂、做得出、量產時守得住的圖面與治具條件。",
+    questions: [
+      "圖面：關鍵尺寸、公差堆疊與材料資料要到什麼程度？",
+      "工法：模具與治具由誰設計、製作與維護？",
+      "量產：打樣到量產的良率與可製造性如何證明？",
+    ],
+    landing: ["整理 DFM 與圖面輸入清單", "取得模治具方案與關鍵公差", "定義試模、修模與量產交付物"],
   },
   "政哲": {
     kind: "滅菌／檢驗驗證",
     topicNos: [1, 2, 3, 4, 5, 6, 7, 8],
     basis: "確認技術導入後的滅菌相容性、檢驗方法、允收標準與正式報告能否取得。",
+    mission: "把每項技術主張轉成可追溯的滅菌條件、檢驗方法與允收證據。",
+    questions: [
+      "滅菌：EO／輻照前後哪些材料與性能已驗證？",
+      "檢驗：方法、抽樣、允收標準與批次一致性怎麼定？",
+      "文件：哪些正式報告可提供，客製後要補哪些驗證？",
+    ],
+    landing: ["建立每項技術的證據清單", "確認滅菌後的關鍵驗收規格", "列出文件缺口、責任人與補件時程"],
   },
 };
 
@@ -3175,6 +3219,65 @@ function prepRAndDHtml(memberName, e) {
   </span>`;
 }
 
+const PREP_STRATEGY_ORDER = ["灝翰", "長儒", "宗銘", "政哲"];
+
+function prepStrategyVendors(memberName, vendors) {
+  return vendors
+    .map((vendor) => ({ vendor, matches: prepRAndDRelationshipsFor(memberName, vendor).matches }))
+    .sort((a, b) => b.matches.length - a.matches.length ||
+      (a.vendor.booth_no || "").localeCompare(b.vendor.booth_no || ""));
+}
+
+function prepStrategySlideHtml(memberName, vendors, index) {
+  const role = PREP_RD_ROLES[memberName];
+  const profile = MEMBER_PROFILES.find((p) => p.name === memberName);
+  if (!role || !profile) return "";
+  const topics = PREP_RD_TOPICS.filter((topic) => role.topicNos.includes(topic.no));
+  const ranked = prepStrategyVendors(memberName, vendors);
+  const matched = ranked.filter((item) => item.matches.length);
+  const pendingCount = ranked.length - matched.length;
+  const visibleVendors = matched.slice(0, 5);
+
+  return `<article class="prep-strategy-slide" data-strategy-member="${esc(memberName)}">
+    <header class="prep-slide-head">
+      <span class="prep-slide-no">${String(index + 1).padStart(2, "0")}</span>
+      <span class="prep-slide-person">
+        <strong>${esc(memberName)}</strong>
+        <span>${esc(profile.duty || role.kind)}</span>
+      </span>
+      <span class="prep-slide-role">${esc(role.kind)}</span>
+    </header>
+    <p class="prep-slide-mission">${esc(role.mission)}</p>
+    <div class="prep-slide-flow" aria-label="${esc(memberName)}的研發策略拜訪路徑">
+      <section class="prep-slide-step prep-slide-map">
+        <span class="prep-step-label"><i>1</i>研發策略地圖</span>
+        <div class="prep-slide-topics">
+          ${topics.map((topic) => `<span><strong>#${topic.no}</strong>${esc(topic.label)}</span>`).join("")}
+        </div>
+      </section>
+      <section class="prep-slide-step prep-slide-questions">
+        <span class="prep-step-label"><i>2</i>要回答的問題</span>
+        <ol>${role.questions.map((question) => `<li>${esc(question)}</li>`).join("")}</ol>
+      </section>
+      <section class="prep-slide-step prep-slide-vendors">
+        <span class="prep-step-label"><i>3</i>對應廠商</span>
+        ${visibleVendors.length ? `<div class="prep-slide-vendor-list">
+          ${visibleVendors.map(({ vendor, matches }) => `<button type="button" data-strategy-exhibitor="${esc(vendor.id)}">
+            <span><strong>${esc(vendor.name_zh || vendor.name_en)}</strong><small>${esc(vendor.booth_no || "攤位未定")}</small></span>
+            <em>${matches.map((topic) => `#${topic.no}`).join(" · ")}</em>
+          </button>`).join("")}
+        </div>
+        ${matched.length > visibleVendors.length ? `<span class="prep-slide-more">另有 ${matched.length - visibleVendors.length} 家已命中</span>` : ""}` : `<p class="prep-slide-empty">已選廠商尚未命中技術題目，現場先確認能力與證據。</p>`}
+        ${pendingCount ? `<span class="prep-slide-pending">另 ${pendingCount} 家關聯待確認</span>` : ""}
+      </section>
+      <section class="prep-slide-step prep-slide-landing">
+        <span class="prep-step-label"><i>4</i>落地策略</span>
+        <ol>${role.landing.map((action) => `<li>${esc(action)}</li>`).join("")}</ol>
+      </section>
+    </div>
+  </article>`;
+}
+
 function prepVendorHtml(e, memberName = "") {
   const st = getState(e.id);
   const cat = CAT_MAP[e.category];
@@ -3213,7 +3316,8 @@ let PREP_NOTES = {};   // member -> { content, updated_by, updated_at }
 function renderPrepReport() {
   const wrap = $("prep-list");
   const overview = $("prep-overview");
-  if (!wrap || !overview) return;
+  const strategyDeck = $("prep-strategy-deck");
+  if (!wrap || !overview || !strategyDeck) return;
   const drafts = {};
   for (const name of PREP_ORDER) {
     const ta = $(`prep-ta-${name}`);
@@ -3233,6 +3337,19 @@ function renderPrepReport() {
     </div>
     <div class="prep-member-nav" aria-label="跳到同事">
       ${groups.map((g) => `<button type="button" data-prep-jump="${esc(g.name)}" class="${isSameName(g.name, me()) ? "is-me" : ""}">${esc(g.name)} <strong>${g.vendors.length}</strong></button>`).join("")}
+    </div>`;
+
+  const strategyGroups = PREP_STRATEGY_ORDER.map((name) => ({
+    name,
+    vendors: groups.find((group) => group.name === name)?.vendors || [],
+  }));
+  strategyDeck.innerHTML = `
+    <header class="prep-deck-head">
+      <span>研發策略拜訪投影片</span>
+      <strong>策略地圖 → 問題 → 廠商 → 落地</strong>
+    </header>
+    <div class="prep-deck-list">
+      ${strategyGroups.map(({ name, vendors }, index) => prepStrategySlideHtml(name, vendors, index)).join("")}
     </div>`;
 
   wrap.innerHTML = groups.map(({ name, vendors }) => {
@@ -3282,6 +3399,9 @@ function renderPrepReport() {
   });
   wrap.querySelectorAll("[data-exhibitor]").forEach((btn) => {
     btn.onclick = () => openDetail(btn.dataset.exhibitor);
+  });
+  strategyDeck.querySelectorAll("[data-strategy-exhibitor]").forEach((btn) => {
+    btn.onclick = () => openDetail(btn.dataset.strategyExhibitor);
   });
   wrap.querySelectorAll(".prep-save").forEach((btn) => {
     btn.onclick = () => savePrepNote(btn.dataset.save, btn);

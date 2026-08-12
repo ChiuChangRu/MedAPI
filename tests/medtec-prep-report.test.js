@@ -96,3 +96,41 @@ test("研發關聯卡片顯示拜訪依據、現場查證與待確認狀態", as
   assert.match(style, /\.prep-rd-match/);
   assert.match(style, /\.prep-rd-pending/);
 });
+
+test("研發策略投影片依序連起策略地圖、問題、廠商與落地策略", async () => {
+  const [app, html, style] = await Promise.all([
+    read("cloudflare/public/app.js"),
+    read("cloudflare/public/index.html"),
+    read("cloudflare/public/style.css"),
+  ]);
+
+  assert.match(html, /id="prep-strategy-deck"/);
+  assert.match(app, /const PREP_STRATEGY_ORDER = \["灝翰", "長儒", "宗銘", "政哲"\]/);
+  assert.match(app, /function prepStrategySlideHtml\(memberName, vendors, index\)/);
+  assert.match(app, /研發策略地圖/);
+  assert.match(app, /要回答的問題/);
+  assert.match(app, /對應廠商/);
+  assert.match(app, /落地策略/);
+  assert.match(app, /prepRAndDRelationshipsFor\(memberName, vendor\)/, "投影片廠商必須沿用證據比對，不可硬湊");
+  assert.match(app, /data-strategy-exhibitor=/, "投影片內的廠商應能直接開啟詳情");
+  assert.match(app, /另 \$\{pendingCount\} 家關聯待確認/, "沒有命中的已選廠商要明確標示待確認");
+  assert.match(style, /\.prep-strategy-slide/);
+  assert.match(style, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+});
+
+test("首頁六天行程以大標題與明顯文字控制逐日折疊", async () => {
+  const [app, style] = await Promise.all([
+    read("cloudflare/public/app.js"),
+    read("cloudflare/public/style.css"),
+  ]);
+
+  assert.match(app, /<details class="itin-day/);
+  assert.match(app, /<summary class="itin-day-summary">/);
+  assert.match(app, /itin-toggle-open">收合行程/);
+  assert.match(app, /itin-toggle-closed">展開行程/);
+  assert.match(app, /const defaultOpen = isToday \|\| \(!hasToday && i === 0\)/, "出發前只展開第一天，旅途中改展開今天");
+  assert.match(app, /previousOpen\.has\(d\.date\)/, "切換分頁後要保留使用者剛才的展開狀態");
+  assert.match(style, /\.itin-date \{ font-size: clamp\(22px, 3vw, 29px\)/);
+  assert.match(style, /\.itin-toggle \{/);
+  assert.match(style, /\.itin-day\[open\] \.itin-toggle-arrow/);
+});
