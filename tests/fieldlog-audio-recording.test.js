@@ -62,6 +62,54 @@ test("MediaRecorder 要定期交出資料，並監聽 recorder error", () => {
   assert.match(fn, /recorder\.onerror\s*=.*recorderFailed/s, "MediaRecorder 自己報錯也要觸發接續判斷");
 });
 
+test("桌機回前台要用非空 dataavailable 驗證錄音資料流，不再一律誤報可能缺口", () => {
+  assert.match(app, /const AUDIO_FLOW_PROBE_TIMEOUT_MS = 2000;/,
+    "資料流探測要有逾時，不能讓回前台流程永久卡住");
+  assert.match(app, /function probeAudioRecorderData\(recorder\)/,
+    "要有獨立的 recorder 資料流探測函式");
+  assert.match(app, /addEventListener\("dataavailable", onData\)/,
+    "探測要等待 recorder 實際交出資料");
+  assert.match(app, /event\.data\?\.size/,
+    "空事件不能被誤判成仍有錄到音訊資料");
+  assert.match(app, /recorder\.requestData\(\)/,
+    "回前台要主動要求交出目前累積資料，不必等下一個 timeslice");
+  const resume = app.match(/async function resumeAudioOnForeground[\s\S]*?\n\}\n/)?.[0] || "";
+  assert.match(resume, /await probeAudioRecorderData\(probedRecorder\)/,
+    "track 與 state 正常時仍要用資料塊驗證，不可只看表面狀態");
+  assert.match(resume, /背景 .* 錄音持續；已收到音訊資料/,
+    "探測成功要明確顯示仍在錄，不能再用故障語氣誤導使用者");
+  assert.doesNotMatch(app, /系統無法保證此段完整/,
+    "健康的桌機切分頁不可再一律顯示可能缺口");
+});
+
+test("probeAudioRecorderData：收到非空資料回 true，inactive recorder 直接回 false", async () => {
+  const start = app.indexOf("function probeAudioRecorderData(recorder)");
+  const end = app.indexOf("\n\n// 行動瀏覽器可能只把麥克風 track", start);
+  assert.ok(start > -1 && end > start, "要能取出完整的資料流探測函式");
+  const source = app.slice(start, end);
+  const probe = new Function("AUDIO_FLOW_PROBE_TIMEOUT_MS", `${source}; return probeAudioRecorderData;`)(20);
+
+  class FakeRecorder extends EventTarget {
+    constructor(state, bytes = 0) {
+      super();
+      this.state = state;
+      this.bytes = bytes;
+    }
+    requestData() {
+      queueMicrotask(() => {
+        const event = new Event("dataavailable");
+        Object.defineProperty(event, "data", { value: { size: this.bytes } });
+        this.dispatchEvent(event);
+      });
+    }
+  }
+
+  assert.equal(await probe(new FakeRecorder("recording", 128)), true,
+    "桌機 recorder 能交出資料時必須判定錄音仍在流動");
+  assert.equal(await probe(new FakeRecorder("inactive", 128)), false,
+    "已停止的 recorder 不可被資料探測誤判成健康");
+});
+
 test("音軌 muted 或 ended 也算中斷，不能只檢查 MediaRecorder.state", () => {
   const watch = app.match(/function watchAudioStream\(stream\)[\s\S]*?\n\}/)?.[0] || "";
   assert.match(watch, /addEventListener\("mute", markInterrupted\)/, "iOS 常只把 track muted，必須監聽");
