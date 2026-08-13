@@ -107,7 +107,7 @@ test("home.css：沒有殘留上一版「並排兩欄」時代的死 class（hom
   );
 });
 
-test("sw.js：CACHE 版本有跟著這次首頁改版一起換，避免舊快取卡住", async () => {
+test("sw.js：CACHE 版本有跟著背景錄音修正升到 v105，避免舊快取卡住", async () => {
   const sw = await read("../fieldlog/public/sw.js");
-  assert.match(sw, /const CACHE = "fieldlog-v104-home-toolbar-columns";/);
+  assert.match(sw, /const CACHE = "fieldlog-v105-background-audio-recovery";/);
 });
