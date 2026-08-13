@@ -107,7 +107,13 @@ test("home.css：沒有殘留上一版「並排兩欄」時代的死 class（hom
   );
 });
 
-test("sw.js：CACHE 版本有跟著錄音資料流探測升到 v106，避免舊快取卡住", async () => {
+test("sw.js：CACHE 版本有跟著錄音紀錄統一升到 v107，避免舊快取卡住", async () => {
+  const html = await read("../fieldlog/public/index.html");
   const sw = await read("../fieldlog/public/sw.js");
-  assert.match(sw, /const CACHE = "fieldlog-v106-audio-flow-probe";/);
+  assert.match(sw, /const CACHE = "fieldlog-v107-recording-bundles";/);
+  for (const asset of ["app.js", "style.css", "pdf-editor.js", "richtext-editor.js"]) {
+    const escaped = asset.replace(".", "\\.");
+    assert.match(html, new RegExp(`[\"']${escaped}\\?v=107[\"']`), `${asset} 的頁面引用沒有升到 v107`);
+    assert.match(sw, new RegExp(`[\"']${escaped}\\?v=107[\"']`), `${asset} 的預快取版本沒有升到 v107`);
+  }
 });

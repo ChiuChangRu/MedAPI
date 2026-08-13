@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "106";
+const APP_VERSION = "107";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1460,21 +1460,23 @@ async function openFolder(id) {
   // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
   const entries = await api(`/entries?folder_id=${id}&include=attachments`);
   const visibleAtts = (e) => (e.attachments || []).filter((a) => !a.source_pdf_id);
-  // 只有「單一檔案」的記事才拆成單檔瀏覽；多檔案的記事（分段錄音、一次錄音夾
-  // 幾張照片…）要整筆一起顯示，不能把附件拆散成互不相干的檔案列——按檔名
-  // 全域排序會把同一次錄音的分段跟別筆記事的檔案混在一起，看起來像是資料被打散了。
-  const singleFileEntries = entries.filter((e) => visibleAtts(e).length === 1);
-  const multiFileEntries = entries.filter((e) => visibleAtts(e).length > 1);
+  // 錄音不論只有一段或多段，都維持「一筆錄音紀錄」：直接錄音後再歸檔，和先進
+  // 資料夾再錄音，最後都會看到同一種結構。舊邏輯把單段錄音攤成檔案列、多段錄音
+  // 包成紀錄卡，導致同一次操作只因錄音長短不同就變成兩種檔案結構。
+  // 非錄音仍沿用原規則：單一附件可直接瀏覽，多附件要整筆一起顯示，避免被排序拆散。
+  const isRecordingEntry = (e) => visibleAtts(e).some((a) => a.kind === "audio");
+  const singleFileEntries = entries.filter((e) => visibleAtts(e).length === 1 && !isRecordingEntry(e));
+  const groupedEntries = entries.filter((e) => isRecordingEntry(e) || visibleAtts(e).length > 1);
   const notes = entries.filter((e) => visibleAtts(e).length === 0);
   const files = sortFolderFiles(singleFileEntries.flatMap((e) =>
     visibleAtts(e).map((a) => ({ attachment: a, entryId: e.id }))
   ));
   $("folder-entries").className = `entry-list inner-entry-list ${INNER_FOLDER_VIEW}-view`;
-  $("folder-entries").innerHTML = files.length || multiFileEntries.length || notes.length
+  $("folder-entries").innerHTML = files.length || groupedEntries.length || notes.length
     ? `${files.length ? `<div class="archive-section-label">已歸檔檔案</div>
         <div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
-       ${multiFileEntries.length ? `<div class="archive-section-label">已歸檔紀錄（多檔案，例如分段錄音）</div>
-        <div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${multiFileEntries.map((e) => recordGroupCardHtml(e, visibleAtts(e))).join("")}</div>` : ""}
+       ${groupedEntries.length ? `<div class="archive-section-label">已歸檔紀錄（錄音與多檔案）</div>
+        <div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${groupedEntries.map((e) => recordGroupCardHtml(e, visibleAtts(e))).join("")}</div>` : ""}
        ${notes.length ? `<div class="archive-section-label">已歸檔筆記</div>
         <div class="archive-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
@@ -1490,6 +1492,7 @@ function recordGroupCardHtml(e, atts) {
   const kindLabel = { audio: "🎙️ 錄音", photo: "🖼️ 照片", video: "🎥 影片" };
   const counts = atts.reduce((acc, a) => { acc[a.kind] = (acc[a.kind] || 0) + 1; return acc; }, {});
   const summary = Object.entries(counts).map(([k, n]) => `${kindLabel[k] || k} ×${n}`).join("、");
+  const icon = counts.audio ? "🎙️" : "📁";
   // 刻意不共用 .child-folder-card 這個 class 名稱：bindFolderDropTargets() 用
   // ".child-folder-card[data-id]" 當拖曳檔案的落點，抓的是真正的資料夾 id；
   // 這張卡片的 data-id 其實是記事 id，混進同一個 class 會讓拖檔案誤觸到這裡，
@@ -1501,7 +1504,7 @@ function recordGroupCardHtml(e, atts) {
   // 刪掉重建（entry 266：之前這裡只有刪除鍵，完全搬不動）。
   return `<div class="record-group-card" data-id="${e.id}">
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
-    <span>📁</span><strong>${esc(e.title || "（未命名）")}</strong>
+    <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
     <small>${esc((e.created_at || "").slice(5, 16))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
     <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
     <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>

@@ -22,6 +22,24 @@ test("recordGroupCardHtml 補上拖曳把手與「移動」按鈕", async () => 
   assert.match(fn, /class="record-group-move"/);
 });
 
+test("資料夾內的錄音不論單段或多段都維持同一筆紀錄，不攤平成單檔", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const openFolder = app.match(/async function openFolder\(id\)[\s\S]*?\n}\n\n\/\/ 多檔案記事/)[0];
+  assert.match(openFolder, /const isRecordingEntry = \(e\) => visibleAtts\(e\)\.some\(\(a\) => a\.kind === "audio"\)/);
+  assert.match(openFolder, /visibleAtts\(e\)\.length === 1 && !isRecordingEntry\(e\)/,
+    "只有非錄音的單一附件才能攤成檔案列");
+  assert.match(openFolder, /isRecordingEntry\(e\) \|\| visibleAtts\(e\)\.length > 1/,
+    "單段錄音與多段錄音都要進紀錄卡");
+  assert.match(openFolder, /groupedEntries\.map\(\(e\) => recordGroupCardHtml/);
+});
+
+test("錄音紀錄卡使用錄音圖示，一般多附件紀錄仍使用資料夾圖示", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const fn = app.match(/function recordGroupCardHtml\(e, atts\)[\s\S]*?\n\}/)[0];
+  assert.match(fn, /const icon = counts\.audio \? "🎙️" : "📁"/);
+  assert.match(fn, /<span>\$\{icon\}<\/span>/);
+});
+
 test("bindRecordGroupCards：📂 按鈕呼叫 openMoveEntryDialog，拖曳把手掛 application/x-fieldlog-entry", async () => {
   const app = await read("../fieldlog/public/app.js");
   const fn = app.match(/function bindRecordGroupCards\(\)[\s\S]*?\n\}\n/)[0];
