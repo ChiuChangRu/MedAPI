@@ -52,5 +52,52 @@ test("背景中斷時要把警示寫進記事永久保存，不是只有浮動�
 test("resumeAudioOnForeground：成功接續與無法接續兩種結果都要呼叫 noteAudioInterruption", () => {
   const fn = app.match(/async function resumeAudioOnForeground[\s\S]*?\n\}\n/)?.[0] || "";
   const calls = fn.match(/noteAudioInterruption\(/g) || [];
-  assert.equal(calls.length, 2, "成功自動接續、跟完全接不上這兩條路徑都要留永久記錄，不能只顧一邊");
+  assert.equal(calls.length, 3, "成功接續、舊音軌恢復、完全接不上三條路徑都要留永久記錄，不能只顧一邊");
+});
+
+test("MediaRecorder 要定期交出資料，並監聽 recorder error", () => {
+  assert.match(app, /const AUDIO_DATA_SLICE_MS = 5000;/, "背景凍結前要縮短尚未交給 JS 的錄音資料量");
+  const fn = app.match(/function startAudioSegRecorder\(\)[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(fn, /recorder\.start\(AUDIO_DATA_SLICE_MS\)/, "MediaRecorder.start 要帶 timeslice");
+  assert.match(fn, /recorder\.onerror\s*=.*recorderFailed/s, "MediaRecorder 自己報錯也要觸發接續判斷");
+});
+
+test("音軌 muted 或 ended 也算中斷，不能只檢查 MediaRecorder.state", () => {
+  const watch = app.match(/function watchAudioStream\(stream\)[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(watch, /addEventListener\("mute", markInterrupted\)/, "iOS 常只把 track muted，必須監聽");
+  assert.match(watch, /addEventListener\("ended", markInterrupted\)/, "麥克風 track 結束必須監聽");
+  const resume = app.match(/async function resumeAudioOnForeground[\s\S]*?\n\}\n/)?.[0] || "";
+  assert.match(resume, /track\.muted/, "回前台要檢查仍處於 muted 的 track");
+  assert.match(resume, /AUDIO\.trackInterrupted/, "mute 後已自行 unmute 也要留下中斷邊界");
+  assert.match(resume, /AUDIO\.recorderFailed/, "recorder error 也要重建錄音器");
+});
+
+test("回前台重建時先開始新 recorder，再延遲停止舊 recorder", () => {
+  const resume = app.match(/async function resumeAudioOnForeground[\s\S]*?\n\}\n/)?.[0] || "";
+  const startIdx = resume.indexOf("startAudioSegRecorder()");
+  const stopIdx = resume.indexOf("oldRecorder.stop()");
+  assert.ok(startIdx > -1 && stopIdx > -1 && startIdx < stopIdx,
+    "恢復前景時要先接上新的 recorder，不能再製造可避免的空隙");
+  assert.match(resume, /setTimeout\([\s\S]*AUDIO_SEG_OVERLAP_MS\)/,
+    "舊 recorder 要延遲到重疊時間後才停止");
+});
+
+test("pagehide 進入 bfcache 時不能停止錄音，真正離頁則先由 beforeunload 警告", () => {
+  const hide = app.match(/function onPageHide\(event\)[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(hide, /if \(event\.persisted\)[\s\S]*onPageHidden\(\);[\s\S]*return;/,
+    "bfcache 只是凍結，不能當成真正關頁");
+  assert.match(hide, /stopAnyActiveCapture\(\)/, "真正卸載仍要嘗試收尾");
+  assert.doesNotMatch(app, /addEventListener\("pagehide", stopAnyActiveCapture\)/,
+    "pagehide 不可再無條件停止所有採集");
+  assert.match(app, /addEventListener\("beforeunload", guardRecordingNavigation\)/,
+    "錄音中用同一頁籤離開要先顯示原生確認");
+});
+
+test("frozen 或 bfcache 回復也會檢查並接續錄音", () => {
+  assert.match(app, /addEventListener\("pageshow", resumeAudioOnForeground\)/,
+    "bfcache 回來不一定有 visibilitychange，要監聽 pageshow");
+  assert.match(app, /addEventListener\("resume", resumeAudioOnForeground\)/,
+    "Chrome frozen page 回復要監聽 resume");
+  assert.match(app, /addEventListener\("freeze", onPageHidden\)/,
+    "頁面凍結前要要求 recorder 交出資料");
 });
