@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "105";
+const APP_VERSION = "106";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -3293,6 +3293,10 @@ const AUDIO_LIVE_SEG_SECONDS = SEG_MINUTES * 60;
 // 尚未交給 JavaScript 的錄音資料量。timeslice 不是背景錄音保證，真正的中斷仍由
 // MediaStreamTrack mute/ended 與回前台重取麥克風處理。
 const AUDIO_DATA_SLICE_MS = 5000;
+// 回到前台後要求目前的 recorder 立刻交出一塊資料；桌機只要仍正常錄音，通常會
+// 很快收到非空 dataavailable。不能只看 recorder.state，因為卡住的 recorder 也可能
+// 繼續宣稱自己是 recording；也不能像舊版一樣，只要切過背景就一律顯示缺口警告。
+const AUDIO_FLOW_PROBE_TIMEOUT_MS = 2000;
 // 換下一段錄音時，新的一段提前這麼多毫秒先開始收音，跟舊的一段重疊一下再收尾舊的
 // （見 rotateAudioSegment）——比起先收尾舊的、才開始收新的，重疊比空隙安全：
 // 頂多兩段音檔開頭/結尾多重複這一小段，不會真的漏錄。
@@ -3621,6 +3625,30 @@ function startAudioSegRecorder() {
   return recorder;
 }
 
+// 確認 recorder 不只是「狀態顯示 recording」，而是真的還能交出音訊資料。
+// requestData 不會停止或切換錄音，只會把目前累積的資料透過 dataavailable 交出。
+function probeAudioRecorderData(recorder) {
+  if (!recorder || recorder.state !== "recording") return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let timerId = 0;
+    let settled = false;
+    const finish = (hasData) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timerId);
+      recorder.removeEventListener("dataavailable", onData);
+      resolve(hasData);
+    };
+    const onData = (event) => {
+      if (event.data?.size) finish(true);
+    };
+    recorder.addEventListener("dataavailable", onData);
+    timerId = setTimeout(() => finish(false), AUDIO_FLOW_PROBE_TIMEOUT_MS);
+    try { recorder.requestData(); }
+    catch { finish(false); }
+  });
+}
+
 // 行動瀏覽器可能只把麥克風 track 設成 muted，MediaRecorder.state 仍然維持
 // "recording"。只檢查 recorder.state 會誤判成一切正常，回前台後也不會接續。
 // 因此把 mute/ended 永久記到 session，等頁面可見時重新取得麥克風並開新段。
@@ -3767,11 +3795,36 @@ async function resumeAudioOnForeground() {
   const st = AUDIO.recorder && AUDIO.recorder.state;
   const tracks = AUDIO.stream ? AUDIO.stream.getAudioTracks() : [];
   const trackUnavailable = !tracks.length || tracks.every((track) => track.readyState === "ended") || tracks.some((track) => track.muted);
-  if (st !== "recording" || trackUnavailable || AUDIO.trackInterrupted || AUDIO.recorderFailed) {
+  let needsRecovery = st !== "recording" || trackUnavailable || AUDIO.trackInterrupted || AUDIO.recorderFailed;
+  AUDIO.resuming = true;
+  try {
+    // 桌機切分頁時，track 與 recorder 通常都維持正常。此時再用非空資料塊做一次
+    // 實際確認：有資料就明確回報仍在錄，不再顯示「系統無法保證」的誤導警告；
+    // 沒資料才把它視為卡住，走下面既有的重建與接續流程。
+    if (!needsRecovery && backgroundSecs) {
+      const probedRecorder = AUDIO.recorder;
+      const hasAudioData = await probeAudioRecorderData(probedRecorder);
+      if (!AUDIO || AUDIO.ending) return;
+      if (document.hidden) {
+        AUDIO.backgroundAt ||= Date.now();
+        return;
+      }
+      if (AUDIO.recorder !== probedRecorder) {
+        setAudioStatus(`✓ 已回到前景；錄音持續中`, false);
+        return;
+      }
+      if (hasAudioData) {
+        setAudioStatus(`✓ 背景 ${fmtSecs(backgroundSecs)} 錄音持續；已收到音訊資料`, false);
+        return;
+      }
+      AUDIO.recorderFailed = true;
+      needsRecovery = true;
+    }
+
+    if (!needsRecovery) return;
     const interruptionMs = AUDIO.trackInterruptedAt || backgroundStartedAt || Date.now();
     const interruptedAt = fmtSecs(Math.max(0, Math.floor((interruptionMs - AUDIO.startedAt) / 1000)));
     AUDIO.interrupted = true;
-    AUDIO.resuming = true;
     const oldRecorder = AUDIO.recorder;
     const oldStream = AUDIO.stream;
     let newStream = null;
@@ -3825,11 +3878,9 @@ async function resumeAudioOnForeground() {
         noteAudioInterruption(AUDIO.entryId,
           `⛔ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，且無法自動接續，錄音已中止，之後的內容請另外補記。`);
       }
-    } finally {
-      if (AUDIO) AUDIO.resuming = false;
     }
-  } else if (backgroundSecs) {
-    setAudioStatus(`ℹ️ 曾在背景 ${fmtSecs(backgroundSecs)}；系統無法保證此段完整，重要內容請確認錄音`, false);
+  } finally {
+    if (AUDIO) AUDIO.resuming = false;
   }
 }
 
