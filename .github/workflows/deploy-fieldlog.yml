@@ -1,0 +1,31 @@
+name: 部署 Fieldlog 到 Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - codex/kiwi-integration
+    paths:
+      - "fieldlog/**"
+      - ".github/workflows/deploy-fieldlog.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-fieldlog-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Fieldlog Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: fieldlog
+          command: deploy --keep-vars
