@@ -107,13 +107,15 @@ test("home.css：沒有殘留上一版「並排兩欄」時代的死 class（hom
   );
 });
 
-test("sw.js：CACHE 版本有跟著待分類拖入規則升到 v108，避免舊快取卡住", async () => {
+test("sw.js：CACHE 與所有 UI 資源版本一致，避免舊快取卡住", async () => {
   const html = await read("../fieldlog/public/index.html");
+  const app = await read("../fieldlog/public/app.js");
   const sw = await read("../fieldlog/public/sw.js");
-  assert.match(sw, /const CACHE = "fieldlog-v108-pending-drop";/);
+  const version = app.match(/const APP_VERSION = "(\d+)"/)[1];
+  assert.match(sw, new RegExp(`const CACHE = "fieldlog-v${version}-`));
   for (const asset of ["app.js", "style.css", "pdf-editor.js", "richtext-editor.js"]) {
     const escaped = asset.replace(".", "\\.");
-    assert.match(html, new RegExp(`[\"']${escaped}\\?v=108[\"']`), `${asset} 的頁面引用沒有升到 v108`);
-    assert.match(sw, new RegExp(`[\"']${escaped}\\?v=108[\"']`), `${asset} 的預快取版本沒有升到 v108`);
+    assert.match(html, new RegExp(`[\"']${escaped}\\?v=${version}[\"']`), `${asset} 的頁面引用版本不一致`);
+    assert.match(sw, new RegExp(`[\"']${escaped}\\?v=${version}[\"']`), `${asset} 的預快取版本不一致`);
   }
 });

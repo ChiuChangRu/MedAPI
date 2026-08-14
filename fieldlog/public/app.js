@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "109";
+const APP_VERSION = "110";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -968,7 +968,7 @@ function entryLocationLabel(e) {
  * 作業最上面卻還看得到一週前的日期——因為顯示的是 created_at，但排序用的
  * 是 updated_at，兩者對不上，使用者根本看不出排序邏輯有沒有在動）。
  */
-function entryRowHtml(e, { showRecency = false } = {}) {
+function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   // 🤖＝這個位置是 AI 挑的，不是人放的。這個區別對法規／專利場景很重要：
   // 引用之前要知道哪些判斷出自機器。點一下可以確認或改掉。
   const aiChip = e.auto_filed_at && e.auto_filed_at !== "failed"
@@ -979,7 +979,7 @@ function entryRowHtml(e, { showRecency = false } = {}) {
   const dateLabel = showRecency
     ? `${e.updated_at ? "動過" : "建立"} ${esc(String(e.updated_at || e.created_at || "").slice(5, 16))}`
     : esc(String(e.created_at || "").slice(5, 16));
-  return `<div class="entry-row" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
+  return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
     <span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}
@@ -993,7 +993,7 @@ function entryRowHtml(e, { showRecency = false } = {}) {
 function bindEntryRows(wrap) {
   wrap.querySelectorAll(".entry-row").forEach((el) => {
     el.onclick = () => openEntry(Number(el.dataset.id));
-    // v109：拖一筆紀錄資料包到另一筆＝完整放入，不再破壞式合併。
+    // 拖一筆紀錄資料包到另一筆＝完整放入，不再破壞式合併。
     el.ondragover = (ev) => {
       const types = Array.from(ev.dataTransfer?.types || []);
       if (!types.includes("application/x-fieldlog-entry") && !types.includes("Files")) return;
@@ -1405,12 +1405,20 @@ function renderChildFolders(parentId) {
     .filter((f) => Number(f.parent_id) === Number(parentId))
     .sort(folderComparator());
   const wrap = $("folder-children");
-  wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${activeView}-view">${children.map((f) => `
-    <div class="child-folder-card" data-id="${f.id}"${folderCategoryStyle(f)}>
-      <span>📁</span><strong>${esc(f.name)}</strong><small>${folderCategoryChipHtml(f)}${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
-      <button class="child-folder-edit" type="button" data-id="${f.id}" title="編輯資料夾名稱／類型" aria-label="編輯${esc(f.name)}資料夾">✏️</button>
-      <button class="child-folder-move" type="button" data-id="${f.id}" title="把這個子資料夾搬到別的地方" aria-label="移動${esc(f.name)}資料夾">📂</button>
-    </div>`).join("")}</div>` : "";
+  wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${activeView}-view">${children.map(childFolderHtml).join("")}</div>` : "";
+  bindChildFolderCards(wrap);
+  bindFolderDropTargets();
+}
+
+function childFolderHtml(f) {
+  return `<div class="child-folder-card explorer-item" data-id="${f.id}"${folderCategoryStyle(f)}>
+    <span>📁</span><strong>${esc(f.name)}</strong><small>${folderCategoryChipHtml(f)}${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
+    <button class="child-folder-edit" type="button" data-id="${f.id}" title="編輯資料夾名稱／類型" aria-label="編輯${esc(f.name)}資料夾">✏️</button>
+    <button class="child-folder-move" type="button" data-id="${f.id}" title="把這個子資料夾搬到別的地方" aria-label="移動${esc(f.name)}資料夾">📂</button>
+  </div>`;
+}
+
+function bindChildFolderCards(wrap) {
   wrap.querySelectorAll(".child-folder-card").forEach((el) => {
     el.onclick = (ev) => {
       if (ev.target.closest(".child-folder-edit") || ev.target.closest(".child-folder-move")) return;
@@ -1419,7 +1427,6 @@ function renderChildFolders(parentId) {
     el.querySelector(".child-folder-edit").onclick = (ev) => { ev.stopPropagation(); renameFolder(Number(el.dataset.id)); };
     el.querySelector(".child-folder-move").onclick = (ev) => { ev.stopPropagation(); moveFolder(Number(el.dataset.id)); };
   });
-  bindFolderDropTargets();
 }
 
 function folderFileHtml(a, entryId) {
@@ -1434,7 +1441,7 @@ function folderFileHtml(a, entryId) {
     : `<a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
   // 每一列是「一份檔案」而不是「一筆記事」：可以拖到上方子資料夾搬移，
   // 🗑 只刪這一份，⋯ 開這一份的詳情（附屬記事、分類、AI 整理）
-  return `<div class="folder-file-row" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}">
+  return `<div class="folder-file-row explorer-item" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}">
     <span class="folder-file-icon" title="拖曳到上方子資料夾">${icon}</span>
     ${nameLink}
     <span class="folder-file-meta">${esc((a.created_at || "").slice(5, 16))}</span>
@@ -1467,10 +1474,24 @@ function setFileSort(sort) {
 function syncFileSortButton() {
   const button = $("btn-file-sort");
   if (!button) return;
-  button.textContent = FILE_SORT === "name" ? "🔤 檔名排序" : "🆕 新到舊";
+  button.textContent = FILE_SORT === "name" ? "🔤 名稱排序" : "🆕 新到舊";
   button.title = FILE_SORT === "name"
-    ? "目前依檔名排序，點一下改成新到舊（最新的檔案排最上面）"
-    : "目前新到舊（最新的檔案排最上面），點一下改成依檔名排序";
+    ? "目前依名稱排序，點一下改成新到舊（子資料夾仍排在內容前面）"
+    : "目前新到舊，點一下改成依名稱排序（子資料夾仍排在內容前面）";
+}
+
+function sortExplorerItems(items) {
+  return items.sort((a, b) => {
+    // Windows 檔案總管的常見行為：資料夾先於內容，但全部仍在同一個內容區。
+    const group = Number(a.kind !== "folder") - Number(b.kind !== "folder");
+    if (group) return group;
+    if (FILE_SORT === "name") {
+      return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant", { numeric: true, sensitivity: "base" })
+        || Number(b.id || 0) - Number(a.id || 0);
+    }
+    return String(b.createdAt || "").localeCompare(String(a.createdAt || ""))
+      || Number(b.id || 0) - Number(a.id || 0);
+  });
 }
 
 /**
@@ -1521,7 +1542,7 @@ async function openFolder(id) {
   syncFileSortButton();
   syncFolderSortButtons();
   syncSubfolderButton();
-  renderChildFolders(id);
+  $("folder-children").innerHTML = "";
   await runLegacyCleanupOnce();
   // 一次帶附件回來，不要每筆有附件的記事各發一支 /entries/:id——資料夾裡
   // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
@@ -1532,21 +1553,31 @@ async function openFolder(id) {
   // 包成紀錄卡，導致同一次操作只因錄音長短不同就變成兩種檔案結構。
   // 非錄音仍沿用原規則：單一附件可直接瀏覽，多附件要整筆一起顯示，避免被排序拆散。
   const isRecordingEntry = (e) => visibleAtts(e).some((a) => a.kind === "audio");
-  const singleFileEntries = entries.filter((e) => visibleAtts(e).length === 1 && !isRecordingEntry(e));
-  const groupedEntries = entries.filter((e) => isRecordingEntry(e) || visibleAtts(e).length > 1);
-  const notes = entries.filter((e) => visibleAtts(e).length === 0);
-  const files = sortFolderFiles(singleFileEntries.flatMap((e) =>
-    visibleAtts(e).map((a) => ({ attachment: a, entryId: e.id }))
-  ));
-  $("folder-entries").className = `entry-list inner-entry-list ${activeView}-view`;
-  $("folder-entries").innerHTML = files.length || groupedEntries.length || notes.length
-    ? `${files.length ? `<div class="archive-section-label">檔案</div>
-        <div class="folder-file-list ${activeView}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
-       ${groupedEntries.length ? `<div class="archive-section-label">錄音與多檔案紀錄</div>
-        <div class="child-folder-list ${activeView}-view">${groupedEntries.map((e) => recordGroupCardHtml(e, visibleAtts(e))).join("")}</div>` : ""}
-       ${notes.length ? `<div class="archive-section-label">筆記</div>
-        <div class="archive-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
-    : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
+  const children = FOLDERS.filter((f) => Number(f.parent_id) === Number(id));
+  const explorerItems = [
+    ...children.map((f) => ({
+      kind: "folder", id: f.id, name: f.name, createdAt: f.updated_at || f.created_at,
+      html: childFolderHtml(f),
+    })),
+    ...entries.flatMap((e) => {
+      const atts = visibleAtts(e);
+      if (atts.length === 1 && !isRecordingEntry(e)) {
+        const a = atts[0];
+        return [{ kind: "file", id: a.id, name: a.filename, createdAt: a.created_at || e.created_at, html: folderFileHtml(a, e.id) }];
+      }
+      if (isRecordingEntry(e) || atts.length > 1) {
+        return [{ kind: "package", id: e.id, name: e.title, createdAt: e.created_at, html: recordGroupCardHtml(e, atts) }];
+      }
+      return [{ kind: "note", id: e.id, name: e.title, createdAt: e.created_at, html: entryRowHtml(e, { explorer: true }) }];
+    }),
+  ];
+  sortExplorerItems(explorerItems);
+  $("folder-entries").className = `folder-content-list ${activeView}-view`;
+  $("folder-entries").innerHTML = explorerItems.length
+    ? explorerItems.map((item) => item.html).join("")
+    : `<p class="sub">這個資料夾還沒有內容。</p>`;
+  bindChildFolderCards($("folder-entries"));
+  bindFolderDropTargets();
   bindEntryRows($("folder-entries"));
   bindFileRows();
   bindRecordGroupCards();
@@ -1569,7 +1600,7 @@ function recordGroupCardHtml(e, atts) {
   // application/x-fieldlog-entry payload 與 openMoveEntryDialog()，這樣多檔案
   // 記事（分段錄音一類）才能跟純文字筆記一樣在分類後繼續移動，不用先
   // 刪掉重建（entry 266：之前這裡只有刪除鍵，完全搬不動）。
-  return `<div class="record-group-card" data-id="${e.id}">
+  return `<div class="record-group-card explorer-item" data-id="${e.id}">
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
     <small>${esc((e.created_at || "").slice(5, 16))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>

@@ -9,6 +9,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -20,7 +21,7 @@ body {
 .container { max-width: 760px; margin: 0 auto; padding: calc(14px + env(safe-area-inset-top)) 14px 60px; }
 @media (min-width: 900px) { .container { max-width: 1080px; } }
 
-/* ===== v109 桌機檔案總管：固定資料夾樹＋右側內容；手機完全不套用 ===== */
+/* ===== v110 桌機檔案總管：固定資料夾樹＋右側單一內容區；手機完全不套用 ===== */
 .desktop-explorer-nav { display: none; }
 @media (min-width: 720px) {
   .desktop-explorer-nav {
@@ -873,7 +874,73 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   background: #e0e7ff; color: #3730a3; font-size: 11px; font-weight: 600;
 }
 
-/* ===== 資料夾內容區塊標籤 ===== */
+/* ===== v110 資料夾單一內容區 =====
+   子資料夾、單檔、錄音資料包與筆記使用同一個容器；資料類型只影響圖示與
+   開啟方式，不再切成三段互不相干的版面。 */
+.folder-content-list {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
+}
+.folder-content-list > .explorer-item { width: 100%; margin: 0; min-width: 0; }
+.folder-content-list.list-view > .explorer-item,
+.folder-content-list.details-view > .explorer-item { min-height: 62px; }
+.folder-content-list.details-view { gap: 0; border-top: 1px solid var(--border); }
+.folder-content-list.details-view > .explorer-item {
+  border-radius: 0; border-width: 0 0 1px; box-shadow: none;
+}
+@media (min-width: 720px) {
+  .folder-content-list.grid-view {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    align-items: stretch; gap: 12px;
+  }
+  .folder-content-list.grid-view > .explorer-item {
+    min-height: 180px; padding: 14px; border: 1px solid var(--border);
+    border-radius: 10px; background: #fff; color: var(--text);
+    box-shadow: 0 1px 3px rgba(27,29,28,.06);
+  }
+  .folder-content-list.grid-view > .child-folder-card,
+  .folder-content-list.grid-view > .record-group-card {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 8px; padding-left: 42px; padding-right: 42px;
+  }
+  .folder-content-list.grid-view > .child-folder-card > span,
+  .folder-content-list.grid-view > .record-group-card > span { font-size: 36px; }
+  .folder-content-list.grid-view > .child-folder-card strong,
+  .folder-content-list.grid-view > .record-group-card strong {
+    white-space: normal; overflow-wrap: anywhere; display: -webkit-box;
+    -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+  }
+  .folder-content-list.grid-view > .entry-row {
+    position: relative; align-items: flex-start; align-content: flex-start; flex-wrap: wrap;
+  }
+  .folder-content-list.grid-view > .entry-row .entry-title {
+    flex-basis: calc(100% - 36px); font-size: 15px; font-weight: 650; line-height: 1.45;
+  }
+  .folder-content-list.grid-view > .entry-row .entry-meta {
+    order: 3; width: 100%; margin-top: auto; padding-top: 14px;
+  }
+  .folder-content-list.grid-view > .folder-file-row {
+    grid-template-columns: minmax(0, 1fr) 40px 40px;
+    grid-template-rows: 36px minmax(0, 1fr) auto; align-content: stretch; align-items: start;
+  }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-icon {
+    grid-column: 1; grid-row: 1; font-size: 24px; align-self: center;
+  }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-delete { grid-column: 2; grid-row: 1; }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-manage { grid-column: 3; grid-row: 1; }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-name {
+    grid-column: 1 / 4; grid-row: 2; display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4; overflow: hidden; line-height: 1.45;
+  }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-meta {
+    grid-column: 1 / 4; grid-row: 3; padding-top: 8px; border-top: 1px solid var(--border);
+  }
+}
+@media (max-width: 719px) {
+  .folder-content-list { margin-top: 10px; }
+  .folder-content-list.grid-view { display: flex; }
+}
+
+/* 舊版區塊標籤只留給其他畫面；資料夾內頁已不再產生這些標籤。 */
 .archive-section-label {
   margin: 14px 0 8px; color: var(--text-muted, #64748b);
   font-size: 13px; font-weight: 700; letter-spacing: .04em;

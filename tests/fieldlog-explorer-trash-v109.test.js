@@ -24,6 +24,19 @@ test("桌機有資料夾樹、三種內容模式、待分類與垃圾桶快捷�
   assert.match(css, /@media \(min-width: 720px\)[\s\S]*\.desktop-explorer-nav/);
 });
 
+test("資料夾內頁使用單一內容區，不再拆成檔案、錄音資料包、筆記三段", async () => {
+  const [html, app, css] = await Promise.all([
+    read("../fieldlog/public/index.html"), read("../fieldlog/public/app.js"), read("../fieldlog/public/style.css"),
+  ]);
+  assert.match(app, /const explorerItems = \[/);
+  assert.match(app, /sortExplorerItems\(explorerItems\)/);
+  assert.match(app, /folder-entries"\)\.className = `folder-content-list \$\{activeView\}-view`/);
+  assert.doesNotMatch(app, /<div class="archive-section-label">錄音與多檔案紀錄<\/div>/);
+  assert.doesNotMatch(app, /<div class="archive-section-label">筆記<\/div>/);
+  assert.match(css, /\.folder-content-list\.grid-view/);
+  assert.match(html, /id="btn-folder-sort-inner"[^>]*hidden/);
+});
+
 test("站內紀錄拖放先辨識自訂 MIME；外部檔案落在既有紀錄會附加", async () => {
   const app = await read("../fieldlog/public/app.js");
   assert.match(app, /application\/x-fieldlog-entry/);
