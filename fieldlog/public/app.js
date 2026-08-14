@@ -1,5 +1,5 @@
 // ===== 隨身記（fieldlog）=====
-// 採集優先：先記再說，歸檔是事後（交給 AI）的事。
+// 採集優先：先記再說，分類與移動留到之後處理。
 
 const $ = (id) => document.getElementById(id);
 
@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "107";
+const APP_VERSION = "108";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -120,7 +120,7 @@ let FOLDERS = [];
 let CURRENT_FOLDER = null; // 開啟中的資料夾物件
 let TRANSCRIBE_ENABLED = false;
 let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
-// 收件匣預設清單模式（本來就是待處理的草稿，清單本來就夠緊湊），卡片模式
+// 待分類預設清單模式（本來就是待整理的內容，清單本來就夠緊湊），卡片模式
 // 是給想要一眼看縮圖式排版的人選的，不像資料夾內頁的卡片那麼大張。
 let INBOX_VIEW = localStorage.getItem("fieldlog_inbox_view") || "list";
 // 資料夾內的檔案排序。預設「新到舊」：一直往資料夾裡加東西的人，最需要看到的
@@ -132,8 +132,7 @@ let MERGE_ENTRY_SOURCE_ID = null;
 let CREATE_FOLDER_RESOLVE = null;
 // 開啟「單一檔案」詳情時記住是哪一份，這樣整理完重新開啟仍停在同一個檔案上
 let FOCUSED_FILE = null;
-// 暫存區資料夾的 id，由 /api/staging 帶回來。純手動暫存，2026-08-09 拿掉了
-// 「放滿 N 天沒人動由 AI 自動歸類」，不用再記天數。
+// 待分類系統容器的 id，由 /api/staging 帶回來。純手動整理，不做自動分類。
 let STAGING_FOLDER_ID = null;
 
 // 資料夾排序模式：套用在每一層——首頁根層、每一層子資料夾、搬移選擇器、
@@ -142,7 +141,7 @@ let STAGING_FOLDER_ID = null;
 let FOLDER_SORT = localStorage.getItem("fieldlog_folder_sort") || "name";
 
 function compareFolders(a, b) {
-  // 暫存區永遠排第一：它裝的是「還沒分類、需要你回頭看一眼」的東西，
+  // 待分類系統容器永遠排第一：它裝的是「還沒分類、需要你回頭看一眼」的東西，
   // 排在一堆已經整理好的資料夾後面就失去意義了
   const staging = Number(b.role === "staging") - Number(a.role === "staging");
   if (staging) return staging;
@@ -163,7 +162,7 @@ function compareFolders(a, b) {
   });
 }
 
-/** 新到舊：暫存區一樣置頂，其餘依建立時間；同時間建立的用 id 當第二鍵，順序才穩定 */
+/** 新到舊：待分類系統容器一樣置頂，其餘依建立時間；同時間建立的用 id 當第二鍵。 */
 function compareFoldersByTime(a, b) {
   const staging = Number(b.role === "staging") - Number(a.role === "staging");
   if (staging) return staging;
@@ -533,14 +532,14 @@ function searchHitHtml(kind, item) {
   if (kind === "entry") {
     const where = item.folder_name
       ? `${esc(item.folder_type)}｜${esc(item.folder_name)}`
-      : (item.folder_role === "staging" ? "⏳ 暫存區" : "📥 收件匣");
+      : "⏳ 待分類";
     return `<button type="button" class="search-hit" data-kind="entry" data-id="${item.id}">
       <span class="search-hit-title">${esc(item.title || "（未命名）")}<span class="search-hit-where">${where}</span></span>
       <p class="search-hit-snippet">${esc(item.snippet)}</p>
     </button>`;
   }
   const off = item.offset_secs !== null && item.offset_secs !== undefined ? `｜錄音 ${fmtSecs(item.offset_secs)}` : "";
-  const where = item.folder_name ? `${esc(item.folder_type)}｜${esc(item.folder_name)}` : "📥 收件匣";
+  const where = item.folder_name ? `${esc(item.folder_type)}｜${esc(item.folder_name)}` : "⏳ 待分類";
   return `<button type="button" class="search-hit" data-kind="attachment" data-id="${item.entry_id}">
     <span class="search-hit-title">📎 ${esc(item.filename)}<span class="search-hit-where">${where}${off}</span></span>
     <p class="search-hit-snippet">所屬記事：${esc(item.entry_title || "（未命名）")}｜${esc(item.snippet)}</p>
@@ -605,7 +604,7 @@ function initHomeSearch() {
 }
 
 // ---------- 首頁 ----------
-// 開啟 App 到畫面填滿內容之間，要打好幾支 API（設定／分類／資料夾／收件匣），
+// 開啟 App 到畫面填滿內容之間，要打好幾支 API（設定／分類／資料夾／待分類），
 // 資料夾、記事、附件越多這幾支就越慢；空白畫面撐久了容易被誤會當機，用
 // 百分比讓使用者知道還在跑。
 function showBootProgress() {
@@ -695,7 +694,7 @@ function renderFolders() {
   wrap.className = "folder-list";
   syncFolderSortButtons();
   if (!rows.length) {
-    wrap.innerHTML = `<p class="sub">還沒有資料夾。採集會先進收件匣；建了資料夾之後可以歸檔進去。</p>`;
+    wrap.innerHTML = `<p class="sub">還沒有資料夾。新資料會先進待分類；建立資料夾後再移動進去。</p>`;
     return;
   }
   wrap.innerHTML = rows.map(({ folder: f, depth, childCount }) => {
@@ -831,7 +830,7 @@ async function moveFolder(id) {
 async function deleteFolder(id) {
   const folder = FOLDERS.find((f) => f.id === id);
   if (!folder) return;
-  const destination = folder.parent_id ? "上層資料夾" : "收件匣";
+  const destination = folder.parent_id ? "上層資料夾" : "待分類";
   const detail = `${folder.entry_count ? `裡面的 ${folder.entry_count} 筆記事與附件會移到${destination}。` : "裡面沒有直接記事。"}${folder.child_count ? ` ${folder.child_count} 個子資料夾也會安全上移一層。` : ""}`;
   if (!confirm(`確定刪除資料夾「${folder.name}」？\n\n${detail}`)) return;
   const result = await api(`/folders/${id}`, { method: "DELETE" });
@@ -885,11 +884,11 @@ function setInboxView(view) {
   loadRecent();
 }
 
-// 「待處理」＝只列還沒真正歸檔的東西（收件匣、暫存區、AI 剛歸類還沒確認的），
-// 不是「不分資料夾、最後動過的全部」。2026-08-07 曾經做成後者，想解決「收件匣
-// 空了整個面板就消失」的問題，但代價是使用者剛手動搬移／編輯過的已歸檔記事
+// 「待分類」＝只列尚未放入正式資料夾的內容，以及歷史上 AI 分類後尚未確認的內容。
+// 不是「不分資料夾、最後動過的全部」。2026-08-07 曾經做成後者，但代價是
+// 使用者剛手動搬移／編輯過的已分類記事
 // 會佔著最上面的位置，擠掉真正還沒處理的（2026-08-09 實際回報：套用天數
-// 0 天、暫存區已經清空，最上面卻還是一堆已經歸檔好的舊記事）。
+// 會占住最上面的位置，擠掉真正需要處理的內容。
 async function loadRecent() {
   const entries = await api("/entries/recent?limit=25");
   $("inbox-count").textContent = entries.length ? `（${entries.length}）` : "";
@@ -907,13 +906,13 @@ async function loadRecent() {
 
 /** 這筆現在待在哪裡：待處理清單要一眼看得出來，不然「移動」按下去也不知道從哪搬 */
 function entryLocationLabel(e) {
-  if (e.folder_role === "staging") return "⏳ 暫存區";
+  if (e.folder_role === "staging") return "⏳ 待分類";
   if (e.folder_name) return `📂 ${e.folder_name}`;
   if (e.folder_id) {
     const folder = FOLDERS.find((f) => f.id === e.folder_id);
     return folder ? `📂 ${folder.name}` : "📂 資料夾";
   }
-  return "📥 收件匣";
+  return "⏳ 待分類";
 }
 
 /**
@@ -928,7 +927,7 @@ function entryRowHtml(e, { showRecency = false } = {}) {
   // 🤖＝這個位置是 AI 挑的，不是人放的。這個區別對法規／專利場景很重要：
   // 引用之前要知道哪些判斷出自機器。點一下可以確認或改掉。
   const aiChip = e.auto_filed_at && e.auto_filed_at !== "failed"
-    ? `<button class="entry-ai-chip" type="button" data-id="${e.id}" title="AI 自動歸類：${esc(e.auto_filed_reason || "未說明理由")}。點一下確認或改位置">🤖 AI 分類</button>`
+    ? `<button class="entry-ai-chip" type="button" data-id="${e.id}" title="歷史 AI 分類：${esc(e.auto_filed_reason || "未說明理由")}。點一下確認或改位置">🤖 AI 分類</button>`
     : e.auto_filed_at === "failed"
       ? `<span class="entry-ai-chip failed" title="${esc(e.auto_filed_reason || "AI 判斷不出來")}">🤖 待人工</span>`
       : "";
@@ -949,7 +948,7 @@ function entryRowHtml(e, { showRecency = false } = {}) {
 function bindEntryRows(wrap) {
   wrap.querySelectorAll(".entry-row").forEach((el) => {
     el.onclick = () => openEntry(Number(el.dataset.id));
-    // 拖一筆記事到另一筆記事上面＝合併（跟拖到資料夾卡片上＝歸檔是同一組
+    // 拖一筆記事到另一筆記事上面＝合併（跟拖到資料夾卡片上＝移動是同一組
     // dataTransfer payload，.entry-row 本身當 drop target，直接呼叫既有的
     // mergeEntry()，不用另外走對話框）
     el.ondragover = (ev) => {
@@ -1026,14 +1025,16 @@ function bindEntryRows(wrap) {
 // ---------- 搬移用的資料夾選擇器（樹狀，四層通吃）----------
 // 為什麼不是原本那個平的 <select>：四層架構下「法規與標準」「年份／版本」這種
 // 名字會在好幾個分支底下重複出現，平的清單裡看起來一模一樣，選錯了也不知道。
-// 這裡列成有縮排的樹並附完整路徑，而且不限收件匣——已經歸檔的檔案／記事一樣
-// 能再搬到任何一層（含搬回收件匣）。
+// 這裡列成有縮排的樹並附完整路徑；已分類的檔案／記事也能搬到任何一層，
+// 或移回待分類。
 let FOLDER_PICKER_RESOLVE = null;
 
 /** 依樹狀順序（父在子之前）攤平成 [{ folder, depth }]，同層照既有排序規則 */
 function folderTreeOrdered() {
   const byParent = new Map();
   for (const f of FOLDERS) {
+    // role='staging' 是待分類系統容器，不屬於第一～四階資料夾樹。
+    if (f.role === "staging") continue;
     const key = f.parent_id ? Number(f.parent_id) : 0;
     if (!byParent.has(key)) byParent.set(key, []);
     byParent.get(key).push(f);
@@ -1050,7 +1051,9 @@ function folderTreeOrdered() {
   };
   walk(0, 0);
   // parent_id 指向已刪除資料夾的孤兒也要出現，不然它們永遠選不到
-  for (const f of FOLDERS) if (!seen.has(f.id)) out.push({ folder: f, depth: 0 });
+  for (const f of FOLDERS) {
+    if (f.role !== "staging" && !seen.has(f.id)) out.push({ folder: f, depth: 0 });
+  }
   return out;
 }
 
@@ -1058,11 +1061,11 @@ function renderFolderPickerList(filter, { currentId, allowInbox, rootLabel, excl
   const wrap = $("folder-picker-list");
   const keyword = String(filter || "").trim().toLowerCase();
   const rows = [];
-  // 搬資料夾時「不掛在任何人底下」也是一個合法目的地，跟搬記事時的「收件匣」
+  // 搬資料夾時「不掛在任何人底下」也是一個合法目的地，跟搬記事時的「待分類」
   // 共用同一列（都是 folder_id = null），只是說法不一樣
   if (allowInbox || rootLabel) {
     rows.push(`<button class="fp-row" type="button" data-id="" ${currentId === null ? "disabled" : ""}>
-      <span class="fp-name">${esc(rootLabel || "📥 收件匣（不歸檔）")}</span>${currentId === null ? `<span class="fp-here">目前位置</span>` : ""}
+      <span class="fp-name">${esc(rootLabel || "⏳ 待分類")}</span>${currentId === null ? `<span class="fp-here">目前位置</span>` : ""}
     </button>`);
   }
   // 搬資料夾不能選自己或自己的子孫（搬進自己底下＝把整棵樹從畫面上弄丟）
@@ -1092,8 +1095,8 @@ function renderFolderPickerList(filter, { currentId, allowInbox, rootLabel, excl
 }
 
 /**
- * 開啟資料夾選擇器。回傳 Promise：選了資料夾得到 { id }（收件匣是 { id: null }），
- * 取消是 null——呼叫端要能分辨「選了收件匣」跟「按取消」，所以不能都用 null。
+ * 開啟資料夾選擇器。回傳 Promise：選了資料夾得到 { id }（待分類是 { id: null }），
+ * 取消是 null——呼叫端要能分辨「選了待分類」跟「按取消」，所以不能都用 null。
  */
 function openFolderPicker({ title = "移動到資料夾", desc = "", currentId, allowInbox = true, rootLabel, excludeSubtreeOf } = {}) {
   if (FOLDER_PICKER_RESOLVE) closeFolderPicker(null);
@@ -1120,7 +1123,7 @@ function closeFolderPicker(result = null) {
   if (resolve) resolve(result);
 }
 
-/** 記事的「移動」：收件匣草稿與已歸檔記事共用同一條路 */
+/** 記事的「移動」：待分類內容與已分類記事共用同一條路 */
 async function openMoveEntryDialog(entryId, { currentFolderId, title } = {}) {
   const row = document.querySelector(`.entry-row[data-id="${entryId}"]`);
   const entryTitle = title || row?.querySelector(".entry-title")?.textContent || "這筆記事";
@@ -1129,21 +1132,21 @@ async function openMoveEntryDialog(entryId, { currentFolderId, title } = {}) {
     : (row?.dataset.folderId ? Number(row.dataset.folderId) : null);
   const picked = await openFolderPicker({
     title: "移動記事",
-    desc: `把「${entryTitle}」移到哪裡？已經歸檔過的也可以再搬，或搬回收件匣。`,
+    desc: `把「${entryTitle}」移到哪裡？已分類的也可以再搬，或移回待分類。`,
     currentId: previous,
     allowInbox: true,
   });
   if (!picked) return;
   if (picked.id === null) {
     await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: null }) });
-    showToast("已移回收件匣");
+    showToast("已移回待分類");
     await refreshFolderView();
     return;
   }
   await moveInboxEntry(entryId, picked.id, previous);
 }
 
-// 合併目標直接從同一個列表容器（收件匣或資料夾內頁）現有的 .entry-row 讀，
+// 合併目標直接從同一個列表容器（待分類或資料夾內頁）現有的 .entry-row 讀，
 // 不用另外呼叫 API——候選名單自動只列出「目前畫面上看得到的」那些記事
 function openMergeEntryDialog(sourceId, wrap) {
   const rows = [...wrap.querySelectorAll(".entry-row[data-id]")].filter((el) => Number(el.dataset.id) !== sourceId);
@@ -1237,7 +1240,7 @@ function askFolderDetails({ title = "", desc = "", name = "", type = "", parentI
 async function createFolderForArchive(suggestedName) {
   const defaultName = String(suggestedName || "待分類專案").replace(/（未命名）/g, "").trim() || "待分類專案";
   const details = await askFolderDetails({
-    title: "建立產品／專案並歸檔",
+    title: "建立產品／專案並移入",
     desc: "先建立第 1 層，後續可再加入文件類型與主題",
     name: defaultName,
     parentId: null,
@@ -1253,15 +1256,15 @@ async function createFolderAndMoveEntry(entryId, title) {
   try {
     await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: folder.id }) });
   } catch (err) {
-    // 歸檔失敗時清掉剛建的空資料夾，避免留下半套結果；原記事仍在收件匣。
+    // 移動失敗時清掉剛建的空資料夾，避免留下半套結果；原記事仍在待分類。
     await api(`/folders/${folder.id}`, { method: "DELETE" }).catch(() => {});
     throw err;
   }
-  showToast(`已建立「${folder.name}」並完成歸檔`);
+  showToast(`已建立「${folder.name}」並移入`);
   await Promise.all([loadFolders(), loadRecent()]);
 }
 
-// previousFolderId：搬移前所在的資料夾（收件匣是 null）。拖曳偶爾會手滑歸檔錯
+// previousFolderId：搬移前所在的資料夾（待分類是 null）。拖曳偶爾會放錯位置，
 // 資料夾，這裡記住原本位置，讓 toast 上的「上一動」能一鍵搬回去，不用重新找。
 async function moveInboxEntry(entryId, folderId, previousFolderId = null) {
   const folder = FOLDERS.find((f) => f.id === folderId);
@@ -1271,7 +1274,7 @@ async function moveInboxEntry(entryId, folderId, previousFolderId = null) {
     actionLabel: "上一動",
     onAction: async () => {
       await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: previousFolderId }) });
-      showToast(previousFolderId ? "已復原" : "已復原至收件匣");
+      showToast(previousFolderId ? "已復原" : "已復原至待分類");
       await refreshFolderView();
     },
   });
@@ -1460,7 +1463,7 @@ async function openFolder(id) {
   // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
   const entries = await api(`/entries?folder_id=${id}&include=attachments`);
   const visibleAtts = (e) => (e.attachments || []).filter((a) => !a.source_pdf_id);
-  // 錄音不論只有一段或多段，都維持「一筆錄音紀錄」：直接錄音後再歸檔，和先進
+  // 錄音不論只有一段或多段，都維持「一筆錄音紀錄」：先錄音再分類，和先進
   // 資料夾再錄音，最後都會看到同一種結構。舊邏輯把單段錄音攤成檔案列、多段錄音
   // 包成紀錄卡，導致同一次操作只因錄音長短不同就變成兩種檔案結構。
   // 非錄音仍沿用原規則：單一附件可直接瀏覽，多附件要整筆一起顯示，避免被排序拆散。
@@ -1473,11 +1476,11 @@ async function openFolder(id) {
   ));
   $("folder-entries").className = `entry-list inner-entry-list ${INNER_FOLDER_VIEW}-view`;
   $("folder-entries").innerHTML = files.length || groupedEntries.length || notes.length
-    ? `${files.length ? `<div class="archive-section-label">已歸檔檔案</div>
+    ? `${files.length ? `<div class="archive-section-label">檔案</div>
         <div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
-       ${groupedEntries.length ? `<div class="archive-section-label">已歸檔紀錄（錄音與多檔案）</div>
+       ${groupedEntries.length ? `<div class="archive-section-label">錄音與多檔案紀錄</div>
         <div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${groupedEntries.map((e) => recordGroupCardHtml(e, visibleAtts(e))).join("")}</div>` : ""}
-       ${notes.length ? `<div class="archive-section-label">已歸檔筆記</div>
+       ${notes.length ? `<div class="archive-section-label">筆記</div>
         <div class="archive-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
   bindEntryRows($("folder-entries"));
@@ -1485,7 +1488,7 @@ async function openFolder(id) {
   bindRecordGroupCards();
 }
 
-// 多檔案記事（分段錄音等）歸檔後的卡片：跟子資料夾用同一套 .child-folder-card
+// 多檔案記事（分段錄音等）的卡片：跟子資料夾用同一套 .child-folder-card
 // 樣式，看起來就是資料夾把附件包在裡面，不是攤平成一堆檔案列（也不是借用
 // note 那組會被 grid-view 的 min-height/flex-wrap 撐得歪七扭八的 entry-row 樣式）。
 function recordGroupCardHtml(e, atts) {
@@ -1500,7 +1503,7 @@ function recordGroupCardHtml(e, atts) {
   //
   // 拖曳／📂 移動：跟 entryRowHtml 的 .entry-drag／.entry-move 共用同一套
   // application/x-fieldlog-entry payload 與 openMoveEntryDialog()，這樣多檔案
-  // 記事（分段錄音一類）才能跟純文字筆記一樣「已歸檔了還能再搬」，不用先
+  // 記事（分段錄音一類）才能跟純文字筆記一樣在分類後繼續移動，不用先
   // 刪掉重建（entry 266：之前這裡只有刪除鍵，完全搬不動）。
   return `<div class="record-group-card" data-id="${e.id}">
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
@@ -1658,11 +1661,11 @@ function hasEntryDrag(event) {
 }
 
 /**
- * 子資料夾卡片當放置目標：把檔案或已歸檔記事拖進去就搬過去。
+ * 子資料夾卡片當放置目標：把檔案或已分類記事拖進去就搬過去。
  *
  * entry 266：這裡原本只接檔案（application/x-fieldlog-attachment），記事
  * （筆記／多檔案記事）拖上來完全沒反應——根本原因是「子資料夾建立時間比
- * 記事晚」：記事還在收件匣或上層資料夾時拖到首頁清單能歸檔，但一旦子資料夾
+ * 記事晚」：記事還在待分類或上層資料夾時拖到首頁清單能移動，但一旦子資料夾
  * 是後來才在這個資料夾內頁建的，使用者只能在這裡看到它，這裡卻沒接
  * application/x-fieldlog-entry，於是卡住、只能請人手動搬。跟檔案共用同一張
  * 卡片當落點，兩種 payload 分開判斷、分開處理。
@@ -1736,15 +1739,14 @@ async function createEntry(folderId, title) {
   return r.id;
 }
 
-// 打字沒有「錄影錄到一半」的時間壓力，所以寫完直接問要放哪一層——
-// 「一開始就先歸類」在這個入口是做得到的。真的很急就選暫存區，一鍵帶過。
+// 打字沒有「錄影錄到一半」的時間壓力，所以寫完可以選位置；取消就留在待分類。
 function quickNote() {
   openEditModal({
-    title: "快速備忘（存檔後會問要放哪個資料夾，來不及分就丟暫存區，之後自己找時間搬過去）",
+    title: "快速備忘（先存入待分類，之後可選擇資料夾）",
     value: "",
     onSave: async (text) => {
       if (!text) return;
-      // 先落地再問位置：文字永遠先存起來（存進暫存區＝一定看得到），
+      // 先落地再問位置：文字永遠先存入待分類，
       // 選擇器等編輯框關掉之後才開——編輯框的 z-index 比它高，同時開會被壓住看不見。
       const folderId = CURRENT_FOLDER ? CURRENT_FOLDER.id : await stagingFolderId();
       const created = await api("/entries", {
@@ -1758,20 +1760,20 @@ function quickNote() {
   });
 }
 
-/** 快速備忘存好之後問要歸到哪；不選就留在暫存區，之後自己找時間搬過去 */
+/** 快速備忘存好之後詢問位置；不選就留在待分類。 */
 async function askQuickNoteFolder(entryId) {
   const picked = await openFolderPicker({
     title: "這則備忘放哪裡？",
-    desc: `選一個資料夾就直接歸好；按取消會留在「⏳ 暫存區」，之後自己找時間搬過去。`,
+    desc: `選一個資料夾就移入；按取消會留在「⏳ 待分類」。`,
     currentId: STAGING_FOLDER_ID,
     allowInbox: false,
   });
-  if (!picked?.id) { showToast("已存入暫存區"); return; }
+  if (!picked?.id) { showToast("已存入待分類"); return; }
   try {
     await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: picked.id }) });
     showToast(`已存入「${FOLDERS.find((f) => f.id === picked.id)?.name || "資料夾"}」`);
     await Promise.all([loadFolders(), loadRecent()]);
-  } catch (err) { showToast("歸檔失敗：" + err.message); }
+  } catch (err) { showToast("分類失敗：" + err.message); }
 }
 
 async function openEntry(id) {
@@ -1823,7 +1825,7 @@ async function openEntry(id) {
     <div class="detail-head">
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
     </div>
-    <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "📥 收件匣"}</p>
+    <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "⏳ 待分類"}</p>
     <section class="merged-transcript ${mergedTranscript ? "" : "empty"}">
       <div><strong>📝 合併逐字稿</strong><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>複製</button></div>
       ${mergedTranscript
@@ -1831,11 +1833,10 @@ async function openEntry(id) {
         : `<p class="sub" id="e-auto-status">新錄音會在每日免費額度內自動轉錄並合併；舊錄音請使用下方「Cloudflare AI 整理」。</p>`}
       ${mergedTranscript ? `<p class="sub" id="e-auto-status">正在檢查是否有新的安全轉錄項目…</p>` : ""}
     </section>
-    <!-- 已經歸檔的記事也要能再搬（分類當下判斷錯、或後來架構調整都很常見），
-         所以這一列不再只給收件匣草稿看 -->
+    <!-- 已分類的記事也要能再搬，所以這一列不只給待分類內容看。 -->
     <div class="archive-row">
       <label>位置：</label>
-      <span class="archive-current" id="e-folder-path">${folder ? esc(folderPathOf(folder).join(" ／ ")) : "📥 收件匣（尚未歸類）"}</span>
+      <span class="archive-current" id="e-folder-path">${folder ? esc(folderPathOf(folder).join(" ／ ")) : "⏳ 待分類"}</span>
       <button class="btn small" id="e-move" type="button">📂 移動…</button>
     </div>
     ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
@@ -1907,7 +1908,7 @@ async function openEntry(id) {
   $("e-move").onclick = async () => {
     const picked = await openFolderPicker({
       title: "移動記事",
-      desc: "選一個資料夾（四層都可以選），或搬回收件匣。按下方「儲存」才會生效。",
+      desc: "選一個資料夾（四層都可以選），或移回待分類。按下方「儲存」才會生效。",
       currentId: pendingFolderId !== undefined ? pendingFolderId : (e.folder_id || null),
       allowInbox: true,
     });
@@ -1916,7 +1917,7 @@ async function openEntry(id) {
     const target = picked.id ? FOLDERS.find((f) => f.id === picked.id) : null;
     $("e-folder-path").textContent = target
       ? `${folderPathOf(target).join(" ／ ")}（按儲存才生效）`
-      : "📥 收件匣（按儲存才生效）";
+      : "⏳ 待分類（按儲存才生效）";
   };
   $("e-save").onclick = async () => {
     const newFields = {};
@@ -1998,13 +1999,11 @@ async function openEntry(id) {
  * 重複檔（後端以 SHA-256 判定）會被略過，並把剛建的空記事收掉，
  * 不留下「有記事但沒檔案」的殘骸。
  */
-async function uploadFilesToFolder(files) {
-  if (!files || !files.length || !CURRENT_FOLDER) return;
+async function uploadStandaloneFiles(files, folderId, { button = null, destination = "" } = {}) {
+  if (!files || !files.length) return;
 
-  const folderId = Number(CURRENT_FOLDER.id);
-  const button = $("btn-folder-upload-file");
-  const label = button.textContent;
-  button.disabled = true;
+  const label = button?.textContent || "";
+  if (button) button.disabled = true;
   let uploaded = 0;
   let duplicates = 0;
   let failed = 0;
@@ -2012,7 +2011,7 @@ async function uploadFilesToFolder(files) {
   try {
     for (let index = 0; index < files.length; index++) {
       const file = files[index];
-      button.textContent = `上傳中 ${index + 1}/${files.length}`;
+      if (button) button.textContent = `上傳中 ${index + 1}/${files.length}`;
       if (file.size > 50 * 1024 * 1024) {
         failed++;
         showToast(`${file.name} 超過 50MB，已略過`);
@@ -2037,15 +2036,33 @@ async function uploadFilesToFolder(files) {
         console.error(`檔案上傳失敗 [${file.name}]`, error);
       }
     }
-    const parts = [`已加入 ${uploaded} 個檔案`];
+    const parts = [`已加入 ${uploaded} 個檔案${destination ? `到${destination}` : ""}`];
     if (duplicates) parts.push(`略過 ${duplicates} 個重複檔`);
     if (failed) parts.push(`${failed} 個失敗`);
     showToast(parts.join("，"));
-    if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === folderId) await openFolder(folderId);
+    await Promise.all([loadFolders(), loadRecent()]);
+    if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === Number(folderId)) await openFolder(Number(folderId));
   } finally {
-    button.disabled = false;
-    button.textContent = label;
+    if (button) {
+      button.disabled = false;
+      button.textContent = label;
+    }
   }
+}
+
+/** 按工具列選檔是明確指定目前資料夾，維持直接放入目前位置。 */
+async function uploadFilesToFolder(files) {
+  if (!CURRENT_FOLDER) return;
+  await uploadStandaloneFiles(files, Number(CURRENT_FOLDER.id), {
+    button: $("btn-folder-upload-file"),
+    destination: `「${CURRENT_FOLDER.name}」`,
+  });
+}
+
+/** 從電腦拖進 App 的獨立檔案一律先進待分類，不受目前頁面位置影響。 */
+async function uploadDroppedFilesToPending(files) {
+  const folderId = await stagingFolderId();
+  await uploadStandaloneFiles(files, folderId, { destination: "「待分類」" });
 }
 
 // ---------- 管理分類 ----------
@@ -2291,7 +2308,7 @@ async function loadProvenance(entry) {
   rows.push(`<p class="sub prov-detail">${esc(origin.detail)}</p>`);
   if (origin.warn) rows.push(`<p class="prov-orphan">${esc(origin.warn)}</p>`);
 
-  rows.push(`<div class="prov-line"><span class="prov-key">資料庫編號</span><span>entry ${entry.id}${entry.folder_id ? `／folder ${entry.folder_id}` : "（收件匣）"}</span></div>`);
+  rows.push(`<div class="prov-line"><span class="prov-key">資料庫編號</span><span>entry ${entry.id}${entry.folder_id ? `／folder ${entry.folder_id}` : "（待分類）"}</span></div>`);
   rows.push(`<div class="prov-line"><span class="prov-key">建立</span><span>${esc(entry.created_at || "—")}</span></div>`);
   rows.push(`<div class="prov-line"><span class="prov-key">最後更新</span><span>${esc(entry.updated_at || "未曾更新")}</span></div>`);
 
@@ -2363,7 +2380,7 @@ async function loadRelations(entryId) {
     box.innerHTML = rels.map((r) => {
       const otherId = r.is_from ? r.to_entry_id : r.from_entry_id;
       const arrow = r.is_from ? "→" : "←";
-      const where = r.other_folder_name ? `${esc(r.other_folder_type)}｜${esc(r.other_folder_name)}` : "收件匣";
+      const where = r.other_folder_name ? `${esc(r.other_folder_type)}｜${esc(r.other_folder_name)}` : "待分類";
       return `<div class="relation-row" data-id="${r.id}">
         <span class="relation-arrow">${arrow}</span>
         <span class="relation-type">${esc(r.relation_type)}</span>
@@ -2417,7 +2434,7 @@ function openRelationPicker(fromEntryId, onDone) {
       results.innerHTML = rows.length
         ? rows.map((r) => `<div class="relation-result" data-id="${r.id}" data-title="${esc(r.title || "（未命名）")}">
             <strong>${esc(r.title || "（未命名）")}</strong>
-            <span class="sub">${r.folder_name ? `${esc(r.folder_type)}｜${esc(r.folder_name)}` : "收件匣"}</span>
+            <span class="sub">${r.folder_name ? `${esc(r.folder_type)}｜${esc(r.folder_name)}` : "待分類"}</span>
           </div>`).join("")
         : `<p class="sub">沒有符合的記事</p>`;
       results.querySelectorAll(".relation-result").forEach((el) => {
@@ -2819,9 +2836,9 @@ async function openFileDetail(entryId, attachmentId) {
   $("file-move-action").onclick = async () => {
     const picked = await openFolderPicker({
       title: "移動檔案",
-      desc: `把「${attachment.filename}」移到哪個資料夾？四層裡的任何一個都可以，已經歸類過的也能再搬。`,
+      desc: `把「${attachment.filename}」移到哪個資料夾？四層裡的任何一個都可以，已分類的也能再搬。`,
       currentId: entry.folder_id || null,
-      allowInbox: false, // 單一檔案的搬移端點只收資料夾；要退回收件匣請用整筆記事的移動
+      allowInbox: false, // 單一檔案的搬移端點只收資料夾；要回待分類請移動整筆記事
     });
     if (!picked?.id) return;
     const target = FOLDERS.find((f) => f.id === picked.id);
@@ -3158,6 +3175,7 @@ function setupFileDropZone(el, onFiles) {
   el.ondrop = (ev) => {
     if (!isFileDrag(ev)) return;
     ev.preventDefault();
+    ev.stopPropagation();
     el.classList.remove("file-drag-over");
     const files = Array.from(ev.dataTransfer.files || []);
     if (files.length) onFiles(files);
@@ -3308,13 +3326,10 @@ const AUDIO_SEG_OVERLAP_MS = 800;
 function segOffset(session) { return Math.floor((Date.now() - session.startedAt) / 1000); }
 
 /**
- * 暫存區資料夾的 id（沒有就請後端建一個）。
- * 現場來不及分類的東西一律先落在這裡，而不是「空了就整個消失」的收件匣——
- * 看得見才會被處理，使用者自己找時間搬去該去的資料夾。
+ * 待分類系統容器的 id（沒有就請後端建一個）。它不計入四層資料夾樹。
  */
 async function stagingFolderId() {
-  // 快取的 id 要先確認資料夾還在：使用者把暫存區刪掉之後，拿舊 id 去建記事
-  // 會產生一筆掛在不存在資料夾底下的孤兒（首頁跟資料夾內頁都看不到它）
+  // 快取的 id 要先確認系統容器還在，避免拿舊 id 建出孤兒記事。
   if (STAGING_FOLDER_ID && FOLDERS.some((f) => Number(f.id) === Number(STAGING_FOLDER_ID))) return STAGING_FOLDER_ID;
   STAGING_FOLDER_ID = null;
   try {
@@ -3323,7 +3338,7 @@ async function stagingFolderId() {
     FOLDERS = await api("/folders");
     return STAGING_FOLDER_ID;
   } catch {
-    return null; // 建不出來就退回原本的收件匣行為，採集本身不能被分類卡住
+    return null; // 建不出來就退回 folder_id=null，採集本身不能被分類卡住
   }
 }
 
@@ -3333,8 +3348,7 @@ async function ensureEntryForCapture(entryId, titlePrefix) {
   // 錄音中誤按主畫面較顯眼的「📷 拍照」，而不是浮動列裡的小相機鈕
   const active = AUDIO || VIDEO;
   if (active) return { entryId: active.entryId, folderId: active.folderId };
-  // 在資料夾裡採集＝當下就分好類了；從首頁採集則先進暫存區，採集畫面上的
-  // 資料夾 chip 會馬上提示可以歸類（「一開始就先分類」，但不擋著不讓你錄）
+  // 在資料夾裡採集＝當下就選好位置；從首頁採集則先進待分類。
   const folderId = CURRENT_FOLDER ? CURRENT_FOLDER.id : await stagingFolderId();
   const d = new Date();
   const title = `${titlePrefix} ${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -3359,8 +3373,8 @@ async function addTimedNote(session) {
 // ---- 資料夾／專案歸屬 chip：video/photo 兩個全螢幕模式共用同一套邏輯 ----
 function folderChipLabel(folderId) {
   const folder = folderId ? FOLDERS.find((f) => f.id === folderId) : null;
-  if (!folder) return "📥 收件匣（點我歸類）";
-  if (folder.role === "staging") return "⏳ 暫存區（點我歸類）";
+  if (!folder) return "⏳ 待分類（點我分類）";
+  if (folder.role === "staging") return "⏳ 待分類（點我分類）";
   return `📂 ${folder.name}`;
 }
 
@@ -3380,7 +3394,7 @@ function setupFolderChip(chipId, pickerId, getSession) {
     // 四層架構下用一串沒縮排的平清單根本分不出「同名的是哪一個分支」，
     // 這裡跟搬移用的選擇器一樣列成樹狀並縮排
     picker.innerHTML = [
-      `<div class="cfp-item cfp-staging" data-staging="1">⏳ 很急，先放暫存區（之後自己找時間搬過去）</div>`,
+      `<div class="cfp-item cfp-staging" data-staging="1">⏳ 待分類（之後再移動）</div>`,
       ...folderTreeOrdered()
         .filter(({ folder }) => folder.role !== "staging")
         .map(({ folder, depth }) =>
@@ -3403,7 +3417,7 @@ function setupFolderChip(chipId, pickerId, getSession) {
           await api(`/entries/${session.entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: folderId }) });
           session.folderId = folderId;
           chip.textContent = folderChipLabel(folderId);
-        } catch (err) { showToast("歸檔失敗：" + err.message); }
+        } catch (err) { showToast("分類失敗：" + err.message); }
       };
     });
     picker.style.display = "block";
@@ -3998,7 +4012,7 @@ function init() {
     if (e.target === $("category-manager-overlay")) closeCategoryManager();
   });
   $("btn-cleanup-filenames").onclick = (e) => cleanupFilenames(e.currentTarget);
-  // 資料夾工具列的「＋ 上傳檔案」：直接把檔案丟進目前這個資料夾，
+  // 資料夾工具列的「＋ 上傳檔案」是明確指定目前資料夾；外部拖放則一律進待分類。
   // 每個檔案自成一筆記事（標題＝去掉副檔名的檔名）
   const folderUploadInput = $("folder-upload-file-input");
   $("btn-folder-upload-file").onclick = () => {
@@ -4010,10 +4024,8 @@ function init() {
     folderUploadInput.value = "";
     uploadFilesToFolder(files);
   };
-  setupFileDropZone($("view-folder"), (files) => {
-    if (!CURRENT_FOLDER) { showToast("請先進入要存放檔案的資料夾"); return; }
-    uploadFilesToFolder(files);
-  });
+  setupFileDropZone($("view-home"), uploadDroppedFilesToPending);
+  setupFileDropZone($("view-folder"), uploadDroppedFilesToPending);
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
@@ -4069,7 +4081,7 @@ function init() {
     document.body.classList.remove("entry-dragging");
     const entryId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
     const title = ev.dataTransfer.getData("application/x-fieldlog-entry-title") || "新資料夾";
-    if (entryId) createFolderAndMoveEntry(entryId, title).catch((err) => showToast("建立並歸檔失敗：" + err.message));
+    if (entryId) createFolderAndMoveEntry(entryId, title).catch((err) => showToast("建立並移動失敗：" + err.message));
   };
   $("btn-usage-refresh").onclick = loadUsage;
   $("btn-back").onclick = backHome;
@@ -4097,11 +4109,11 @@ function init() {
 
   // 🎙 錄音
   // 錄音沒有全螢幕畫面、也就沒有錄影／拍照那顆資料夾 chip，改在浮動列上給一顆：
-  // 「一開始就先歸類」對錄音一樣適用，而且開選擇器不會中斷錄音。
+  // 錄音中也能選擇資料夾，而且開選擇器不會中斷錄音。
   $("audio-folder-btn").onclick = async () => {
     if (!AUDIO) return;
     const picked = await openFolderPicker({
-      title: "這段錄音歸到哪裡？",
+      title: "這段錄音移到哪裡？",
       desc: "現在選好，之後就不用回頭找。錄音不會中斷。",
       currentId: AUDIO.folderId ?? null,
       allowInbox: true,
@@ -4111,7 +4123,7 @@ function init() {
       await api(`/entries/${AUDIO.entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: picked.id }) });
       AUDIO.folderId = picked.id;
       showToast(`已歸到「${folderChipLabel(picked.id)}」`);
-    } catch (err) { showToast("歸檔失敗：" + err.message); }
+    } catch (err) { showToast("分類失敗：" + err.message); }
   };
   $("audio-photo-btn").onclick = openAudioPhotoPopup;
   $("audio-note-btn").onclick = () => addTimedNote(AUDIO);

@@ -170,7 +170,7 @@ body {
 .folder-menu button:hover { background: #f1f5f4; }
 .folder-menu .danger { color: #b91c1c; }
 .child-folder-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 8px 0 16px; }
-/* .record-group-card（多檔案記事歸檔後的卡片）刻意跟 .child-folder-card 共用
+/* .record-group-card（多檔案記事卡片）刻意跟 .child-folder-card 共用
    這組視覺樣式、但不共用 class 名稱——見 recordGroupCardHtml() 的註解，
    兩者的 data-id 語意不同（資料夾 id vs. 記事 id），拖曳落點判斷不能混淆。 */
 .child-folder-card, .record-group-card {
@@ -201,7 +201,7 @@ body {
 .child-folder-list.list-view .child-folder-card,
 .child-folder-list.list-view .record-group-card { min-height: 62px; }
 /* 卡片模式：跟首頁採集按鈕（錄影／拍照／錄音／記事）同一套漸層光澤正方形
-   磚，子資料夾／已歸檔的多檔案紀錄看起來像一疊有質感的磚塊。只在夠寬的
+   磚，子資料夾／已分類的多檔案紀錄看起來像一疊有質感的磚塊。只在夠寬的
    螢幕上套用——手機版本來就沒有卡片／清單切換鈕（見下面的手機 media
    query），會直接落回上面那組緊湊橫向列樣式，不用另外寫「復原」規則。 */
 @media (min-width: 720px) {
@@ -298,7 +298,7 @@ body {
 }
 
 .entry-list { display: flex; flex-direction: column; gap: 4px; }
-/* 收件匣卡片模式：跟資料夾內頁那種大卡片（min-height 130px）不是同一組樣式，
+/* 待分類卡片模式：跟資料夾內頁那種大卡片（min-height 130px）不是同一組樣式，
    草稿本來就一堆，卡片故意做小一點，不要佔掉太多畫面。 */
 #inbox-list.grid-view {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px;
@@ -325,7 +325,7 @@ body {
   border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 18px;
 }
 .entry-drag:active { cursor: grabbing; }
-/* 原本桌機隱藏、只靠拖曳歸檔，但視窗夠寬、目標資料夾卻在捲動範圍外時，
+/* 原本桌機隱藏、只靠拖曳移動，但視窗夠寬、目標資料夾卻在捲動範圍外時，
    滑鼠根本拖不到、拖曳中也沒有自動捲動——這種時候完全卡住。跟 .entry-merge
    一樣桌機／手機都要看得到，拖曳只是這顆按鈕以外的另一種捷徑，不是唯一路徑。 */
 .entry-move {
@@ -724,7 +724,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 @keyframes rec-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 .capture-count { font-weight: 700; }
 
-/* 資料夾／專案歸屬 chip：右上角，錄影當下就能改，不用事後再歸檔 */
+/* 資料夾／專案位置 chip：右上角，錄影當下就能改，不用事後再移動 */
 .capture-folder-chip {
   position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 14px;
   z-index: 2; max-width: 42vw;
@@ -833,20 +833,20 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   background: #e0e7ff; color: #3730a3; font-size: 11px; font-weight: 600;
 }
 
-/* ===== 歸檔區塊標籤 ===== */
+/* ===== 資料夾內容區塊標籤 ===== */
 .archive-section-label {
   margin: 14px 0 8px; color: var(--text-muted, #64748b);
   font-size: 13px; font-weight: 700; letter-spacing: .04em;
 }
 .archive-note-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 /* 合併／刪除維持只在記事詳情裡做，不放在列表上；拖曳／移動（entry-drag／
-   entry-move）2026-08-09 起重新開放——entry 266：已歸檔的筆記跟多檔案記事
+   entry-move）2026-08-09 起重新開放——entry 266：已分類的筆記跟多檔案記事
    一樣，四層架構建錯／後來才補子資料夾時要搬得動，不能只能刪掉重建。 */
 .archive-note-list .entry-merge,
 .archive-note-list .entry-del { display: none; }
 .archive-note-list .entry-row::before { content: '📝'; font-size: 18px; }
 
-/* 多檔案記事（分段錄音、錄音夾照片…）歸檔後整筆顯示成一張卡片，跟子資料夾
+/* 多檔案記事（分段錄音、錄音夾照片…）整筆顯示成一張卡片，跟子資料夾
    共用 .child-folder-card 樣式（同一套視覺語言：圖示＋標題＋摘要），看起來
    就是資料夾把附件包在裡面，不是被拆散成一堆各自獨立的檔案列，也不會像
    借用 note 那組 entry-row 樣式時被 grid-view 的 min-height/flex-wrap

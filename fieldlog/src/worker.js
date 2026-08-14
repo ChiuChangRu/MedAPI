@@ -98,7 +98,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "107";
+const UI_VERSION = "108";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -429,7 +429,7 @@ async function handleApi(request, env, url) {
     const entry = await db.prepare("SELECT id, title FROM entries WHERE id = ?").bind(id).first();
     if (!entry) return bad("找不到紀錄", 404);
     await db.prepare("UPDATE entries SET auto_filed_at = '', auto_filed_reason = '' WHERE id = ?").bind(id).run();
-    await logHistory(db, id, null, "確認歸類", `${entry.title || "（未命名）"}：使用者確認分類正確`);
+    await logHistory(db, id, null, "確認分類", `${entry.title || "（未命名）"}：使用者確認分類正確`);
     return json({ ok: true });
   }
 
@@ -550,7 +550,7 @@ async function handleApi(request, env, url) {
     await db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?").bind(folder.parent_id || null, now(), id).run();
     await db.prepare("UPDATE folders SET parent_id = ? WHERE parent_id = ?").bind(folder.parent_id || null, id).run();
     await db.prepare("DELETE FROM folders WHERE id = ?").bind(id).run();
-    await logHistory(db, null, folder.parent_id || null, "刪除資料夾", `${folder.name}；${moved} 筆記事移至${folder.parent_id ? "上層" : "收件匣"}`);
+    await logHistory(db, null, folder.parent_id || null, "刪除資料夾", `${folder.name}；${moved} 筆記事移至${folder.parent_id ? "上層" : "待分類"}`);
     return json({ ok: true, moved });
   }
   const mergeFolderMatch = path.match(/^\/folders\/(\d+)\/merge$/);
@@ -813,7 +813,7 @@ async function handleApi(request, env, url) {
       "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, body_format = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ? WHERE id = ?"
     ).bind(title, bodyText, fields, folderId, bodyFormat, autoFiledAt, autoFiledReason, now(), id).run();
     if (folderChanged) {
-      await logHistory(db, id, folderId, "歸檔", title);
+      await logHistory(db, id, folderId, "分類", title);
     } else {
       await logHistory(db, id, folderId, "更新紀錄", title);
     }

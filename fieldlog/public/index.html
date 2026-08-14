@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=107" />
+<link rel="stylesheet" href="style.css?v=108" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -22,7 +22,7 @@
   <div id="view-home">
     <header class="home-app-head">
       <h1>隨身記</h1>
-      <small>輸入、整理、歸檔 <span id="app-version" class="app-version"></span></small>
+      <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
       <a class="head-link" href="help.html">📖 使用說明</a>
     </header>
 
@@ -66,14 +66,14 @@
       <!-- 第三列：待處理、草稿與 Wiki 檔案——直向堆疊，待處理在上、已分類
            的 Wiki 檔案在下（2026-08-09 三次修正：原本排成左右兩欄，改回
            上下順序）。
-           待處理：只列還沒真正歸檔的東西（收件匣＋暫存區＋歷史上 AI 歸類過
-           還沒確認的），不是「最近動過的全部東西」——理由見 app.js
+           待分類：只列還沒放入正式資料夾的內容，以及歷史上 AI 分類後尚未確認的內容，
+           不是「最近動過的全部東西」——理由見 app.js
            loadRecent() 的註解。
-           Wiki 檔案＝隨身記自己的資料夾歸檔（不是 wiki.html 那個獨立的
+           Wiki 檔案＝隨身記自己的資料夾內容（不是 wiki.html 那個獨立的
            策略地圖 Wiki，那是另一套系統）。 -->
       <section class="home-section home-inbox-section" id="inbox-panel" aria-labelledby="home-inbox-title">
         <div class="home-section-head">
-          <h2 class="home-section-title" id="home-inbox-title">📥 待處理 <span id="inbox-count" class="count"></span></h2>
+          <h2 class="home-section-title" id="home-inbox-title">⏳ 待分類 <span id="inbox-count" class="count"></span></h2>
           <div class="folder-view-toggle" aria-label="待處理顯示模式">
             <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">▦ 卡片</button>
             <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
@@ -200,7 +200,7 @@
 
 <!-- 搬移用的資料夾選擇器：四層架構下用一個平的下拉選單根本認不出「同名的
      那個是哪一層的哪一個分支」，所以列成有縮排的樹，每一列都標出完整路徑。
-     記事、單一檔案、收件匣草稿全部共用這一個選擇器。 -->
+     記事、單一檔案、待分類內容全部共用這一個選擇器。 -->
 <div class="overlay" id="folder-picker-overlay">
   <div class="modal narrow folder-picker-modal">
     <div class="modal-close-float"><button class="btn small ghost" id="folder-picker-close" type="button" aria-label="關閉" title="關閉">✕</button></div>
@@ -277,7 +277,7 @@
 </div>
 
 <div class="folder-trash-zone" id="folder-trash-zone" aria-hidden="true">🗑 放開以刪除資料夾分類</div>
-<div class="entry-new-folder-zone" id="entry-new-folder-zone" aria-hidden="true">📁 放開以建立新資料夾並歸檔</div>
+<div class="entry-new-folder-zone" id="entry-new-folder-zone" aria-hidden="true">📁 放開以建立新資料夾並移入</div>
 
 <!-- 開啟 App 時的載入進度：資料夾／記事／附件變多，boot() 要打的 API 陸續
      跑完前畫面會空白一段時間，容易讓人以為當機。用百分比讓使用者知道還在動。 -->
@@ -362,7 +362,7 @@
   <span class="audio-status" id="audio-status" role="status" aria-live="polite" hidden></span>
   <div class="audio-live-transcript" id="audio-live-transcript" aria-live="polite" hidden></div>
   <span class="audio-badge-dot"></span><span id="audio-timer">00:00</span>
-  <button id="audio-folder-btn" type="button" title="歸類到資料夾（錄音不中斷）">📂</button>
+  <button id="audio-folder-btn" type="button" title="分類到資料夾（錄音不中斷）">📂</button>
   <button id="audio-photo-btn" type="button" title="拍照">📷</button>
   <button id="audio-note-btn" type="button" title="記一句">✏️</button>
   <button id="audio-stop-btn" type="button" title="結束">⏹</button>
@@ -384,11 +384,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=107"></script>
+<script src="app.js?v=108"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=107"></script>
+<script src="pdf-editor.js?v=108"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=107"></script>
+<script src="richtext-editor.js?v=108"></script>
 </body>
 </html>
