@@ -130,6 +130,21 @@ export const SCHEMA = [
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  // 垃圾桶只記「被刪除的根項目」。資料夾／紀錄本身仍保留原本的父子關係，
+  // deleted_at 只負責把整棵樹從一般查詢隱藏；還原時才能原封不動回到原位置。
+  `CREATE TABLE IF NOT EXISTS trash_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_type TEXT NOT NULL,
+    item_id INTEGER NOT NULL,
+    title TEXT DEFAULT '',
+    deleted_at TEXT NOT NULL,
+    purge_after TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'trashed',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT DEFAULT '',
+    purge_started_at TEXT DEFAULT '',
+    UNIQUE(item_type, item_id)
+  )`,
   // 2026-08-09 前：AI 自動歸類的判斷規則（keyword → folder_id）。AI 自動歸類
   // 整個拿掉之後這兩張表沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE。
   `CREATE TABLE IF NOT EXISTS autofile_hints (
@@ -165,6 +180,7 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_trash_purge ON trash_items(purge_after)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique ON categories(kind, level, name)`,
 ];
 
@@ -253,6 +269,18 @@ export const MIGRATIONS = [
   // 同一層級內的手動排序，數字小的排前面；NULL／相同值時退回既有的
   // id／status 排序，不影響原本沒設定過排序的資料夾。
   `ALTER TABLE folders ADD COLUMN sort_order INTEGER`,
+  // v109：紀錄本身也是 Windows 式資料包，可以一層包一層；正式資料夾與
+  // 紀錄刪除都先進垃圾桶，60 天後才永久清除。
+  `ALTER TABLE entries ADD COLUMN parent_entry_id INTEGER`,
+  `ALTER TABLE entries ADD COLUMN deleted_at TEXT DEFAULT ''`,
+  `ALTER TABLE folders ADD COLUMN deleted_at TEXT DEFAULT ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(parent_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_deleted ON entries(deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_folders_deleted ON folders(deleted_at)`,
+  `ALTER TABLE trash_items ADD COLUMN state TEXT NOT NULL DEFAULT 'trashed'`,
+  `ALTER TABLE trash_items ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE trash_items ADD COLUMN last_error TEXT DEFAULT ''`,
+  `ALTER TABLE trash_items ADD COLUMN purge_started_at TEXT DEFAULT ''`,
 ];
 
 // folders.category 的合法值——色系分組，見上面 MIGRATIONS 裡的說明。

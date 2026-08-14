@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "108";
+const APP_VERSION = "109";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -695,6 +695,7 @@ function renderFolders() {
   syncFolderSortButtons();
   if (!rows.length) {
     wrap.innerHTML = `<p class="sub">還沒有資料夾。新資料會先進待分類；建立資料夾後再移動進去。</p>`;
+    renderDesktopFolderTree();
     return;
   }
   wrap.innerHTML = rows.map(({ folder: f, depth, childCount }) => {
@@ -710,7 +711,7 @@ function renderFolders() {
       : `<span class="folder-expand-spacer" aria-hidden="true"></span>`;
     return `
     <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}" style="${style}">
-      <button class="folder-drag" type="button" draggable="true" title="拖曳合併或刪除" aria-label="拖曳${esc(f.name)}">⠿</button>
+      <button class="folder-drag" type="button" draggable="true" title="拖曳移動或放入垃圾桶" aria-label="拖曳${esc(f.name)}">⠿</button>
       ${expandBtn}
       <div class="folder-card-main">
         <span class="folder-type-group">${f.parent_id ? "📁" : "📂"} <span class="folder-type">${esc(f.type)}</span></span>
@@ -728,6 +729,7 @@ function renderFolders() {
       </div>
     </div>`;
   }).join("");
+  renderDesktopFolderTree();
   wrap.querySelectorAll(".folder-expand").forEach((btn) => {
     btn.onclick = (ev) => {
       ev.stopPropagation();
@@ -781,7 +783,51 @@ function renderFolders() {
         return;
       }
       const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-folder"));
-      if (sourceId && sourceId !== targetId) mergeFolder(sourceId, targetId);
+      if (sourceId && sourceId !== targetId) moveFolderDirect(sourceId, targetId);
+    };
+  });
+}
+
+async function moveFolderDirect(sourceId, targetId) {
+  try {
+    await api(`/folders/${sourceId}`, { method: "PUT", body: JSON.stringify({ parent_id: targetId }) });
+    showToast("資料夾已移動");
+    await loadFolders();
+  } catch (error) { showToast("移動失敗：" + error.message); }
+}
+
+function renderDesktopFolderTree() {
+  const wrap = $("desktop-folder-tree");
+  if (!wrap) return;
+  const rows = visibleFolderRows();
+  wrap.innerHTML = rows.map(({ folder, depth, childCount }) => {
+    const expanded = EXPANDED_FOLDER_IDS.has(Number(folder.id));
+    return `<div class="desktop-tree-row ${CURRENT_FOLDER?.id === folder.id ? "active" : ""}" data-id="${folder.id}" style="padding-left:${8 + depth * 17}px">
+      ${childCount ? `<button class="desktop-tree-toggle" type="button">${expanded ? "▾" : "▸"}</button>` : `<span class="desktop-tree-toggle-spacer"></span>`}
+      <span>${folder.parent_id ? "📁" : "📂"} ${esc(folder.name)}</span>
+    </div>`;
+  }).join("") || `<p class="sub" style="padding:8px;">尚無資料夾</p>`;
+  wrap.querySelectorAll(".desktop-tree-row").forEach((row) => {
+    row.onclick = () => openFolder(Number(row.dataset.id));
+    row.querySelector(".desktop-tree-toggle")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const id = Number(row.dataset.id);
+      if (EXPANDED_FOLDER_IDS.has(id)) EXPANDED_FOLDER_IDS.delete(id); else EXPANDED_FOLDER_IDS.add(id);
+      renderFolders();
+    });
+    row.ondragover = (event) => {
+      if (!event.dataTransfer.types.includes("application/x-fieldlog-entry") && !event.dataTransfer.types.includes("application/x-fieldlog-folder")) return;
+      event.preventDefault(); event.dataTransfer.dropEffect = "move";
+    };
+    row.ondrop = (event) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder")) return;
+      event.preventDefault(); event.stopPropagation();
+      const targetId = Number(row.dataset.id);
+      const entryId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
+      const folderId = Number(event.dataTransfer.getData("application/x-fieldlog-folder"));
+      if (entryId) moveInboxEntry(entryId, targetId, Number(event.dataTransfer.getData("application/x-fieldlog-entry-folder")) || null);
+      else if (folderId && folderId !== targetId) moveFolderDirect(folderId, targetId);
     };
   });
 }
@@ -830,11 +876,10 @@ async function moveFolder(id) {
 async function deleteFolder(id) {
   const folder = FOLDERS.find((f) => f.id === id);
   if (!folder) return;
-  const destination = folder.parent_id ? "上層資料夾" : "待分類";
-  const detail = `${folder.entry_count ? `裡面的 ${folder.entry_count} 筆記事與附件會移到${destination}。` : "裡面沒有直接記事。"}${folder.child_count ? ` ${folder.child_count} 個子資料夾也會安全上移一層。` : ""}`;
-  if (!confirm(`確定刪除資料夾「${folder.name}」？\n\n${detail}`)) return;
+  const detail = `${folder.entry_count ? `直接包含 ${folder.entry_count} 筆紀錄。` : ""}${folder.child_count ? ` 另有 ${folder.child_count} 個子資料夾及其全部內容。` : ""}`;
+  if (!confirm(`將資料夾「${folder.name}」整棵移到垃圾桶？\n\n${detail}\n垃圾桶保留 60 天，可在期間內還原。`)) return;
   const result = await api(`/folders/${id}`, { method: "DELETE" });
-  showToast(result.moved ? `資料夾已刪除，${result.moved} 筆記事移至${destination}` : "資料夾已刪除，內容已安全保留");
+  showToast(`已移到垃圾桶：${result.folder_count || 1} 個資料夾、${result.entry_count || 0} 筆紀錄`);
   await Promise.all([loadFolders(), loadRecent()]);
 }
 
@@ -948,33 +993,39 @@ function entryRowHtml(e, { showRecency = false } = {}) {
 function bindEntryRows(wrap) {
   wrap.querySelectorAll(".entry-row").forEach((el) => {
     el.onclick = () => openEntry(Number(el.dataset.id));
-    // 拖一筆記事到另一筆記事上面＝合併（跟拖到資料夾卡片上＝移動是同一組
-    // dataTransfer payload，.entry-row 本身當 drop target，直接呼叫既有的
-    // mergeEntry()，不用另外走對話框）
+    // v109：拖一筆紀錄資料包到另一筆＝完整放入，不再破壞式合併。
     el.ondragover = (ev) => {
-      if (!ev.dataTransfer.types.includes("application/x-fieldlog-entry")) return;
+      const types = Array.from(ev.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("Files")) return;
       ev.preventDefault();
       el.classList.add("merge-target");
-      ev.dataTransfer.dropEffect = "move";
+      ev.dataTransfer.dropEffect = types.includes("application/x-fieldlog-entry") ? "move" : "copy";
     };
     el.ondragleave = () => el.classList.remove("merge-target");
     el.ondrop = (ev) => {
-      if (!ev.dataTransfer.types.includes("application/x-fieldlog-entry")) return;
+      const types = Array.from(ev.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("Files")) return;
       ev.preventDefault();
+      ev.stopPropagation();
       el.classList.remove("merge-target");
-      const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
-      const targetId = Number(el.dataset.id);
-      if (sourceId && targetId && sourceId !== targetId) mergeEntry(sourceId, targetId);
+      if (types.includes("application/x-fieldlog-entry")) {
+        const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
+        const targetId = Number(el.dataset.id);
+        if (sourceId && targetId && sourceId !== targetId) nestEntry(sourceId, targetId);
+        return;
+      }
+      const files = Array.from(ev.dataTransfer.files || []);
+      if (files.length) uploadFiles(Number(el.dataset.id), files);
     };
   });
   wrap.querySelectorAll(".entry-del").forEach((btn) => {
     btn.onclick = async (ev) => {
       ev.stopPropagation(); // 不要連帶觸發外層 .entry-row 的開啟
       const id = Number(btn.dataset.id);
-      if (!confirm("確定刪除這筆紀錄？裡面的附件也會一起刪除，無法復原。")) return;
+      if (!confirm("將這筆紀錄資料包及其中全部內容移到垃圾桶？垃圾桶保留 60 天。")) return;
       try {
         await api(`/entries/${id}`, { method: "DELETE" });
-        showToast("已刪除");
+        showToast("已移到垃圾桶");
         if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
       } catch (err) { showToast("刪除失敗：" + err.message); }
     };
@@ -1020,6 +1071,14 @@ function bindEntryRows(wrap) {
       $("entry-new-folder-zone").classList.remove("active");
     };
   });
+}
+
+async function nestEntry(sourceId, targetId) {
+  try {
+    await api(`/entries/${sourceId}`, { method: "PUT", body: JSON.stringify({ parent_entry_id: targetId }) });
+    showToast("紀錄資料包已移入");
+    await refreshFolderView();
+  } catch (error) { showToast("移動失敗：" + error.message); }
 }
 
 // ---------- 搬移用的資料夾選擇器（樹狀，四層通吃）----------
@@ -1341,11 +1400,12 @@ function syncSubfolderButton() {
 }
 
 function renderChildFolders(parentId) {
+  const activeView = matchMedia("(max-width: 719px)").matches ? "list" : INNER_FOLDER_VIEW;
   const children = FOLDERS
     .filter((f) => Number(f.parent_id) === Number(parentId))
     .sort(folderComparator());
   const wrap = $("folder-children");
-  wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${children.map((f) => `
+  wrap.innerHTML = children.length ? `<h3>📂 子資料夾</h3><div class="child-folder-list ${activeView}-view">${children.map((f) => `
     <div class="child-folder-card" data-id="${f.id}"${folderCategoryStyle(f)}>
       <span>📁</span><strong>${esc(f.name)}</strong><small>${folderCategoryChipHtml(f)}${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
       <button class="child-folder-edit" type="button" data-id="${f.id}" title="編輯資料夾名稱／類型" aria-label="編輯${esc(f.name)}資料夾">✏️</button>
@@ -1446,14 +1506,18 @@ function syncFolderSortButtons() {
 async function openFolder(id) {
   CURRENT_FOLDER = FOLDERS.find((f) => f.id === id);
   if (!CURRENT_FOLDER) return;
+  $("desktop-pending")?.classList.remove("active");
+  $("desktop-trash")?.classList.remove("active");
   $("view-home").style.display = "none";
   $("view-folder").style.display = "block";
   const parent = CURRENT_FOLDER.parent_id ? FOLDERS.find((f) => f.id === CURRENT_FOLDER.parent_id) : null;
   $("btn-back").textContent = parent ? `‹ ${parent.name}` : "‹ 回首頁";
   // 標題顯示完整路徑，四層架構下才看得出「現在在哪一層的哪個分支」
   $("folder-title").textContent = folderPathOf(CURRENT_FOLDER).join(" ／ ");
-  $("btn-inner-grid").classList.toggle("active", INNER_FOLDER_VIEW === "grid");
-  $("btn-inner-list").classList.toggle("active", INNER_FOLDER_VIEW === "list");
+  const activeView = matchMedia("(max-width: 719px)").matches ? "list" : INNER_FOLDER_VIEW;
+  $("btn-inner-grid").classList.toggle("active", activeView === "grid");
+  $("btn-inner-list").classList.toggle("active", activeView === "list");
+  $("btn-inner-details").classList.toggle("active", activeView === "details");
   syncFileSortButton();
   syncFolderSortButtons();
   syncSubfolderButton();
@@ -1474,12 +1538,12 @@ async function openFolder(id) {
   const files = sortFolderFiles(singleFileEntries.flatMap((e) =>
     visibleAtts(e).map((a) => ({ attachment: a, entryId: e.id }))
   ));
-  $("folder-entries").className = `entry-list inner-entry-list ${INNER_FOLDER_VIEW}-view`;
+  $("folder-entries").className = `entry-list inner-entry-list ${activeView}-view`;
   $("folder-entries").innerHTML = files.length || groupedEntries.length || notes.length
     ? `${files.length ? `<div class="archive-section-label">檔案</div>
-        <div class="folder-file-list ${INNER_FOLDER_VIEW}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
+        <div class="folder-file-list ${activeView}-view">${files.map(({ attachment, entryId }) => folderFileHtml(attachment, entryId)).join("")}</div>` : ""}
        ${groupedEntries.length ? `<div class="archive-section-label">錄音與多檔案紀錄</div>
-        <div class="child-folder-list ${INNER_FOLDER_VIEW}-view">${groupedEntries.map((e) => recordGroupCardHtml(e, visibleAtts(e))).join("")}</div>` : ""}
+        <div class="child-folder-list ${activeView}-view">${groupedEntries.map((e) => recordGroupCardHtml(e, visibleAtts(e))).join("")}</div>` : ""}
        ${notes.length ? `<div class="archive-section-label">筆記</div>
         <div class="archive-note-list">${notes.map(entryRowHtml).join("")}</div>` : ""}`
     : `<p class="sub">還沒有紀錄。按「採集」或「新紀錄」開始。</p>`;
@@ -1520,14 +1584,34 @@ function bindRecordGroupCards() {
       if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-drag")) return;
       openEntry(Number(card.dataset.id));
     };
+    card.ondragover = (event) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("Files")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = types.includes("application/x-fieldlog-entry") ? "move" : "copy";
+      card.classList.add("file-drop-target");
+    };
+    card.ondragleave = () => card.classList.remove("file-drop-target");
+    card.ondrop = (event) => {
+      event.preventDefault(); event.stopPropagation(); card.classList.remove("file-drop-target");
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry")) {
+        const files = Array.from(event.dataTransfer.files || []);
+        if (files.length) uploadFiles(Number(card.dataset.id), files);
+        return;
+      }
+      const sourceId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
+      const targetId = Number(card.dataset.id);
+      if (sourceId && sourceId !== targetId) nestEntry(sourceId, targetId);
+    };
     const del = card.querySelector(".record-group-del");
     del.onclick = async (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      if (!confirm("確定刪除這筆紀錄？裡面的附件也會一起刪除，無法復原。")) return;
+      if (!confirm("將這筆紀錄資料包及其中全部內容移到垃圾桶？垃圾桶保留 60 天。")) return;
       try {
         await api(`/entries/${card.dataset.id}`, { method: "DELETE" });
-        showToast("已刪除");
+        showToast("已移到垃圾桶");
         await refreshFolderView();
       } catch (err) { showToast("刪除失敗：" + err.message); }
     };
@@ -1724,6 +1808,70 @@ function setInnerFolderView(view) {
   if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id);
 }
 
+async function loadTrash() {
+  const data = await api("/trash");
+  const items = data.items || [];
+  $("desktop-trash-count").textContent = items.length ? String(items.length) : "";
+  $("trash-list").innerHTML = items.length ? items.map((item) => {
+    const counts = [item.folder_count ? `${item.folder_count} 個資料夾` : "", item.entry_count ? `${item.entry_count} 筆紀錄` : "", item.attachment_count ? `${item.attachment_count} 個附件` : ""].filter(Boolean).join("｜");
+    const daysLeft = Math.max(0, Math.ceil((new Date(item.purge_after).getTime() - Date.now()) / 86400000));
+    return `<div class="trash-row" data-id="${item.id}" data-type="${item.item_type}">
+      <span class="trash-row-icon">${item.item_type === "folder" ? "📁" : "📦"}</span>
+      <span class="trash-row-main"><strong>${esc(item.title || "（未命名）")}</strong><small>${counts || "空資料包"}｜${daysLeft} 天後永久刪除</small></span>
+      <button class="btn small trash-restore" type="button">還原</button>
+      <button class="btn small danger trash-delete" type="button">永久刪除</button>
+    </div>`;
+  }).join("") : `<p class="sub">垃圾桶是空的。</p>`;
+  $("trash-list").querySelectorAll(".trash-row").forEach((row) => {
+    row.querySelector(".trash-restore").onclick = async () => {
+      try {
+        await api(`/trash/${row.dataset.id}/restore`, { method: "POST", body: "{}" });
+        showToast("已還原"); await Promise.all([loadTrash(), loadFolders(), loadRecent()]);
+      } catch (error) {
+        if (!error.message.includes("請選擇新的還原位置")) { showToast("還原失敗：" + error.message); return; }
+        const picked = await openFolderPicker({
+          title: "選擇還原位置",
+          desc: "原本的上層已不存在，請選一個新的位置。",
+          allowInbox: true,
+          rootLabel: row.dataset.type === "folder" ? "最上層" : "待分類",
+        });
+        if (!picked) return;
+        const destination = row.dataset.type === "folder"
+          ? { parent_folder_id: picked.id }
+          : { folder_id: picked.id };
+        try {
+          await api(`/trash/${row.dataset.id}/restore`, { method: "POST", body: JSON.stringify(destination) });
+          showToast("已還原到新位置"); await Promise.all([loadTrash(), loadFolders(), loadRecent()]);
+        } catch (retryError) { showToast("還原失敗：" + retryError.message); }
+      }
+    };
+    row.querySelector(".trash-delete").onclick = async () => {
+      const name = row.querySelector("strong").textContent;
+      if (!confirm(`永久刪除「${name}」及其中全部內容？\n\n這次無法復原。`)) return;
+      try { await api(`/trash/${row.dataset.id}`, { method: "DELETE" }); showToast("已永久刪除"); await loadTrash(); }
+      catch (error) { showToast("永久刪除失敗：" + error.message); }
+    };
+  });
+}
+
+async function openTrash() {
+  $("desktop-pending")?.classList.remove("active");
+  $("desktop-trash")?.classList.add("active");
+  $("trash-overlay").classList.add("open");
+  await loadTrash().catch((error) => { $("trash-list").innerHTML = `<p class="sub">載入失敗：${esc(error.message)}</p>`; });
+}
+
+function openPendingFromDesktop() {
+  $("desktop-pending")?.classList.add("active");
+  $("desktop-trash")?.classList.remove("active");
+  CURRENT_FOLDER = null;
+  $("view-folder").style.display = "none";
+  $("view-home").style.display = "block";
+  $("inbox-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  loadRecent();
+  renderFolders();
+}
+
 function backHome() {
   if (CURRENT_FOLDER?.parent_id) { openFolder(CURRENT_FOLDER.parent_id); return; }
   CURRENT_FOLDER = null;
@@ -1839,6 +1987,11 @@ async function openEntry(id) {
       <span class="archive-current" id="e-folder-path">${folder ? esc(folderPathOf(folder).join(" ／ ")) : "⏳ 待分類"}</span>
       <button class="btn small" id="e-move" type="button">📂 移動…</button>
     </div>
+    ${(e.children || []).length ? `<section class="entry-children"><h3 class="section-title">內含紀錄資料包</h3>
+      <div class="child-folder-list list-view">${e.children.map((child) => `<div class="record-group-card entry-child-card" draggable="true" data-id="${child.id}">
+        <span>📁</span><strong>${esc(child.title || "（未命名）")}</strong>
+        <small>📎${child.att_count || 0}${child.child_count ? `｜${child.child_count} 個子資料包` : ""}</small>
+      </div>`).join("")}</div></section>` : ""}
     ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
     ${bodySection}
     <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button></div>
@@ -1866,22 +2019,50 @@ async function openEntry(id) {
     </details>
     <div class="entry-danger-zone">
       <button class="btn entry-delete" id="e-delete" type="button">🗑 刪除整筆記事</button>
-      <p class="sub">刪除後無法復原，附件也會一併刪除。</p>
+      <p class="sub">整個資料包會移到垃圾桶，保留 60 天。</p>
     </div>
   `;
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("e-close").onclick = closeEntry;
+  modal.querySelectorAll(".entry-child-card").forEach((card) => {
+    card.onclick = () => openEntry(Number(card.dataset.id));
+    card.ondragover = (event) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("Files")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = types.includes("application/x-fieldlog-entry") ? "move" : "copy";
+      card.classList.add("file-drop-target");
+    };
+    card.ondragleave = () => card.classList.remove("file-drop-target");
+    card.ondrop = (event) => {
+      event.preventDefault(); event.stopPropagation(); card.classList.remove("file-drop-target");
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry")) {
+        const files = Array.from(event.dataTransfer.files || []);
+        if (files.length) uploadFiles(Number(card.dataset.id), files);
+        return;
+      }
+      const sourceId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
+      if (sourceId && sourceId !== Number(card.dataset.id)) nestEntry(sourceId, Number(card.dataset.id));
+    };
+    card.ondragstart = (event) => {
+      event.stopPropagation();
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-fieldlog-entry", String(card.dataset.id));
+    };
+  });
   $("e-copy-transcript").onclick = async () => {
     if (!mergedTranscript) return;
     await navigator.clipboard.writeText(mergedTranscript);
     showToast("已複製合併逐字稿");
   };
   $("e-delete").onclick = async () => {
-    if (!confirm(`確定刪除整筆紀錄「${e.title || "（未命名）"}」？裡面的附件也會一起刪除，無法復原。`)) return;
+    const childCount = (e.children || []).length;
+    if (!confirm(`將「${e.title || "（未命名）"}」整個資料包移到垃圾桶？${childCount ? `\n\n內含的 ${childCount} 個子資料包也會一起移入。` : ""}\n垃圾桶保留 60 天。`)) return;
     try {
       await api(`/entries/${id}`, { method: "DELETE" });
-      showToast("已刪除");
+      showToast("已移到垃圾桶");
       closeEntry();
       if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
     } catch (err) { showToast("刪除失敗：" + err.message); }
@@ -3192,7 +3373,7 @@ async function uploadFiles(entryId, files) {
   let duplicates = 0;
   for (const f of files) {
     if (f.size > 50 * 1024 * 1024) { showToast(`${f.name} 超過 50MB，略過`); continue; }
-    status.textContent = `上傳中…（${done + 1}/${files.length}）`;
+    if (status) status.textContent = `上傳中…（${done + 1}/${files.length}）`;
     const meta = sourceUrl && isDocLikeFile(f) ? { sourceUrl } : null;
     try {
       const uploaded = await putFile(entryId, f, f.name, null, meta);
@@ -3200,7 +3381,7 @@ async function uploadFiles(entryId, files) {
     }
     catch { await queueFile(entryId, f, f.name, null); done++; }
   }
-  status.textContent = "";
+  if (status) status.textContent = "";
   showToast(`已上傳 ${done} 個檔案${duplicates ? `，略過 ${duplicates} 個重複檔案` : ""}`);
   openEntry(entryId);
 }
@@ -4026,10 +4207,23 @@ function init() {
   };
   setupFileDropZone($("view-home"), uploadDroppedFilesToPending);
   setupFileDropZone($("view-folder"), uploadDroppedFilesToPending);
+  setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToPending);
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
   $("btn-inner-list").onclick = () => setInnerFolderView("list");
+  $("btn-inner-details").onclick = () => setInnerFolderView("details");
+  $("desktop-pending").onclick = openPendingFromDesktop;
+  $("desktop-new-folder").onclick = newFolder;
+  $("desktop-trash").onclick = openTrash;
+  const closeTrash = () => { $("trash-overlay").classList.remove("open"); $("desktop-trash").classList.remove("active"); };
+  $("trash-close").onclick = closeTrash;
+  $("trash-overlay").addEventListener("click", (event) => { if (event.target === $("trash-overlay")) closeTrash(); });
+  $("trash-empty").onclick = async () => {
+    if (!confirm("永久刪除垃圾桶內全部內容？\n\n這次無法復原。")) return;
+    try { await api("/trash", { method: "DELETE" }); showToast("垃圾桶已清空"); await loadTrash(); }
+    catch (error) { showToast("清空失敗：" + error.message); }
+  };
   $("btn-file-sort").onclick = () => setFileSort(FILE_SORT === "name" ? "new" : "name");
   $("btn-folder-sort-home").onclick = toggleFolderSort;
   $("btn-folder-sort-inner").onclick = toggleFolderSort;

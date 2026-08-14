@@ -11,13 +11,24 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=108" />
+<link rel="stylesheet" href="style.css?v=109" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />
 </head>
 <body>
+<!-- 桌機檔案總管式側欄；手機仍沿用原本的單欄清單。待分類與垃圾桶是快捷入口，
+     不屬於第一～第四階資料夾樹。 -->
+<aside class="desktop-explorer-nav" id="desktop-explorer-nav" aria-label="MyWiki 資料夾">
+  <div class="desktop-explorer-title">🎒 MyWiki</div>
+  <button class="desktop-shortcut active" id="desktop-pending" type="button">⏳ <span>待分類</span></button>
+  <div class="desktop-nav-divider"></div>
+  <div class="desktop-folder-tree" id="desktop-folder-tree"></div>
+  <button class="desktop-shortcut desktop-new-folder" id="desktop-new-folder" type="button">＋ <span>新增資料夾</span></button>
+  <div class="desktop-nav-spacer"></div>
+  <button class="desktop-shortcut" id="desktop-trash" type="button">🗑 <span>垃圾桶</span><small id="desktop-trash-count"></small></button>
+</aside>
 <div class="container">
   <div id="view-home">
     <header class="home-app-head">
@@ -140,6 +151,7 @@
         <div class="folder-view-toggle inner-view-toggle" aria-label="資料夾內容顯示模式">
           <button class="btn small" id="btn-inner-grid" type="button" title="卡片模式">▦ 卡片</button>
           <button class="btn small" id="btn-inner-list" type="button" title="清單模式">☷ 清單</button>
+          <button class="btn small" id="btn-inner-details" type="button" title="詳細資料模式">☰ 詳細</button>
         </div>
         <button class="btn small" id="btn-file-sort" type="button">🆕 新到舊</button>
         <button class="btn small" id="btn-folder-sort-inner" type="button">🔤 名稱排序</button>
@@ -305,6 +317,17 @@
   <div class="modal wide" id="entry-modal"></div>
 </div>
 
+<div class="overlay" id="trash-overlay">
+  <div class="modal wide trash-modal">
+    <div class="detail-head">
+      <div><h2 style="margin:0;">🗑 垃圾桶</h2><p class="sub" style="margin:4px 0 0;">保留 60 天，可手動還原或永久刪除。</p></div>
+      <button class="btn small ghost" id="trash-close" type="button">✕</button>
+    </div>
+    <div class="trash-toolbar"><button class="btn small danger" id="trash-empty" type="button">清空垃圾桶</button></div>
+    <div id="trash-list" class="trash-list"><p class="sub">載入中…</p></div>
+  </div>
+</div>
+
 <!-- 全螢幕編輯框：轉文字稿／擷取文字內容偏長，prompt() 太小編不動，改用這個 -->
 <div class="overlay edit-overlay" id="edit-overlay">
   <div class="edit-modal">
@@ -384,11 +407,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=108"></script>
+<script src="app.js?v=109"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=108"></script>
+<script src="pdf-editor.js?v=109"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=108"></script>
+<script src="richtext-editor.js?v=109"></script>
 </body>
 </html>
