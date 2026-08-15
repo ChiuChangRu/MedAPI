@@ -165,7 +165,7 @@ test("tools/list 提供 ChatGPT Plugin 所需的標題與安全 annotations", as
   }), ENV);
   assert.equal(res.status, 200);
   const { result } = await res.json();
-  assert.equal(result.tools.length, 27);
+  assert.equal(result.tools.length, 28);
   for (const tool of result.tools) {
     assert.ok(tool.title, `${tool.name} 缺少 title`);
     assert.equal(tool.inputSchema?.type, "object", `${tool.name} 的 inputSchema 無效`);

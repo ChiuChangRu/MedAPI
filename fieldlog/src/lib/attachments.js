@@ -74,7 +74,7 @@ export async function moveAttachment(db, attachmentId, folderId, { logHistory, t
  * 如果這是記事裡最後一份檔案、而記事本身沒有任何文字內容，記事也一併收掉
  * ——留著一筆空記事只會變成使用者看不懂的殘留。
  */
-export async function deleteAttachmentDeep(db, files, attachmentId, { logHistory }) {
+export async function deleteAttachmentDeep(db, files, attachmentId, { logHistory, vectorIndex }) {
   const attachment = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(attachmentId).first();
   if (!attachment) return { error: "找不到附件", status: 404 };
 
@@ -94,6 +94,14 @@ export async function deleteAttachmentDeep(db, files, attachmentId, { logHistory
   await db.prepare("DELETE FROM attachments WHERE source_pdf_id = ?").bind(attachmentId).run();
   await db.prepare("DELETE FROM attachments WHERE id = ?").bind(attachmentId).run();
   await logHistory(db, attachment.entry_id, null, "刪除附件", attachment.filename);
+
+  // 這支是直接硬刪（不進 60 天垃圾桶），語意搜尋的向量要跟著馬上清掉，
+  // 不然刪除當下就會有查得到、點進去卻 404 的幽靈結果。清不掉不擋刪除本身。
+  if (vectorIndex) {
+    const ids = [attachmentId, ...(pages || []).map((p) => p.id)]
+      .flatMap((id) => Array.from({ length: 20 }, (_, i) => `att-${id}-${i}`));
+    try { await vectorIndex.deleteByIds(ids); } catch { /* 向量清理失敗不影響已完成的資料刪除 */ }
+  }
 
   const remaining = await db.prepare(
     "SELECT COUNT(*) AS count FROM attachments WHERE entry_id = ?"

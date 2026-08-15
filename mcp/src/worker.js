@@ -835,6 +835,53 @@ const TOOLS = [
     },
   },
   {
+    name: "search_fieldlog_semantic",
+    description: "語意搜尋隨身記：找「意思相近」的紀錄與附件，不需要命中一模一樣的字——例如查「滅菌相關的品質問題」也找得到沒直接提到「滅菌」兩個字、但內容講的是同一件事的記事。跟 search_fieldlog（關鍵字搜尋）是互補工具：講得出明確關鍵字/編號（例如「ISO 7886」「7886 注射器」）優先用 search_fieldlog，那個更準也更省 token；講得出概念但想不到該用哪個詞、或想找「跟這個主題相關的所有東西」時用這支。可選 folder_id 縮小到單一資料夾（不含子資料夾）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "要找的概念/主題，用一般語句描述即可，不用湊關鍵字" },
+        top_k: { type: "number", description: "最多回傳幾筆（預設 10，上限 30）" },
+        folder_id: { type: "number", description: "選填：只找這個資料夾（不含子資料夾）——先用 list_fieldlog_folders 查 id" },
+      },
+      required: ["query"],
+    },
+    async handler(env, args) {
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const query = String(args.query || "").trim();
+      if (!query) throw new Error("query 為必填");
+      const u = new URL("https://fieldlog.internal/api/search/semantic");
+      u.searchParams.set("q", query);
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      if (args.top_k) u.searchParams.set("topK", String(Math.min(30, Math.max(1, Number(args.top_k) || 10))));
+      if (args.folder_id) u.searchParams.set("folder_id", String(Number(args.folder_id)));
+
+      const res = await env.FIELDLOG.fetch(u.toString());
+      if (!res.ok) throw new Error(`語意搜尋失敗：${await fieldlogErrorDetail(res)}`);
+      const data = await res.json();
+
+      const out = [];
+      if (data.entries?.length) {
+        out.push("## 語意相近的紀錄");
+        for (const { score, entry: e } of data.entries) {
+          const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "待分類";
+          const bodyText = e.body_format === "html" ? htmlToPlainText(e.body) : (e.body || "");
+          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜相似度 ${score.toFixed(2)}｜${e.created_at}\n  ${clip(bodyText, 200)}`);
+        }
+      }
+      if (data.attachments?.length) {
+        out.push("## 語意相近的附件（想看完整全文用 get_fieldlog_attachment）");
+        for (const { score, attachment: a } of data.attachments) {
+          const where = a.folder_name ? `${a.folder_type}｜${a.folder_name}` : "待分類";
+          const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
+          out.push(`- [attachment ${a.id}／entry ${a.entry_id}] ${a.kind}｜${a.filename}｜所屬：${a.entry_title || "（未命名）"}｜${where}｜相似度 ${score.toFixed(2)}\n  ${clip(text, 200)}`);
+        }
+      }
+      if (!out.length) return `找不到跟「${query}」語意相近的內容（門檻之上沒有命中）——內容可能還沒被向量化（新資料要等背景排入，或用 search_fieldlog 改試關鍵字），也可能真的沒有相關資料。`;
+      return out.join("\n");
+    },
+  },
+  {
     name: "get_fieldlog_entry",
     description: "讀取隨身記單筆紀錄的完整內容：欄位、內文、所有附件的逐字稿與照片/PDF擷取文字（每個附件有長度上限，超過會截斷並提示；附件內容截斷時改用 get_fieldlog_attachment 拉那一個附件的完整全文，例如一份完整的 ISO 標準條文）。",
     inputSchema: {
@@ -1684,6 +1731,7 @@ const TOOL_TITLES = {
   list_fieldlog_entries: "列出隨身記紀錄",
   list_attachments: "列出附件",
   search_fieldlog: "搜尋隨身記",
+  search_fieldlog_semantic: "語意搜尋隨身記",
   get_fieldlog_entry: "讀取隨身記紀錄",
   get_fieldlog_attachment: "讀取附件",
   get_related: "查詢關聯紀錄",

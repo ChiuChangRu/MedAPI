@@ -45,6 +45,17 @@
     }
   ],
   "ai": { "binding": "AI" },
+  // 語意搜尋：附件／記事內容向量化後存在這裡，查詢時算相似度。索引要先在
+  // Cloudflare 帳號手動建好才能部署（wrangler deploy 不會自動生成索引）：
+  //   npx wrangler vectorize create fieldlog-embeddings --dimensions=1024 --metric=cosine
+  // 1024 維對應 @cf/baai/bge-m3 這個 embedding 模型的輸出維度。
+  "vectorize": [
+    { "binding": "VECTOR_INDEX", "index_name": "fieldlog-embeddings" }
+  ],
+  // 向量化本身跑在背景（EmbeddingWorkflow），失敗不擋主要的寫入/OCR 流程。
+  "workflows": [
+    { "name": "fieldlog-embedding-workflow", "binding": "EMBEDDING_WORKFLOW", "class_name": "EmbeddingWorkflow" }
+  ],
   // 每天 UTC 18:00（台灣 02:00）自動同步 sources 表裡的外部來源（litdb 等）。
   // 「記得手動跑同步」不是機制；handler 是 src/worker.js 的 scheduled()。
   "triggers": { "crons": ["0 18 * * *"] },

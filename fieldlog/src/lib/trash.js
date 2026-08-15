@@ -182,7 +182,12 @@ async function runStatements(db, statements) {
   for (const statement of statements) await statement.run();
 }
 
-export async function permanentlyDeleteTrashItem(db, files, trashId) {
+// 語意搜尋（Vectorize）的向量 id 範圍——一份附件固定佔 att-{id}-0 ~
+// att-{id}-19（EMBED_MAX_CHUNKS，跟 worker.js 的 EmbeddingWorkflow 用同一個
+// 上限；兩邊 import 會循環，所以各自定義同一個常數，改動時要一起改）。
+const EMBED_MAX_CHUNKS = 20;
+
+export async function permanentlyDeleteTrashItem(db, files, trashId, vectorIndex) {
   const claimTime = new Date().toISOString();
   const claim = await db.prepare(
     "UPDATE trash_items SET state = 'purging', purge_started_at = ?, last_error = '' WHERE id = ? AND state = 'trashed'"
@@ -222,6 +227,19 @@ export async function permanentlyDeleteTrashItem(db, files, trashId) {
     }
     statements.push(db.prepare("DELETE FROM trash_items WHERE id = ? AND state = 'purging'").bind(trashId));
     await runStatements(db, statements);
+    // 向量索引清理是加值層、不是正確性紅線——失敗不擋永久刪除（真正的資料已經
+    // 刪掉了，這裡頂多留下之後搜尋得到但點進去 404 的幽靈結果，比因為
+    // Vectorize 暫時打不通就整批刪除失敗好）。
+    if (vectorIndex) {
+      const vectorIds = [
+        ...entryIds.map((id) => `entry-${id}`),
+        ...attachments.flatMap((a) => Array.from({ length: EMBED_MAX_CHUNKS }, (_, i) => `att-${a.id}-${i}`)),
+      ];
+      if (vectorIds.length) {
+        try { await vectorIndex.deleteByIds(vectorIds); }
+        catch (error) { console.error(JSON.stringify({ event: "trash_purge_vector_cleanup_failed", trash_id: trashId, error: error.message })); }
+      }
+    }
     return { item, folder_count: folderIds.length, entry_count: entryIds.length, attachment_count: attachments.length };
   } catch (error) {
     await db.prepare(
@@ -231,12 +249,12 @@ export async function permanentlyDeleteTrashItem(db, files, trashId) {
   }
 }
 
-export async function purgeExpiredTrash(db, files, timestamp) {
+export async function purgeExpiredTrash(db, files, timestamp, vectorIndex) {
   const { results } = await db.prepare("SELECT id FROM trash_items WHERE state = 'trashed' AND purge_after <= ? ORDER BY id").bind(timestamp).all();
   const summary = { purged: 0, failed: 0 };
   for (const row of results || []) {
     try {
-      if (await permanentlyDeleteTrashItem(db, files, Number(row.id))) summary.purged++;
+      if (await permanentlyDeleteTrashItem(db, files, Number(row.id), vectorIndex)) summary.purged++;
     } catch (error) {
       summary.failed++;
       console.error(JSON.stringify({ event: "trash_purge_failed", trash_id: row.id, error: error.message }));

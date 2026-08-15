@@ -281,6 +281,15 @@ export const MIGRATIONS = [
   `ALTER TABLE trash_items ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE trash_items ADD COLUMN last_error TEXT DEFAULT ''`,
   `ALTER TABLE trash_items ADD COLUMN purge_started_at TEXT DEFAULT ''`,
+  // 語意搜尋（Vectorize）：附件與記事各自的向量化狀態。vector_id 存的是
+  // Vectorize 那邊的 id（附件可能對應多支分段向量，這裡存主 id 前綴，實際
+  // 分段 id 用 att-{id}-{n} 規則算出來，不用另外存清單）。
+  `ALTER TABLE attachments ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE attachments ADD COLUMN embedding_error TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE entries ADD COLUMN embedding_error TEXT DEFAULT ''`,
 ];
 
 // folders.category 的合法值——色系分組，見上面 MIGRATIONS 裡的說明。

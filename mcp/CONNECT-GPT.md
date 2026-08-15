@@ -56,14 +56,14 @@ connector」這類選項即可：
 4. **Server URL / MCP endpoint**：只貼 `https://medapi-mcp.<帳號>.workers.dev/mcp`
 5. 驗證選 **OAuth**，用戶端選 **動態註冊（DCR）**，不要自行填 Client ID／Secret
 6. 儲存後會開啟 MyWiki 授權頁；在那裡輸入 `MCP_PIN` 並按「允許」
-7. ChatGPT 會完成 token 交換並呼叫 `tools/list`，抓到下面這 27 個工具
+7. ChatGPT 會完成 token 交換並呼叫 `tools/list`，抓到下面這 28 個工具
 
 設定好之後，直接在對話裡問就好，例如：「幫我查展商裡做親水塗層的」
 「上次實驗紀錄裡提到的固化溫度是多少」「wiki 的抗結痂條目現在寫到哪」
 「litdb 裡有沒有講活檢針擊發機構的文獻」（LitDB 已併入隨身記並每日自動
 同步，`search_fieldlog` 就查得到）——GPT 會自己判斷該呼叫哪個工具。
 
-## 可用工具（27 個）
+## 可用工具（28 個）
 
 **先列目錄、再決定要不要細看，不要一開始就猜關鍵字。** `search_*` 查不到不代表
 沒有這份資料，可能只是關鍵字沒猜對——先用 `list_fieldlog_entries`／
@@ -89,6 +89,7 @@ connector」這類選項即可：
 | 工具 | 用途 |
 |---|---|
 | `search_fieldlog` | 搜紀錄標題／內文／欄位＋附件檔名／逐字稿／擷取文字＋AI 深度解析內容（命中在解析段時會標示）；可用 folder_id／folder_type 縮小範圍；也涵蓋每日同步的 LitDB 文獻/專利（「LitDB 文獻庫」資料夾） |
+| `search_fieldlog_semantic` | 語意搜尋：找「意思相近」的內容，不用湊出剛好命中的關鍵字；跟 `search_fieldlog` 互補，講得出明確關鍵字/編號優先用後者 |
 | `get_fieldlog_entry` | 讀單筆紀錄完整內容（欄位、內文、附件摘要；「AI 深度解析」段落會明確標示是 AI 產出，引用前回原始內容確認） |
 | `get_fieldlog_attachment` | 讀單一附件全文；單次上限 20000 字，超過會明確標示總長度並可用 `offset`／`length` 分段接續讀完 |
 | `get_fieldlog_image` | 讀照片附件的「圖片本身」（MCP ImageContent，base64＋mimeType）讓 AI 直接看圖——限 4MB 內 JPEG/PNG/GIF/WebP；型錄文件類請優先走擷取文字 |

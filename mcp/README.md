@@ -31,7 +31,7 @@
 > AI 沒有「看得見架上有什麼」的工具，只能反覆猜詞，猜不中就誤判成「沒有資料」。
 > `list_fieldlog_entries`／`list_attachments`／`list_exhibitor_files` 就是為此而加。
 
-**鐵律：對記事的實際內容預設唯讀，例外分兩組。** 其餘 19 個工具程式碼裡
+**鐵律：對記事的實際內容預設唯讀，例外分兩組。** 其餘 20 個工具程式碼裡
 只有 SELECT 與 fetch。
 
 第一組（**只能新增**）：`create_fieldlog_entry`／`create_fieldlog_attachment`／

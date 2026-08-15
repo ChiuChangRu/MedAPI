@@ -20,6 +20,22 @@
  * app.js 一改就靜默失效。整併後全部落回這裡與 public/ 的正常程式碼。
  */
 
+// "cloudflare:workers" 是 Workers runtime 才有的虛擬模組，node:test 直接
+// import 這支 worker.js 當一般 ES module 執行時（tests/fieldlog-*.test.js
+// 一大票都這樣用）Node 的 ESM loader 解析不到會直接丟
+// ERR_UNSUPPORTED_ESM_URL_SCHEME，整支測試檔案連帶掛掉。用動態 import +
+// try/catch 才攔得住這個錯誤（靜態 import 是在模組連結階段就失敗，try/catch
+// 完全包不住）；測試環境退回一個空殼基底類別，只是讓下面
+// `class EmbeddingWorkflow extends WorkflowEntrypoint` 語法上站得住腳，
+// 反正測試不會真的建立 Workflow 執行個體（那是 Workers runtime 收到
+// binding.create() 呼叫才會做的事）。
+let WorkflowEntrypoint;
+try {
+  ({ WorkflowEntrypoint } = await import("cloudflare:workers"));
+} catch {
+  WorkflowEntrypoint = class {};
+}
+
 import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
 import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFolderReorg20260808, ensureSchema } from "./lib/schema.js";
 import { syncSources } from "./lib/sync.js";
@@ -124,6 +140,121 @@ const INLINE_RAW_MAX_BYTES = 4 * 1024 * 1024;
 
 function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
+}
+
+// ========== 語意搜尋（Vectorize）==========
+// 2026-08 曾在別的分支做過一版，命中率太差沒上線：根因是完全沒把記事本文
+// （entries.body）向量化——只有附件轉錄/OCR 內容會排入，速記類記事從頭到尾
+// 不在索引裡；而且長文件整篇只取前 2000 字元就丟去 embedding，模型
+// （bge-m3）明明吃得下 8192 token，長文件的核心內容反而沒被向量化到。這次
+// 重做時把這兩點都堵起來：記事一律整篇 embed（通常不長，不用分段），附件
+// 內容真的很長時才切成多段各自 embed（EMBED_CHUNK_SIZE／EMBED_CHUNK_OVERLAP）。
+
+const EMBED_TEXT_CAP = 6000; // 單段最多丟給模型的字元數，留在 bge-m3 8192 token 上限內
+const EMBED_CHUNK_SIZE = 1200; // 附件內容超過這個長度才分段
+const EMBED_CHUNK_OVERLAP = 100; // 段落間重疊，避免語意剛好被切斷點打斷
+const EMBED_MAX_CHUNKS = 20; // 極端長文件的分段數上限，防止失控
+
+// 把長文字切成多段，短文字直接回傳單一元素陣列（不分段）。純函式，方便單元測試。
+export function chunkText(text, {
+  chunkSize = EMBED_CHUNK_SIZE,
+  overlap = EMBED_CHUNK_OVERLAP,
+  maxChunks = EMBED_MAX_CHUNKS,
+  cap = EMBED_TEXT_CAP,
+} = {}) {
+  const t = String(text || "").trim();
+  if (!t) return [];
+  if (t.length <= chunkSize) return [t.slice(0, cap)];
+  const chunks = [];
+  let start = 0;
+  while (start < t.length && chunks.length < maxChunks) {
+    chunks.push(t.slice(start, start + chunkSize).slice(0, cap));
+    if (start + chunkSize >= t.length) break;
+    start += chunkSize - overlap;
+  }
+  return chunks;
+}
+
+// 一份附件／記事在 Vectorize 裡固定佔用 att-{id}-0 ~ att-{id}-(EMBED_MAX_CHUNKS-1)
+// 這個 id 範圍（記事不分段，只用 entry-{id}）。重新 embed 前先整批刪掉這個
+// 範圍再 upsert 新的，不用另外存「上次切了幾段」——刪不存在的 id 是 no-op。
+function vectorIdsForAttachment(attachmentId) {
+  return Array.from({ length: EMBED_MAX_CHUNKS }, (_, i) => `att-${attachmentId}-${i}`);
+}
+
+export class EmbeddingWorkflow extends WorkflowEntrypoint {
+  async run(event, step) {
+    const { kind, id, entryId, textContent, title } = event.payload; // kind: "entry" | "attachment"
+
+    const combined = kind === "entry" ? `${title || ""}\n${textContent || ""}` : (textContent || "");
+    if (!combined.trim()) {
+      return { success: false, reason: "empty_content" };
+    }
+    const chunks = kind === "entry" ? [combined.slice(0, EMBED_TEXT_CAP)] : chunkText(combined);
+    if (!chunks.length) return { success: false, reason: "empty_content" };
+
+    try {
+      const vectors = [];
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const vectorId = kind === "entry" ? `entry-${id}` : `att-${id}-${i}`;
+        const embedded = await step.do(`embed-${vectorId}`, async () => {
+          const result = await this.env.AI.run("@cf/baai/bge-m3", { text: chunk });
+          return result.data[0];
+        });
+        vectors.push({
+          id: vectorId,
+          values: embedded,
+          metadata: {
+            kind,
+            entryId: String(entryId),
+            attachmentId: kind === "attachment" ? String(id) : "",
+            chunkIndex: i,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      await step.do("upsert-vectorize", async () => {
+        if (kind === "attachment") {
+          // 先清掉這份附件全部可能的分段 id 範圍，避免這次分段數比上次少時
+          // 留下幾支指向舊內容的孤兒向量還會被搜到。
+          await this.env.VECTOR_INDEX.deleteByIds(vectorIdsForAttachment(id));
+        }
+        await this.env.VECTOR_INDEX.upsert(vectors);
+      });
+
+      await step.do("update-db-status", async () => {
+        const table = kind === "entry" ? "entries" : "attachments";
+        await this.env.DB.prepare(
+          `UPDATE ${table} SET embedding_status = 'done', vector_id = ?, embedding_error = '' WHERE id = ?`
+        ).bind(kind === "entry" ? `entry-${id}` : `att-${id}`, id).run();
+      });
+
+      return { success: true, id, chunks: chunks.length };
+    } catch (error) {
+      try {
+        const table = kind === "entry" ? "entries" : "attachments";
+        await this.env.DB.prepare(
+          `UPDATE ${table} SET embedding_status = 'failed', embedding_error = ? WHERE id = ?`
+        ).bind(String(error.message || error), id).run();
+      } catch { /* 連狀態都寫不進去就放棄，下次 backfill 還會再試 */ }
+      return { success: false, id, error: String(error.message || error) };
+    }
+  }
+}
+
+// 有文字內容且 workflow binding 存在時，非同步排入向量化；排隊失敗不擋主流程
+// （呼叫端一律用 await 但吞掉例外，語意搜尋是加值功能，不能因為它掛掉就讓
+// 使用者存不了記事、傳不了 OCR 結果）。
+async function triggerEmbedding(env, { kind, id, entryId, textContent, title }) {
+  if (!env.EMBEDDING_WORKFLOW) return;
+  if (!textContent || !String(textContent).trim()) return;
+  try {
+    await env.EMBEDDING_WORKFLOW.create({ params: { kind, id, entryId, textContent, title } });
+  } catch (err) {
+    console.error(`[Embedding] 排隊失敗 ${kind} ${id}:`, err.message);
+  }
 }
 
 function json(data, status = 200) {
@@ -328,6 +459,7 @@ async function transcribeAttachment(env, db, old) {
   await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
   await autoRenameAttachment(db, old, text);
   await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
+  await triggerEmbedding(env, { kind: "attachment", id: old.id, entryId: old.entry_id, textContent: text });
   return text;
 }
 
@@ -444,14 +576,14 @@ async function handleApi(request, env, url) {
   }
   const trashItemMatch = path.match(/^\/trash\/(\d+)$/);
   if (trashItemMatch && method === "DELETE") {
-    const result = await permanentlyDeleteTrashItem(db, env.FILES, Number(trashItemMatch[1]));
+    const result = await permanentlyDeleteTrashItem(db, env.FILES, Number(trashItemMatch[1]), env.VECTOR_INDEX);
     if (!result) return bad("找不到垃圾桶項目，或正在永久刪除", 404);
     return json({ ok: true, ...result });
   }
   if (path === "/trash" && method === "DELETE") {
     const items = await listTrash(db);
     const results = [];
-    for (const item of items) results.push(await permanentlyDeleteTrashItem(db, env.FILES, Number(item.id)));
+    for (const item of items) results.push(await permanentlyDeleteTrashItem(db, env.FILES, Number(item.id), env.VECTOR_INDEX));
     return json({ ok: true, deleted: results.filter(Boolean).length });
   }
 
@@ -687,6 +819,62 @@ async function handleApi(request, env, url) {
       truncated: allEntries.length >= SEARCH_SCAN_CAP || allAtts.length >= SEARCH_SCAN_CAP,
     });
   }
+  // 語意搜尋：跟上面 /search（傳統關鍵字）是分開的端點，補「講得出概念但講不出
+  // 關鍵字」這種情境——例如「跟滅菌相關的品質問題」不會直接命中「滅菌」兩個字
+  // 剛好都出現的記事。查詢文字先轉向量，去 Vectorize 找最相似的內容，再回 D1
+  // 撈實際資料。VECTOR_MIN_SCORE 是先抓的起始門檻，之後如果覆蓋率夠了還是常
+  // 漏掉相關結果，再回頭調。
+  const VECTOR_MIN_SCORE = 0.55;
+  if (path === "/search/semantic" && method === "GET") {
+    const q = (url.searchParams.get("q") || "").trim();
+    if (!q) return bad("查詢詞不可為空");
+    if (!env.AI) return bad("AI 未配置", 501);
+    if (!env.VECTOR_INDEX) return bad("Vectorize 未配置", 501);
+    const topK = Math.min(30, Math.max(1, Number(url.searchParams.get("topK") || "10") || 10));
+    const folderId = url.searchParams.get("folder_id") ? Number(url.searchParams.get("folder_id")) : null;
+
+    let queryVector;
+    try {
+      const embedded = await env.AI.run("@cf/baai/bge-m3", { text: q.slice(0, 2000) });
+      queryVector = embedded.data[0];
+    } catch (err) {
+      return bad(`查詢向量化失敗：${err.message}`, 502);
+    }
+    // 多要一些候選（同一份附件的多段命中要去重），實際回傳數量還是看 topK
+    const matches = await env.VECTOR_INDEX.query(queryVector, { topK: topK * 3, returnMetadata: true });
+
+    const entryResults = [];
+    const attBestByEntryId = new Map(); // attachmentId -> 目前分數最高的一筆
+    for (const m of matches.matches || []) {
+      if (m.score < VECTOR_MIN_SCORE) continue;
+      const meta = m.metadata || {};
+      if (meta.kind === "entry") {
+        const entry = await db.prepare(
+          `SELECT e.*, f.name AS folder_name, f.type AS folder_type FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+           WHERE e.id = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
+        ).bind(Number(meta.entryId)).first();
+        if (entry && (!folderId || entry.folder_id === folderId)) entryResults.push({ score: m.score, entry });
+      } else if (meta.kind === "attachment") {
+        const attId = Number(meta.attachmentId);
+        const prev = attBestByEntryId.get(attId);
+        if (prev && prev.score >= m.score) continue;
+        const att = await db.prepare(
+          `SELECT a.*, e.title AS entry_title, e.folder_id, f.name AS folder_name, f.type AS folder_type
+           FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
+           WHERE a.id = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
+        ).bind(attId).first();
+        if (att && (!folderId || att.folder_id === folderId)) attBestByEntryId.set(attId, { score: m.score, attachment: att });
+      }
+    }
+    entryResults.sort((a, b) => b.score - a.score);
+    const attachmentResults = [...attBestByEntryId.values()].sort((a, b) => b.score - a.score);
+
+    return json({
+      query: q,
+      entries: entryResults.slice(0, topK),
+      attachments: attachmentResults.slice(0, topK),
+    });
+  }
   // 跨資料夾找記事（給「新增關聯」的選取器用：關聯常常是跨資料夾的，
   // 例如把一筆實驗記事關聯到另一棵資料夾樹下的廠商記事）
   if (path === "/entries/search" && method === "GET") {
@@ -795,10 +983,15 @@ async function handleApi(request, env, url) {
     const storedBody = asText
       ? rawBody
       : sanitizeEntryHtml(body.body_format === "html" ? rawBody : textToHtml(rawBody));
+    const title = (body.title || "").trim();
     const r = await db.prepare(
       "INSERT INTO entries (folder_id, parent_entry_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(folderId, parentEntryId, (body.title || "").trim(), JSON.stringify(body.fields || {}), storedBody, asText ? "text" : "html", now()).run();
+    ).bind(folderId, parentEntryId, title, JSON.stringify(body.fields || {}), storedBody, asText ? "text" : "html", now()).run();
     await logHistory(db, r.meta.last_row_id, folderId, "新增紀錄", body.title || "");
+    await triggerEmbedding(env, {
+      kind: "entry", id: r.meta.last_row_id, entryId: r.meta.last_row_id,
+      textContent: asText ? storedBody : htmlToPlainText(storedBody), title,
+    });
     return json({ id: r.meta.last_row_id, ok: true });
   }
   const entryMatch = path.match(/^\/entries\/(\d+)$/);
@@ -896,6 +1089,12 @@ async function handleApi(request, env, url) {
     await db.prepare(
       "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, parent_entry_id = ?, body_format = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ? WHERE id = ?"
     ).bind(title, bodyText, fields, folderId, parentEntryId, bodyFormat, autoFiledAt, autoFiledReason, now(), id).run();
+    if (body.title !== undefined || body.body !== undefined || body.body_format !== undefined) {
+      await triggerEmbedding(env, {
+        kind: "entry", id, entryId: id,
+        textContent: bodyFormat === "html" ? htmlToPlainText(bodyText) : bodyText, title,
+      });
+    }
     if (changingContainer) {
       const subtree = (await entrySubtreeIds(db, id, false)).filter((entryId) => entryId !== id);
       for (let i = 0; i < subtree.length; i += 80) {
@@ -1194,6 +1393,35 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  // 一次性補跑：語意搜尋上線前就已經存在、但從沒排入向量化的舊記事／附件
+  // 一起補上（embedding_status 還是預設的 'pending'）。上線後跑一次即可，
+  // 之後新資料靠寫入點各自的 triggerEmbedding() 呼叫，不需要重跑這支。
+  if (path === "/admin/backfill-embeddings" && method === "POST") {
+    let queued = 0;
+    const { results: entries } = await db.prepare(
+      `SELECT id, title, body, body_format FROM entries
+       WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending'`
+    ).all();
+    for (const e of entries) {
+      const text = e.body_format === "html" ? htmlToPlainText(e.body || "") : (e.body || "");
+      if (!text.trim() && !(e.title || "").trim()) continue;
+      await triggerEmbedding(env, { kind: "entry", id: e.id, entryId: e.id, textContent: text, title: e.title });
+      queued++;
+    }
+    const { results: atts } = await db.prepare(
+      `SELECT a.id, a.entry_id, a.transcript, a.ocr_text FROM attachments a
+       JOIN entries e ON e.id = a.entry_id
+       WHERE COALESCE(e.deleted_at, '') = '' AND COALESCE(a.embedding_status, 'pending') = 'pending'
+         AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')`
+    ).all();
+    for (const a of atts) {
+      const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
+      await triggerEmbedding(env, { kind: "attachment", id: a.id, entryId: a.entry_id, textContent: text });
+      queued++;
+    }
+    return json({ ok: true, queued, entries: entries.length, attachments: atts.length });
+  }
+
   // ---- 外部來源管理（新增一個知識庫＝往 sources 表加一列，不用改程式碼）----
   // key 建立後不可改：它是同步進來的每筆記事的內部識別碼前綴（_sid = key:id），
   // 改了會讓既有記事全部變成孤兒、下次同步整批重複匯入。
@@ -1450,6 +1678,7 @@ async function handleApi(request, env, url) {
       const ocrText = (body.ocr_text || "").trim();
       await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(ocrText, id).run();
       await logHistory(db, old.entry_id, null, "編輯擷取文字", `${old.filename}：「${ocrText.slice(0, 80)}」`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: ocrText });
       return json({ ok: true });
     }
     // 標記「不整理」：把 *_at 設成 'skipped'（不呼叫 AI、不花額度），
@@ -1480,7 +1709,7 @@ async function handleApi(request, env, url) {
     // （沒檔案也沒文字），記事本身也收掉，不留下使用者看不懂的空殼
     const id = Number(attMatch[1]);
     if (!await activeAttachment(db, id)) return bad("找不到附件", 404);
-    const result = await deleteAttachmentDeep(db, env.FILES, id, { logHistory });
+    const result = await deleteAttachmentDeep(db, env.FILES, id, { logHistory, vectorIndex: env.VECTOR_INDEX });
     return json(result, result.status || 200);
   }
 
@@ -1667,6 +1896,7 @@ async function handleApi(request, env, url) {
         await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), att.id).run();
         await autoRenameAttachment(db, att, text);
         await logHistory(db, att.entry_id, null, "批次照片擷取文字", `${att.filename}：${text.slice(0, 60) || "（照片上沒有文字）"}`);
+        await triggerEmbedding(env, { kind: "attachment", id: att.id, entryId: att.entry_id, textContent: text });
         results.push({ attachment_id: att.id, filename: att.filename, success: true, message: `擷取文字成功，${text.length} 字` });
       } catch (err) {
         // 單張失敗不中斷整批。ocr_at 標成 failed 而不是還原成空字串：還原的話
@@ -1840,6 +2070,7 @@ async function handleApi(request, env, url) {
       await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
       await autoRenameAttachment(db, old, text);
       await logHistory(db, old.entry_id, null, "文件擷取文字", `${old.filename}：${text.slice(0, 60) || "（沒有擷取到文字）"}`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: text });
       return json({ ocr_text: text });
     }
     if (!env.AI) return bad("尚未啟用圖片擷取文字（需 Workers AI）", 501);
@@ -1856,6 +2087,7 @@ async function handleApi(request, env, url) {
       await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(pdfText, now(), id).run();
       await autoRenameAttachment(db, old, pdfText);
       await logHistory(db, old.entry_id, null, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 60) || "（沒有擷取到文字，可能是圖形型 PDF）"}`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: pdfText });
       return json({ ocr_text: pdfText });
     }
     const bytes = new Uint8Array(await obj.arrayBuffer());
@@ -1884,6 +2116,7 @@ async function handleApi(request, env, url) {
     await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
     await autoRenameAttachment(db, old, text);
     await logHistory(db, old.entry_id, null, "照片擷取文字", `${old.filename}：${text.slice(0, 60) || "（照片上沒有文字）"}`);
+    await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: text });
     return json({ ocr_text: text });
   }
 
@@ -2025,7 +2258,7 @@ export default {
       console.error("資料夾分類重整失敗", err);
     }
     try {
-      const trash = await purgeExpiredTrash(env.DB, env.FILES, now());
+      const trash = await purgeExpiredTrash(env.DB, env.FILES, now(), env.VECTOR_INDEX);
       console.log(JSON.stringify({ event: "trash_purge_complete", ...trash }));
     } catch (err) {
       console.error(JSON.stringify({ event: "trash_purge_schedule_failed", error: err.message }));

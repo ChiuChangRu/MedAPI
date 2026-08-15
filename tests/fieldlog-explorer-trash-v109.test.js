@@ -49,7 +49,7 @@ test("資料夾與紀錄刪除走完整子樹垃圾桶，不再安全上移", as
   const worker = await read("../fieldlog/src/worker.js");
   assert.match(worker, /moveFolderTreeToTrash\(db, folder, now\(\)\)/);
   assert.match(worker, /moveEntryTreeToTrash\(db, old, now\(\)\)/);
-  assert.match(worker, /purgeExpiredTrash\(env\.DB, env\.FILES, now\(\)\)/);
+  assert.match(worker, /purgeExpiredTrash\(env\.DB, env\.FILES, now\(\), env\.VECTOR_INDEX\)/);
 });
 
 test("永久刪除先 claim、R2 全成功後才批次刪 D1，失敗會留下狀態供重試", async () => {
