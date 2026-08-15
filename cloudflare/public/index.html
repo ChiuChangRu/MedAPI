@@ -30,10 +30,22 @@
         <button class="btn small ghost offline-dim" id="btn-activity" title="需要連線">團隊動態</button>
         <button class="btn small ghost offline-dim" id="btn-export" title="需要連線">匯出 CSV</button>
         <button class="btn small ghost" id="btn-offline-toggle" title="模擬斷網，確認離線功能是否足夠">離線測試</button>
+        <button class="btn small ghost" id="btn-data-changelog" title="展商資料每次更新的異動說明">📋 資料異動記錄</button>
       </div>
     </div>
   </div>
 </header>
+
+<!-- 資料異動記錄：展商名冊每次重新匯入的前後差異，方便追查「這家怎麼不見了／
+     什麼時候多的」，內容來自 data/data-changelog.json，不需要改程式就能加新的一則 -->
+<div class="overlay" id="data-changelog-overlay">
+  <div class="modal narrow">
+    <div class="modal-close-float"><button class="btn small ghost" id="data-changelog-close" type="button" aria-label="關閉">✕</button></div>
+    <h2>📋 資料異動記錄</h2>
+    <p class="sub">展商名冊每次重新匯入的前後差異紀錄，不是團隊拜訪紀錄。</p>
+    <div id="data-changelog-body"><p class="sub">載入中…</p></div>
+  </div>
+</div>
 
 <div class="trip-banner" id="trip-banner" style="display:none;"></div>
 <div class="ai-usage-banner" id="ai-usage-banner" style="display:none;"></div>
@@ -46,9 +58,12 @@
 
   <!-- 視圖切換（登入後顯示：檢索／分派給我／我已完成拜訪） -->
   <div class="view-tabs" id="view-tabs" style="display:none;">
+    <button class="view-tab" data-view="itinerary">📅 行程總覽</button>
     <button class="view-tab" data-view="search">🔍 檢索清單</button>
     <button class="view-tab" data-view="assigned">📌 分派清單<span class="tab-count" id="tab-count-assigned"></span></button>
     <button class="view-tab" data-view="visited">✅ 完成拜訪清單<span class="tab-count" id="tab-count-visited"></span></button>
+    <button class="view-tab" data-view="agenda">🗣 論壇議程</button>
+    <button class="view-tab" data-view="prep">📝 參訪前報告</button>
     <button class="view-tab pdf-tab" id="btn-mylist-pdf" title="產出可列印的分派清單（存成 PDF 當紙本備援，軟體完全失效也知道要去哪）">🖨 PDF</button>
   </div>
 
@@ -62,6 +77,34 @@
   </section>
 
   <div class="recommend-bar" id="recommend-bar" style="display:none;"></div>
+
+  <!-- 論壇議程：官網研討會場次，跟展商目錄是不同的實體，切到這個頁籤時整個取代下面的展商清單 -->
+  <section class="agenda-section" id="agenda-section">
+    <p class="entry-sub">Medtec China 2026 官網技術研討會議程──場次熱度不等於市場機會，僅供展前分工與現場記錄使用。</p>
+    <div class="agenda-list" id="agenda-list">載入中...</div>
+  </section>
+
+  <!-- 六天行程總覽：資料來自 config.js 的 TRIP_DAYS（依內部行程表），純前端、離線可看 -->
+  <section class="itinerary-section" id="itinerary-section">
+    <div class="itin-head">
+      <h2>2026 上海 MEDTEC 暨考察行程</h2>
+      <p class="itin-sub">8/31（一）– 9/05（六）　6 天 5 夜</p>
+    </div>
+    <div class="itin-list" id="itinerary-list"></div>
+  </section>
+
+  <!-- 參訪前報告：以共筆狀態裡七位同事實際被指派的廠商為主；
+       config.js 的 PREP_REPORT 只保留共通檢查清單；個人補充存 prep_notes，
+       四階段人工覆寫另存 prep_overrides，避免混在自由文字裡難以還原 -->
+  <section class="prep-section" id="prep-section">
+    <div class="itin-head">
+      <h2>參訪前報告──七人拜訪廠商</h2>
+      <p class="itin-sub">依目前共筆中的負責同事即時整理；點廠商可開啟詳情、代問問題與拜訪資料。離線時顯示手機最後同步版本。</p>
+    </div>
+    <div class="prep-overview" id="prep-overview"></div>
+    <div class="prep-strategy-deck" id="prep-strategy-deck"></div>
+    <div class="prep-list" id="prep-list"></div>
+  </section>
 
   <!-- 篩選列 -->
   <div class="controls">
@@ -77,6 +120,7 @@
     <button class="btn small" id="btn-visit-filter">行程重點</button>
     <button class="btn small" id="btn-pocket-filter">★ 口袋名單</button>
     <button class="btn small ghost" id="btn-clear">清除全部條件</button>
+    <button class="btn small ghost offline-dim" id="btn-add-custom" title="展商目錄要重新爬官網才能更新，不想等的話可以自己先加一筆，之後照樣能指派、寫紀錄、進 PDF 報告">＋ 自訂廠商</button>
   </div>
 
   <div class="active-preset" id="active-preset" style="display:none;"></div>
@@ -111,6 +155,36 @@
   </div>
 </div>
 
+<!-- 新增自訂廠商：官方展商目錄要重新爬網站才能更新，這裡讓團隊自己先加一筆
+     （例如評估中、根本沒參展的 CDMO 候選），加進來後照樣能指派/寫紀錄/進 PDF 報告 -->
+<div class="overlay" id="add-custom-overlay">
+  <div class="modal narrow">
+    <div class="modal-close-float"><button class="btn small ghost" id="add-custom-close" type="button" aria-label="關閉">✕</button></div>
+    <h2>＋ 新增自訂廠商</h2>
+    <p class="sub">不在官方展商目錄裡的公司也可以先加進來追蹤，會標上「🆕 自訂」跟官方資料區分。</p>
+    <label for="add-custom-name-zh">中文名稱</label>
+    <input id="add-custom-name-zh" maxlength="80" autocomplete="off" placeholder="中文或英文至少填一個" />
+    <label for="add-custom-name-en">英文名稱</label>
+    <input id="add-custom-name-en" maxlength="120" autocomplete="off" />
+    <label for="add-custom-booth">攤位／位置（選填）</label>
+    <input id="add-custom-booth" maxlength="40" autocomplete="off" />
+    <label for="add-custom-note">備註（選填，例如為什麼要追蹤這家）</label>
+    <textarea id="add-custom-note" maxlength="500"></textarea>
+    <p class="sub" id="add-custom-error" style="display:none;color:#b91c1c;"></p>
+    <div class="modal-actions">
+      <button class="btn ghost" id="add-custom-cancel" type="button">取消</button>
+      <button class="btn primary" id="add-custom-save" type="button">新增</button>
+    </div>
+  </div>
+</div>
+
+<!-- 議程場次詳情 modal -->
+<div class="overlay" id="session-overlay">
+  <div class="modal wide" id="session-modal">
+    <!-- 動態填入 -->
+  </div>
+</div>
+
 <!-- 相片 lightbox：點附件縮圖在頁內看大圖，不開新分頁 -->
 <div class="overlay lightbox-overlay" id="lightbox-overlay">
   <button class="btn small ghost lightbox-close" id="lightbox-close">✕</button>
@@ -141,6 +215,34 @@
       <span class="sub" id="edit-modal-count"></span>
       <button class="btn small ghost" id="edit-modal-cancel">取消</button>
       <button class="btn primary" id="edit-modal-save">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 四階段圖卡人工修正：來源資料照常重算，只保存與自動分析不同的文字 -->
+<div class="overlay" id="prep-override-overlay">
+  <div class="modal wide prep-override-modal">
+    <div class="detail-head">
+      <div>
+        <h2 id="prep-override-title">人工修正四階段圖卡</h2>
+        <p class="sub" id="prep-override-meta"></p>
+      </div>
+      <button class="btn small ghost" id="prep-override-close" type="button" aria-label="關閉">✕</button>
+    </div>
+    <p class="prep-override-help">每行一項。廠商名稱與攤位仍以共筆資料為準，這裡只修正它對應的訴求，避免產生兩套名單。</p>
+    <div class="prep-override-grid">
+      <label><strong>1　策略地圖／生產問題</strong><textarea id="prep-override-map"></textarea></label>
+      <label><strong>2　訴求</strong><textarea id="prep-override-demands"></textarea></label>
+      <div class="prep-override-vendor-field">
+        <strong>3　對應廠商</strong>
+        <div id="prep-override-vendors"></div>
+      </div>
+      <label><strong>4　落地</strong><textarea id="prep-override-landing"></textarea></label>
+    </div>
+    <div class="modal-actions prep-override-actions">
+      <button class="btn small ghost" id="prep-override-reset" type="button">還原自動分析</button>
+      <span class="sub">儲存後全隊可見，並保留最後編輯者。</span>
+      <button class="btn primary" id="prep-override-save" type="button">儲存人工修正</button>
     </div>
   </div>
 </div>

@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - main
+      # PR #48 的專用安全預覽；命令層仍會把非 main 分支限制為 Version Preview。
+      - agent/prep-report-by-selected-vendors
     paths:
       - "cloudflare/**"
-  workflow_dispatch: # 可在 GitHub Actions 頁面手動選任一分支手動部署（合併到 main 前想先測試時用）
+      # 這個 workflow 自己改動時也要跑一次，否則「改好了但沒觸發」會看起來像沒修好
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: # main 才部署正式流量；其他分支只上傳可開啟的預覽 Version
 
 jobs:
   deploy:
@@ -14,10 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy Worker
+      - name: Deploy production or upload a preview version
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: cloudflare
-          command: deploy
+          # 一定要指定版本：wrangler-action@v3 預設裝 3.90.0，而 wrangler 要到
+          # 3.91.0 才看得懂 wrangler.jsonc（.jsonc 副檔名）。沒有這一行的話它
+          # 完全讀不到設定檔，會以「Missing entry-point（找不到 main）」失敗——
+          # 這正是 2026-08-05 建立這個 workflow 以來每一次部署都掛掉的原因。
+          wranglerVersion: "4.120.1"
+          # main 保持原本正式部署；手動選其他分支時只建立 Version 與固定預覽網址，
+          # 不建立 Deployment，也不改變正式流量。不要把非 main 分支改回 deploy。
+          command: ${{ github.ref == 'refs/heads/main' && 'deploy' || 'versions upload --preview-alias manual-preview --message "Manual branch preview"' }}

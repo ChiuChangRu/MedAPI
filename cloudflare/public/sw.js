@@ -1,6 +1,6 @@
 // 離線快取：讓網站在完全沒有網路時也能開啟（展場訊號不穩的保險）
 // 策略：網路優先、失敗時退回快取（確保有網路時永遠拿到最新版）
-const CACHE = "medtec-shell-v2";
+const CACHE = "medtec-shell-v3";
 const SHELL = ["/", "/index.html", "/style.css", "/app.js", "/config.js", "/data/exhibitors.json",
   "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/apple-touch-icon.png"];
 

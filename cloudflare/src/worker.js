@@ -67,9 +67,119 @@ const SCHEMA = [
     user_id TEXT PRIMARY KEY,
     added_at TEXT NOT NULL
   )`,
+  // 官方展商目錄以外、團隊自己想追蹤的廠商（例如評估中的 CDMO 候選，根本
+  // 沒有參展）。2026-08-10 長儒指出：官方名冊要靠重新爬網站才能更新，
+  // 團隊不可能為了追蹤幾家沒參展的廠商就一直要求重新匯入整份名冊。這張表
+  // 讓任何人直接在 App 裡新增，id 前綴跟官方的 ex-XXXX 分開避免撞號，
+  // 其餘欄位刻意跟 exhibitors.json 的形狀一致，才能原封不動併進同一個
+  // EXHIBITORS 陣列，指派／筆記／PDF 報告全部沿用既有邏輯不用另外處理。
+  `CREATE TABLE IF NOT EXISTS custom_exhibitors (
+    id TEXT PRIMARY KEY,
+    name_zh TEXT DEFAULT '',
+    name_en TEXT DEFAULT '',
+    booth_no TEXT DEFAULT '',
+    country TEXT DEFAULT '',
+    category TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    website TEXT DEFAULT '',
+    added_by TEXT DEFAULT '',
+    deleted INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL
+  )`,
+  // 論壇議程（官網研討會場次，跟展商無關的獨立實體，見 REPORT.md 分析）：
+  // 場次基本資料＋團隊共筆（負責人／狀態／必問／技術鏈），欄位命名比照 exhibitor_state
+  `CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    date TEXT DEFAULT '',
+    time_slot TEXT DEFAULT '',
+    hall TEXT DEFAULT '',
+    room TEXT DEFAULT '',
+    title TEXT NOT NULL,
+    track TEXT DEFAULT '',
+    priority INTEGER,
+    reason TEXT DEFAULT '',
+    outline TEXT DEFAULT '',
+    must_ask TEXT DEFAULT '[]',
+    speaker TEXT DEFAULT '',
+    institution TEXT DEFAULT '',
+    need_precontact INTEGER DEFAULT 0,
+    related_exhibitor_ids TEXT DEFAULT '[]',
+    owner TEXT DEFAULT '',
+    status TEXT DEFAULT '未排定',
+    source_url TEXT DEFAULT '',
+    updated_by TEXT DEFAULT '',
+    updated_at TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS session_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    author TEXT NOT NULL,
+    type TEXT DEFAULT '現場紀錄',
+    content TEXT NOT NULL,
+    deleted INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`,
+  // 參訪前報告：每位同事一欄自由文字（出發前補充自己的關注重點）。
+  // 一人一列、以名字為主鍵，覆寫式更新；改動走 history 留痕，跟展商共筆一致。
+  `CREATE TABLE IF NOT EXISTS prep_notes (
+    member TEXT PRIMARY KEY,
+    content TEXT DEFAULT '',
+    updated_by TEXT DEFAULT '',
+    updated_at TEXT
+  )`,
+  // 四階段圖卡的人工覆寫：只保存與自動分析不同的欄位，保留來源資料即時重算能力。
+  // content 是 JSON（map／demands／landing 陣列與 vendors 對應文字），一人一列。
+  `CREATE TABLE IF NOT EXISTS prep_overrides (
+    member TEXT PRIMARY KEY,
+    content TEXT DEFAULT '{}',
+    updated_by TEXT DEFAULT '',
+    updated_at TEXT
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_notes_ex ON notes(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_sess_notes_sess ON session_notes(session_id)`,
+];
+
+// 種子資料：Medtec China 2026 官網「優先論壇與場次」表（見 REPORT.md 二、三節）。
+// outline（內容大綱）取自 REPORT.md「二、七條可與邦特連結的機會」對應優先專案的
+// 邦特連結／官網訊號／專案目標，只看場次標題看不出內容，補進這段脈絡。
+// 用 INSERT OR IGNORE，已存在（id 相同）就跳過，不會覆蓋團隊之後編輯的內容；
+// outline 另外用 UPDATE 補到既有資料列（見下方 ensureSchema），因為這欄是後補的。
+const SESSION_SEED = [
+  ["f1", "9/1", "N2", "會議室 A", "材料創新／創新醫療材料／零件", "材料", 1,
+    "抗菌、抗發炎、改質塑膠與植入材料",
+    "對應優先機會①長期植入 TPU／矽膠導管＋功能塗層。邦特連結：TPU 體內導管、血管通路、透析、泌尿與經皮引流，官方亦提到長期植入矽膠與 TPU 導管開發。官網訊號：抗菌／抗發炎材料、改質塑膠、ePTFE、ISO 10993、電漿功能塗層。專案目標：建立「材料 × 滅菌 × 塗層」相容性矩陣，選出 1–2 組可進樣品測試的組合。",
+    "https://en.medtecchina.com/forum/material/material-1/"],
+  ["f2", "9/2", "N2", "會議室 A", "高分子材料創新應用", "材料", 2,
+    "ePTFE、醫材材料安全與全球法規",
+    "延續材料主題，聚焦 ePTFE 與醫材材料安全、全球法規，跟優先機會①（材料×滅菌×塗層矩陣）同一批人適合一起聽；材料安全數據能否直接沿用到優先機會⑤（美歐中多市場證據包）也在這場一併確認。",
+    "https://en.medtecchina.com/forum/material/material-2/"],
+  ["f3", "9/2", "N3", "會議室 B", "醫療接合與焊接先進技術", "製程與製造", 3,
+    "導管接合、UV 膠、疲勞與品質控制",
+    "對應優先機會②導管接合、焊接與精密點膠平台。邦特連結：血液迴路管、IV 延長管、球囊、導管組裝與醫療零件。官網訊號：聚合物焊接疲勞、低毒 UV 膠、難黏材料、精密焊接品質控制與精密點膠。專案目標：完成接合製程比較與一個小型 DOE，鎖定可降低漏氣、脫離風險的方案。",
+    "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-3/"],
+  ["f4", "9/1", "N4", "會議室 D", "Pack & Ster Hub", "製程與製造", 4,
+    "滅菌製程、屏障包裝、PPWR、低溫電漿",
+    "對應優先機會④包裝與滅菌相容性工程。邦特連結：血液迴路、呼吸、透析、引流與泌尿等無菌耗材。官網訊號：滅菌製程控制、無菌屏障、PPWR、低溫過氧化氫電漿。專案目標：完成材料、接合、塗層、包材對滅菌方式的變更評估清單，避免新品最後階段才發現不相容。",
+    "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-2/"],
+  ["f5", "9/2", "N4", "會議室 E", "產品合規與上市實務", "品質與法規", 5,
+    "FDA、MDR、ISO 10993、UDI、微粒與多市場註冊",
+    "對應優先機會⑤多市場法規共用證據包。邦特連結：官方指出產品具 CE、製造體系符合 ISO 13485、FDA GMP／QSR，也發展 CDMO。官網訊號：FDA 更新、EU MDR 2026、ISO 10993、UDI、微粒、CRDMO／CTDMO 風險管理與多市場註冊。專案目標：建立美歐中三市場共用證據索引，先套用到 1 個 2026–2028 優先產品。",
+    "https://en.medtecchina.com/forum/quality-regulatory/quality-regulatory-1/"],
+  ["f6", "9/1", "N4", "會議室 D", "高階醫材數位製造", "製程與製造", 6,
+    "自動化、數位生產與智慧工廠",
+    "對應優先機會③自動化組裝＋CCD／3D 視覺＋全程追溯。邦特連結：高量醫療耗材、宜蘭新廠與 CDMO，官方提到導入智慧化與自動化系統。官網訊號：精實數位生產、醫材自動化、智慧工廠、UDI 與完整追溯。專案目標：選 1 個高人工、高檢驗成本站做自動化 PoC，讓量測結果可回寫批次履歷。",
+    "https://en.medtecchina.com/forum/process-manufacturing/process-manufacturing-1/"],
+  ["f7", "9/2", "N2", "會議室 A", "植入與介入醫材前沿設計與轉化", "R&D", 7,
+    "介入產品的新材料與精密製造",
+    "對應優先機會⑥介入與球囊導管平台化。邦特連結：血管通路、A.V. shunt 擴張球囊、經皮引流、胃腸與泌尿導管。官網訊號：腫瘤介入裝置的新材料與精密製造、定位影像、植入與介入產品轉化。專案目標：選定 1 個導管平台概念，完成材料、押出、編織、Tip、雷射、組裝、檢測的供應鏈可行性圖。",
+    "https://en.medtecchina.com/forum/rd/rd-2/"],
+  ["f8", "9/3", "N4", "會議室 C", "醫材企業海外拓展服務", "全球市場", 8,
+    "全球品牌與出海方法",
+    "對應優先機會⑦海外市場與供應鏈韌性。邦特連結：台灣與菲律賓製造、全球客戶與 CDMO 合作。官網訊號：全球品牌、醫材出海 0→1→1→N、投融資趨勢與全球資本市場。專案目標：在自有品牌、ODM、CDMO 三種模式中選 1 個優先模式與 1 個目標市場，避免展後名單無法轉成商機。",
+    "https://en.medtecchina.com/forum/opportunities/opportunities-2/"],
 ];
 
 // 後續新增的欄位（既有資料表用 ALTER 補上，新表已含在下方 MIGRATIONS 對既有表無害）
@@ -97,6 +207,9 @@ const MIGRATIONS = [
   // page_no 是第幾頁，兩者都空＝不是深度處理產生的附件。
   `ALTER TABLE attachments ADD COLUMN source_pdf_id INTEGER`,
   `ALTER TABLE attachments ADD COLUMN page_no INTEGER`,
+  // sessions 表在議程功能第一版就建立了，outline（內容大綱）是後補欄位，既有的
+  // sessions 資料列要用 ALTER 補上，CREATE TABLE IF NOT EXISTS 對已存在的表無效
+  `ALTER TABLE sessions ADD COLUMN outline TEXT DEFAULT ''`,
 ];
 
 let schemaReady = false;
@@ -111,6 +224,22 @@ async function ensureSchema(db) {
       if (!String(err.message || err).includes("duplicate column")) throw err;
     }
   }
+  await db.batch(
+    SESSION_SEED.map(([id, date, hall, room, title, track, priority, reason, outline, source_url]) =>
+      db
+        .prepare(
+          "INSERT OR IGNORE INTO sessions (id, date, hall, room, title, track, priority, reason, outline, source_url, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(id, date, hall, room, title, track, priority, reason, outline, source_url, now())
+    )
+  );
+  // outline 是議程功能上線後才補的欄位，第一版已經跑過 seed 的環境不會再進 INSERT OR
+  // IGNORE，用 UPDATE 補齊既有資料列的內容大綱（outline 目前不開放前端編輯，安全覆寫）
+  await db.batch(
+    SESSION_SEED.map(([id, , , , , , , , outline]) =>
+      db.prepare("UPDATE sessions SET outline = ? WHERE id = ?").bind(outline, id)
+    )
+  );
   schemaReady = true;
 }
 
@@ -201,6 +330,8 @@ async function buildDailyDigest(env) {
     const assetRes = await env.ASSETS.fetch(new Request("https://assets.internal/data/exhibitors.json"));
     const data = await assetRes.json();
     for (const e of data.exhibitors) exMap[e.id] = e.name_zh;
+    const { results: customEx } = await db.prepare("SELECT id, name_zh, name_en FROM custom_exhibitors WHERE deleted = 0").all();
+    for (const row of customEx) exMap[row.id] = row.name_zh || row.name_en;
   } catch { /* 展商目錄抓不到時退回顯示 ID，不影響摘要送出 */ }
 
   // 同一家被反覆儲存會產生多筆相同紀錄，摘要只列一次
@@ -235,6 +366,10 @@ async function notifyRealtimeSave(env, exhibitorId, author, detail) {
       const data = await assetRes.json();
       const ex = data.exhibitors.find((e) => e.id === exhibitorId);
       if (ex) name = ex.name_zh;
+      else {
+        const custom = await db.prepare("SELECT name_zh, name_en FROM custom_exhibitors WHERE id = ? AND deleted = 0").bind(exhibitorId).first();
+        if (custom) name = custom.name_zh || custom.name_en;
+      }
     } catch { /* 展商目錄抓不到時退回顯示 ID，不影響通知送出 */ }
 
     const parts = [];
@@ -272,6 +407,20 @@ async function sendDailyDigest(env) {
 
 function bad(message, status = 400) {
   return json({ error: message }, status);
+}
+
+// 把 custom_exhibitors 的資料列整形成跟 exhibitors.json 裡的展商物件同一種
+// 形狀（tags/products/pdfs 補空陣列），前端才能原封不動塞進 EXHIBITORS
+// 陣列，指派/篩選/搜尋/PDF 報告全部沿用既有邏輯，不用另外判斷來源。
+// custom:true 讓前端知道要標「自訂」徽章，不會被誤以為是官方展商目錄資料。
+function toCustomExhibitor(row) {
+  return {
+    id: row.id, name_zh: row.name_zh || "", name_en: row.name_en || "",
+    booth_no: row.booth_no || "", hall: "", country: row.country || "",
+    category: row.category || "", tags: [], description: row.description || "",
+    products: [], website: row.website || "", directory_url: "", pdfs: [],
+    added_by: row.added_by || "", custom: true, in_directory: true,
+  };
 }
 
 function fmtSecsRange(s) {
@@ -345,6 +494,25 @@ const STATE_LABELS = {
   visit_record: "拜訪成果",
 };
 
+// ---- 論壇議程（sessions）----
+const SESSION_FIELDS = ["owner", "status", "priority", "track", "reason", "time_slot", "must_ask", "related_exhibitor_ids", "speaker", "institution", "need_precontact"];
+const SESSION_JSON_FIELDS = ["must_ask", "related_exhibitor_ids"];
+const SESSION_LABELS = {
+  owner: "負責人", status: "狀態", priority: "優先序", track: "技術鏈", reason: "關注原因",
+  time_slot: "時段", must_ask: "三個必問", related_exhibitor_ids: "關聯展商", speaker: "講者", institution: "任職機構",
+  need_precontact: "需會前聯繫",
+};
+
+function sessionOut(row) {
+  return {
+    ...row,
+    priority: row.priority === null || row.priority === undefined ? null : Number(row.priority),
+    must_ask: JSON.parse(row.must_ask || "[]"),
+    related_exhibitor_ids: JSON.parse(row.related_exhibitor_ids || "[]"),
+    need_precontact: !!row.need_precontact,
+  };
+}
+
 async function handleApi(request, env, url, ctx) {
   const db = env.DB;
   await ensureSchema(db);
@@ -354,6 +522,51 @@ async function handleApi(request, env, url, ctx) {
   // ---- 前端功能開關 ----
   if (path === "/config" && method === "GET") {
     return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI) });
+  }
+
+  // ---- 自訂廠商（官方展商目錄以外，團隊自己追蹤的）----
+  if (path === "/custom-exhibitors" && method === "GET") {
+    const { results } = await db
+      .prepare("SELECT * FROM custom_exhibitors WHERE deleted = 0 ORDER BY id")
+      .all();
+    return json(results.map(toCustomExhibitor));
+  }
+  if (path === "/custom-exhibitors" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const name_zh = (body.name_zh || "").trim();
+    const name_en = (body.name_en || "").trim();
+    if (!name_zh && !name_en) return bad("公司名稱（中文或英文）至少要填一個");
+    const author = (body.author || "").trim() || "匿名";
+    // custom- 前綴跟官方展商目錄的 ex-XXXX 分開，避免同一個 id 意外對到
+    // 兩種來源不同的資料——那會讓指派/筆記/附件全部混在一起分不出來
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const row = {
+      id, name_zh, name_en,
+      booth_no: (body.booth_no || "").trim(),
+      country: (body.country || "").trim(),
+      category: (body.category || "").trim(),
+      description: (body.description || "").trim(),
+      website: (body.website || "").trim(),
+    };
+    await db
+      .prepare("INSERT INTO custom_exhibitors (id, name_zh, name_en, booth_no, country, category, description, website, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, row.name_zh, row.name_en, row.booth_no, row.country, row.category, row.description, row.website, author, now())
+      .run();
+    await logHistory(db, id, author, "新增自訂廠商", `${name_zh || name_en}${row.booth_no ? `（${row.booth_no}）` : ""}`);
+    return json(toCustomExhibitor({ ...row, added_by: author }));
+  }
+  const customExMatch = path.match(/^\/custom-exhibitors\/([\w-]+)$/);
+  if (customExMatch && method === "DELETE") {
+    const id = customExMatch[1];
+    const old = await db.prepare("SELECT * FROM custom_exhibitors WHERE id = ? AND deleted = 0").bind(id).first();
+    if (!old) return bad("找不到這筆自訂廠商", 404);
+    const author = (new URL(request.url).searchParams.get("author") || "匿名").trim();
+    // 軟刪除：這家廠商底下可能已經有指派狀態／現場紀錄／照片，直接刪掉
+    // 這筆會讓那些紀錄變成查不到名字的孤兒 id，跟官方展商目錄下架時
+    // 標記 in_directory=false（保留不刪）是同一個顧慮
+    await db.prepare("UPDATE custom_exhibitors SET deleted = 1 WHERE id = ?").bind(id).run();
+    await logHistory(db, id, author, "刪除自訂廠商", old.name_zh || old.name_en);
+    return json({ ok: true });
   }
 
   // ---- 附件（照片/錄音/影片，存 R2）----
@@ -764,6 +977,14 @@ async function handleApi(request, env, url, ctx) {
     const data = await assetRes.json();
     const exMap = {};
     for (const e of data.exhibitors) exMap[e.id] = e;
+    // 自訂廠商（官方展商目錄以外，見 custom_exhibitors 表）也要併進來，
+    // 不然被指派、被寫過紀錄的自訂廠商會在下面的 .filter((x) => x.ex) 被
+    // 悄悄濾掉，個人報告裡完全看不到這家——這正是這張表加進來之後容易漏改
+    // 的地方，任何地方組 exMap 都要記得兩邊一起讀
+    const { results: customEx } = await db
+      .prepare("SELECT * FROM custom_exhibitors WHERE deleted = 0")
+      .all();
+    for (const row of customEx) exMap[row.id] = toCustomExhibitor(row);
     const catMap = {};
     for (const c of data.categories) catMap[c.id] = c.name_zh;
 
@@ -869,6 +1090,12 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     const data = await assetRes.json();
     const exMap = {};
     for (const e of data.exhibitors) exMap[e.id] = e;
+    // 自訂廠商也要併進來，不然這裡的 exMap[id] || {} 會讓自訂廠商那幾列
+    // 匯出成「廠商」欄空白的紀錄，看起來像資料壞掉，其實只是查表沒查到
+    const { results: customExForCsv } = await db
+      .prepare("SELECT * FROM custom_exhibitors WHERE deleted = 0")
+      .all();
+    for (const row of customExForCsv) exMap[row.id] = toCustomExhibitor(row);
 
     const { results: states } = await db.prepare("SELECT * FROM exhibitor_state").all();
     const { results: notes } = await db
@@ -921,6 +1148,182 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
         "content-disposition": "attachment; filename=medtec_team_records.csv",
       },
     });
+  }
+
+  // ---- 論壇議程（sessions）：官網研討會場次，跟展商無關的獨立實體 ----
+  if (path === "/sessions" && method === "GET") {
+    const { results } = await db.prepare("SELECT * FROM sessions ORDER BY date, priority IS NULL, priority").all();
+    return json(results.map(sessionOut));
+  }
+  const sessionMatch = path.match(/^\/sessions\/([\w-]+)$/);
+  if (sessionMatch && method === "PUT") {
+    const sessionId = sessionMatch[1];
+    const existing = await db.prepare("SELECT id FROM sessions WHERE id = ?").bind(sessionId).first();
+    if (!existing) return bad("找不到這個場次", 404);
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+
+    const updates = {};
+    for (const f of SESSION_FIELDS) {
+      if (!(f in body)) continue;
+      let v = body[f];
+      if (SESSION_JSON_FIELDS.includes(f)) v = JSON.stringify(Array.isArray(v) ? v : []);
+      if (f === "need_precontact") v = v ? 1 : 0;
+      if (f === "priority") v = v === "" || v === null || v === undefined ? null : Number(v);
+      updates[f] = v;
+    }
+    if (!Object.keys(updates).length) return bad("沒有可更新的欄位");
+
+    const sets = Object.keys(updates).map((f) => `${f} = ?`).join(", ");
+    await db
+      .prepare(`UPDATE sessions SET ${sets}, updated_by = ?, updated_at = ? WHERE id = ?`)
+      .bind(...Object.values(updates), author, now(), sessionId)
+      .run();
+
+    const detail = Object.entries(updates)
+      .map(([f, v]) => {
+        if (f === "must_ask" || f === "related_exhibitor_ids") return `${SESSION_LABELS[f]} → ${JSON.parse(v).join("、") || "（清空）"}`;
+        if (f === "need_precontact") return `${SESSION_LABELS[f]} → ${v ? "是" : "否"}`;
+        return `${SESSION_LABELS[f] || f} → ${v || "（清空）"}`;
+      })
+      .join("；");
+    await logHistory(db, null, author, "更新議程場次", `${sessionId}：${detail}`);
+
+    const row = await db.prepare("SELECT * FROM sessions WHERE id = ?").bind(sessionId).first();
+    return json(sessionOut(row));
+  }
+
+  // ---- 議程場次的現場紀錄（session_notes，結構比照展商 notes）----
+  if (path === "/session-notes" && method === "GET") {
+    const sessionId = url.searchParams.get("session_id");
+    if (!sessionId) {
+      const { results } = await db.prepare("SELECT * FROM session_notes WHERE deleted = 0 ORDER BY session_id, id DESC").all();
+      return json(results);
+    }
+    const { results } = await db
+      .prepare("SELECT * FROM session_notes WHERE session_id = ? AND deleted = 0 ORDER BY id DESC")
+      .bind(sessionId)
+      .all();
+    return json(results);
+  }
+  if (path === "/session-notes" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const sessionId = (body.session_id || "").trim();
+    const author = (body.author || "").trim();
+    const content = (body.content || "").trim();
+    if (!sessionId || !author || !content) return bad("session_id、author、content 為必填");
+    const type = (body.type || "現場紀錄").trim();
+    const result = await db
+      .prepare("INSERT INTO session_notes (session_id, author, type, content, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(sessionId, author, type, content, now())
+      .run();
+    await logHistory(db, null, author, "議程新增紀錄", `${sessionId}：[${type}] ${content.slice(0, 80)}`);
+    return json({ id: result.meta.last_row_id, ok: true });
+  }
+  const sessionNoteMatch = path.match(/^\/session-notes\/(\d+)$/);
+  if (sessionNoteMatch && method === "PUT") {
+    const id = Number(sessionNoteMatch[1]);
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const content = (body.content || "").trim();
+    if (!content) return bad("content 為必填");
+    const old = await db.prepare("SELECT * FROM session_notes WHERE id = ? AND deleted = 0").bind(id).first();
+    if (!old) return bad("找不到這筆紀錄", 404);
+    await db.prepare("UPDATE session_notes SET content = ?, updated_at = ? WHERE id = ?").bind(content, now(), id).run();
+    await logHistory(db, null, author, "議程修改紀錄", `${old.session_id}：原：「${String(old.content).slice(0, 60)}」→ 新：「${content.slice(0, 60)}」`);
+    return json({ ok: true });
+  }
+  if (sessionNoteMatch && method === "DELETE") {
+    const id = Number(sessionNoteMatch[1]);
+    const author = (url.searchParams.get("author") || "").trim() || "匿名";
+    const old = await db.prepare("SELECT * FROM session_notes WHERE id = ? AND deleted = 0").bind(id).first();
+    if (!old) return bad("找不到這筆紀錄", 404);
+    await db.prepare("UPDATE session_notes SET deleted = 1, updated_at = ? WHERE id = ?").bind(now(), id).run();
+    await logHistory(db, null, author, "議程刪除紀錄", `${old.session_id}：[${old.type}] ${String(old.content).slice(0, 80)}`);
+    return json({ ok: true });
+  }
+
+  // ---- 參訪前報告：每位同事的自由文字欄（見 config.js 的 PREP_REPORT）----
+  if (path === "/prep-notes" && method === "GET") {
+    const { results } = await db.prepare("SELECT * FROM prep_notes").all();
+    const out = {};
+    for (const r of results) out[r.member] = { content: r.content || "", updated_by: r.updated_by || "", updated_at: r.updated_at || "" };
+    return json(out);
+  }
+  const prepMatch = path.match(/^\/prep-notes\/(.+)$/);
+  if (prepMatch && method === "PUT") {
+    const member = decodeURIComponent(prepMatch[1]).trim();
+    if (!member) return bad("缺少成員名稱");
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const content = (body.content || "").trim();
+    const old = await db.prepare("SELECT content FROM prep_notes WHERE member = ?").bind(member).first();
+    await db
+      .prepare(
+        "INSERT INTO prep_notes (member, content, updated_by, updated_at) VALUES (?, ?, ?, ?) " +
+        "ON CONFLICT(member) DO UPDATE SET content = excluded.content, updated_by = excluded.updated_by, updated_at = excluded.updated_at"
+      )
+      .bind(member, content, author, now())
+      .run();
+    // exhibitor_id 留空：這不是掛在某家展商底下的紀錄，前端會標示成「參訪前報告」
+    await logHistory(db, null, author, "編輯參訪前報告", `${member}：「${(old?.content ? "原：" + String(old.content).slice(0, 40) + "　→　" : "")}${content.slice(0, 60)}」`);
+    return json({ member, content, updated_by: author, updated_at: now() });
+  }
+
+  // ---- 參訪前報告：四階段圖卡人工覆寫 ----
+  if (path === "/prep-overrides" && method === "GET") {
+    const { results } = await db.prepare("SELECT * FROM prep_overrides").all();
+    const out = {};
+    for (const r of results) {
+      let content = {};
+      try { content = JSON.parse(r.content || "{}"); } catch { content = {}; }
+      out[r.member] = { content, updated_by: r.updated_by || "", updated_at: r.updated_at || "" };
+    }
+    return json(out);
+  }
+  const prepOverrideMatch = path.match(/^\/prep-overrides\/(.+)$/);
+  if (prepOverrideMatch && method === "PUT") {
+    const member = decodeURIComponent(prepOverrideMatch[1]).trim();
+    if (!member) return bad("缺少成員名稱");
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const raw = body.content && typeof body.content === "object" && !Array.isArray(body.content) ? body.content : {};
+    const cleanLines = (value) => Array.isArray(value)
+      ? value.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 30).map((item) => item.slice(0, 600))
+      : undefined;
+    const content = {};
+    for (const key of ["map", "demands", "landing"]) {
+      const lines = cleanLines(raw[key]);
+      if (lines) content[key] = lines;
+    }
+    if (raw.vendors && typeof raw.vendors === "object" && !Array.isArray(raw.vendors)) {
+      const vendors = {};
+      for (const [id, value] of Object.entries(raw.vendors).slice(0, 150)) {
+        const cleanId = String(id || "").trim().slice(0, 160);
+        const cleanValue = String(value || "").trim().slice(0, 600);
+        if (cleanId && cleanValue) vendors[cleanId] = cleanValue;
+      }
+      if (Object.keys(vendors).length) content.vendors = vendors;
+    }
+    const serialized = JSON.stringify(content);
+    if (serialized.length > 40000) return bad("人工修正內容過長");
+    await db
+      .prepare(
+        "INSERT INTO prep_overrides (member, content, updated_by, updated_at) VALUES (?, ?, ?, ?) " +
+        "ON CONFLICT(member) DO UPDATE SET content = excluded.content, updated_by = excluded.updated_by, updated_at = excluded.updated_at"
+      )
+      .bind(member, serialized, author, now())
+      .run();
+    await logHistory(db, null, author, "人工修正四階段圖卡", `${member}：${Object.keys(content).join("、") || "還原自動分析"}`);
+    return json({ member, content, updated_by: author, updated_at: now() });
+  }
+  if (prepOverrideMatch && method === "DELETE") {
+    const member = decodeURIComponent(prepOverrideMatch[1]).trim();
+    if (!member) return bad("缺少成員名稱");
+    const author = (url.searchParams.get("author") || "").trim() || "匿名";
+    await db.prepare("DELETE FROM prep_overrides WHERE member = ?").bind(member).run();
+    await logHistory(db, null, author, "還原四階段圖卡", `${member}：改回系統自動分析`);
+    return json({ ok: true });
   }
 
   // ---- LINE 每日摘要：手動立即測試觸發（不用等排程的晚上 8 點）----
