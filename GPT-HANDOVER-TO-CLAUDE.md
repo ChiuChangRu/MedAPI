@@ -273,4 +273,3 @@ npm test
 - 不要為了 ChatGPT 改壞 Claude Code 既有 PIN/Bearer 相容。
 - 不要宣稱 ChatGPT MCP 已完成；目前證據是未載入任何 MyWiki 工具。
 - 不要把 PIN、Cloudflare Token、GitHub Token 寫入本文或任何 commit。
-
