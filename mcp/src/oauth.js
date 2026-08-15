@@ -36,6 +36,12 @@ function oauthError(error, description, status = 400) {
   return json({ error, error_description: description }, status);
 }
 
+function authorizationErrorPage(message, status = 500) {
+  const safeMessage = escapeHtml(message);
+  const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MyWiki 授權失敗</title><style>body{font-family:system-ui,sans-serif;background:#f3f6f5;color:#123;margin:0;padding:32px}.card{max-width:520px;margin:8vh auto;background:#fff;border:1px solid #d8e1df;border-radius:16px;padding:28px}h1{color:#a33}.error{background:#fff1f0;border-radius:9px;padding:14px}a{color:#087f72}</style></head><body><main class="card"><h1>MyWiki 授權沒有完成</h1><p class="error">${safeMessage}</p><p>請關閉此頁，回到 ChatGPT 後重新連接。若再次出現，請截圖這段錯誤訊息；不要截入或貼出 PIN。</p></main></body></html>`;
+  return new Response(html, { status, headers: securityHeaders() });
+}
+
 function base64url(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -430,13 +436,32 @@ export async function handleOAuthRoute(request, env) {
       scopes_supported: SCOPES,
     });
   }
-  if (url.pathname === "/register") return registerClient(request, env);
+  if (url.pathname === "/register") {
+    try {
+      return await registerClient(request, env);
+    } catch (error) {
+      console.error("OAuth client registration failed", error?.message || error);
+      return oauthError("server_error", "MyWiki 無法建立 OAuth 用戶端，請稍後重試", 500);
+    }
+  }
   if (url.pathname === "/authorize") {
-    if (request.method === "GET") return authorizationGet(request, env);
-    if (request.method === "POST") return authorizationPost(request, env);
+    try {
+      if (request.method === "GET") return await authorizationGet(request, env);
+      if (request.method === "POST") return await authorizationPost(request, env);
+    } catch (error) {
+      console.error("OAuth authorization failed", error?.message || error);
+      return authorizationErrorPage(`伺服器處理授權時發生錯誤：${error?.message || "未知錯誤"}`);
+    }
     return oauthError("invalid_request", "authorize supports GET and POST", 405);
   }
-  if (url.pathname === "/token") return tokenEndpoint(request, env);
+  if (url.pathname === "/token") {
+    try {
+      return await tokenEndpoint(request, env);
+    } catch (error) {
+      console.error("OAuth token exchange failed", error?.message || error);
+      return oauthError("server_error", "MyWiki 無法完成 token 交換，請重新授權", 500);
+    }
+  }
   return null;
 }
 
@@ -469,4 +494,3 @@ export function oauthUnauthorized(request, description) {
     "www-authenticate": `Bearer resource_metadata="${info.resourceMetadata}", scope="${SCOPES.join(" ")}"`,
   });
 }
-
