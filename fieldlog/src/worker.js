@@ -795,8 +795,8 @@ async function handleApi(request, env, url) {
     for (const e of allEntries) e._body = e.body_format === "html" ? htmlToPlainText(e.body) : (e.body || "");
     for (const a of allAtts) a._ocr = stripPdfMetadata(a.ocr_text || "");
 
-    const entryHits = runSearch(allEntries, plan, (e) => `${e.title}\n${e._body}\n${e.fields_json}`, limit);
-    const attHits = runSearch(allAtts, plan, (a) => `${a.transcript}\n${a._ocr}\n${a.filename}`, limit);
+    const entryHits = runSearch(allEntries, plan, (e) => `${e.title}\n${e._body}\n${e.fields_json}\n${e.folder_name || ""}\n${e.folder_type || ""}`, limit);
+    const attHits = runSearch(allAtts, plan, (a) => `${a.transcript}\n${a._ocr}\n${a.filename}\n${a.folder_name || ""}\n${a.folder_type || ""}`, limit);
 
     const entries = entryHits.hits.map(({ row: e }) => ({
       id: e.id, folder_id: e.folder_id, title: e.title, created_at: e.created_at, updated_at: e.updated_at,

@@ -792,13 +792,13 @@ const TOOLS = [
       const entryHits = runSearch(
         allEntries.filter(inScope),
         plan,
-        (e) => `${e.title}\n${e._body}\n${e.fields_json}\n${e.analysis_json || ""}`,
+        (e) => `${e.title}\n${e._body}\n${e.fields_json}\n${e.analysis_json || ""}\n${e.folder_name || ""}\n${e.folder_type || ""}`,
         limit
       );
       const attHits = runSearch(
         allAtts.filter(inScope),
         plan,
-        (a) => `${a.transcript}\n${a._ocr}\n${a.filename}\n${a.analysis_json || ""}`,
+        (a) => `${a.transcript}\n${a._ocr}\n${a.filename}\n${a.analysis_json || ""}\n${a.folder_name || ""}\n${a.folder_type || ""}`,
         limit
       );
       const out = [];
