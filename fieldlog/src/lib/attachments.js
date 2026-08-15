@@ -11,7 +11,14 @@ import { htmlToPlainText } from "./richtext.js";
 
 /** 把單一檔案搬到另一個資料夾。 */
 export async function moveAttachment(db, attachmentId, folderId, { logHistory, timestamp }) {
-  const target = await db.prepare("SELECT id, name FROM folders WHERE id = ?").bind(folderId).first();
+  // 一定要排除已進垃圾桶的資料夾——不然還停留在舊畫面的分頁／裝置可以把
+  // 附件（進而整筆記事）搬進一個已軟刪除的資料夾：記事的 folder_id 指過去了，
+  // 但記事自己的 deleted_at 沒被設定，結果變成正常清單看不到、垃圾桶也
+  // 撈不到、60 天排程更清不到的孤兒資料。跟其他資料夾查詢（見 worker.js
+  // 的 COALESCE(deleted_at, '') = '' 慣例）用同一套過濾與錯誤訊息。
+  const target = await db.prepare(
+    "SELECT id, name FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+  ).bind(folderId).first();
   if (!target) return { error: "找不到目標資料夾", status: 404 };
 
   const attachment = await db.prepare(
