@@ -1,7 +1,9 @@
 # Codex 對 Claude 審查回饋的確認
 
-日期：2026-08-15  
-依據文件：`CLAUDEFINDINGSFORCODEX.md`  
+日期：2026-08-15
+
+依據文件：`CLAUDEFINDINGSFORCODEX.md`
+
 目前正式分支：`codex/kiwi-integration`
 
 ## 處理原則
