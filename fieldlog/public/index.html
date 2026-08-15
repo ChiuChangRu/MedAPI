@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=110" />
+<link rel="stylesheet" href="style.css?v=111" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -28,6 +28,8 @@
   <button class="desktop-shortcut desktop-new-folder" id="desktop-new-folder" type="button">＋ <span>新增資料夾</span></button>
   <div class="desktop-nav-spacer"></div>
   <button class="desktop-shortcut" id="desktop-trash" type="button">🗑 <span>垃圾桶</span><small id="desktop-trash-count"></small></button>
+  <!-- 拖曳調整側欄寬度，見 app.js 的 initDesktopSidebarResize() -->
+  <div class="desktop-explorer-resize" id="desktop-explorer-resize" role="separator" aria-orientation="vertical" aria-label="調整側欄寬度" tabindex="0"></div>
 </aside>
 <div class="container">
   <div id="view-home">
@@ -407,11 +409,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=110"></script>
+<script src="app.js?v=111"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=110"></script>
+<script src="pdf-editor.js?v=111"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=110"></script>
+<script src="richtext-editor.js?v=111"></script>
 </body>
 </html>

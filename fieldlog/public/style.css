@@ -6,6 +6,7 @@
   --text: #1b1d1c;
   --text-muted: #6b706d;
   --radius: 8px;
+  --sidebar-width: 276px;   /* 桌機側欄寬度，可拖曳調整，見 app.js 的 initDesktopSidebarResize() */
 }
 
 * { box-sizing: border-box; }
@@ -25,11 +26,22 @@ body {
 .desktop-explorer-nav { display: none; }
 @media (min-width: 720px) {
   .desktop-explorer-nav {
-    position: fixed; z-index: 30; inset: 0 auto 0 0; width: 276px;
+    position: fixed; z-index: 30; inset: 0 auto 0 0; width: var(--sidebar-width);
     display: flex; flex-direction: column; padding: 18px 12px;
     background: #f3f5f4; border-right: 1px solid var(--border); overflow: auto;
   }
-  .container { max-width: none; margin-left: 276px; padding-left: 24px; padding-right: 24px; }
+  .container { max-width: none; margin-left: var(--sidebar-width); padding-left: 24px; padding-right: 24px; }
+  /* 拖曳調整側欄寬度：疊在右邊界上的一條透明窄條，滑鼠移上去才看得到，
+     拖曳中額外加 .dragging 讓視覺回饋不會因為滑鼠移動太快而閃爍消失。
+     position:absolute 相對 .desktop-explorer-nav（position:fixed）定位，
+     不受側欄內部捲動影響，永遠貼著整個側欄高度。 */
+  .desktop-explorer-resize {
+    position: absolute; top: 0; right: -3px; bottom: 0; width: 6px;
+    cursor: col-resize; background: transparent; z-index: 31; touch-action: none;
+  }
+  .desktop-explorer-resize:hover, .desktop-explorer-resize.dragging { background: var(--accent); opacity: .35; }
+  body.sidebar-resizing { cursor: col-resize; user-select: none; }
+  body.sidebar-resizing .desktop-explorer-resize { background: var(--accent); opacity: .35; }
   .desktop-explorer-title { padding: 4px 10px 14px; font-weight: 750; font-size: 17px; }
   .desktop-shortcut, .desktop-tree-row {
     width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px;

@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "110";
+const APP_VERSION = "111";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -829,6 +829,62 @@ function renderDesktopFolderTree() {
       if (entryId) moveInboxEntry(entryId, targetId, Number(event.dataTransfer.getData("application/x-fieldlog-entry-folder")) || null);
       else if (folderId && folderId !== targetId) moveFolderDirect(folderId, targetId);
     };
+  });
+}
+
+// 側欄寬度：可拖曳調整，記住使用者選的寬度（手機不套用雙欄檔案總管，
+// 這裡的寬度只影響桌機）。CSS 變數 --sidebar-width 同時驅動側欄本身的
+// width 與 .container 的 margin-left，拖曳時只要改這一個變數就好，
+// 不用分別去動兩個元素的 inline style。
+const SIDEBAR_WIDTH_KEY = "fieldlog_sidebar_width";
+const SIDEBAR_WIDTH_MIN = 220;
+const SIDEBAR_WIDTH_MAX = 480;
+
+function initDesktopSidebarResize() {
+  const handle = $("desktop-explorer-resize");
+  if (!handle) return;
+
+  const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+  if (saved) {
+    const clamped = Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, saved));
+    document.documentElement.style.setProperty("--sidebar-width", `${clamped}px`);
+  }
+
+  handle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("dragging");
+    document.body.classList.add("sidebar-resizing");
+
+    const onMove = (moveEvent) => {
+      const width = Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, moveEvent.clientX));
+      document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
+    };
+    const onUp = () => {
+      handle.classList.remove("dragging");
+      document.body.classList.remove("sidebar-resizing");
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      const current = getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width").trim();
+      if (current) localStorage.setItem(SIDEBAR_WIDTH_KEY, String(parseInt(current, 10)));
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  });
+
+  // 鍵盤可及性：側欄邊界本身是 role="separator"，方向鍵微調寬度
+  handle.addEventListener("keydown", (event) => {
+    const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width"), 10) || 276;
+    let next = null;
+    if (event.key === "ArrowLeft") next = current - 16;
+    else if (event.key === "ArrowRight") next = current + 16;
+    if (next === null) return;
+    event.preventDefault();
+    const clamped = Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, next));
+    document.documentElement.style.setProperty("--sidebar-width", `${clamped}px`);
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(clamped));
   });
 }
 
@@ -4239,6 +4295,7 @@ function init() {
   setupFileDropZone($("view-home"), uploadDroppedFilesToPending);
   setupFileDropZone($("view-folder"), uploadDroppedFilesToPending);
   setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToPending);
+  initDesktopSidebarResize();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
