@@ -153,3 +153,25 @@ test("健康檢查頁報工具數且不洩漏工具名", async () => {
   assert.match(text, /工具數：\d+/);
   assert.doesNotMatch(text, /get_fieldlog|search_fieldlog/);
 });
+
+test("tools/list 提供 ChatGPT Plugin 所需的標題與安全 annotations", async () => {
+  const res = await worker.fetch(new Request("https://x/mcp?pin=right-pin", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+  }), ENV);
+  assert.equal(res.status, 200);
+  const { result } = await res.json();
+  assert.equal(result.tools.length, 27);
+  for (const tool of result.tools) {
+    assert.ok(tool.title, `${tool.name} 缺少 title`);
+    assert.equal(tool.inputSchema?.type, "object", `${tool.name} 的 inputSchema 無效`);
+    assert.equal(typeof tool.annotations?.readOnlyHint, "boolean", `${tool.name} 缺少 readOnlyHint`);
+    assert.equal(typeof tool.annotations?.destructiveHint, "boolean", `${tool.name} 缺少 destructiveHint`);
+    assert.equal(typeof tool.annotations?.openWorldHint, "boolean", `${tool.name} 缺少 openWorldHint`);
+  }
+  const byName = Object.fromEntries(result.tools.map((tool) => [tool.name, tool]));
+  assert.equal(byName.search_fieldlog.annotations.readOnlyHint, true);
+  assert.equal(byName.create_fieldlog_entry.annotations.readOnlyHint, false);
+  assert.equal(byName.delete_folder.annotations.destructiveHint, true);
+});

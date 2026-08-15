@@ -1673,6 +1673,54 @@ const WRITE_TOOL_NAMES = new Set([
   "delete_folder",
 ]);
 
+// ChatGPT 的 Plugin 掃描器不只讀 MCP 的 name/description/inputSchema；
+// 也會用 title 與安全 annotations 判斷工具能否成為「應用程式動作」。
+// 這些欄位集中在這裡產生，避免 27 支工具各自漏標或標示不一致。
+const TOOL_TITLES = {
+  list_wiki_pages: "列出 Wiki 條目",
+  read_wiki_page: "讀取 Wiki 條目",
+  search_wiki: "搜尋 Wiki",
+  list_fieldlog_folders: "列出隨身記資料夾",
+  list_fieldlog_entries: "列出隨身記紀錄",
+  list_attachments: "列出附件",
+  search_fieldlog: "搜尋隨身記",
+  get_fieldlog_entry: "讀取隨身記紀錄",
+  get_fieldlog_attachment: "讀取附件",
+  get_related: "查詢關聯紀錄",
+  create_fieldlog_entry: "新增隨身記紀錄",
+  create_fieldlog_attachment: "新增附件",
+  create_relation: "建立紀錄關聯",
+  search_exhibitors: "搜尋 Medtec 展商",
+  get_exhibitor: "讀取 Medtec 展商",
+  search_visit_notes: "搜尋拜訪紀錄",
+  search_exhibitor_files: "搜尋展商檔案",
+  list_exhibitor_files: "列出展商檔案",
+  sync_status: "查看同步狀態",
+  add_synonym: "新增同義詞",
+  update_folder: "更新資料夾",
+  move_folder: "移動資料夾",
+  move_entry: "移動紀錄",
+  delete_folder: "刪除資料夾",
+  get_fieldlog_image: "取得隨身記圖片",
+  get_fieldlog_image_base64: "取得圖片 Base64",
+  image_probe: "檢查圖片資訊",
+};
+
+function publicToolDefinition(tool) {
+  const readOnly = !WRITE_TOOL_NAMES.has(tool.name);
+  return {
+    name: tool.name,
+    title: TOOL_TITLES[tool.name] || tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: {
+      readOnlyHint: readOnly,
+      destructiveHint: tool.name === "delete_folder",
+      openWorldHint: false,
+    },
+  };
+}
+
 // ---------- MCP JSON-RPC（stateless streamable HTTP）----------
 
 async function handleMcp(request, env, auth = {}) {
@@ -1712,7 +1760,7 @@ async function handleMcp(request, env, auth = {}) {
     return rpcResult(id, {
       tools: TOOLS
         .filter(({ name }) => canWrite || !WRITE_TOOL_NAMES.has(name))
-        .map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+        .map(publicToolDefinition),
     });
   }
   if (method === "tools/call") {
