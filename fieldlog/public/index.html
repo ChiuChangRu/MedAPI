@@ -11,87 +11,137 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=94" />
+<link rel="stylesheet" href="style.css?v=112" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />
 </head>
 <body>
+<!-- 桌機檔案總管式側欄；手機仍沿用原本的單欄清單。待分類與垃圾桶是快捷入口，
+     不屬於第一～第四階資料夾樹。 -->
+<aside class="desktop-explorer-nav" id="desktop-explorer-nav" aria-label="MyWiki 資料夾">
+  <div class="desktop-explorer-title">🎒 MyWiki</div>
+  <button class="desktop-shortcut active" id="desktop-pending" type="button">⏳ <span>待分類</span></button>
+  <div class="desktop-nav-divider"></div>
+  <div class="desktop-folder-tree" id="desktop-folder-tree"></div>
+  <button class="desktop-shortcut desktop-new-folder" id="desktop-new-folder" type="button">＋ <span>新增資料夾</span></button>
+  <div class="desktop-nav-spacer"></div>
+  <button class="desktop-shortcut" id="desktop-trash" type="button">🗑 <span>垃圾桶</span><small id="desktop-trash-count"></small></button>
+  <!-- 拖曳調整側欄寬度，見 app.js 的 initDesktopSidebarResize() -->
+  <div class="desktop-explorer-resize" id="desktop-explorer-resize" role="separator" aria-orientation="vertical" aria-label="調整側欄寬度" tabindex="0"></div>
+</aside>
 <div class="container">
   <div id="view-home">
     <header class="home-app-head">
       <h1>隨身記</h1>
-      <small>輸入、整理、歸檔 <span id="app-version" class="app-version"></span></small>
+      <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
       <a class="head-link" href="help.html">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
     <div class="stale-banner" id="stale-version-banner" hidden></div>
 
-    <section class="home-section home-input-section" aria-labelledby="home-input-title">
-      <div class="home-section-head">
-        <h2 class="home-section-title" id="home-input-title">輸入與草稿</h2>
-      </div>
+    <!-- 首頁五列（2026-08-09 二次修正）：改回直向堆疊的整行區塊，不是並排的
+         四欄——欄位太窄會把資料夾樹（縮排＋色系底）擠爛，上一版才修過這個
+         問題。只有第三列內部左右分兩欄（待處理｜Wiki 檔案），其餘四列都是
+         獨立整行。 -->
+    <div id="home-main-sections">
 
-      <div class="capture-grid">
-        <button class="cap-tile cap-video" id="btn-video">🎥<span>錄影</span></button>
-        <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
-        <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
-        <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
-      </div>
+      <!-- 第一列：輸入與草稿 -->
+      <section class="home-section home-input-section" aria-labelledby="home-input-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="home-input-title">✏️ 輸入與草稿</h2>
+        </div>
+        <div class="capture-grid">
+          <button class="cap-tile cap-video" id="btn-video">🎥<span>錄影</span></button>
+          <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
+          <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
+          <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
+        </div>
+      </section>
 
-      <!-- 待處理：只列還沒真正歸檔的東西（收件匣＋暫存區＋AI 剛歸類還沒確認的），
-           不是「最近動過的全部東西」。2026-08-09 從「最近作業」改回這個範圍——
-           原本改成「不分資料夾，列最後動過的」是想解決「收件匣空了整個面板就
-           消失」，但這樣一來，剛手動搬移／編輯過的已歸檔記事會佔著最上面的位置，
-           擠掉真正還沒處理的，等於清單失去「代辦」的意義。 -->
-      <section class="panel home-inbox-panel" id="inbox-panel">
-        <div class="folders-toolbar">
-          <h2>📥 待處理 <span id="inbox-count" class="count"></span></h2>
+      <!-- 第二列：檢索。傳統關鍵字全文搜尋（標題／內文／欄位／附件檔名／逐字稿／
+           OCR 擷取文字），不是語意搜尋——依「MyWiki 首頁改版規格」§1.1，
+           Vectorize 語意搜尋目前命中率太差不適合當首頁入口。多詞空白分隔＝
+           AND，查無自動降級成 OR 並標示，簡繁互通，套用既有同義詞表。 -->
+      <section class="home-section home-search-section">
+        <h2 class="home-section-title">🔍 檢索</h2>
+        <div class="home-search-bar">
+          <span class="home-search-icon" aria-hidden="true">🔍</span>
+          <input type="search" id="home-search-input" class="home-search-input"
+                 placeholder="搜尋記事、附件、逐字稿…" autocomplete="off" />
+          <button type="button" id="home-search-clear" class="home-search-clear" hidden aria-label="清除搜尋">✕</button>
+        </div>
+        <div id="home-search-results" class="home-search-results" hidden></div>
+      </section>
+
+      <!-- 第三列：待處理、草稿與 Wiki 檔案——直向堆疊，待處理在上、已分類
+           的 Wiki 檔案在下（2026-08-09 三次修正：原本排成左右兩欄，改回
+           上下順序）。
+           待分類：只列還沒放入正式資料夾的內容，以及歷史上 AI 分類後尚未確認的內容，
+           不是「最近動過的全部東西」——理由見 app.js
+           loadRecent() 的註解。
+           Wiki 檔案＝隨身記自己的資料夾內容（不是 wiki.html 那個獨立的
+           策略地圖 Wiki，那是另一套系統）。 -->
+      <section class="home-section home-inbox-section" id="inbox-panel" aria-labelledby="home-inbox-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="home-inbox-title">⏳ 待分類 <span id="inbox-count" class="count"></span></h2>
           <div class="folder-view-toggle" aria-label="待處理顯示模式">
             <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">▦ 卡片</button>
             <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
           </div>
         </div>
-        <p class="sub staging-status" id="staging-status"></p>
-        <div id="autofile-hints-panel"></div>
         <div id="inbox-list" class="entry-list"></div>
       </section>
-    </section>
 
-    <section class="home-section home-files-section" aria-labelledby="home-files-title">
-      <div class="home-section-head">
-        <h2 class="home-section-title" id="home-files-title">檔案</h2>
-      </div>
+      <section class="home-section home-toolbar-files">
+        <h2 class="home-section-title">📖 Wiki 檔案</h2>
+        <!-- 2026-08-09：卡片模式拿掉了（跟清單模式完全同一組資料、只是換個排版，
+             沒有提供額外功能）。清單模式改成縮排樹狀，一次看到整棵四層資料夾樹，
+             不用再點進去才看得到子資料夾。 -->
+        <div class="folders-toolbar">
+          <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
+          <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
+          <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
+        </div>
+        <div id="folder-list" class="folder-list"></div>
+      </section>
 
-      <div class="home-file-stack">
-        <section class="panel folders-panel home-files-panel">
-          <div class="folders-toolbar">
-            <h2>📂 已歸檔資料夾</h2>
-            <div class="folder-view-toggle" aria-label="資料夾顯示模式">
-              <button class="btn small" id="btn-folder-grid" type="button" title="卡片模式">▦ 卡片</button>
-              <button class="btn small" id="btn-folder-list" type="button" title="清單模式">☷ 清單</button>
-            </div>
-            <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
-            <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
-            <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
-          </div>
-          <div id="folder-list" class="folder-list"></div>
-        </section>
-      </div>
-    </section>
+      <!-- 第四列：開發工具 -->
+      <section class="home-section home-tools-section">
+        <h2 class="home-section-title">🛠 開發工具</h2>
+        <div class="toolbar-link-list">
+          <a class="toolbar-link-card" href="patrol.html">
+            <span class="toolbar-link-icon" aria-hidden="true">🏭</span>
+            <span class="toolbar-link-text"><strong>巡廠整理</strong></span>
+          </a>
+          <a class="toolbar-link-card" href="https://medtec-2026.gogoyankee.workers.dev/" target="_blank" rel="noopener">
+            <span class="toolbar-link-icon" aria-hidden="true">🧪</span>
+            <span class="toolbar-link-text"><strong>MedTec 2026</strong></span>
+          </a>
+          <a class="toolbar-link-card" href="https://chiuchangru.github.io/DMAIC/" target="_blank" rel="noopener">
+            <span class="toolbar-link-icon" aria-hidden="true">📈</span>
+            <span class="toolbar-link-text"><strong>DMAIC</strong></span>
+          </a>
+        </div>
+      </section>
 
-    <section class="home-section home-usage-section" aria-labelledby="home-usage-title">
-      <div class="home-section-head">
-        <h2 class="home-section-title" id="home-usage-title">Cloudflare 用量</h2>
-      </div>
-      <div class="home-usage-toolbar">
-        <strong>資源監控</strong>
-        <button class="btn small" id="btn-usage-refresh">重新整理</button>
-      </div>
-      <div class="home-usage-content" id="usage-content"><p class="sub">登入後自動載入用量。</p></div>
-    </section>
+      <!-- 第五列：Cloudflare 用量。預設收合、展開才打 /usage：避免每次開
+           首頁都白白耗一次 Cloudflare 帳單查詢 -->
+      <details class="home-section home-usage-section" id="usage-details">
+        <summary class="home-usage-summary">
+          <h2 class="home-section-title" id="home-usage-title">☁️ Cloudflare 用量</h2>
+          <span class="usage-status-dot" id="usage-status-dot" hidden></span>
+          <span class="usage-summary-chevron" aria-hidden="true">▾</span>
+        </summary>
+        <div class="home-usage-toolbar">
+          <strong>資源監控</strong>
+          <button class="btn small" id="btn-usage-refresh">重新整理</button>
+        </div>
+        <div class="home-usage-content" id="usage-content"><p class="sub">展開以載入用量。</p></div>
+      </details>
+    </div>
   </div>
 
   <!-- 資料夾內頁 -->
@@ -103,9 +153,10 @@
         <div class="folder-view-toggle inner-view-toggle" aria-label="資料夾內容顯示模式">
           <button class="btn small" id="btn-inner-grid" type="button" title="卡片模式">▦ 卡片</button>
           <button class="btn small" id="btn-inner-list" type="button" title="清單模式">☷ 清單</button>
+          <button class="btn small" id="btn-inner-details" type="button" title="詳細資料模式">☰ 詳細</button>
         </div>
         <button class="btn small" id="btn-file-sort" type="button">🆕 新到舊</button>
-        <button class="btn small" id="btn-folder-sort-inner" type="button">🔤 名稱排序</button>
+        <button class="btn small" id="btn-folder-sort-inner" type="button" hidden>🔤 名稱排序</button>
         <button class="btn small" id="btn-new-subfolder">＋ 子資料夾</button>
         <button class="btn small" id="btn-video-f">🎥 錄影</button>
         <button class="btn small" id="btn-photo-f">📷 拍照</button>
@@ -163,7 +214,7 @@
 
 <!-- 搬移用的資料夾選擇器：四層架構下用一個平的下拉選單根本認不出「同名的
      那個是哪一層的哪一個分支」，所以列成有縮排的樹，每一列都標出完整路徑。
-     記事、單一檔案、收件匣草稿全部共用這一個選擇器。 -->
+     記事、單一檔案、待分類內容全部共用這一個選擇器。 -->
 <div class="overlay" id="folder-picker-overlay">
   <div class="modal narrow folder-picker-modal">
     <div class="modal-close-float"><button class="btn small ghost" id="folder-picker-close" type="button" aria-label="關閉" title="關閉">✕</button></div>
@@ -240,7 +291,7 @@
 </div>
 
 <div class="folder-trash-zone" id="folder-trash-zone" aria-hidden="true">🗑 放開以刪除資料夾分類</div>
-<div class="entry-new-folder-zone" id="entry-new-folder-zone" aria-hidden="true">📁 放開以建立新資料夾並歸檔</div>
+<div class="entry-new-folder-zone" id="entry-new-folder-zone" aria-hidden="true">📁 放開以建立新資料夾並移入</div>
 
 <!-- 開啟 App 時的載入進度：資料夾／記事／附件變多，boot() 要打的 API 陸續
      跑完前畫面會空白一段時間，容易讓人以為當機。用百分比讓使用者知道還在動。 -->
@@ -266,6 +317,17 @@
 <!-- 紀錄詳情 -->
 <div class="overlay" id="entry-overlay">
   <div class="modal wide" id="entry-modal"></div>
+</div>
+
+<div class="overlay" id="trash-overlay">
+  <div class="modal wide trash-modal">
+    <div class="detail-head">
+      <div><h2 style="margin:0;">🗑 垃圾桶</h2><p class="sub" style="margin:4px 0 0;">保留 60 天，可手動還原或永久刪除。</p></div>
+      <button class="btn small ghost" id="trash-close" type="button">✕</button>
+    </div>
+    <div class="trash-toolbar"><button class="btn small danger" id="trash-empty" type="button">清空垃圾桶</button></div>
+    <div id="trash-list" class="trash-list"><p class="sub">載入中…</p></div>
+  </div>
 </div>
 
 <!-- 全螢幕編輯框：轉文字稿／擷取文字內容偏長，prompt() 太小編不動，改用這個 -->
@@ -325,7 +387,7 @@
   <span class="audio-status" id="audio-status" role="status" aria-live="polite" hidden></span>
   <div class="audio-live-transcript" id="audio-live-transcript" aria-live="polite" hidden></div>
   <span class="audio-badge-dot"></span><span id="audio-timer">00:00</span>
-  <button id="audio-folder-btn" type="button" title="歸類到資料夾（錄音不中斷）">📂</button>
+  <button id="audio-folder-btn" type="button" title="分類到資料夾（錄音不中斷）">📂</button>
   <button id="audio-photo-btn" type="button" title="拍照">📷</button>
   <button id="audio-note-btn" type="button" title="記一句">✏️</button>
   <button id="audio-stop-btn" type="button" title="結束">⏹</button>
@@ -347,11 +409,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=94"></script>
+<script src="app.js?v=112"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=94"></script>
+<script src="pdf-editor.js?v=112"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=94"></script>
+<script src="richtext-editor.js?v=112"></script>
 </body>
 </html>

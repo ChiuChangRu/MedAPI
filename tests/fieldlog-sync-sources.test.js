@@ -73,11 +73,41 @@ function makeDB() {
       const row = tables.categories.find((c) => c.kind === "_sources_seeded");
       return { results: row ? [row] : [], changes: 0 };
     }
+    // 一次性的資料夾分類重整（2026-08-08，見 lib/schema.js 的
+    // applyFolderReorg20260808）掛在 scheduled() 裡，這個測試檔會直接呼叫
+    // worker 的 scheduled handler，所以也會跑到它——這裡的假 folders／entries
+    // 表本來就是空的，讓它安靜套用（或安靜判定已套用過）即可，不是這個
+    // 測試檔要驗的東西。
+    if (q === "SELECT id FROM categories WHERE kind = '_folder_reorg_2026_08_08' LIMIT 1") {
+      const row = tables.categories.find((c) => c.kind === "_folder_reorg_2026_08_08");
+      return { results: row ? [row] : [], changes: 0 };
+    }
+    // 巡廠頁面（Jeremy 功能規格書，2026-08-09）一次性補上「巡廠」分類，掛在
+    // ensureSchema() 裡（跟上面幾個種子同一批，每次冷啟動都會檢查一次）。
+    if (q === "SELECT id FROM categories WHERE kind = '_patrol_category_2026_08_09' LIMIT 1") {
+      const row = tables.categories.find((c) => c.kind === "_patrol_category_2026_08_09");
+      return { results: row ? [row] : [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO categories") || q.startsWith("INSERT OR IGNORE INTO categories")) {
       const kind = q.includes("VALUES ('_seeded'") ? "_seeded"
-        : q.includes("VALUES ('_sources_seeded'") ? "_sources_seeded" : args[0];
+        : q.includes("VALUES ('_sources_seeded'") ? "_sources_seeded"
+        : q.includes("VALUES ('_folder_reorg_2026_08_08'") ? "_folder_reorg_2026_08_08"
+        : q.includes("VALUES ('_patrol_category_2026_08_09'") ? "_patrol_category_2026_08_09"
+        : q.includes("VALUES ('folder_type', 0, '巡廠'") ? "folder_type" : args[0];
       insert("categories", { kind });
       return { results: [], changes: 1 };
+    }
+    if (
+      q === "UPDATE folders SET name = ?, category = ? WHERE id = ?"
+      || q === "UPDATE folders SET category = ? WHERE id = ?"
+      || q === "UPDATE folders SET parent_id = ? WHERE parent_id = ?"
+      || q === "UPDATE folders SET parent_id = NULL WHERE parent_id = ?"
+      || q === "DELETE FROM folders WHERE id = ?"
+      || q === "UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?"
+      || q === "UPDATE entries SET folder_id = NULL, updated_at = ? WHERE folder_id = ?"
+      || q === "UPDATE entries SET folder_id = ?, updated_at = ? WHERE id = ?"
+    ) {
+      return none;
     }
     if (q.startsWith("INSERT OR IGNORE INTO sources")) {
       const [key, label, url, items_path, id_field, title_field, folder_parent, folder_type, created_at] = args;
@@ -614,4 +644,24 @@ test("來歷面板：同步來的資料要標示來源，孤兒要警示，AI �
     assert.match(state, new RegExp(`"${s}"`), `${s} 狀態要有對應說明`);
   }
   assert.match(app, /AI 對這筆做過什麼/, "AI 動過哪裡要獨立一段");
+});
+
+// ---------- 資料夾分類重整（2026-08-08）手動觸發端點 ----------
+// 本來掛在 scheduled()（每天台灣時間 02:00），不想等的話用這支立刻跑，
+// 跟 /admin/sync-sources 同一個道理。函式自己有標記機制，這裡只測端點
+// 有沒有接對，一次性遷移本身的行為在 tests/fieldlog-folder-reorg.test.js。
+
+test("POST /admin/reorg-folders-20260808：接得到，回應 ok", async () => {
+  const env = makeEnv();
+  const res = await call(env, "/admin/reorg-folders-20260808", { method: "POST" });
+  assert.equal(res.status, 200);
+  assert.equal(res.data.ok, true);
+});
+
+test("POST /admin/reorg-folders-20260808：跑第二次也是安全的無事發生（標記機制生效）", async () => {
+  const env = makeEnv();
+  await call(env, "/admin/reorg-folders-20260808", { method: "POST" });
+  const second = await call(env, "/admin/reorg-folders-20260808", { method: "POST" });
+  assert.equal(second.status, 200);
+  assert.equal(second.data.ok, true);
 });

@@ -11,7 +11,14 @@ import { htmlToPlainText } from "./richtext.js";
 
 /** 把單一檔案搬到另一個資料夾。 */
 export async function moveAttachment(db, attachmentId, folderId, { logHistory, timestamp }) {
-  const target = await db.prepare("SELECT id, name FROM folders WHERE id = ?").bind(folderId).first();
+  // 一定要排除已進垃圾桶的資料夾——不然還停留在舊畫面的分頁／裝置可以把
+  // 附件（進而整筆記事）搬進一個已軟刪除的資料夾：記事的 folder_id 指過去了，
+  // 但記事自己的 deleted_at 沒被設定，結果變成正常清單看不到、垃圾桶也
+  // 撈不到、60 天排程更清不到的孤兒資料。跟其他資料夾查詢（見 worker.js
+  // 的 COALESCE(deleted_at, '') = '' 慣例）用同一套過濾與錯誤訊息。
+  const target = await db.prepare(
+    "SELECT id, name FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+  ).bind(folderId).first();
   if (!target) return { error: "找不到目標資料夾", status: 404 };
 
   const attachment = await db.prepare(
@@ -67,7 +74,7 @@ export async function moveAttachment(db, attachmentId, folderId, { logHistory, t
  * 如果這是記事裡最後一份檔案、而記事本身沒有任何文字內容，記事也一併收掉
  * ——留著一筆空記事只會變成使用者看不懂的殘留。
  */
-export async function deleteAttachmentDeep(db, files, attachmentId, { logHistory }) {
+export async function deleteAttachmentDeep(db, files, attachmentId, { logHistory, vectorIndex }) {
   const attachment = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(attachmentId).first();
   if (!attachment) return { error: "找不到附件", status: 404 };
 
@@ -87,6 +94,14 @@ export async function deleteAttachmentDeep(db, files, attachmentId, { logHistory
   await db.prepare("DELETE FROM attachments WHERE source_pdf_id = ?").bind(attachmentId).run();
   await db.prepare("DELETE FROM attachments WHERE id = ?").bind(attachmentId).run();
   await logHistory(db, attachment.entry_id, null, "刪除附件", attachment.filename);
+
+  // 這支是直接硬刪（不進 60 天垃圾桶），語意搜尋的向量要跟著馬上清掉，
+  // 不然刪除當下就會有查得到、點進去卻 404 的幽靈結果。清不掉不擋刪除本身。
+  if (vectorIndex) {
+    const ids = [attachmentId, ...(pages || []).map((p) => p.id)]
+      .flatMap((id) => Array.from({ length: 20 }, (_, i) => `att-${id}-${i}`));
+    try { await vectorIndex.deleteByIds(ids); } catch { /* 向量清理失敗不影響已完成的資料刪除 */ }
+  }
 
   const remaining = await db.prepare(
     "SELECT COUNT(*) AS count FROM attachments WHERE entry_id = ?"

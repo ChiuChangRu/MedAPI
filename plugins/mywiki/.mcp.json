@@ -1,0 +1,9 @@
+{
+  "mcp_servers": {
+    "mywiki": {
+      "url": "https://medapi-mcp.gogoyankee.workers.dev/mcp",
+      "bearer_token_env_var": "MYWIKI_MCP_TOKEN",
+      "default_tools_approval_mode": "writes"
+    }
+  }
+}

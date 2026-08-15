@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "medapi": {
+      "type": "http",
+      "url": "https://medapi-mcp.gogoyankee.workers.dev/mcp?pin=${MEDAPI_MCP_PIN}"
+    }
+  }
+}

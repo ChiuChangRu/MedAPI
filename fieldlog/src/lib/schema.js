@@ -121,18 +121,32 @@ export const SCHEMA = [
     errors TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
-  // 使用者自己在前台可調整的行為參數（key-value）。跟環境變數不同：改了立刻
-  // 生效，不用進 Cloudflare Dashboard、不用重新部署。見 lib/settings.js。
+  // 2026-08-09 前：使用者自己在前台可調整的行為參數（key-value），當時只有
+  // 「暫存區放幾天後 AI 自動歸類」這一個 key。AI 自動歸類整個拿掉之後這張表
+  // 沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE；沒有新設定需求前
+  // 不用重新接上。
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  // AI 自動歸類的判斷規則：keyword 命中時優先參考 folder_id，不用每次都靠
-  // 3B 小模型純猜。status='active' 才會實際拿去用；'suggested' 是系統自己從
-  // 「使用者把 AI 分錯的記事手動搬去別的資料夾」這個訊號推出來的候選規則，
-  // 要人工在畫面上按過「採用」才會變成 active——規則會自己長，但不會自己
-  // 生效，一定要通知使用者、讓人決定，見 autofile.js 的 reviewAutoFileCorrections()。
+  // 垃圾桶只記「被刪除的根項目」。資料夾／紀錄本身仍保留原本的父子關係，
+  // deleted_at 只負責把整棵樹從一般查詢隱藏；還原時才能原封不動回到原位置。
+  `CREATE TABLE IF NOT EXISTS trash_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_type TEXT NOT NULL,
+    item_id INTEGER NOT NULL,
+    title TEXT DEFAULT '',
+    deleted_at TEXT NOT NULL,
+    purge_after TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'trashed',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT DEFAULT '',
+    purge_started_at TEXT DEFAULT '',
+    UNIQUE(item_type, item_id)
+  )`,
+  // 2026-08-09 前：AI 自動歸類的判斷規則（keyword → folder_id）。AI 自動歸類
+  // 整個拿掉之後這兩張表沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE。
   `CREATE TABLE IF NOT EXISTS autofile_hints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     folder_id INTEGER NOT NULL,
@@ -141,10 +155,6 @@ export const SCHEMA = [
     note TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
-  // 「使用者把 AI 自動歸類的結果手動改到別的資料夾」這個修正動作的原始紀錄，
-  // 排程每天讀這裡、彙整成 autofile_hints 的候選規則（見上）。reviewed_at 有
-  // 值＝已經被那次排程處理過（不管有沒有真的生出候選規則），避免同一筆修正
-  // 被重複彙整。
   `CREATE TABLE IF NOT EXISTS autofile_corrections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entry_id INTEGER NOT NULL,
@@ -154,10 +164,23 @@ export const SCHEMA = [
     reviewed_at TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
+  // 搜尋同義詞表（mcp/src/search.js 的 setSynonymGroups 用）。原本只由 medapi-mcp
+  // 那支 Worker 在第一次搜尋時建立（見 mcp/src/worker.js 的 ensureSynonyms），
+  // 是「只有 fieldlog 帶 migration」這個原則下的一個例外；fieldlog 首頁的
+  // /search 端點（2026-08-09）同樣要用到這張表，補進這裡才符合原本的原則，
+  // IF NOT EXISTS 對已經由 mcp 建過的既有資料庫是無害的 no-op。
+  `CREATE TABLE IF NOT EXISTS synonyms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical TEXT NOT NULL,
+    aliases_json TEXT DEFAULT '[]',
+    codes_json TEXT DEFAULT '[]',
+    created_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder_id)`,
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_trash_purge ON trash_items(purge_after)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique ON categories(kind, level, name)`,
 ];
 
@@ -168,8 +191,8 @@ export const MIGRATIONS = [
   // 的東西先丟這裡。用欄位而不是靠名字認，是因為名字可以被使用者改掉，改完
   // 之後自動歸類就再也找不到那個資料夾（而且不會有任何錯誤訊息）。
   `ALTER TABLE folders ADD COLUMN role TEXT DEFAULT ''`,
-  // AI 自動歸類的標記：三～五天沒人分類的記事由排程用 AI 歸檔，歸完一定要
-  // 標記，使用者才分得出「這是我自己放的」還是「AI 猜的」。
+  // AI 自動歸類的標記（該功能已於 2026-08-09 移除，欄位保留給歷史資料與
+  // /entries/:id/confirm-filing 用，不會再有新資料寫入）：
   // ''＝沒被自動歸類過；ISO 時間＝AI 歸的；'failed'＝跑過但 AI 判斷不出來。
   `ALTER TABLE entries ADD COLUMN auto_filed_at TEXT DEFAULT ''`,
   `ALTER TABLE entries ADD COLUMN auto_filed_reason TEXT DEFAULT ''`,
@@ -246,12 +269,40 @@ export const MIGRATIONS = [
   // 同一層級內的手動排序，數字小的排前面；NULL／相同值時退回既有的
   // id／status 排序，不影響原本沒設定過排序的資料夾。
   `ALTER TABLE folders ADD COLUMN sort_order INTEGER`,
+  // v109：紀錄本身也是 Windows 式資料包，可以一層包一層；正式資料夾與
+  // 紀錄刪除都先進垃圾桶，60 天後才永久清除。
+  `ALTER TABLE entries ADD COLUMN parent_entry_id INTEGER`,
+  `ALTER TABLE entries ADD COLUMN deleted_at TEXT DEFAULT ''`,
+  `ALTER TABLE folders ADD COLUMN deleted_at TEXT DEFAULT ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(parent_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_deleted ON entries(deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_folders_deleted ON folders(deleted_at)`,
+  `ALTER TABLE trash_items ADD COLUMN state TEXT NOT NULL DEFAULT 'trashed'`,
+  `ALTER TABLE trash_items ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE trash_items ADD COLUMN last_error TEXT DEFAULT ''`,
+  `ALTER TABLE trash_items ADD COLUMN purge_started_at TEXT DEFAULT ''`,
+  // 語意搜尋（Vectorize）：附件與記事各自的向量化狀態。vector_id 存的是
+  // Vectorize 那邊的 id（附件可能對應多支分段向量，這裡存主 id 前綴，實際
+  // 分段 id 用 att-{id}-{n} 規則算出來，不用另外存清單）。
+  `ALTER TABLE attachments ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE attachments ADD COLUMN embedding_error TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE entries ADD COLUMN embedding_error TEXT DEFAULT ''`,
 ];
 
 // folders.category 的合法值——色系分組，見上面 MIGRATIONS 裡的說明。
 // 陣列順序＝顯示優先序（category_rank），不是字母序：越前面代表「預期會長越大」，
 // 不是「現在筆數比較多」，避免之後又要重排一次。
 export const FOLDER_CATEGORIES = ["project", "qa_reg", "literature", "training", "admin", "misc"];
+
+// 資料夾清單依 category 分組排序用的 SQL 片段（§B5）。放這裡讓 fieldlog／mcp
+// 兩支 worker 的 /folders 查詢共用同一份順序定義，不用各自寫一次、之後
+// FOLDER_CATEGORIES 順序調整時兩邊還要記得一起改。NULL／不在清單內的值
+// 一律落在 ELSE（排最後，等同 misc），不會排到最前面造成視覺混亂。
+export const FOLDER_CATEGORY_RANK_SQL =
+  "CASE f.category " + FOLDER_CATEGORIES.map((c, i) => `WHEN '${c}' THEN ${i + 1}`).join(" ") + ` ELSE ${FOLDER_CATEGORIES.length} END`;
 
 /**
  * 外部來源的初始內容——litdb 的三個收藏。跟 CATEGORY_SEED 一樣只在第一次寫入，
@@ -349,7 +400,31 @@ export async function ensureSchema(db, timestamp) {
   }
   await seedCategories(db, timestamp);
   await seedSources(db, timestamp);
+  await ensurePatrolCategory(db, timestamp);
   schemaReady = true;
+}
+
+/**
+ * 一次性補上「巡廠」資料夾分類（2026-08-09，Jeremy 假日巡廠回報功能規格）。
+ * seedCategories() 只在 categories 表完全空的時候跑一次，那時已經跑過了、
+ * 不會再自動長出新分類，這裡用同一套「標記列」手法補一筆，不放進 cron
+ * （applyFolderReorg20260808 那種），而是掛在 ensureSchema()——它本來就每次
+ * 冷啟動都跑，這樣部署完立刻能用，不用等下一次排程。
+ */
+export async function ensurePatrolCategory(db, timestamp) {
+  const applied = await db
+    .prepare("SELECT id FROM categories WHERE kind = '_patrol_category_2026_08_09' LIMIT 1")
+    .first()
+    .catch(() => null);
+  if (applied) return;
+  await db.batch([
+    db.prepare(
+      "INSERT INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('_patrol_category_2026_08_09', 0, 'applied', '', '', '[]', 0, ?)"
+    ).bind(timestamp),
+    db.prepare(
+      "INSERT OR IGNORE INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('folder_type', 0, '巡廠', '🚶', '假日巡廠出勤與生產紀錄', '[]', 999, ?)"
+    ).bind(timestamp),
+  ]);
 }
 
 // 測試用：重置「已初始化」旗標
@@ -429,5 +504,108 @@ async function seedSources(db, timestamp) {
       )
     );
   }
+  await db.batch(statements);
+}
+
+/**
+ * 一次性的資料夾分類重整（2026-08-08，依「MyWiki 隨身記系統改造規格」§B
+ * 對照表套用）。標記機制跟上面兩支種子函式同一個做法：用 categories 表的
+ * 標記列記住「套用過了」，之後使用者自己再調整名稱／category／歸檔位置，
+ * 不會被這裡的舊值蓋回去。
+ *
+ * 刻意不掛在 ensureSchema()（每個請求／每個測試冷啟動都會跑一次）——
+ * 改由 worker.js 的 scheduled()（daily cron）呼叫，跟 syncSources 那些
+ * 每日任務同一批，一次性資料搬移只需要在部署後的下一次排程套用一次，
+ * 不需要出現在所有測試的 ensureSchema 呼叫路徑上。
+ *
+ * 範圍刻意只包含兩類不需要知道「現在實際的 parent_id／深度」也能安全做
+ * 的動作：
+ *   1. 改名＋設定 category——純文字／metadata，不影響資料夾樹狀結構
+ *   2. 規格 §B4 明確列出、id 對 id 的資料搬移／刪除（11 的 3 筆記事併入
+ *      13 後刪掉 11；26 直接刪除；entry 262 從 folder 36 搬到 folder 35）
+ *
+ * 規格裡用「｜」表示的巢狀關係（例如「專案｜檢體針｜設備請購」暗示可能要
+ * 搬到 folder 19 底下）刻意不在這裡做：那是搬動資料夾在樹狀結構裡的位置，
+ * 需要先知道現在實際的 parent_id／深度才能安全判斷會不會超過
+ * MAX_FOLDER_DEPTH，這支遷移拿不到那個資訊，硬搬有搬錯或超過層數上限的
+ * 風險。要做那部分，改用已經有深度檢查與防循環邏輯的 update_folder／
+ * move_folder（MCP 工具，或 App 裡的搬移功能）逐一確認著做。
+ */
+export async function applyFolderReorg20260808(db, timestamp) {
+  const applied = await db
+    .prepare("SELECT id FROM categories WHERE kind = '_folder_reorg_2026_08_08' LIMIT 1")
+    .first()
+    .catch(() => null);
+  if (applied) return;
+
+  const rename = (id, name, category) =>
+    db.prepare("UPDATE folders SET name = ?, category = ? WHERE id = ?").bind(name, category, id);
+  const setCategory = (id, category) =>
+    db.prepare("UPDATE folders SET category = ? WHERE id = ?").bind(category, id);
+
+  const statements = [
+    db.prepare(
+      "INSERT INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('_folder_reorg_2026_08_08', 0, 'applied', '', '', '[]', 0, ?)"
+    ).bind(timestamp),
+
+    // ---- 專案開發（project）----
+    rename(19, "專案｜檢體針", "project"),
+    rename(38, "專案｜檢體針｜設備請購", "project"),
+    rename(34, "專案｜檢體針｜拉拔試驗", "project"),
+    rename(33, "專案｜檢體針｜設計輸入", "project"),
+    rename(22, "專案｜檢體針｜原料資訊", "project"),
+    setCategory(23, "project"), // 廠商｜北回化學：保留名稱，維持在 22 底下
+    setCategory(24, "project"), // 廠商｜LOCTITE(上澄)：保留名稱，維持在 22 底下
+    rename(25, "專案｜HD導管", "project"),
+    rename(29, "專案｜HD導管｜再回流測試", "project"),
+    rename(27, "專案｜編織管", "project"),
+    rename(28, "專案｜編織管｜POM熱分析", "project"), // §B4 已確認歸專案
+    rename(36, "專案｜Pigtail｜親水塗層", "project"),
+    rename(40, "專案｜CVC／輸尿管", "project"),
+    rename(10, "專案｜高壓注射筒", "project"), // §B4 已確認
+
+    // ---- 品保與法規（qa_reg）----
+    rename(7, "品保法規｜ISO標準", "qa_reg"),
+    rename(8, "品保法規｜IFU", "qa_reg"),
+    rename(30, "品保法規｜驗證測試｜流速壓力", "qa_reg"),
+    rename(32, "品保法規｜驗證測試｜UV膠", "qa_reg"),
+    rename(43, "品保法規｜稽核｜宜蘭二廠", "qa_reg"),
+
+    // ---- 文獻與知識庫（literature）：命名已清楚，只設定 category ----
+    setCategory(15, "literature"),
+    setCategory(16, "literature"),
+    setCategory(17, "literature"),
+    setCategory(18, "literature"),
+
+    // ---- 教育訓練（training）----
+    rename(13, "教育訓練（根）", "training"),
+    rename(35, "教育訓練｜FMEA", "training"),
+    rename(31, "教育訓練｜AI", "training"),
+    rename(12, "教育訓練｜資料庫入門", "training"),
+
+    // ---- 行政與廠商（admin）----
+    rename(37, "行政｜一般行政", "admin"),
+    rename(41, "行政｜設備", "admin"), // §B4 已確認歸行政
+    rename(3, "行政｜月會", "admin"),
+    rename(42, "行政｜週報月報KPI", "admin"),
+
+    // ---- 暫存／其他（misc）----
+    rename(39, "暫存區（待歸類）", "misc"),
+    rename(9, "暫存區｜高壓注射筒（待確認）", "misc"), // §B4 已確認：不確定歸屬先進暫存區
+
+    // ---- §B4：明確的 id 對 id 資料搬移／刪除 ----
+    // 11「其他專案｜課程」（3 筆）併入 13「教育訓練（根）」，記事搬完再刪 11。
+    // 順手把可能存在的子資料夾上移一層，跟 App 刪除資料夾按鈕的安全邏輯一致
+    // （規格沒提到 11 有子資料夾，這裡是防禦性處理，沒有的話這句只是無事發生）。
+    db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?").bind(13, timestamp, 11),
+    db.prepare("UPDATE folders SET parent_id = ? WHERE parent_id = ?").bind(13, 11),
+    db.prepare("DELETE FROM folders WHERE id = ?").bind(11),
+    // 26「其他｜月報與周報」0 筆、跟 42 重複，直接刪除。
+    db.prepare("UPDATE entries SET folder_id = NULL, updated_at = ? WHERE folder_id = ?").bind(timestamp, 26),
+    db.prepare("UPDATE folders SET parent_id = NULL WHERE parent_id = ?").bind(26),
+    db.prepare("DELETE FROM folders WHERE id = ?").bind(26),
+    // entry 262（FMEA 課程筆記）誤歸在 folder 36（親水塗層），搬到 folder 35（FMEA）。
+    db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE id = ?").bind(35, timestamp, 262),
+  ];
   await db.batch(statements);
 }
