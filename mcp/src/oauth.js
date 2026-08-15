@@ -14,6 +14,15 @@ const ACCESS_TTL_SECONDS = 60 * 60;
 const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
 const CONSENT_COOKIE = "__Host-MYWIKI_OAUTH_CSRF";
 
+// ChatGPT may open the OAuth consent page inside a partitioned browser context.
+// SameSite=Lax cookies are then omitted from the form POST, which makes the
+// double-submit CSRF check fail even though the user stayed on the same page.
+// Partitioned + SameSite=None keeps the cookie scoped to that top-level client
+// while allowing the consent POST to carry it.
+function consentCookie(value, maxAge) {
+  return `${CONSENT_COOKIE}=${value}; HttpOnly; Secure; Path=/; SameSite=None; Partitioned; Max-Age=${maxAge}`;
+}
+
 const OAUTH_CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, OPTIONS",
@@ -290,7 +299,7 @@ async function authorizationGet(request, env) {
   const scopeText = escapeHtml(scopes.join("、"));
   const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>授權 MyWiki</title><style>body{font-family:system-ui,sans-serif;background:#f3f6f5;color:#123;margin:0;padding:32px}.card{max-width:520px;margin:6vh auto;background:#fff;border:1px solid #d8e1df;border-radius:16px;padding:28px;box-shadow:0 12px 35px #1232}h1{margin-top:0;color:#087f72}label{display:block;margin:18px 0 8px;font-weight:700}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #9aa;border-radius:9px;font-size:16px}.scope{background:#eef7f5;padding:12px;border-radius:9px}.actions{display:flex;gap:10px;margin-top:22px}button{border:0;border-radius:9px;padding:12px 18px;font-size:16px;cursor:pointer}.allow{background:#087f72;color:white}.deny{background:#e7eceb;color:#234}.note{color:#526;font-size:14px}</style></head><body><main class="card"><h1>授權連接 MyWiki</h1><p><strong>${clientName}</strong> 要求存取你的私人 MyWiki。</p><p class="scope">權限：${scopeText}</p><form method="post" action="/authorize"><input type="hidden" name="request_token" value="${escapeHtml(requestToken)}"><input type="hidden" name="csrf_token" value="${escapeHtml(csrf)}"><label for="pin">MyWiki MCP PIN</label><input id="pin" name="pin" type="password" autocomplete="current-password" required><p class="note">PIN 只在此安全頁面驗證，不會傳給 ChatGPT。</p><div class="actions"><button class="allow" name="decision" value="allow" type="submit">允許</button><button class="deny" name="decision" value="deny" type="submit" formnovalidate>取消</button></div></form></main></body></html>`;
   return new Response(html, {
-    headers: securityHeaders(`${CONSENT_COOKIE}=${csrf}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=600`),
+    headers: securityHeaders(consentCookie(csrf, 600)),
   });
 }
 
@@ -348,7 +357,7 @@ async function authorizationPost(request, env) {
     headers: {
       location: redirect.toString(),
       "cache-control": "no-store",
-      "set-cookie": `${CONSENT_COOKIE}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`,
+      "set-cookie": consentCookie("", 0),
     },
   });
 }

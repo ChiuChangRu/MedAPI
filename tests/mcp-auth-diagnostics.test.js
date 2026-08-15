@@ -105,6 +105,9 @@ test("完整 authorization-code + PKCE 流程可換 token，code 不可重放", 
 
   const consent = await worker.fetch(new Request(authorizeUrl), ENV);
   assert.equal(consent.status, 200);
+  const consentCookie = consent.headers.get("set-cookie") || "";
+  assert.match(consentCookie, /SameSite=None/i);
+  assert.match(consentCookie, /Partitioned/i);
   const html = await consent.text();
   const requestToken = html.match(/name="request_token" value="([^"]+)"/)?.[1];
   const csrf = html.match(/name="csrf_token" value="([^"]+)"/)?.[1];
