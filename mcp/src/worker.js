@@ -16,8 +16,8 @@
  * （2026-08-08 分類重整新增，見 mcp/README.md「資料夾整理工具」一節）：
  * update_folder（改名／設定色系分類 category／手動排序 sort_order）、
  * move_folder（搬到別的上層資料夾）、move_entry（把一筆記事搬到別的資料夾）、
- * delete_folder（刪除資料夾——底下的記事與子資料夾會自動搬到上一層，不會
- * 遺失，跟 App 裡的刪除資料夾按鈕行為一致）。這四支全部透過 FIELDLOG
+ * delete_folder（刪除資料夾——整棵子資料夾與紀錄資料包移入垃圾桶，保留
+ * 60 天，跟 App 裡的刪除資料夾按鈕行為一致）。這四支全部透過 FIELDLOG
  * Service Binding 打 fieldlog 自己的 PUT／DELETE /api/folders、/api/entries，
  * 重用同一套已經上線、有巢狀深度檢查與歷史紀錄的邏輯，MCP 這邊沒有另外
  * 寫一份會分歧的版本。除了資料夾結構（名稱／分類／排序／所屬）跟記事的
@@ -26,9 +26,9 @@
  * 要回各自的前台／git 人審。（外部來源的同步更新走 fieldlog worker 內部的
  * cron，不經過 MCP。）
  *
- * 驗證：POST /mcp 需帶 ?pin=（或 x-pin header／Authorization: Bearer），
- * 與 MCP_PIN（Secret）比對，未設定時一律拒絕（fail-closed）。
- * claude.ai 自訂連接器不能自帶 header，所以實際上用 ?pin= 掛在 URL 上。
+ * 驗證：ChatGPT／支援 MCP OAuth 的客戶端走 OAuth 2.1 authorization-code +
+ * PKCE；既有 ?pin=、x-pin 與 Authorization: Bearer <MCP_PIN> 保留相容。
+ * MCP_PIN 未設定時一律拒絕（fail-closed），PIN 不會寫進 OAuth 連接網址。
  *
  * 需要的 Secrets／Variables（Worker Settings → Variables and Secrets）：
  *   MCP_PIN      — 這個 MCP 端點自己的通行碼
@@ -38,6 +38,7 @@
  */
 
 import { stripPdfMetadata } from "./textFold.js";
+import { authorizeMcpRequest, handleOAuthRoute, oauthUnauthorized } from "./oauth.js";
 // 不指定 /workerd 子路徑：package.json 的 conditional exports 會依實際 runtime
 // 自動選版本——node --test（跑測試用）拿到 node 版，wrangler 部署／dev 拿到
 // workerd 版。之前指定死 /workerd 直接讓 node --test 連 import 都失敗
@@ -91,22 +92,6 @@ function json(data, status = 200, extraHeaders = {}) {
     status,
     headers: { "content-type": "application/json; charset=utf-8", ...CORS_HEADERS, ...extraHeaders },
   });
-}
-
-// 千萬不要在這裡加 WWW-Authenticate: Bearer ——2026-08-01 加過一次，直接把
-// claude.ai 的連接器弄壞了。
-//
-// RFC 7235 是說 401 該帶 WWW-Authenticate 沒錯，但 MCP 的 Authorization 規範
-// 把「看到 Bearer 這個字」當成訊號：客戶端看到就會認定「這台伺服器支援
-// OAuth」，去戳 /.well-known/oauth-authorization-server、
-// /.well-known/oauth-protected-resource 想做動態客戶端註冊。這台從頭到尾
-// 只用 PIN，沒有那些端點（故意全部 404——見下面 fetch() 裡的註解），
-// 註冊當然失敗，claude.ai 就跳「Couldn't register with sign-in service」，
-// 而且不管網址上的 PIN 對不對都會卡在這一步，比原本沒有這個 header 還糟。
-//
-// 所以錯誤說明只放在 JSON body，不透過任何 auth challenge header 傳遞。
-function unauthorized(description) {
-  return json({ error: description }, 401);
 }
 
 // 工具 handler 一律回傳字串（會被包成 text content）；需要回傳圖片等非文字內容時，
@@ -570,8 +555,9 @@ const TOOLS = [
     inputSchema: { type: "object", properties: {} },
     async handler(env) {
       const { results } = await env.DB_FIELDLOG.prepare(
-        `SELECT f.*, (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id) AS entry_count
-         FROM folders f ORDER BY ${FOLDER_CATEGORY_RANK_SQL}, f.status = '進行中' DESC, f.sort_order, f.id DESC`
+        `SELECT f.*, (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id AND COALESCE(e.deleted_at, '') = '') AS entry_count
+         FROM folders f WHERE COALESCE(f.deleted_at, '') = ''
+         ORDER BY ${FOLDER_CATEGORY_RANK_SQL}, f.status = '進行中' DESC, f.sort_order, f.id DESC`
       ).all();
       if (!results.length) return "隨身記目前沒有任何資料夾。";
       // 資料夾有 parent_id 巢狀結構（四層目錄）：先照樹狀排序（父在子之前）再縮排顯示，
@@ -615,7 +601,9 @@ const TOOLS = [
       const limit = Math.min(100, Math.max(1, Number(args.limit) || 30));
       const offset = Math.max(0, Number(args.offset) || 0);
 
-      const where = folderId !== null ? "WHERE e.folder_id = ?" : "";
+      const where = folderId !== null
+        ? "WHERE e.folder_id = ? AND COALESCE(e.deleted_at, '') = ''"
+        : "WHERE COALESCE(e.deleted_at, '') = ''";
       const binds = folderId !== null ? [folderId] : [];
       const totalRow = await env.DB_FIELDLOG.prepare(
         `SELECT COUNT(*) AS c FROM entries e ${where}`
@@ -645,7 +633,7 @@ const TOOLS = [
       }
 
       const lines = entries.map((e) => {
-        const where2 = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "收件匣";
+        const where2 = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "待分類";
         const files = attMap.get(e.id) || [];
         // 檔名是主要判斷依據，不截斷；用逐行列出而不是逗號接成一串，長檔名才不會混在一起看不清
         const fileLines = files.length
@@ -680,7 +668,7 @@ const TOOLS = [
       const limit = Math.min(100, Math.max(1, Number(args.limit) || 30));
       const offset = Math.max(0, Number(args.offset) || 0);
 
-      const clauses = ["a.source_pdf_id IS NULL"]; // 深度處理逐頁圖片不算獨立附件，列出來只會洗版
+      const clauses = ["a.source_pdf_id IS NULL", "COALESCE(e.deleted_at, '') = ''"]; // 深度處理逐頁圖片不算獨立附件，列出來只會洗版
       const binds = [];
       if (entryId !== null) { clauses.push("a.entry_id = ?"); binds.push(entryId); }
       if (folderId !== null) { clauses.push("e.folder_id = ?"); binds.push(folderId); }
@@ -744,7 +732,9 @@ const TOOLS = [
       // 在 JS 端算出「這個 folder_id 底下的整棵子樹」，比對時看 entry 的 folder 在不在這個集合裡
       let allowedFolderIds = null;
       if (wantFolderId !== null) {
-        const { results: allFolders } = await env.DB_FIELDLOG.prepare(`SELECT id, parent_id FROM folders`).all();
+        const { results: allFolders } = await env.DB_FIELDLOG.prepare(
+          `SELECT id, parent_id FROM folders WHERE COALESCE(deleted_at, '') = ''`
+        ).all();
         const byParent = new Map();
         for (const f of allFolders) {
           const key = f.parent_id ?? null;
@@ -777,12 +767,14 @@ const TOOLS = [
         env.DB_FIELDLOG.prepare(
           `SELECT e.id, e.folder_id, e.title, e.body,${selectOpt("e", optE)} e.fields_json, e.created_at, f.name AS folder_name, f.type AS folder_type
            FROM entries e LEFT JOIN folders f ON e.folder_id = f.id
+           WHERE COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
            ORDER BY e.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
         env.DB_FIELDLOG.prepare(
           `SELECT a.id AS att_id, a.kind, a.filename, a.transcript, a.ocr_text, a.offset_secs,${selectOpt("a", optA)}
                   e.id AS entry_id, e.folder_id, e.title, f.name AS folder_name, f.type AS folder_type
            FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON e.folder_id = f.id
+           WHERE COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
            ORDER BY a.id DESC LIMIT ${SCAN_CAP}`
         ).all(),
       ]);
@@ -800,20 +792,20 @@ const TOOLS = [
       const entryHits = runSearch(
         allEntries.filter(inScope),
         plan,
-        (e) => `${e.title}\n${e._body}\n${e.fields_json}\n${e.analysis_json || ""}`,
+        (e) => `${e.title}\n${e._body}\n${e.fields_json}\n${e.analysis_json || ""}\n${e.folder_name || ""}\n${e.folder_type || ""}`,
         limit
       );
       const attHits = runSearch(
         allAtts.filter(inScope),
         plan,
-        (a) => `${a.transcript}\n${a._ocr}\n${a.filename}\n${a.analysis_json || ""}`,
+        (a) => `${a.transcript}\n${a._ocr}\n${a.filename}\n${a.analysis_json || ""}\n${a.folder_name || ""}\n${a.folder_type || ""}`,
         limit
       );
       const out = [];
       if (entryHits.hits.length) {
         out.push("## 命中的紀錄");
         for (const { row: e } of entryHits.hits) {
-          const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "收件匣";
+          const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "待分類";
           const hitText = pickHitField([e.title, e._body, e.fields_json, e.analysis_json], plan) || e._body;
           const aiMark = e.analysis_json && !matchesPlan(`${e.title}\n${e._body}\n${e.fields_json}`, plan) ? "｜⚠ 命中在 AI 解析段（非原始紀錄）" : "";
           out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜${e.created_at}${aiMark}\n  ${planSnippet(hitText, plan)}`);
@@ -843,6 +835,53 @@ const TOOLS = [
     },
   },
   {
+    name: "search_fieldlog_semantic",
+    description: "語意搜尋隨身記：找「意思相近」的紀錄與附件，不需要命中一模一樣的字——例如查「滅菌相關的品質問題」也找得到沒直接提到「滅菌」兩個字、但內容講的是同一件事的記事。跟 search_fieldlog（關鍵字搜尋）是互補工具：講得出明確關鍵字/編號（例如「ISO 7886」「7886 注射器」）優先用 search_fieldlog，那個更準也更省 token；講得出概念但想不到該用哪個詞、或想找「跟這個主題相關的所有東西」時用這支。可選 folder_id 縮小到單一資料夾（不含子資料夾）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "要找的概念/主題，用一般語句描述即可，不用湊關鍵字" },
+        top_k: { type: "number", description: "最多回傳幾筆（預設 10，上限 30）" },
+        folder_id: { type: "number", description: "選填：只找這個資料夾（不含子資料夾）——先用 list_fieldlog_folders 查 id" },
+      },
+      required: ["query"],
+    },
+    async handler(env, args) {
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const query = String(args.query || "").trim();
+      if (!query) throw new Error("query 為必填");
+      const u = new URL("https://fieldlog.internal/api/search/semantic");
+      u.searchParams.set("q", query);
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      if (args.top_k) u.searchParams.set("topK", String(Math.min(30, Math.max(1, Number(args.top_k) || 10))));
+      if (args.folder_id) u.searchParams.set("folder_id", String(Number(args.folder_id)));
+
+      const res = await env.FIELDLOG.fetch(u.toString());
+      if (!res.ok) throw new Error(`語意搜尋失敗：${await fieldlogErrorDetail(res)}`);
+      const data = await res.json();
+
+      const out = [];
+      if (data.entries?.length) {
+        out.push("## 語意相近的紀錄");
+        for (const { score, entry: e } of data.entries) {
+          const where = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "待分類";
+          const bodyText = e.body_format === "html" ? htmlToPlainText(e.body) : (e.body || "");
+          out.push(`- [entry ${e.id}] ${e.title || "（未命名）"}｜${where}｜相似度 ${score.toFixed(2)}｜${e.created_at}\n  ${clip(bodyText, 200)}`);
+        }
+      }
+      if (data.attachments?.length) {
+        out.push("## 語意相近的附件（想看完整全文用 get_fieldlog_attachment）");
+        for (const { score, attachment: a } of data.attachments) {
+          const where = a.folder_name ? `${a.folder_type}｜${a.folder_name}` : "待分類";
+          const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
+          out.push(`- [attachment ${a.id}／entry ${a.entry_id}] ${a.kind}｜${a.filename}｜所屬：${a.entry_title || "（未命名）"}｜${where}｜相似度 ${score.toFixed(2)}\n  ${clip(text, 200)}`);
+        }
+      }
+      if (!out.length) return `找不到跟「${query}」語意相近的內容（門檻之上沒有命中）——內容可能還沒被向量化（新資料要等背景排入，或用 search_fieldlog 改試關鍵字），也可能真的沒有相關資料。`;
+      return out.join("\n");
+    },
+  },
+  {
     name: "get_fieldlog_entry",
     description: "讀取隨身記單筆紀錄的完整內容：欄位、內文、所有附件的逐字稿與照片/PDF擷取文字（每個附件有長度上限，超過會截斷並提示；附件內容截斷時改用 get_fieldlog_attachment 拉那一個附件的完整全文，例如一份完整的 ISO 標準條文）。",
     inputSchema: {
@@ -853,7 +892,7 @@ const TOOLS = [
     async handler(env, args) {
       const id = Number(args.id);
       if (!id) throw new Error("id 為必填");
-      const e = await env.DB_FIELDLOG.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
+      const e = await env.DB_FIELDLOG.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
       if (!e) throw new Error(`找不到 entry ${id}`);
       const { results: atts } = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all();
       const lines = [`# ${e.title || "（未命名紀錄）"}`, `建立：${e.created_at}${e.updated_at ? `｜更新：${e.updated_at}` : ""}`];
@@ -905,9 +944,12 @@ const TOOLS = [
     async handler(env, args) {
       const id = Number(args.id);
       if (!id) throw new Error("id 為必填");
-      const a = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+      const a = await env.DB_FIELDLOG.prepare(
+        `SELECT a.* FROM attachments a JOIN entries e ON e.id = a.entry_id
+         WHERE a.id = ? AND COALESCE(e.deleted_at, '') = ''`
+      ).bind(id).first();
       if (!a) throw new Error(`找不到附件 ${id}——請先用 search_fieldlog 或 get_fieldlog_entry 查編號`);
-      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(a.entry_id).first();
+      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(a.entry_id).first();
       const off = a.offset_secs !== null && a.offset_secs !== undefined ? `｜錄音 ${fmtSecs(a.offset_secs)}` : "";
       const lines = [
         `# ${a.filename}`,
@@ -966,14 +1008,15 @@ const TOOLS = [
     async handler(env, args) {
       const id = Number(args.id);
       if (!id) throw new Error("id 為必填");
-      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(id).first();
+      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
       if (!e) throw new Error(`找不到 entry ${id}`);
       const { results } = await env.DB_FIELDLOG.prepare(
         `SELECT r.*, ent.title AS other_title, f.name AS other_folder_name, f.type AS other_folder_type
          FROM relations r
          JOIN entries ent ON ent.id = (CASE WHEN r.from_entry_id = ? THEN r.to_entry_id ELSE r.from_entry_id END)
          LEFT JOIN folders f ON f.id = ent.folder_id
-         WHERE r.from_entry_id = ? OR r.to_entry_id = ?
+         WHERE (r.from_entry_id = ? OR r.to_entry_id = ?)
+           AND COALESCE(ent.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
          ORDER BY r.id DESC`
       ).bind(id, id, id).all();
       if (!results.length) return `[entry ${id}] ${e.title || "（未命名）"} 目前沒有任何關聯（關聯要在隨身記前端手動建立，用 search_fieldlog 找到候選記事後，去隨身記 App 點「🔗 新增關聯」）。`;
@@ -982,7 +1025,7 @@ const TOOLS = [
         const isFrom = r.from_entry_id === id;
         const otherId = isFrom ? r.to_entry_id : r.from_entry_id;
         const arrow = isFrom ? "→" : "←";
-        const where = r.other_folder_name ? `${r.other_folder_type}｜${r.other_folder_name}` : "收件匣";
+        const where = r.other_folder_name ? `${r.other_folder_type}｜${r.other_folder_name}` : "待分類";
         lines.push(`- ${arrow} [entry ${otherId}] ${r.relation_type}：${r.other_title || "（未命名）"}｜${where}${r.note ? `（${r.note}）` : ""}`);
       }
       return lines.join("\n");
@@ -993,7 +1036,7 @@ const TOOLS = [
     // entries 列，不能 UPDATE、不能 DELETE，程式碼裡也確實沒有任何 UPDATE/DELETE 語句
     // 碰得到 entries／attachments／folders。改內容、刪東西一律要回隨身記前台自己動手。
     name: "create_fieldlog_entry",
-    description: "在隨身記新增一筆記事（只能新增一筆全新的記事，不會修改或刪除任何既有內容）。適合在對話中臨時想記一件事、或幫忙把討論的重點存下來。可選填 folder_id 直接歸檔（先用 list_fieldlog_folders 查 id）；不填就留在收件匣，之後使用者自己在 App 裡歸檔。",
+    description: "在隨身記新增一筆記事（只能新增一筆全新的記事，不會修改或刪除任何既有內容）。適合在對話中臨時想記一件事、或幫忙把討論的重點存下來。可選填 folder_id 直接分類（先用 list_fieldlog_folders 查 id）；不填就留在待分類，之後使用者自己在 App 裡分類。",
     inputSchema: {
       type: "object",
       properties: {
@@ -1011,7 +1054,7 @@ const TOOLS = [
       const wantFolderId = args.folder_id !== undefined && args.folder_id !== null && args.folder_id !== "" ? Number(args.folder_id) : null;
       let folder = null;
       if (wantFolderId !== null) {
-        folder = await env.DB_FIELDLOG.prepare("SELECT id, name, type FROM folders WHERE id = ?").bind(wantFolderId).first();
+        folder = await env.DB_FIELDLOG.prepare("SELECT id, name, type FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(wantFolderId).first();
         if (!folder) throw new Error(`找不到資料夾 ${wantFolderId}——先用 list_fieldlog_folders 查正確的 id`);
       }
       const fields = args.fields && typeof args.fields === "object" && !Array.isArray(args.fields) ? args.fields : {};
@@ -1022,7 +1065,7 @@ const TOOLS = [
       await env.DB_FIELDLOG.prepare(
         "INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)"
       ).bind(entryId, wantFolderId, "新增紀錄", `${title}（透過 MCP／claude.ai 新增）`, now()).run();
-      return `已新增 [entry ${entryId}] ${title}${folder ? `，歸檔到「${folder.name}」（${folder.type}）` : "，目前在收件匣，之後可在 App 裡歸檔"}。`;
+      return `已新增 [entry ${entryId}] ${title}${folder ? `，分類到「${folder.name}」（${folder.type}）` : "，目前在待分類，之後可在 App 裡分類"}。`;
     },
   },
   {
@@ -1063,7 +1106,7 @@ const TOOLS = [
         throw new Error(`檔案 ${(bytes.length / 1024 / 1024).toFixed(1)}MB，超過透過對話上傳的上限（${UPLOAD_CAP / 1024 / 1024}MB）——請使用者改在隨身記 App 裡手動上傳`);
       }
       if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
-      const entry = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(entryId).first();
+      const entry = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(entryId).first();
       if (!entry) throw new Error(`找不到記事 ${entryId}——先用 search_fieldlog／list_fieldlog_entries 查正確的 id，或用 create_fieldlog_entry 新建一筆`);
       const u = new URL("https://fieldlog.internal/api/upload");
       u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
@@ -1111,8 +1154,8 @@ const TOOLS = [
       if (fromId === toId) throw new Error("不能關聯到自己");
       if (!relationType) throw new Error("relation_type 為必填");
       const [from, to] = await Promise.all([
-        env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(fromId).first(),
-        env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(toId).first(),
+        env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(fromId).first(),
+        env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(toId).first(),
       ]);
       if (!from || !to) throw new Error(`找不到其中一筆記事（from ${fromId}／to ${toId}）——先用 search_fieldlog 確認正確的 entry id`);
       const r = await env.DB_FIELDLOG.prepare(
@@ -1428,7 +1471,7 @@ const TOOLS = [
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`更新失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
-      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name, category, sort_order FROM folders WHERE id = ?").bind(id).first();
+      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name, category, sort_order FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
       if (!folder) throw new Error(`找不到資料夾 ${id}——先用 list_fieldlog_folders 查正確的 id`);
       return `已更新 [folder ${id}] ${folder.name}｜category=${folder.category || "（未分類）"}｜sort_order=${folder.sort_order ?? "（未設定）"}`;
     },
@@ -1460,19 +1503,19 @@ const TOOLS = [
         body: JSON.stringify({ parent_id: parentId || null }),
       });
       if (!res.ok) throw new Error(`搬移失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
-      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name, parent_id FROM folders WHERE id = ?").bind(id).first();
+      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name, parent_id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
       if (!folder) throw new Error(`找不到資料夾 ${id}——先用 list_fieldlog_folders 查正確的 id`);
       return `已搬移 [folder ${id}] ${folder.name} → ${folder.parent_id ? `folder ${folder.parent_id}` : "最上層"}。`;
     },
   },
   {
     name: "move_entry",
-    description: "把一筆記事搬到另一個資料夾，或搬回收件匣（不歸檔）。只改記事的歸檔位置，不動標題、內文或附件。用在修正歸檔錯誤的記事——不管是 AI 自動歸類猜錯，還是原本人工歸錯資料夾。",
+    description: "把一筆記事移動到另一個資料夾，或移回待分類。只改記事的位置，不動標題、內文或附件。用在修正分類錯誤的記事。",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "number", description: "要搬移的記事 entry id" },
-        folder_id: { type: "number", description: "搬到這個資料夾；填 0 代表搬回收件匣（不歸檔）" },
+        folder_id: { type: "number", description: "移動到這個資料夾；填 0 代表移回待分類" },
       },
       required: ["id", "folder_id"],
     },
@@ -1480,7 +1523,7 @@ const TOOLS = [
       const id = Number(args.id);
       if (!id) throw new Error("id 為必填");
       if (args.folder_id === undefined || args.folder_id === null || args.folder_id === "") {
-        throw new Error("folder_id 為必填（搬回收件匣請填 0）");
+        throw new Error("folder_id 為必填（移回待分類請填 0）");
       }
       const folderId = Number(args.folder_id) || 0;
       if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
@@ -1492,14 +1535,14 @@ const TOOLS = [
         body: JSON.stringify({ folder_id: folderId || null }),
       });
       if (!res.ok) throw new Error(`搬移失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
-      const entry = await env.DB_FIELDLOG.prepare("SELECT id, title, folder_id FROM entries WHERE id = ?").bind(id).first();
+      const entry = await env.DB_FIELDLOG.prepare("SELECT id, title, folder_id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
       if (!entry) throw new Error(`找不到記事 ${id}——先用 search_fieldlog／list_fieldlog_entries 查正確的 id`);
-      return `已搬移 [entry ${id}] ${entry.title || "（未命名）"} → ${entry.folder_id ? `folder ${entry.folder_id}` : "收件匣"}。`;
+      return `已移動 [entry ${id}] ${entry.title || "（未命名）"} → ${entry.folder_id ? `folder ${entry.folder_id}` : "待分類"}。`;
     },
   },
   {
     name: "delete_folder",
-    description: "刪除一個資料夾。不會遺失任何資料——底下的記事會搬到上一層資料夾（最上層的話搬回收件匣），子資料夾也會跟著上移一層，跟 App 裡刪除資料夾按鈕的行為完全一樣。用在清掉重複或已淨空的資料夾（例如合併後留下的空殼）。",
+    description: "刪除一個資料夾：資料夾、全部子資料夾與其中的紀錄資料包會完整移入垃圾桶，保留 60 天，可從 App 還原或手動永久刪除。行為跟 Windows 刪除資料夾及 App 按鈕一致。",
     inputSchema: {
       type: "object",
       properties: {
@@ -1510,7 +1553,7 @@ const TOOLS = [
     async handler(env, args) {
       const id = Number(args.id);
       if (!id) throw new Error("id 為必填");
-      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name FROM folders WHERE id = ?").bind(id).first();
+      const folder = await env.DB_FIELDLOG.prepare("SELECT id, name FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
       if (!folder) throw new Error(`找不到資料夾 ${id}——先用 list_fieldlog_folders 查正確的 id`);
       if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
       const u = new URL(`https://fieldlog.internal/api/folders/${id}`);
@@ -1518,8 +1561,7 @@ const TOOLS = [
       const res = await env.FIELDLOG.fetch(u.toString(), { method: "DELETE" });
       if (!res.ok) throw new Error(`刪除失敗（HTTP ${res.status}）：${await fieldlogErrorDetail(res)}`);
       const payload = await res.json().catch(() => ({}));
-      const moved = Number(payload.moved || 0);
-      return `已刪除 [folder ${id}] ${folder.name}${moved ? `，${moved} 筆記事已搬到上一層／收件匣` : "（底下沒有記事）"}。`;
+      return `已將 [folder ${id}] ${folder.name} 與完整子樹移到垃圾桶，保留 60 天。共 ${Number(payload.folder_count || 1)} 個資料夾、${Number(payload.entry_count || 0)} 筆紀錄。`;
     },
   },
   {
@@ -1535,7 +1577,10 @@ const TOOLS = [
     async handler(env, args) {
       const id = Number(args.id);
       if (!id) throw new Error("id 為必填");
-      const a = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+      const a = await env.DB_FIELDLOG.prepare(
+        `SELECT a.* FROM attachments a JOIN entries e ON e.id = a.entry_id
+         WHERE a.id = ? AND COALESCE(e.deleted_at, '') = ''`
+      ).bind(id).first();
       if (!a) throw new Error(`找不到附件 ${id}——請先用 search_fieldlog 或 list_attachments 查編號`);
       const mime = String(a.mime || "").toLowerCase().split(";")[0].trim();
       if (!mime.startsWith("image/")) {
@@ -1574,7 +1619,7 @@ const TOOLS = [
         resized = { bytes: null, mime: payload.mime_type || mime, resized: false, width: null, height: null, resizeError: err.message };
       }
       const outData = resized.resized ? bytesToBase64(resized.bytes) : payload.data;
-      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ?").bind(a.entry_id).first();
+      const e = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(a.entry_id).first();
       const dimensionNote = resized.resizeError
         ? `｜縮圖失敗（${resized.resizeError}），已回傳原圖`
         : resized.resized
@@ -1605,7 +1650,10 @@ const TOOLS = [
     async handler(env, args) {
       const id = Number(args.id);
       if (!id) throw new Error("id 為必填");
-      const a = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+      const a = await env.DB_FIELDLOG.prepare(
+        `SELECT a.* FROM attachments a JOIN entries e ON e.id = a.entry_id
+         WHERE a.id = ? AND COALESCE(e.deleted_at, '') = ''`
+      ).bind(id).first();
       if (!a) throw new Error(`找不到附件 ${id}——請先用 search_fieldlog 或 list_attachments 查編號`);
       const mime = String(a.mime || "").toLowerCase().split(";")[0].trim();
       if (!mime.startsWith("image/")) {
@@ -1661,10 +1709,69 @@ const IMAGE_PROBE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAAAq0lEQVR42u3TQQ3AIBBFQUoqgTPn1cEZVdWEiIpATDVw2ybzFPxMdq8dUTI1n5ZqTy0CBAgQIECAAAESIECAAAECBAiQAAECBAgQIECAACEABAgQIECAAAESIECAAAECBAiQAAECBAjQL7pnrFSD3j5ckBcDBEiAAAECBAgQIECABAgQIECAAAECJECAAAECBAgQIAECBAgQIECAAAESIECAAAECBAiQAJ33AWJqBSAeWKJeAAAAAElFTkSuQmCC";
 
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+const WRITE_TOOL_NAMES = new Set([
+  "create_fieldlog_entry",
+  "create_fieldlog_attachment",
+  "create_relation",
+  "add_synonym",
+  "update_folder",
+  "move_folder",
+  "move_entry",
+  "delete_folder",
+]);
+
+// ChatGPT 的 Plugin 掃描器不只讀 MCP 的 name/description/inputSchema；
+// 也會用 title 與安全 annotations 判斷工具能否成為「應用程式動作」。
+// 這些欄位集中在這裡產生，避免 27 支工具各自漏標或標示不一致。
+const TOOL_TITLES = {
+  list_wiki_pages: "列出 Wiki 條目",
+  read_wiki_page: "讀取 Wiki 條目",
+  search_wiki: "搜尋 Wiki",
+  list_fieldlog_folders: "列出隨身記資料夾",
+  list_fieldlog_entries: "列出隨身記紀錄",
+  list_attachments: "列出附件",
+  search_fieldlog: "搜尋隨身記",
+  search_fieldlog_semantic: "語意搜尋隨身記",
+  get_fieldlog_entry: "讀取隨身記紀錄",
+  get_fieldlog_attachment: "讀取附件",
+  get_related: "查詢關聯紀錄",
+  create_fieldlog_entry: "新增隨身記紀錄",
+  create_fieldlog_attachment: "新增附件",
+  create_relation: "建立紀錄關聯",
+  search_exhibitors: "搜尋 Medtec 展商",
+  get_exhibitor: "讀取 Medtec 展商",
+  search_visit_notes: "搜尋拜訪紀錄",
+  search_exhibitor_files: "搜尋展商檔案",
+  list_exhibitor_files: "列出展商檔案",
+  sync_status: "查看同步狀態",
+  add_synonym: "新增同義詞",
+  update_folder: "更新資料夾",
+  move_folder: "移動資料夾",
+  move_entry: "移動紀錄",
+  delete_folder: "刪除資料夾",
+  get_fieldlog_image: "取得隨身記圖片",
+  get_fieldlog_image_base64: "取得圖片 Base64",
+  image_probe: "檢查圖片資訊",
+};
+
+function publicToolDefinition(tool) {
+  const readOnly = !WRITE_TOOL_NAMES.has(tool.name);
+  return {
+    name: tool.name,
+    title: TOOL_TITLES[tool.name] || tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: {
+      readOnlyHint: readOnly,
+      destructiveHint: tool.name === "delete_folder",
+      openWorldHint: false,
+    },
+  };
+}
 
 // ---------- MCP JSON-RPC（stateless streamable HTTP）----------
 
-async function handleMcp(request, env) {
+async function handleMcp(request, env, auth = {}) {
   if (request.method === "GET") {
     // 不提供 SSE 串流；stateless server 回 405 即符合規範
     return json({ error: "此端點只接受 MCP POST 請求" }, 405);
@@ -1687,7 +1794,7 @@ async function handleMcp(request, env) {
       capabilities: { tools: {} },
       serverInfo: { name: "medapi-mcp", version: "1.0.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、搬資料夾、搬記事歸檔位置、刪資料夾——刪除不會遺失資料，內容會自動搬到上一層），但一樣不會動到記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " category 是「色系分組」（project／qa_reg／literature／training／admin／misc），跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，回應裡提到這兩者時不要混為一談。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
         " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。組內嵌照片的 HTML 報告請用 get_fieldlog_image_base64 拿純文字 base64，不要用 get_fieldlog_image 的圖片內容硬抄。" +
@@ -1697,13 +1804,20 @@ async function handleMcp(request, env) {
   if (method.startsWith("notifications/")) return new Response(null, { status: 202, headers: CORS_HEADERS });
   if (method === "ping") return rpcResult(id, {});
   if (method === "tools/list") {
+    const canWrite = !auth.oauth || String(auth.token?.scope || "").split(/\s+/).includes("mywiki:write");
     return rpcResult(id, {
-      tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+      tools: TOOLS
+        .filter(({ name }) => canWrite || !WRITE_TOOL_NAMES.has(name))
+        .map(publicToolDefinition),
     });
   }
   if (method === "tools/call") {
     const tool = TOOLS_BY_NAME[params?.name];
     if (!tool) return rpcError(id, -32602, `未知工具：${params?.name}`);
+    if (auth.oauth && WRITE_TOOL_NAMES.has(tool.name)
+      && !String(auth.token?.scope || "").split(/\s+/).includes("mywiki:write")) {
+      return rpcError(id, -32603, "目前 OAuth 授權只有讀取權限；請重新授權 mywiki:write 後再執行此工具");
+    }
     try {
       await ensureSynonyms(env); // 換上 D1 版同義詞表（5 分鐘快取；讀不到就退回出廠預設值）
       const out = await tool.handler(env, params?.arguments || {});
@@ -1745,25 +1859,16 @@ async function handleMcp(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const oauthResponse = await handleOAuthRoute(request, env);
+    if (oauthResponse) return oauthResponse;
     if (url.pathname === "/mcp") {
       // CORS 預檢不帶認證資訊，瀏覽器也不允許預檢回應是 401——一律放行，
       // 真正的認證在後面實際的 GET/POST 請求上做
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
-      // fail-closed：MCP_PIN 未設定時全部拒絕
-      const pin = (env.MCP_PIN || "").trim();
-      if (!pin) return unauthorized("尚未設定 MCP_PIN：請至 Worker Settings → Variables and Secrets 新增");
-      const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || bearer).trim();
-      // 「沒帶」跟「帶錯」分開講：連接器重連不上時，這一句就決定要去修 URL
-      // 還是去對 PIN 值。合在一起寫成「PIN 錯誤或未提供」等於兩邊都要試。
-      if (!given) {
-        return unauthorized("沒有帶 PIN：claude.ai 自訂連接器不能自帶 header，網址要寫成 https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>（重新連接時整條網址都要貼，只貼到 /mcp 會落在這裡）");
-      }
-      if (given !== pin) {
-        return unauthorized("PIN 不正確：對一下 Worker Settings → Variables and Secrets 裡的 MCP_PIN（注意不是 FIELD_PIN，兩者刻意不同值）");
-      }
+      const auth = await authorizeMcpRequest(request, env);
+      if (!auth.ok) return oauthUnauthorized(request, auth.reason);
       try {
-        return await handleMcp(request, env);
+        return await handleMcp(request, env, auth);
       } catch (err) {
         return rpcError(null, -32603, `伺服器錯誤：${err.message}`);
       }
@@ -1775,24 +1880,13 @@ export default {
       // 排查時分不清是「Worker 沒部署」還是「客戶端把工具清單快取住了」。
       // 工具數不是機密（README 本來就寫著），但工具名不列，不擴大暴露面。
       return new Response(
-        `medapi-mcp OK — MCP 端點在 POST /mcp（需 ?pin=）\n`
+        `medapi-mcp OK — MCP 端點在 POST /mcp（OAuth 2.1；保留 PIN 相容）\n`
         + `工具數：${TOOLS.length}\n`
         + `（連接器連不上時：先確認這裡的工具數是不是最新的，是的話就是客戶端要重新連接以更新工具清單）\n`,
         { headers: { "content-type": "text/plain; charset=utf-8", ...CORS_HEADERS } },
       );
     }
-    // 其餘路徑一律 404——尤其是 /.well-known/oauth-*：這個 MCP 只用 PIN，
-    // 不做 OAuth，若這裡誤回 200 會讓 claude.ai 誤判成「這台支援 OAuth」
-    // 進而嘗試動態註冊、失敗跳出「無法向登入服務註冊」的錯誤。
-    //
-    // body 一定要是 JSON，不能是純文字。2026-08-02 實測：Claude Code CLI 的
-    // HTTP MCP client 對 .well-known/oauth-* 做 OAuth discovery 時，拿到 404
-    // 會嘗試把 body 當 JSON 解析（OAuth 規範的錯誤回應本來就該是 JSON）。
-    // 純文字 "Not found" 解析失敗直接拋例外，整個連線判定失敗——這不是
-    // Claude Code 沒處理 no-OAuth 的情況，是它處理「格式不對的 404」失敗，
-    // 而我們能在自己這端避開，不需要對方修：
-    //   [ERROR] HTTP 404: Invalid OAuth error response: SyntaxError:
-    //   JSON Parse error: Unexpected identifier "Not". Raw body: Not found
+    // 未知路徑維持 JSON 404，讓 MCP／OAuth 客戶端能穩定解析錯誤。
     return json({ error: "not found" }, 404);
   },
 };

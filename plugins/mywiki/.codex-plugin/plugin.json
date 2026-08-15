@@ -1,0 +1,28 @@
+{
+  "name": "mywiki",
+  "version": "0.1.0",
+  "description": "Search, read, and safely manage a private MyWiki knowledge base.",
+  "author": {
+    "name": "ChiuChangRu",
+    "url": "https://github.com/ChiuChangRu"
+  },
+  "homepage": "https://fieldlog.gogoyankee.workers.dev/",
+  "repository": "https://github.com/ChiuChangRu/MedAPI",
+  "keywords": ["mywiki", "knowledge-base", "fieldlog", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "MyWiki",
+    "shortDescription": "搜尋、讀取並安全管理私人 MyWiki",
+    "longDescription": "連接私人 MyWiki，搜尋 Fieldlog、附件、Wiki 與展商資料，並以需確認的方式新增、分類、移動或刪除內容。",
+    "developerName": "ChiuChangRu",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://fieldlog.gogoyankee.workers.dev/",
+    "defaultPrompt": [
+      "幫我在 MyWiki 找到相關資料，讀取原始附件後整理答案。",
+      "列出 MyWiki 裡與這個主題相關的紀錄、附件與資料夾位置。"
+    ],
+    "brandColor": "#0F766E"
+  }
+}

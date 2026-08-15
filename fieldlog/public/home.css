@@ -68,6 +68,55 @@ body {
   gap: 12px;
 }
 
+/* 開發工具：一整列，橫向排三張連結卡，窄螢幕自動換行 */
+.toolbar-link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.toolbar-link-list .toolbar-link-card {
+  flex: 1 1 200px;
+}
+
+.toolbar-link-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fafbfa;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.toolbar-link-card:hover {
+  border-color: var(--accent);
+  background: #f2f8f7;
+}
+
+.toolbar-link-icon {
+  flex: none;
+  font-size: 18px;
+}
+
+.toolbar-link-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.toolbar-link-text strong {
+  font-size: 13.5px;
+  line-height: 1.3;
+}
+
+.toolbar-link-text small {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
 .home-search-results {
   display: grid;
   gap: 10px;
@@ -185,12 +234,6 @@ body {
   line-height: 1.35;
 }
 
-.home-input-section,
-.home-files-section,
-.home-usage-section {
-  background: #fff;
-}
-
 /* 快速輸入改為工具列，不再使用四張彩色展示卡 */
 .home-input-section .capture-grid {
   display: grid;
@@ -232,40 +275,6 @@ body {
   color: var(--text);
   font-size: 13px;
   font-weight: 600;
-}
-
-.home-section .panel {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.home-inbox-panel {
-  padding: 12px 0 0 !important;
-  border-top: 1px solid var(--border) !important;
-}
-
-.home-inbox-panel h2 {
-  margin: 0 0 9px;
-  font-size: 14px;
-}
-
-.home-files-panel {
-  padding: 0 !important;
-}
-
-.home-files-panel .folders-toolbar {
-  margin-bottom: 12px;
-}
-
-.home-files-panel .folders-toolbar h2 {
-  font-size: 14px;
-}
-
-.home-file-stack {
-  display: block;
 }
 
 .home-knowledge-card {
@@ -391,7 +400,7 @@ body {
     min-height: 42px;
   }
 
-  .home-files-panel .folders-toolbar {
-    align-items: stretch;
+  .home-toolbar-files .folders-toolbar {
+    flex-wrap: wrap;
   }
 }
