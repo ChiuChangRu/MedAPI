@@ -26,9 +26,9 @@
  * 要回各自的前台／git 人審。（外部來源的同步更新走 fieldlog worker 內部的
  * cron，不經過 MCP。）
  *
- * 驗證：POST /mcp 需帶 ?pin=（或 x-pin header／Authorization: Bearer），
- * 與 MCP_PIN（Secret）比對，未設定時一律拒絕（fail-closed）。
- * claude.ai 自訂連接器不能自帶 header，所以實際上用 ?pin= 掛在 URL 上。
+ * 驗證：ChatGPT／支援 MCP OAuth 的客戶端走 OAuth 2.1 authorization-code +
+ * PKCE；既有 ?pin=、x-pin 與 Authorization: Bearer <MCP_PIN> 保留相容。
+ * MCP_PIN 未設定時一律拒絕（fail-closed），PIN 不會寫進 OAuth 連接網址。
  *
  * 需要的 Secrets／Variables（Worker Settings → Variables and Secrets）：
  *   MCP_PIN      — 這個 MCP 端點自己的通行碼
@@ -38,6 +38,7 @@
  */
 
 import { stripPdfMetadata } from "./textFold.js";
+import { authorizeMcpRequest, handleOAuthRoute, oauthUnauthorized } from "./oauth.js";
 // 不指定 /workerd 子路徑：package.json 的 conditional exports 會依實際 runtime
 // 自動選版本——node --test（跑測試用）拿到 node 版，wrangler 部署／dev 拿到
 // workerd 版。之前指定死 /workerd 直接讓 node --test 連 import 都失敗
@@ -91,22 +92,6 @@ function json(data, status = 200, extraHeaders = {}) {
     status,
     headers: { "content-type": "application/json; charset=utf-8", ...CORS_HEADERS, ...extraHeaders },
   });
-}
-
-// 千萬不要在這裡加 WWW-Authenticate: Bearer ——2026-08-01 加過一次，直接把
-// claude.ai 的連接器弄壞了。
-//
-// RFC 7235 是說 401 該帶 WWW-Authenticate 沒錯，但 MCP 的 Authorization 規範
-// 把「看到 Bearer 這個字」當成訊號：客戶端看到就會認定「這台伺服器支援
-// OAuth」，去戳 /.well-known/oauth-authorization-server、
-// /.well-known/oauth-protected-resource 想做動態客戶端註冊。這台從頭到尾
-// 只用 PIN，沒有那些端點（故意全部 404——見下面 fetch() 裡的註解），
-// 註冊當然失敗，claude.ai 就跳「Couldn't register with sign-in service」，
-// 而且不管網址上的 PIN 對不對都會卡在這一步，比原本沒有這個 header 還糟。
-//
-// 所以錯誤說明只放在 JSON body，不透過任何 auth challenge header 傳遞。
-function unauthorized(description) {
-  return json({ error: description }, 401);
 }
 
 // 工具 handler 一律回傳字串（會被包成 text content）；需要回傳圖片等非文字內容時，
@@ -1677,10 +1662,20 @@ const IMAGE_PROBE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAAAq0lEQVR42u3TQQ3AIBBFQUoqgTPn1cEZVdWEiIpATDVw2ybzFPxMdq8dUTI1n5ZqTy0CBAgQIECAAAESIECAAAECBAiQAAECBAgQIECAACEABAgQIECAAAESIECAAAECBAiQAAECBAjQL7pnrFSD3j5ckBcDBEiAAAECBAgQIECABAgQIECAAAECJECAAAECBAgQIAECBAgQIECAAAESIECAAAECBAiQAJ33AWJqBSAeWKJeAAAAAElFTkSuQmCC";
 
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
+const WRITE_TOOL_NAMES = new Set([
+  "create_fieldlog_entry",
+  "create_fieldlog_attachment",
+  "create_relation",
+  "add_synonym",
+  "update_folder",
+  "move_folder",
+  "move_entry",
+  "delete_folder",
+]);
 
 // ---------- MCP JSON-RPC（stateless streamable HTTP）----------
 
-async function handleMcp(request, env) {
+async function handleMcp(request, env, auth = {}) {
   if (request.method === "GET") {
     // 不提供 SSE 串流；stateless server 回 405 即符合規範
     return json({ error: "此端點只接受 MCP POST 請求" }, 405);
@@ -1713,13 +1708,20 @@ async function handleMcp(request, env) {
   if (method.startsWith("notifications/")) return new Response(null, { status: 202, headers: CORS_HEADERS });
   if (method === "ping") return rpcResult(id, {});
   if (method === "tools/list") {
+    const canWrite = !auth.oauth || String(auth.token?.scope || "").split(/\s+/).includes("mywiki:write");
     return rpcResult(id, {
-      tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+      tools: TOOLS
+        .filter(({ name }) => canWrite || !WRITE_TOOL_NAMES.has(name))
+        .map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
     });
   }
   if (method === "tools/call") {
     const tool = TOOLS_BY_NAME[params?.name];
     if (!tool) return rpcError(id, -32602, `未知工具：${params?.name}`);
+    if (auth.oauth && WRITE_TOOL_NAMES.has(tool.name)
+      && !String(auth.token?.scope || "").split(/\s+/).includes("mywiki:write")) {
+      return rpcError(id, -32603, "目前 OAuth 授權只有讀取權限；請重新授權 mywiki:write 後再執行此工具");
+    }
     try {
       await ensureSynonyms(env); // 換上 D1 版同義詞表（5 分鐘快取；讀不到就退回出廠預設值）
       const out = await tool.handler(env, params?.arguments || {});
@@ -1761,25 +1763,16 @@ async function handleMcp(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const oauthResponse = await handleOAuthRoute(request, env);
+    if (oauthResponse) return oauthResponse;
     if (url.pathname === "/mcp") {
       // CORS 預檢不帶認證資訊，瀏覽器也不允許預檢回應是 401——一律放行，
       // 真正的認證在後面實際的 GET/POST 請求上做
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
-      // fail-closed：MCP_PIN 未設定時全部拒絕
-      const pin = (env.MCP_PIN || "").trim();
-      if (!pin) return unauthorized("尚未設定 MCP_PIN：請至 Worker Settings → Variables and Secrets 新增");
-      const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || bearer).trim();
-      // 「沒帶」跟「帶錯」分開講：連接器重連不上時，這一句就決定要去修 URL
-      // 還是去對 PIN 值。合在一起寫成「PIN 錯誤或未提供」等於兩邊都要試。
-      if (!given) {
-        return unauthorized("沒有帶 PIN：claude.ai 自訂連接器不能自帶 header，網址要寫成 https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>（重新連接時整條網址都要貼，只貼到 /mcp 會落在這裡）");
-      }
-      if (given !== pin) {
-        return unauthorized("PIN 不正確：對一下 Worker Settings → Variables and Secrets 裡的 MCP_PIN（注意不是 FIELD_PIN，兩者刻意不同值）");
-      }
+      const auth = await authorizeMcpRequest(request, env);
+      if (!auth.ok) return oauthUnauthorized(request, auth.reason);
       try {
-        return await handleMcp(request, env);
+        return await handleMcp(request, env, auth);
       } catch (err) {
         return rpcError(null, -32603, `伺服器錯誤：${err.message}`);
       }
@@ -1791,24 +1784,13 @@ export default {
       // 排查時分不清是「Worker 沒部署」還是「客戶端把工具清單快取住了」。
       // 工具數不是機密（README 本來就寫著），但工具名不列，不擴大暴露面。
       return new Response(
-        `medapi-mcp OK — MCP 端點在 POST /mcp（需 ?pin=）\n`
+        `medapi-mcp OK — MCP 端點在 POST /mcp（OAuth 2.1；保留 PIN 相容）\n`
         + `工具數：${TOOLS.length}\n`
         + `（連接器連不上時：先確認這裡的工具數是不是最新的，是的話就是客戶端要重新連接以更新工具清單）\n`,
         { headers: { "content-type": "text/plain; charset=utf-8", ...CORS_HEADERS } },
       );
     }
-    // 其餘路徑一律 404——尤其是 /.well-known/oauth-*：這個 MCP 只用 PIN，
-    // 不做 OAuth，若這裡誤回 200 會讓 claude.ai 誤判成「這台支援 OAuth」
-    // 進而嘗試動態註冊、失敗跳出「無法向登入服務註冊」的錯誤。
-    //
-    // body 一定要是 JSON，不能是純文字。2026-08-02 實測：Claude Code CLI 的
-    // HTTP MCP client 對 .well-known/oauth-* 做 OAuth discovery 時，拿到 404
-    // 會嘗試把 body 當 JSON 解析（OAuth 規範的錯誤回應本來就該是 JSON）。
-    // 純文字 "Not found" 解析失敗直接拋例外，整個連線判定失敗——這不是
-    // Claude Code 沒處理 no-OAuth 的情況，是它處理「格式不對的 404」失敗，
-    // 而我們能在自己這端避開，不需要對方修：
-    //   [ERROR] HTTP 404: Invalid OAuth error response: SyntaxError:
-    //   JSON Parse error: Unexpected identifier "Not". Raw body: Not found
+    // 未知路徑維持 JSON 404，讓 MCP／OAuth 客戶端能穩定解析錯誤。
     return json({ error: "not found" }, 404);
   },
 };

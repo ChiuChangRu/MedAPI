@@ -150,48 +150,28 @@ fetch() 打同帳號下另一個 workers.dev Worker**（會拿到 404，即使�
 3. **驗證**：瀏覽器開 `https://medapi-mcp.<帳號>.workers.dev/` 看到
    「medapi-mcp OK」即部署成功
 
-## 接上 claude.ai（自訂連接器）
+## 接上 ChatGPT／Claude（OAuth 2.1）
 
-> ⚠️ **2026-08-02 確認：claude.ai 網頁版「一般對話」的自訂連接器，對這種
-> PIN-only（不做 OAuth）的伺服器連不上，而且沒有伺服器端能做的修法。**
->
-> claude.ai 的「Add custom connector」流程，對任何自訂連接器都會**無條件**
-> 嘗試 OAuth 動態客戶端註冊（RFC 7591），不管伺服器有沒有宣告支援 OAuth。
-> 這台伺服器故意不做 OAuth（見下方「連接器連不上」一節），註冊當然失敗，
-> 跳出「Couldn't register with sign-in service」。這不是我們這邊能修的：
-> Anthropic 官方倉庫有完全相同症狀的回報（伺服器公開、無需認證、
-> ChatGPT／Claude Code 都連得上，只有 claude.ai 網頁連不上，對方甚至做了
-> 一套完整 OAuth 依然失敗），**已被 Anthropic 關閉並標記「not planned」**
-> ——是已知、刻意的平台行為：
-> <https://github.com/anthropics/claude-ai-mcp/issues/457>
->
-> **目前唯一確認可行的路是用 Claude Code**（CLI 或 claude.ai/code 網頁版），
-> 見下方指令。claude.ai 網頁版的「static_headers」beta 功能理論上能跳過
-> OAuth，但那是 organization administrator 層級的功能，一般帳號不一定看
-> 得到，且社群回報這個功能本身還不穩定
-> （<https://github.com/anthropics/claude-ai-mcp/issues/644>、
-> <https://github.com/anthropics/claude-ai-mcp/issues/685>）。
+> 目前正式支援 OAuth 2.1 動態用戶端註冊（DCR）與 S256 PKCE。新連線只需
+> 使用乾淨的 `/mcp` URL；瀏覽器顯示 MyWiki 授權頁後才輸入 `MCP_PIN`。
+> PIN 不會放在網址，也不會交給 ChatGPT／Claude。下方舊 PIN 說明僅保留給
+> 尚未改用 OAuth 的既有自動化客戶端。
 
-1. claude.ai → Settings → Connectors → **Add custom connector**
-2. URL 填：
-   ```
-   https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>
-   ```
-   （claude.ai 的自訂連接器不能自帶 header，所以 PIN 掛在 URL 上；
-   這條 URL 等同鑰匙，**不要分享給別人**）
-3. 之後在對話裡就能直接問：「幫我查展商裡做親水塗層的」「上次實驗
+1. ChatGPT／Claude → Settings → Connectors → **Add custom connector**
+2. URL 填 `https://medapi-mcp.<帳號>.workers.dev/mcp`。
+3. 驗證選 OAuth，客戶端註冊選 DCR；開啟授權頁後才輸入 `MCP_PIN`。
+4. 之後在對話裡就能直接問：「幫我查展商裡做親水塗層的」「上次實驗
    紀錄裡提到的固化溫度是多少」「wiki 的抗結痂條目現在寫到哪」
 
-**claude.ai 網頁版一般對話目前連不上，改用 Claude Code**：
+Claude Code 也可直接走 OAuth：
 
 ```bash
 claude mcp add --transport http medapi \
-  "https://medapi-mcp.<帳號>.workers.dev/mcp?pin=<你的MCP_PIN>"
+  "https://medapi-mcp.<帳號>.workers.dev/mcp"
 ```
 
 裝在哪一台機器上，就在那台的 Claude Code（CLI 或 claude.ai/code 網頁版）
-裡問得到。同一個網址、同一個 PIN，跟一般對話用的是同一支 MCP server，
-差別只在「哪個介面能連上」。
+裡問得到，瀏覽器會開啟同一個 MyWiki OAuth 授權頁。
 
 **接 ChatGPT／GPT** 的連接器設定步驟與完整工具清單見 [`CONNECT-GPT.md`](./CONNECT-GPT.md)。
 
@@ -207,11 +187,13 @@ claude mcp add --transport http medapi \
 | 新的數字 | Worker 已是新版，**客戶端把工具清單快取住了** | 在 claude.ai 把連接器**中斷再重新連接**；MCP 客戶端不會自動發現新工具 |
 | 頁面打不開 | Worker 掛了或網址錯 | 對一下網址；Worker 真的掛了看 Deployments 的錯誤 |
 
-**401 的兩種訊息不一樣，照著做就好**（2026-08-01 之前兩種合成一句「PIN 錯誤或未提供」，看到的人兩邊都要試）：
+**OAuth 401 的處理方式**：401 會帶標準 `WWW-Authenticate` challenge，客戶端
+據此讀取 discovery 並開始 DCR／PKCE。授權頁若說 PIN 錯誤，請檢查
+`MCP_PIN`（不是 `FIELD_PIN`）。既有自動化仍可暫時使用 PIN 相容模式。
 
-- 「沒有帶 PIN」→ **網址少了 `?pin=`**。這是重新連接時最常見的失敗：claude.ai 的自訂連接器不能自帶 header，PIN 是掛在 URL 上的，整條網址都要貼完整，只貼到 `/mcp` 就會落在這裡。
-- 「PIN 不正確」→ 值對不上。注意是 `MCP_PIN`，不是 `FIELD_PIN`，兩者刻意不同值。
-
+> 歷史註記：過去伺服器尚未實作 OAuth 時，401 不能帶 `WWW-Authenticate`；
+> 現在 discovery、DCR、PKCE 與 token 端點均已完整實作，所以必須帶此 header。
+<!--
 > ⚠️ 401 **絕對不能**帶 `WWW-Authenticate` header（連 `Bearer` 這個字都不行）。
 > 2026-08-01 為了「符合 RFC 7235」加過一次，結果直接把連接器弄壞：claude.ai
 > 看到 `Bearer` 會判定「這台支援 OAuth」，去戳 `/.well-known/oauth-*` 想做
@@ -223,10 +205,13 @@ claude mcp add --transport http medapi \
 > `/.well-known/oauth-*` 一律回 404 也是**刻意的**：同一個原因，這台只用
 > PIN、不做 OAuth，這裡若誤回 200 會是另一條讓 claude.ai 誤判成支援 OAuth
 > 的路。
+-->
 
 ## 安全設計
 
 - **fail-closed**：`MCP_PIN` 未設定時所有請求一律 401
+- OAuth 授權碼五分鐘到期且只能用一次；access token 一小時到期，refresh token
+  30 天到期；redirect URI 精確比對，並具備 S256 PKCE、CSRF 防護與 PIN 嘗試限流
 - PIN 接受三種帶法：`?pin=`／`x-pin` header／`Authorization: Bearer`
 - 對 fieldlog 與 medtec 的 D1 幾乎全是唯讀存取（程式碼層面約束，只有
   SELECT）；`create_fieldlog_entry`／`create_relation`／`add_synonym` 是
