@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "111";
+const APP_VERSION = "112";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -193,6 +193,38 @@ async function api(path, options = {}) {
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// 後端 now() 存的是 UTC（"YYYY-MM-DD HH:MM:SSZ"），畫面一律要轉台北時間再顯示，
+// 不能直接切字串——半夜 0~8 點建立的記事切字串會顯示成前一天的日期。
+function taipeiParts(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute"), second: get("second") };
+}
+
+/** "2026-08-10" */
+function localDate(iso) {
+  const p = taipeiParts(iso);
+  return p ? `${p.year}-${p.month}-${p.day}` : "";
+}
+
+/** "08-13 22:19" —— 資料夾／記事清單常用的精簡格式 */
+function localDateTimeShort(iso) {
+  const p = taipeiParts(iso);
+  return p ? `${p.month}-${p.day} ${p.hour}:${p.minute}` : "";
+}
+
+/** "2026-08-13 22:19:05" —— 記事詳情、履歷這類需要看完整時間的地方 */
+function localDateTime(iso) {
+  const p = taipeiParts(iso);
+  return p ? `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}` : "";
 }
 
 function isPdfAtt(a) {
@@ -717,7 +749,7 @@ function renderFolders() {
         <span class="folder-type-group">${f.parent_id ? "📁" : "📂"} <span class="folder-type">${esc(f.type)}</span></span>
         <span class="folder-name">${esc(f.name)}</span>
         <span class="folder-count">${f.entry_count} 筆記事${childCount ? `｜${childCount} 個子資料夾` : ""}</span>
-        <span class="folder-date">建立於 ${esc((f.created_at || "").slice(0, 10))}</span>
+        <span class="folder-date">建立於 ${esc(localDate(f.created_at))}</span>
       </div>
       <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
       <div class="folder-menu" hidden>
@@ -1033,8 +1065,8 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
       ? `<span class="entry-ai-chip failed" title="${esc(e.auto_filed_reason || "AI 判斷不出來")}">🤖 待人工</span>`
       : "";
   const dateLabel = showRecency
-    ? `${e.updated_at ? "動過" : "建立"} ${esc(String(e.updated_at || e.created_at || "").slice(5, 16))}`
-    : esc(String(e.created_at || "").slice(5, 16));
+    ? `${e.updated_at ? "動過" : "建立"} ${esc(localDateTimeShort(e.updated_at || e.created_at))}`
+    : esc(localDateTimeShort(e.created_at));
   return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
@@ -1500,7 +1532,7 @@ function folderFileHtml(a, entryId) {
   return `<div class="folder-file-row explorer-item" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}">
     <span class="folder-file-icon" title="拖曳到上方子資料夾">${icon}</span>
     ${nameLink}
-    <span class="folder-file-meta">${esc((a.created_at || "").slice(5, 16))}</span>
+    <span class="folder-file-meta">${esc(localDateTimeShort(a.created_at))}</span>
     <button class="folder-file-delete" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="刪除這份檔案" aria-label="刪除這份檔案">🗑</button>
     <button class="folder-file-manage" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="管理這一份檔案" aria-label="管理這一份檔案">⋯</button>
   </div>`;
@@ -1659,7 +1691,7 @@ function recordGroupCardHtml(e, atts) {
   return `<div class="record-group-card explorer-item" data-id="${e.id}">
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
-    <small>${esc((e.created_at || "").slice(5, 16))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
+    <small>${esc(localDateTimeShort(e.created_at))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
     <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
     <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>
   </div>`;
@@ -2060,7 +2092,7 @@ async function openEntry(id) {
     <div class="detail-head">
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
     </div>
-    <p class="sub">${esc(e.created_at)}｜${folder ? esc(folder.name) : "⏳ 待分類"}</p>
+    <p class="sub">${esc(localDateTime(e.created_at))}｜${folder ? esc(folder.name) : "⏳ 待分類"}</p>
     <section class="merged-transcript ${mergedTranscript ? "" : "empty"}">
       <div><strong>📝 合併逐字稿</strong><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>複製</button></div>
       ${mergedTranscript
@@ -2577,8 +2609,8 @@ async function loadProvenance(entry) {
   if (origin.warn) rows.push(`<p class="prov-orphan">${esc(origin.warn)}</p>`);
 
   rows.push(`<div class="prov-line"><span class="prov-key">資料庫編號</span><span>entry ${entry.id}${entry.folder_id ? `／folder ${entry.folder_id}` : "（待分類）"}</span></div>`);
-  rows.push(`<div class="prov-line"><span class="prov-key">建立</span><span>${esc(entry.created_at || "—")}</span></div>`);
-  rows.push(`<div class="prov-line"><span class="prov-key">最後更新</span><span>${esc(entry.updated_at || "未曾更新")}</span></div>`);
+  rows.push(`<div class="prov-line"><span class="prov-key">建立</span><span>${esc(entry.created_at ? localDateTime(entry.created_at) : "—")}</span></div>`);
+  rows.push(`<div class="prov-line"><span class="prov-key">最後更新</span><span>${esc(entry.updated_at ? localDateTime(entry.updated_at) : "未曾更新")}</span></div>`);
 
   for (const [k, v] of internal) {
     const shown = k === "_content_hash" ? `${String(v).slice(0, 12)}…` : String(v);
@@ -2622,7 +2654,7 @@ async function loadProvenance(entry) {
     : history.length
       ? `<details class="ai-fold"><summary class="prov-sub">操作履歷（${history.length} 筆，新到舊，只增不刪）</summary>
          <ul class="prov-history">${history.map((h) =>
-           `<li><span class="prov-mono">${esc(h.created_at)}</span> <strong>${esc(h.action)}</strong>${h.detail ? `：${esc(h.detail)}` : ""}</li>`
+           `<li><span class="prov-mono">${esc(localDateTime(h.created_at))}</span> <strong>${esc(h.action)}</strong>${h.detail ? `：${esc(h.detail)}` : ""}</li>`
          ).join("")}</ul></details>`
       : `<h4 class="prov-sub">操作履歷</h4><p class="sub">沒有履歷紀錄（這筆可能建立於履歷功能之前）。</p>`;
 
@@ -3052,7 +3084,7 @@ async function openFileDetail(entryId, attachmentId) {
       <p class="file-category-current" id="file-category-current">讀取分類中…</p>
       <p class="sub"><button class="btn small ghost" id="file-category-manage" type="button">⚙️ 管理分類（新增／刪除選項）</button></p>
     </div>
-    <p class="sub">${esc(attachment.created_at || entry.created_at || "")}${CURRENT_FOLDER ? `｜${esc(CURRENT_FOLDER.name)}` : ""}</p>
+    <p class="sub">${esc(localDateTime(attachment.created_at || entry.created_at))}${CURRENT_FOLDER ? `｜${esc(CURRENT_FOLDER.name)}` : ""}</p>
     ${originalName}
     <div class="file-note-box">
       <label for="file-note">Note 文字（只屬於這一份檔案）</label>
@@ -3275,7 +3307,7 @@ function attHtml(a, siblings) {
   // 那支檔案載入後會掛上 window.fieldlogOpenPdfEditor；還沒載入完就先不顯示這個入口。
   const doodleBit = isPdfAtt(a) ? `<a href="#" class="att-pdf-doodle" data-id="${a.id}">✍️ 塗鴉</a>` : "";
   return `<div class="att-item" data-id="${a.id}" data-ocr="${esc(a.ocr_text || "")}">
-    <div class="att-meta">${esc(a.created_at.slice(5, 16))} ${offset}
+    <div class="att-meta">${esc(localDateTimeShort(a.created_at))} ${offset}
       ${doodleBit}<a href="#" class="att-delete" data-id="${a.id}">刪除</a>
     </div>
     ${preview}${originalName}${ocrBit}${transcribeBit}${tier2Bit}
