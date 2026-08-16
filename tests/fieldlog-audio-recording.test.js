@@ -130,11 +130,11 @@ test("回前台重建時先開始新 recorder，再延遲停止舊 recorder", ()
     "舊 recorder 要延遲到重疊時間後才停止");
 });
 
-test("pagehide 進入 bfcache 時不能停止錄音，真正離頁則先由 beforeunload 警告", () => {
+test("pagehide 不得停止背景錄音；真正離頁由 beforeunload 先警告", () => {
   const hide = app.match(/function onPageHide\(event\)[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(hide, /if \(event\.persisted\)[\s\S]*onPageHidden\(\);[\s\S]*return;/,
-    "bfcache 只是凍結，不能當成真正關頁");
-  assert.match(hide, /stopAnyActiveCapture\(\)/, "真正卸載仍要嘗試收尾");
+  assert.match(hide, /onPageHidden\(\)/, "pagehide 應先要求錄音資料切片保存");
+  assert.doesNotMatch(hide, /stopAnyActiveCapture\(\)/,
+    "手機切換 App 或瀏覽器凍結也可能送出 pagehide，不可因此結束錄音");
   assert.doesNotMatch(app, /addEventListener\("pagehide", stopAnyActiveCapture\)/,
     "pagehide 不可再無條件停止所有採集");
   assert.match(app, /addEventListener\("beforeunload", guardRecordingNavigation\)/,

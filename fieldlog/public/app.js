@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "112";
+const APP_VERSION = "113";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -4244,7 +4244,7 @@ async function audioPhotoSnap() {
 
 // 切到別的分頁/App（頁面隱藏）：錄影要用鏡頭、背景無法運作，維持自動結束存檔；
 // 純錄音則「不結束」，繼續在背景錄——Android 真的會繼續，iOS 系統會暫停但回前台
-// 自動接續、切走前錄的都保住。頁面「真的卸載」（pagehide）才把錄音收尾存檔。
+// 自動接續、切走前錄的都保住。真正離開頁面前由 beforeunload 警告使用者。
 function onPageHidden() {
   if (VIDEO) { VIDEO.autoStopped = true; stopVideo(); }
   if (AUDIO && !AUDIO.ending) {
@@ -4262,15 +4262,11 @@ function stopAnyActiveCapture() {
   if (AUDIO_PHOTO_STREAM) closeAudioPhotoPopup();
 }
 
-// pagehide 不等於「頁面一定被關閉」：進入 back/forward cache 時 persisted=true，
-// 頁面只是凍結，之後還會 pageshow 回來。舊程式無條件 stopAnyActiveCapture，造成
-// 部分瀏覽器只是切換頁面狀態就被 Mywiki 自己結束錄音。
+// pagehide 不是可靠的「真正關頁」訊號：手機切換 App、分頁凍結或記憶體回收前
+// 都可能送出，而且 persisted 在各瀏覽器生命週期中並不一致。這裡只切出目前資料，
+// 不主動 stopAudio；否則使用者只是把 Mywiki 放到背景，錄音就會被網頁自己終止。
 function onPageHide(event) {
-  if (event.persisted) {
-    onPageHidden();
-    return;
-  }
-  stopAnyActiveCapture();
+  onPageHidden();
 }
 
 // 真正用同一個頁籤離開 Mywiki 時，網頁不可能在文件被銷毀後繼續使用麥克風。
