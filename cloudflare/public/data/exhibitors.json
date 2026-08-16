@@ -149,7 +149,7 @@
     },
     {
       "id": "ex-0002",
-      "name_zh": "廣東泰迡斯精密裝置有限公司",
+      "name_zh": "廣東泰迡斯精密設備有限公司",
       "name_en": "Guangdong Tainisi Precision Equipment CO LTD",
       "booth_no": "N3-C212",
       "hall": "N3",
@@ -510,7 +510,7 @@
     },
     {
       "id": "ex-0018",
-      "name_zh": "常州憶隆資訊科技有限公司",
+      "name_zh": "常州憶隆信息科技有限公司",
       "name_en": "Changzhou Elong Information Technology CO LTD",
       "booth_no": "N4-B502",
       "hall": "N4",
@@ -1443,7 +1443,7 @@
     },
     {
       "id": "ex-0060",
-      "name_zh": "邁得醫療工業裝置股份有限公司",
+      "name_zh": "邁得醫療工業設備股份有限公司",
       "name_en": "Maider Medical Industry Equipment CO LTD",
       "booth_no": "N3-D202",
       "hall": "N3",
@@ -1533,7 +1533,7 @@
     },
     {
       "id": "ex-0064",
-      "name_zh": "上海久羅機電裝置有限公司",
+      "name_zh": "上海久羅機電設備有限公司",
       "name_en": "Shanghai Jiuluo Mechanical AND Electrical Equipment LTD",
       "booth_no": "N4-B102",
       "hall": "N4",
@@ -1784,7 +1784,7 @@
     },
     {
       "id": "ex-0075",
-      "name_zh": "廣州博倫泰克醫療裝置有限公司",
+      "name_zh": "廣州博倫泰克醫療設備有限公司",
       "name_en": "Guangzhou Balloontec CO LTD",
       "booth_no": "N3-D602",
       "hall": "N3",
@@ -1920,7 +1920,7 @@
     },
     {
       "id": "ex-0081",
-      "name_zh": "辰邦醫療裝置(上海)有限公司",
+      "name_zh": "辰邦醫療設備(上海)有限公司",
       "name_en": "Chenbang Medical Equipment (shanghai) CO LTD",
       "booth_no": "N3-D102",
       "hall": "N3",
@@ -3299,7 +3299,7 @@
       "id": "ex-0143",
       "name_zh": "蘇州沃貝得無塵材料有限公司",
       "name_en": "SuZhou Well-better Clean Materials Co., Ltd",
-      "booth_no": "N4-C308",
+      "booth_no": "N4-C102",
       "hall": "N4",
       "country": "中國",
       "category": "cat-13",
@@ -3316,7 +3316,7 @@
         "https://image.imconlinereg.com/mm-mtc/2026-07-06/4E708BB78D4EB4E719A16E7E1A8119A1.pdf"
       ],
       "photo": "https://image.imconlinereg.com/mm-mtc/2026-07-06/CD108C35819C4578B36E71988ACEF604.jpg",
-      "in_directory": false
+      "in_directory": true
     },
     {
       "id": "ex-0144",
@@ -6257,7 +6257,7 @@
     },
     {
       "id": "ex-0275",
-      "name_zh": "深圳北誠自動化裝置有限公司",
+      "name_zh": "深圳北誠自動化設備有限公司",
       "name_en": "Shenzhen Beicheng Automation Equipment CO LTD",
       "booth_no": "N3-D001",
       "hall": "N3",
@@ -6370,7 +6370,7 @@
     },
     {
       "id": "ex-0280",
-      "name_zh": "北京希來科網路技術有限公司",
+      "name_zh": "北京希來科網絡技術有限公司",
       "name_en": "Silex Technology China INC",
       "booth_no": "N1-H807",
       "hall": "N1",
@@ -6866,7 +6866,7 @@
     },
     {
       "id": "ex-0303",
-      "name_zh": "廣東翔鵬機械裝置有限公司",
+      "name_zh": "廣東翔鵬機械設備有限公司",
       "name_en": "Guangdong Chongpong Machinery CO LTD",
       "booth_no": "N3-B106",
       "hall": "N3",
@@ -6973,7 +6973,7 @@
     },
     {
       "id": "ex-0308",
-      "name_zh": "崑山質子雷射裝置有限公司",
+      "name_zh": "崑山質子激光設備有限公司",
       "name_en": "Kunshan Proton Laser Equipment CO LTD",
       "booth_no": "N3-C802",
       "hall": "N3",
@@ -7557,7 +7557,7 @@
     },
     {
       "id": "ex-0335",
-      "name_zh": "上海億坦機電裝置有限公司",
+      "name_zh": "上海億坦機電設備有限公司",
       "name_en": "Shanghai Yitan Electrical CO LTD",
       "booth_no": "N1-A406",
       "hall": "N1",
@@ -8050,9 +8050,9 @@
     },
     {
       "id": "ex-0357",
-      "name_zh": "蘇州鐳揚雷射科技有限公司",
+      "name_zh": "蘇州鐳揚激光科技有限公司",
       "name_en": "Suzhou Toflylaser Technology Co.,Ltd",
-      "booth_no": "N1-A515",
+      "booth_no": "N1-F302",
       "hall": "N1",
       "country": "中國",
       "category": "cat-14",
@@ -8066,7 +8066,7 @@
       "website": "https://www.toflylaser.com",
       "directory_url": "https://exhibitors.informamarkets-info.com/event/2026Medtec/en-US/exhibitor/467352/suzhou-toflylaser-technology-co-ltd",
       "pdfs": [],
-      "in_directory": false
+      "in_directory": true
     },
     {
       "id": "ex-0358",
@@ -8363,7 +8363,7 @@
     },
     {
       "id": "ex-0371",
-      "name_zh": "天津瑞科美和雷射工業有限公司",
+      "name_zh": "天津瑞科美和激光工業有限公司",
       "name_en": "Tianjin PM Laser Industries CO LTD (fsp Group)",
       "booth_no": "N1-C402",
       "hall": "N1",
@@ -8716,7 +8716,7 @@
     },
     {
       "id": "ex-0387",
-      "name_zh": "上海佳湖焊接裝置有限公司",
+      "name_zh": "上海佳湖焊接設備有限公司",
       "name_en": "Shanghai Jiahu Welding Equipment CO LTD",
       "booth_no": "N4-C401",
       "hall": "N4",
@@ -9070,7 +9070,7 @@
     },
     {
       "id": "ex-0403",
-      "name_zh": "蘇州盛德偉業資訊科技有限公司",
+      "name_zh": "蘇州盛德偉業信息科技有限公司",
       "name_en": "Suzhou Thunder Weiye Information Technology CO LTD",
       "booth_no": "N4-B309",
       "hall": "N4",
@@ -9266,7 +9266,7 @@
     },
     {
       "id": "ex-0412",
-      "name_zh": "亞亮機械裝置（佛山）有限公司",
+      "name_zh": "亞亮機械設備（佛山）有限公司",
       "name_en": "Yaliang Machinery Equipment (foshan) CO LTD",
       "booth_no": "N2-A808",
       "hall": "N2",
@@ -9616,7 +9616,7 @@
     },
     {
       "id": "ex-0428",
-      "name_zh": "上海百贏寬機電裝置有限公司",
+      "name_zh": "上海百贏寬機電設備有限公司",
       "name_en": "Shanghai B Y K M E Equipment CO LTD",
       "booth_no": "N1-A307",
       "hall": "N1",
@@ -10132,7 +10132,7 @@
     },
     {
       "id": "ex-0452",
-      "name_zh": "威猛巴頓菲爾機械裝置（上海）有限公司",
+      "name_zh": "威猛巴頓菲爾機械設備（上海）有限公司",
       "name_en": "Wittmann Battenfeld (shanghai) CO LTD",
       "booth_no": "N3-C302",
       "hall": "N3",
@@ -10151,7 +10151,7 @@
     },
     {
       "id": "ex-0453",
-      "name_zh": "上海三克雷射科技有限公司",
+      "name_zh": "上海三克激光科技有限公司",
       "name_en": "Shanghai 3K Laser Technology CO LTD",
       "booth_no": "N1-C701",
       "hall": "N1",
@@ -11663,7 +11663,7 @@
     },
     {
       "id": "ex-0522",
-      "name_zh": "蘇州銳方雷射科技有限公司",
+      "name_zh": "蘇州銳方激光科技有限公司",
       "name_en": "Suzhou Ruifang Lazer Technology CO LTD",
       "booth_no": "N2-F509",
       "hall": "N2",
@@ -12623,7 +12623,7 @@
     },
     {
       "id": "ex-0566",
-      "name_zh": "濟南眾測機電裝置有限公司",
+      "name_zh": "濟南眾測機電設備有限公司",
       "name_en": "Pubtester Instruments CO LTD",
       "booth_no": "N4-D212",
       "hall": "N4",
@@ -12841,7 +12841,7 @@
     },
     {
       "id": "ex-0576",
-      "name_zh": "杭州馳飛超聲波裝置有限公司",
+      "name_zh": "杭州馳飛超聲波設備有限公司",
       "name_en": "Cheersonic Ultrasonics CO LTD",
       "booth_no": "N3-B607",
       "hall": "N3",
@@ -16270,7 +16270,7 @@
       "id": "ex-0761",
       "name_zh": "欧谱特激光系统有限公司",
       "name_en": "Optek Systems",
-      "booth_no": "N1-A802",
+      "booth_no": "N1-C201",
       "hall": "N1",
       "country": "CHINA",
       "category": "cat-15",
@@ -18707,6 +18707,150 @@
       "pdfs": [],
       "in_directory": true,
       "photo": "https://exhibitors.informamarkets-info.com/layout-Fresh/assets/images/ads/Medtec/medtec2025_en2.jpg"
+    },
+    {
+      "id": "ex-0898",
+      "name_zh": "東莞市新美奧金屬製品有限公司",
+      "name_en": "Dongguan Xinmeiao Metal Products Co., Ltd.",
+      "booth_no": "N1-B709",
+      "hall": "N1",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
+    },
+    {
+      "id": "ex-0899",
+      "name_zh": "江蘇鉅德鼎電氣股份有限公司",
+      "name_en": "Jiangsu Judeding Electric Co., Ltd.",
+      "booth_no": "N1-D901",
+      "hall": "N1",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
+    },
+    {
+      "id": "ex-0900",
+      "name_zh": "蘇州海慧醫療科技有限公司",
+      "name_en": "Suzhou Haihui Medical Technology Co., Ltd.",
+      "booth_no": "N1-G206",
+      "hall": "N1",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
+    },
+    {
+      "id": "ex-0901",
+      "name_zh": "溫州針情科技有限公司",
+      "name_en": "",
+      "booth_no": "N1-A515",
+      "hall": "N1",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
+    },
+    {
+      "id": "ex-0902",
+      "name_zh": "寧波邁巴赫工程塑料有限公司",
+      "name_en": "Ningbo MBH Engineering Plastic Co, ltd.",
+      "booth_no": "N2-H205",
+      "hall": "N2",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
+    },
+    {
+      "id": "ex-0903",
+      "name_zh": "深圳市昀通電子科技有限公司",
+      "name_en": "Shenzhen Aventk Electronic Technology Co., Ltd.",
+      "booth_no": "N2-B607",
+      "hall": "N2",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
+    },
+    {
+      "id": "ex-0904",
+      "name_zh": "珠海圓尚醫療科技有限公司",
+      "name_en": "Zhuhai Yuanshang Medical Technology Co., Ltd.",
+      "booth_no": "N2-F505",
+      "hall": "N2",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
+    },
+    {
+      "id": "ex-0905",
+      "name_zh": "丁思高普精密醫療器械( 蘇州) 有限公司",
+      "name_en": "Ding'Scope MEDICAL SYSTEM",
+      "booth_no": "N3-A108",
+      "hall": "N3",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
+    },
+    {
+      "id": "ex-0906",
+      "name_zh": "嘉興市科邦醫用包裝有限公司",
+      "name_en": "JIAXING KEBANG MEDICAL PACKING CO., LTD.",
+      "booth_no": "N4-B105",
+      "hall": "N4",
+      "country": "CHINA",
+      "category": "cat-00",
+      "tags": [],
+      "description": "",
+      "products": [],
+      "website": "",
+      "directory_url": "",
+      "pdfs": [],
+      "in_directory": true
     }
   ]
 }
