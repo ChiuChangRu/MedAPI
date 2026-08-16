@@ -199,7 +199,10 @@ export class EmbeddingWorkflow extends WorkflowEntrypoint {
         const chunk = chunks[i];
         const vectorId = kind === "entry" ? `entry-${id}` : `att-${id}-${i}`;
         const embedded = await step.do(`embed-${vectorId}`, async () => {
-          const result = await this.env.AI.run("@cf/baai/bge-m3", { text: chunk });
+          // 一定要走 budgetedAi()：專案的 AI 費用保護（AI Gateway + spend limit）
+          // 全靠這層，直接呼叫 env.AI.run() 等於整批向量化都在保護範圍外跑，
+          // 量一大就會擠掉錄音轉逐字稿等其他 AI 呼叫的額度。
+          const result = await budgetedAi(this.env).run("@cf/baai/bge-m3", { text: chunk });
           return result.data[0];
         });
         vectors.push({
@@ -835,7 +838,7 @@ async function handleApi(request, env, url) {
 
     let queryVector;
     try {
-      const embedded = await env.AI.run("@cf/baai/bge-m3", { text: q.slice(0, 2000) });
+      const embedded = await budgetedAi(env).run("@cf/baai/bge-m3", { text: q.slice(0, 2000) });
       queryVector = embedded.data[0];
     } catch (err) {
       return bad(`查詢向量化失敗：${err.message}`, 502);
