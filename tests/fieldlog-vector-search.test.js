@@ -290,3 +290,26 @@ test("mcp/src/worker.js：search_fieldlog_semantic 真的呼叫 env.FIELDLOG.fet
   assert.match(fetchCalls[0], /pin=field-pin/);
   assert.match(result.content[0].text, /滅菌偏差/);
 });
+
+// 2026-08-16：第一次補跑一口氣排了 298 筆（附件每份最多再切 20 段），把當天的
+// 免費 Neurons 額度吃掉，害正在進行的錄音即時轉錄被安全門檻擋下來停掉。向量化
+// 是背景的加值功能，不該跟現場錄音搶額度。
+test("補跑端點要分批，不可一次把待處理的資料全部排進去", async () => {
+  const worker = await readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8");
+  const start = worker.indexOf('path === "/admin/backfill-embeddings"');
+  assert.ok(start > -1, "要有補跑端點");
+  const block = worker.slice(start, start + 2600);
+  assert.match(block, /searchParams\.get\("limit"\)/, "要能用 limit 參數控制單次批量");
+  assert.match(block, /FROM entries[\s\S]*?LIMIT \?/, "記事查詢要帶 LIMIT，不能整批撈");
+  assert.match(block, /FROM attachments[\s\S]*?LIMIT \?/, "附件查詢要帶 LIMIT，不能整批撈");
+  assert.match(block, /remaining/, "要回報還剩幾筆，呼叫端才知道要不要再打一次");
+});
+
+test("轉錄安全門檻要讀常數，不可寫死數字讓訊息與實際值對不上", async () => {
+  const worker = await readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8");
+  const guard = worker.match(/if \(cloudUsed \+ reserved \+ estimate > .*?\) \{/)?.[0] || "";
+  assert.ok(guard, "要有安全門檻判斷");
+  assert.match(guard, /AI_AUTO_SAFE_NEURONS/,
+    "門檻必須讀 AI_AUTO_SAFE_NEURONS：寫死數字會變成畫面說一個值、實際卡在另一個值");
+  assert.doesNotMatch(guard, /\d{4}/, "比較值不可出現寫死的數字");
+});

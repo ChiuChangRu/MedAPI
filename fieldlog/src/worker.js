@@ -123,7 +123,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "116";
+const UI_VERSION = "117";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1399,30 +1399,48 @@ async function handleApi(request, env, url) {
   // 一次性補跑：語意搜尋上線前就已經存在、但從沒排入向量化的舊記事／附件
   // 一起補上（embedding_status 還是預設的 'pending'）。上線後跑一次即可，
   // 之後新資料靠寫入點各自的 triggerEmbedding() 呼叫，不需要重跑這支。
+  //
+  // 分批是必要的，不是保守起見：2026-08-16 第一次補跑一口氣排了 298 筆
+  // （附件每份最多再切 20 段），把當天的免費 Neurons 額度吃掉，害正在進行的
+  // 錄音即時轉錄被安全門檻擋下來停掉。向量化是背景的加值功能，不該跟現場
+  // 錄音搶額度——預設一次只跑 limit 筆，剩下的下次再打這支繼續。
   if (path === "/admin/backfill-embeddings" && method === "POST") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 40, 1), 200);
     let queued = 0;
     const { results: entries } = await db.prepare(
       `SELECT id, title, body, body_format FROM entries
-       WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending'`
-    ).all();
+       WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending'
+       ORDER BY id LIMIT ?`
+    ).bind(limit).all();
     for (const e of entries) {
       const text = e.body_format === "html" ? htmlToPlainText(e.body || "") : (e.body || "");
       if (!text.trim() && !(e.title || "").trim()) continue;
       await triggerEmbedding(env, { kind: "entry", id: e.id, entryId: e.id, textContent: text, title: e.title });
       queued++;
     }
-    const { results: atts } = await db.prepare(
+    const attBudget = Math.max(0, limit - entries.length);
+    const { results: atts } = attBudget ? await db.prepare(
       `SELECT a.id, a.entry_id, a.transcript, a.ocr_text FROM attachments a
        JOIN entries e ON e.id = a.entry_id
        WHERE COALESCE(e.deleted_at, '') = '' AND COALESCE(a.embedding_status, 'pending') = 'pending'
-         AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')`
-    ).all();
+         AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')
+       ORDER BY a.id LIMIT ?`
+    ).bind(attBudget).all() : { results: [] };
     for (const a of atts) {
       const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
       await triggerEmbedding(env, { kind: "attachment", id: a.id, entryId: a.entry_id, textContent: text });
       queued++;
     }
-    return json({ ok: true, queued, entries: entries.length, attachments: atts.length });
+    // 還有沒有剩的一併回報，呼叫端才知道要不要再打一次——不然「跑完了」跟
+    // 「這批跑完但還有 200 筆沒動」在回應上看起來一模一樣。
+    const { total: remaining } = await db.prepare(
+      `SELECT (SELECT COUNT(*) FROM entries
+                WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending')
+             + (SELECT COUNT(*) FROM attachments a JOIN entries e ON e.id = a.entry_id
+                WHERE COALESCE(e.deleted_at, '') = '' AND COALESCE(a.embedding_status, 'pending') = 'pending'
+                  AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')) AS total`
+    ).first();
+    return json({ ok: true, queued, entries: entries.length, attachments: atts.length, remaining: Number(remaining || 0) - queued });
   }
 
   // ---- 外部來源管理（新增一個知識庫＝往 sources 表加一列，不用改程式碼）----
@@ -2010,9 +2028,11 @@ async function handleApi(request, env, url) {
     const failed = [];
     for (const audio of candidates) {
       const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
-      if (cloudUsed + reserved + estimate > 7000) {
-        // 訊息裡的門檻數字直接讀常數，不寫死百分比字面——上次改 AI_AUTO_SAFE_NEURONS
-        // 沒跟著改這裡的文字，畫面一直講「70%」，即使門檻早就不是免費額度的 70% 了
+      // 門檻一律讀 AI_AUTO_SAFE_NEURONS，不要再寫死數字：上次把常數從 7000 調到
+      // 10000 時只改了下面的訊息，這行的比較值卻留在 7000，變成畫面說「超過
+      // 10,000」、實際上 7,000 就停——白白少用 30% 的免費額度，而且從訊息完全
+      // 看不出來。訊息與實際門檻必須同一個來源。
+      if (cloudUsed + reserved + estimate > AI_AUTO_SAFE_NEURONS) {
         return json({ processed, stopped: true, reason: `預估將超過安全門檻（${AI_AUTO_SAFE_NEURONS.toLocaleString()} Neurons）`, cloudUsed, reserved, transcripts });
       }
       const claim = await db.prepare(
