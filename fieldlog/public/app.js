@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "114";
+const APP_VERSION = "115";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -4001,10 +4001,20 @@ function waitForUsableAudioStream(stream, timeoutMs = AUDIO_RECOVERY_TRACK_TIMEO
   });
 }
 
+// 恢復流程中頁面又被切到背景，不是永久失敗，只是這一輪不能繼續：整個重試迴圈
+// 最長可能跑十幾秒（3 次 × 每次最多等 4 秒喚醒麥克風＋退避間隔），使用者中途再
+// 切走一次就會撞到。標成可延後的錯誤，讓呼叫端保留中斷狀態、等下次回到前景自動
+// 重試，不要因為一次時機不巧就宣告整段錄音報廢。
+function audioRecoveryDeferred() {
+  const err = new Error("頁面尚未回到前景");
+  err.deferred = true;
+  return err;
+}
+
 async function acquireAudioRecoveryStream() {
   let lastError = new Error("麥克風尚未恢復");
   for (let attempt = 1; attempt <= AUDIO_RECOVERY_ATTEMPTS; attempt++) {
-    if (!AUDIO || AUDIO.ending || document.hidden) throw new Error("頁面尚未回到前景");
+    if (!AUDIO || AUDIO.ending || document.hidden) throw audioRecoveryDeferred();
     let stream = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -4230,6 +4240,16 @@ async function resumeAudioOnForeground() {
     } catch (err) {
       const oldTracksUsable = oldStream?.getAudioTracks().some((track) => track.readyState === "live" && !track.muted);
       if (newStream && newStream !== oldStream) newStream.getTracks().forEach((track) => track.stop());
+      // 只是「恢復到一半頁面又切走」：保留中斷標記與原本的 recorder／stream，
+      // 等下次回到前景時 visibilitychange → resumeAudioOnForeground 自動再試一次。
+      // 這裡如果照一般失敗處理，使用者只是中途瞄了一眼別的分頁就會被告知錄音報廢。
+      if (err?.deferred && AUDIO && !AUDIO.ending) {
+        AUDIO.trackInterrupted = true;
+        AUDIO.trackInterruptedAt ||= interruptionMs;
+        AUDIO.backgroundAt ||= Date.now();
+        setAudioStatus("背景錄音中；回到前景後會再試一次接續", false);
+        return;
+      }
       if (AUDIO && oldRecorder?.state === "recording" && oldTracksUsable) {
         // mute 有時只是瞬時狀態；重取麥克風失敗但舊軌已恢復時，不要反而把
         // 尚可繼續的 recorder 關掉。仍留下缺口警示，不能假裝背景段完整。
