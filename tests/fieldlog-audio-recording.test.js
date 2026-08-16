@@ -110,6 +110,42 @@ test("probeAudioRecorderData：收到非空資料回 true，inactive recorder �
     "已停止的 recorder 不可被資料探測誤判成健康");
 });
 
+test("回前景的新麥克風音軌可先 muted、稍後 unmute，不可立即判定接續失敗", async () => {
+  const start = app.indexOf("function waitForUsableAudioStream(stream");
+  const end = app.indexOf("\n\nasync function acquireAudioRecoveryStream", start);
+  assert.ok(start > -1 && end > start, "要有獨立的麥克風暖機等待函式");
+  const source = app.slice(start, end);
+  const waitForStream = new Function("AUDIO_RECOVERY_TRACK_TIMEOUT_MS",
+    `${source}; return waitForUsableAudioStream;`)(100);
+
+  class FakeTrack extends EventTarget {
+    constructor() {
+      super();
+      this.readyState = "live";
+      this.muted = true;
+    }
+    unmute() {
+      this.muted = false;
+      this.dispatchEvent(new Event("unmute"));
+    }
+  }
+  const track = new FakeTrack();
+  const waiting = waitForStream({ getAudioTracks: () => [track] }, 100);
+  setTimeout(() => track.unmute(), 10);
+  assert.equal(await waiting, true, "短暫 muted 後恢復的音軌應成功接續");
+});
+
+test("麥克風恢復會有限次重試，不因第一次暫時失敗就要求重錄", () => {
+  const fn = app.match(/async function acquireAudioRecoveryStream[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(fn, /AUDIO_RECOVERY_ATTEMPTS/, "恢復流程必須有有限次重試");
+  assert.match(fn, /await waitForUsableAudioStream\(stream\)/,
+    "新 stream 建立後要等待音軌真正可用");
+  assert.match(fn, /AUDIO_RECOVERY_RETRY_MS \* attempt/,
+    "重試間要留給瀏覽器與作業系統恢復裝置的時間");
+  assert.match(app, /const recoveryError = \[err\?\.name, err\?\.message\]/,
+    "最後仍失敗時要永久留下瀏覽器錯誤種類，不能只顯示無法接續");
+});
+
 test("音軌 muted 或 ended 也算中斷，不能只檢查 MediaRecorder.state", () => {
   const watch = app.match(/function watchAudioStream\(stream\)[\s\S]*?\n\}/)?.[0] || "";
   assert.match(watch, /addEventListener\("mute", markInterrupted\)/, "iOS 常只把 track muted，必須監聽");
@@ -130,11 +166,11 @@ test("回前台重建時先開始新 recorder，再延遲停止舊 recorder", ()
     "舊 recorder 要延遲到重疊時間後才停止");
 });
 
-test("pagehide 進入 bfcache 時不能停止錄音，真正離頁則先由 beforeunload 警告", () => {
+test("pagehide 不得停止背景錄音；真正離頁由 beforeunload 先警告", () => {
   const hide = app.match(/function onPageHide\(event\)[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(hide, /if \(event\.persisted\)[\s\S]*onPageHidden\(\);[\s\S]*return;/,
-    "bfcache 只是凍結，不能當成真正關頁");
-  assert.match(hide, /stopAnyActiveCapture\(\)/, "真正卸載仍要嘗試收尾");
+  assert.match(hide, /onPageHidden\(\)/, "pagehide 應先要求錄音資料切片保存");
+  assert.doesNotMatch(hide, /stopAnyActiveCapture\(\)/,
+    "手機切換 App 或瀏覽器凍結也可能送出 pagehide，不可因此結束錄音");
   assert.doesNotMatch(app, /addEventListener\("pagehide", stopAnyActiveCapture\)/,
     "pagehide 不可再無條件停止所有採集");
   assert.match(app, /addEventListener\("beforeunload", guardRecordingNavigation\)/,
@@ -148,4 +184,45 @@ test("frozen 或 bfcache 回復也會檢查並接續錄音", () => {
     "Chrome frozen page 回復要監聽 resume");
   assert.match(app, /addEventListener\("freeze", onPageHidden\)/,
     "頁面凍結前要要求 recorder 交出資料");
+});
+
+// 2026-08-16 使用者實測回報：錄音約 10 分鐘後跳「⛔ 錄音無法自動接續
+// （Error：頁面尚未回到前景），請結束後重新錄音」。原因不是麥克風真的壞掉，
+// 而是恢復流程最長會跑十幾秒（AUDIO_RECOVERY_ATTEMPTS 次 × 每次最多等音軌
+// 喚醒 ＋ 逐次拉長的退避），迴圈每一輪開頭都檢查 document.hidden；使用者在
+// 這段期間只要再切走一次分頁就會被丟出這個錯，而它當時被當成永久失敗處理。
+test("恢復到一半頁面又切走，只能延後重試，不可宣告錄音無法接續", () => {
+  const acquire = app.match(/async function acquireAudioRecoveryStream[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(acquire, /throw audioRecoveryDeferred\(\)/,
+    "頁面切到背景要丟可延後的錯誤，不能跟真正的裝置失敗混為一談");
+
+  const helper = app.match(/function audioRecoveryDeferred\(\)[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(helper, /err\.deferred = true/, "可延後的錯誤要有明確標記供呼叫端判斷");
+
+  const resume = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0] || "";
+  const deferredBranch = resume.indexOf("err?.deferred");
+  const fatalMessage = resume.indexOf("錄音無法自動接續");
+  assert.ok(deferredBranch > -1, "catch 要先辨認出可延後的錯誤");
+  assert.ok(fatalMessage > -1 && deferredBranch < fatalMessage,
+    "可延後的分支必須擋在「無法自動接續」的永久失敗訊息之前");
+
+  const branch = resume.slice(deferredBranch, fatalMessage);
+  assert.match(branch, /AUDIO\.trackInterrupted = true/,
+    "延後時要保留中斷標記，下次回到前景才會再試一次");
+  assert.doesNotMatch(branch, /stopAudio|stopAnyActiveCapture/,
+    "延後重試不可順手把還在錄的 recorder 收掉");
+});
+
+test("版本號四處同步（app.js／worker.js／sw.js 快取名）", async () => {
+  const appVer = app.match(/const APP_VERSION = "(\d+)"/)?.[1];
+  const worker = await readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8");
+  const sw = await readFile(new URL("../fieldlog/public/sw.js", import.meta.url), "utf8");
+  const index = await readFile(new URL("../fieldlog/public/index.html", import.meta.url), "utf8");
+  assert.ok(appVer, "app.js 要有 APP_VERSION");
+  assert.equal(worker.match(/const UI_VERSION = "(\d+)"/)?.[1], appVer,
+    "worker.js 的 UI_VERSION 要跟 app.js 一致，否則畫面會一直提示版本不符");
+  assert.match(sw.match(/const CACHE = "(.*?)"/)?.[1] || "", new RegExp(`-v${appVer}-`),
+    "sw.js 的快取名要帶上同一版號，否則瀏覽器會續用舊的 app.js");
+  assert.ok(!index.includes(`?v=${Number(appVer) - 1}`),
+    "index.html 的資源版號不可殘留上一版");
 });

@@ -123,7 +123,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "112";
+const UI_VERSION = "115";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -199,7 +199,10 @@ export class EmbeddingWorkflow extends WorkflowEntrypoint {
         const chunk = chunks[i];
         const vectorId = kind === "entry" ? `entry-${id}` : `att-${id}-${i}`;
         const embedded = await step.do(`embed-${vectorId}`, async () => {
-          const result = await this.env.AI.run("@cf/baai/bge-m3", { text: chunk });
+          // 一定要走 budgetedAi()：專案的 AI 費用保護（AI Gateway + spend limit）
+          // 全靠這層，直接呼叫 env.AI.run() 等於整批向量化都在保護範圍外跑，
+          // 量一大就會擠掉錄音轉逐字稿等其他 AI 呼叫的額度。
+          const result = await budgetedAi(this.env).run("@cf/baai/bge-m3", { text: chunk });
           return result.data[0];
         });
         vectors.push({
@@ -835,7 +838,7 @@ async function handleApi(request, env, url) {
 
     let queryVector;
     try {
-      const embedded = await env.AI.run("@cf/baai/bge-m3", { text: q.slice(0, 2000) });
+      const embedded = await budgetedAi(env).run("@cf/baai/bge-m3", { text: q.slice(0, 2000) });
       queryVector = embedded.data[0];
     } catch (err) {
       return bad(`查詢向量化失敗：${err.message}`, 502);
