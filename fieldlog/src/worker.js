@@ -123,7 +123,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "115";
+const UI_VERSION = "118";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -453,15 +453,49 @@ async function verifyFileSignature(fileKey, fieldPin, expires, sig) {
   return sig === expected ? null : "簽名無效";
 }
 
+// Whisper 拿到靜音或極低音量時，不會老實回空字串，而是反覆吐出訓練資料裡的
+// 常見結尾語（英文最常見的是 "Thank you."／"Thank you for watching."，中文是
+// 「字幕由…提供」這類）。2026-08-16 使用者實測：麥克風喚醒失敗、實際錄到靜音時，
+// 即時逐字稿整段都是 "Thank you. Thank you. Thank you…"。
+//
+// 這種內容若照單全收，會同時污染三個地方：永久存成逐字稿、被拿去自動命名附件、
+// 還餵進語意搜尋的向量庫。判斷主要靠「重複」這個結構特徵而不是單純比對字串：
+// 真人講話不會整段只有一兩種句子重複十幾次；已知句型只當輔助訊號。
+const SILENCE_HALLUCINATION_PHRASES = [
+  "thank you", "thank you.", "thanks for watching", "thank you for watching",
+  "please subscribe", "you", "字幕由amara.org社群提供", "字幕志愿者", "谢谢观看", "謝謝觀看",
+];
+
+function looksLikeSilenceHallucination(text) {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return false;
+  const norm = (s) => s.toLowerCase().replace(/[\s。．.,，!！?？~-]+/g, " ").trim();
+  // 整段就是一句已知的靜音幻覺句
+  if (SILENCE_HALLUCINATION_PHRASES.includes(norm(trimmed))) return true;
+  const parts = trimmed.split(/(?<=[.。!！?？])\s*/).map(norm).filter(Boolean);
+  if (parts.length < 5) return false;
+  const unique = new Set(parts);
+  // 五句以上卻只有一兩種內容不斷重複＝不是人在講話
+  if (unique.size > 2) return false;
+  return [...unique].every((p) => SILENCE_HALLUCINATION_PHRASES.includes(p) || p.split(" ").length <= 4);
+}
+
 async function transcribeAttachment(env, db, old) {
   const obj = await env.FILES.get(old.key);
   if (!obj) throw new Error("找不到檔案內容");
   const bytes = new Uint8Array(await obj.arrayBuffer());
   const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(bytes), task: "transcribe" });
-  const text = (result?.text || "").trim();
+  const raw = (result?.text || "").trim();
+  const hallucinated = looksLikeSilenceHallucination(raw);
+  // 判定成幻覺就存成空的：留著只會讓之後的搜尋、命名、向量庫都以為這段有內容。
+  const text = hallucinated ? "" : raw;
   await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
   await autoRenameAttachment(db, old, text);
-  await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
+  await logHistory(db, old.entry_id, null, "錄音轉文字",
+    hallucinated
+      // 講清楚是麥克風沒收到聲音，不要只寫「無語音內容」讓人以為是自己沒講話
+      ? `${old.filename}：這段沒有收到聲音（辨識結果為靜音時的重複雜訊，已捨棄），請確認麥克風是否被其他程式佔用或靜音`
+      : `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
   await triggerEmbedding(env, { kind: "attachment", id: old.id, entryId: old.entry_id, textContent: text });
   return text;
 }
@@ -1399,30 +1433,48 @@ async function handleApi(request, env, url) {
   // 一次性補跑：語意搜尋上線前就已經存在、但從沒排入向量化的舊記事／附件
   // 一起補上（embedding_status 還是預設的 'pending'）。上線後跑一次即可，
   // 之後新資料靠寫入點各自的 triggerEmbedding() 呼叫，不需要重跑這支。
+  //
+  // 分批是必要的，不是保守起見：2026-08-16 第一次補跑一口氣排了 298 筆
+  // （附件每份最多再切 20 段），把當天的免費 Neurons 額度吃掉，害正在進行的
+  // 錄音即時轉錄被安全門檻擋下來停掉。向量化是背景的加值功能，不該跟現場
+  // 錄音搶額度——預設一次只跑 limit 筆，剩下的下次再打這支繼續。
   if (path === "/admin/backfill-embeddings" && method === "POST") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 40, 1), 200);
     let queued = 0;
     const { results: entries } = await db.prepare(
       `SELECT id, title, body, body_format FROM entries
-       WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending'`
-    ).all();
+       WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending'
+       ORDER BY id LIMIT ?`
+    ).bind(limit).all();
     for (const e of entries) {
       const text = e.body_format === "html" ? htmlToPlainText(e.body || "") : (e.body || "");
       if (!text.trim() && !(e.title || "").trim()) continue;
       await triggerEmbedding(env, { kind: "entry", id: e.id, entryId: e.id, textContent: text, title: e.title });
       queued++;
     }
-    const { results: atts } = await db.prepare(
+    const attBudget = Math.max(0, limit - entries.length);
+    const { results: atts } = attBudget ? await db.prepare(
       `SELECT a.id, a.entry_id, a.transcript, a.ocr_text FROM attachments a
        JOIN entries e ON e.id = a.entry_id
        WHERE COALESCE(e.deleted_at, '') = '' AND COALESCE(a.embedding_status, 'pending') = 'pending'
-         AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')`
-    ).all();
+         AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')
+       ORDER BY a.id LIMIT ?`
+    ).bind(attBudget).all() : { results: [] };
     for (const a of atts) {
       const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
       await triggerEmbedding(env, { kind: "attachment", id: a.id, entryId: a.entry_id, textContent: text });
       queued++;
     }
-    return json({ ok: true, queued, entries: entries.length, attachments: atts.length });
+    // 還有沒有剩的一併回報，呼叫端才知道要不要再打一次——不然「跑完了」跟
+    // 「這批跑完但還有 200 筆沒動」在回應上看起來一模一樣。
+    const { total: remaining } = await db.prepare(
+      `SELECT (SELECT COUNT(*) FROM entries
+                WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending')
+             + (SELECT COUNT(*) FROM attachments a JOIN entries e ON e.id = a.entry_id
+                WHERE COALESCE(e.deleted_at, '') = '' AND COALESCE(a.embedding_status, 'pending') = 'pending'
+                  AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')) AS total`
+    ).first();
+    return json({ ok: true, queued, entries: entries.length, attachments: atts.length, remaining: Number(remaining || 0) - queued });
   }
 
   // ---- 外部來源管理（新增一個知識庫＝往 sources 表加一列，不用改程式碼）----
@@ -2010,9 +2062,11 @@ async function handleApi(request, env, url) {
     const failed = [];
     for (const audio of candidates) {
       const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
-      if (cloudUsed + reserved + estimate > 7000) {
-        // 訊息裡的門檻數字直接讀常數，不寫死百分比字面——上次改 AI_AUTO_SAFE_NEURONS
-        // 沒跟著改這裡的文字，畫面一直講「70%」，即使門檻早就不是免費額度的 70% 了
+      // 門檻一律讀 AI_AUTO_SAFE_NEURONS，不要再寫死數字：上次把常數從 7000 調到
+      // 10000 時只改了下面的訊息，這行的比較值卻留在 7000，變成畫面說「超過
+      // 10,000」、實際上 7,000 就停——白白少用 30% 的免費額度，而且從訊息完全
+      // 看不出來。訊息與實際門檻必須同一個來源。
+      if (cloudUsed + reserved + estimate > AI_AUTO_SAFE_NEURONS) {
         return json({ processed, stopped: true, reason: `預估將超過安全門檻（${AI_AUTO_SAFE_NEURONS.toLocaleString()} Neurons）`, cloudUsed, reserved, transcripts });
       }
       const claim = await db.prepare(
