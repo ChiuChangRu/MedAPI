@@ -244,6 +244,60 @@ body.itinerary-view #itinerary-section { display: block; }
 .itin-head h2 { margin: 0 0 4px; font-size: 19px; font-weight: 700; letter-spacing: 0.01em; }
 .itin-sub { margin: 0; font-size: 12px; color: var(--text-muted); }
 
+/* ===== 地點圖卡（TRIP_PLACES）=====
+   --pin 是每張卡的主色，圓標與左緣色條共用，改一處就整張卡跟著換色 */
+.places-block { margin-bottom: 22px; }
+.places-head { margin-bottom: 10px; }
+.places-head h3 { margin: 0 0 3px; font-size: 15px; font-weight: 700; }
+
+.places-grid {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+@media (max-width: 640px) { .places-grid { grid-template-columns: 1fr; } }
+
+.place-card {
+  --pin: #6f6f68;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--pin);
+  border-radius: var(--radius);
+  padding: 11px 13px 12px;
+  box-shadow: 0 1px 2px rgba(28, 28, 26, 0.05);
+}
+.place-transport { --pin: #6f6f68; }
+.place-hotel     { --pin: #7c3aed; }
+.place-tech      { --pin: #0891b2; }
+.place-venue     { --pin: #c8102e; }
+.place-equipment { --pin: #1d4ed8; }
+.place-supplies  { --pin: #0f766e; }
+.place-precision { --pin: #b45309; }
+.place-tubing    { --pin: #be185d; }
+.place-rd        { --pin: #15803d; }
+
+.place-top { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 7px; }
+.place-pin {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--pin); color: #fff;
+  font: 800 13px/1 ui-monospace, "SF Mono", Consolas, monospace;
+}
+.place-kind {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid currentColor; color: var(--pin); background: #fff;
+}
+.place-day { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.place-name { margin: 0 0 4px; font-size: 14px; font-weight: 700; line-height: 1.45; }
+.place-addr { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+.place-desc { font-size: 12px; color: var(--text); line-height: 1.6; margin-top: 4px; }
+.place-note {
+  font-size: 11px; color: #b45309; background: #fffbeb;
+  border: 1px solid #fcd34d; border-radius: 4px;
+  padding: 4px 7px; margin-top: 6px; line-height: 1.55;
+}
+.place-link { display: inline-block; margin-top: 7px; font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.place-link:hover { text-decoration: underline; }
+
 .itin-list { display: flex; flex-direction: column; gap: 12px; }
 
 .itin-day {
