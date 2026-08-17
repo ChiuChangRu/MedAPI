@@ -2993,7 +2993,39 @@ function itinHalfHtml(label, items) {
   </div>`;
 }
 
+// 地點圖卡改寫成卡片：編號＝造訪順序，kind 決定顏色（CSS 的 .place-<kind>）。
+// 有 ex 的地點同時也是展商，點進去就是既有的展商詳情，不另外做一套。
+// note 欄位是「地點圖卡與行程表對不起來」的備註，寧可標出來也不要靜靜選一邊。
+function renderTripPlaces() {
+  const wrap = $("trip-places");
+  if (!wrap || typeof TRIP_PLACES === "undefined") return;
+
+  wrap.innerHTML = TRIP_PLACES.map((p) => {
+    const ex = p.ex ? EXHIBITORS.find((e) => e.id === p.ex) : null;
+    const link = ex
+      ? `<a href="#" class="place-link" data-ex="${esc(p.ex)}">🔗 展商詳情${ex.booth_no ? `（${esc(ex.booth_no)}）` : ""}</a>`
+      : "";
+    return `<article class="place-card place-${esc(p.kind)}">
+      <div class="place-top">
+        <span class="place-pin">${p.no}</span>
+        <span class="place-kind">${esc(p.kindLabel)}</span>
+        <span class="place-day">${esc(p.day)}</span>
+      </div>
+      <h4 class="place-name">${esc(p.name)}</h4>
+      <div class="place-addr">${esc(p.addr)}</div>
+      <div class="place-desc">${esc(p.desc)}</div>
+      ${p.note ? `<div class="place-note">⚠️ ${esc(p.note)}</div>` : ""}
+      ${link}
+    </article>`;
+  }).join("");
+
+  wrap.querySelectorAll(".place-link[data-ex]").forEach((a) => {
+    a.onclick = (ev) => { ev.preventDefault(); openDetail(a.dataset.ex); };
+  });
+}
+
 function renderItinerary() {
+  renderTripPlaces();
   const wrap = $("itinerary-list");
   if (!wrap) return;
   const today = new Date().toLocaleDateString("sv");
