@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "115";
+const APP_VERSION = "118";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -4205,6 +4205,26 @@ async function resumeAudioOnForeground() {
     }
 
     if (!needsRecovery) return;
+
+    // 重取麥克風之前，先給舊音軌跟新音軌一樣的暖機緩衝。觸發恢復的往往就是一次
+    // 短暫 muted，稍後會自行 unmute——v114 只替新取得的音軌留了這個緩衝，舊音軌
+    // 卻還是用 !track.muted 瞬間判斷，等於同一件事只修了一半。舊的能自行恢復就
+    // 不必再 getUserMedia：省掉一次不必要的換段，也避開「舊 stream 還握著裝置、
+    // 新音軌一直停在 muted 直到喚醒逾時」（部分 Windows 音訊裝置是獨佔的）。
+    if (AUDIO.recorder?.state === "recording" && await waitForUsableAudioStream(AUDIO.stream)) {
+      if (!AUDIO || AUDIO.ending) return;
+      if (document.hidden) { AUDIO.backgroundAt ||= Date.now(); return; }
+      if (await probeAudioRecorderData(AUDIO.recorder)) {
+        if (!AUDIO || AUDIO.ending) return;
+        AUDIO.trackInterrupted = false;
+        AUDIO.trackInterruptedAt = 0;
+        AUDIO.recorderFailed = false;
+        setAudioStatus("✓ 麥克風短暫中斷後已自行恢復，錄音持續中", false);
+        return;
+      }
+      if (!AUDIO || AUDIO.ending) return;
+    }
+
     const interruptionMs = AUDIO.trackInterruptedAt || backgroundStartedAt || Date.now();
     const interruptedAt = fmtSecs(Math.max(0, Math.floor((interruptionMs - AUDIO.startedAt) / 1000)));
     AUDIO.interrupted = true;
@@ -4238,11 +4258,12 @@ async function resumeAudioOnForeground() {
       noteAudioInterruption(AUDIO.entryId,
         `⚠️ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，最多可能漏錄 ${fmtSecs(backgroundSecs)}，已自動開新的一段接續。`);
     } catch (err) {
-      const oldTracksUsable = oldStream?.getAudioTracks().some((track) => track.readyState === "live" && !track.muted);
       if (newStream && newStream !== oldStream) newStream.getTracks().forEach((track) => track.stop());
       // 只是「恢復到一半頁面又切走」：保留中斷標記與原本的 recorder／stream，
       // 等下次回到前景時 visibilitychange → resumeAudioOnForeground 自動再試一次。
       // 這裡如果照一般失敗處理，使用者只是中途瞄了一眼別的分頁就會被告知錄音報廢。
+      // 這個分支要擺在下面的暖機等待之前：頁面都已經在背景了，再花幾秒等音軌
+      // 喚醒只是白等一場。
       if (err?.deferred && AUDIO && !AUDIO.ending) {
         AUDIO.trackInterrupted = true;
         AUDIO.trackInterruptedAt ||= interruptionMs;
@@ -4250,6 +4271,11 @@ async function resumeAudioOnForeground() {
         setAudioStatus("背景錄音中；回到前景後會再試一次接續", false);
         return;
       }
+      // 舊音軌一樣要給暖機緩衝再判定，不能瞬間看 !track.muted 就說它不能用——
+      // 觸發恢復的常常就是那一次短暫 muted，用瞬間值判斷會把「還能繼續錄的
+      // recorder」誤判成報廢，直接跳出要使用者重錄。
+      const oldTracksUsable = oldRecorder?.state === "recording"
+        && await waitForUsableAudioStream(oldStream);
       if (AUDIO && oldRecorder?.state === "recording" && oldTracksUsable) {
         // mute 有時只是瞬時狀態；重取麥克風失敗但舊軌已恢復時，不要反而把
         // 尚可繼續的 recorder 關掉。仍留下缺口警示，不能假裝背景段完整。

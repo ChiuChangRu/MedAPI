@@ -226,3 +226,43 @@ test("版本號四處同步（app.js／worker.js／sw.js 快取名）", async ()
   assert.ok(!index.includes(`?v=${Number(appVer) - 1}`),
     "index.html 的資源版號不可殘留上一版");
 });
+
+// 2026-08-16 v115 實測回報：改成延後重試後，錯誤換成「⛔ 錄音無法自動接續
+// （Error：麥克風音軌喚醒逾時）」。原因是 v114 只替「新取得的音軌」留了暖機
+// 緩衝（waitForUsableAudioStream），舊音軌卻還是用 !track.muted 瞬間判斷——
+// 同一件事只修了一半。觸發恢復的往往就是那一次短暫 muted，舊音軌在那個瞬間
+// 當然也是 muted，於是還能繼續錄的 recorder 被判成報廢。
+test("舊音軌也要給暖機緩衝，不可用瞬間 muted 判定成報廢", () => {
+  const resume = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0] || "";
+  assert.doesNotMatch(resume,
+    /const oldTracksUsable = oldStream\?\.getAudioTracks\(\)\.some/,
+    "舊音軌不可再用 !track.muted 的瞬間值判定，要跟新音軌一樣等暖機");
+  assert.match(resume, /const oldTracksUsable = oldRecorder\?\.state === "recording"\s*\n?\s*&& await waitForUsableAudioStream\(oldStream\)/,
+    "舊音軌要走 waitForUsableAudioStream 給同樣的緩衝");
+});
+
+test("重取麥克風之前先讓舊 stream 有機會自行恢復", () => {
+  const resume = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0] || "";
+  const selfHeal = resume.indexOf("await waitForUsableAudioStream(AUDIO.stream)");
+  const acquire = resume.indexOf("await acquireAudioRecoveryStream()");
+  assert.ok(selfHeal > -1, "要先給舊 stream 一次自行恢復的機會");
+  assert.ok(acquire > -1 && selfHeal < acquire,
+    "自行恢復的檢查必須在重取麥克風之前：舊 stream 還握著裝置時，新音軌可能一直停在 muted 直到逾時");
+
+  const branch = resume.slice(selfHeal, acquire);
+  assert.match(branch, /probeAudioRecorderData\(AUDIO\.recorder\)/,
+    "只看音軌 unmute 不夠，還要確認 recorder 真的交得出資料才算自行恢復");
+  assert.match(branch, /AUDIO\.trackInterrupted = false/,
+    "確認自行恢復後要清掉中斷標記，否則每次回前景都會重跑一次恢復");
+});
+
+test("延後重試的分支要擋在暖機等待之前，頁面已在背景不該白等", () => {
+  const resume = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0] || "";
+  const catchAt = resume.indexOf("} catch (err) {");
+  const tail = resume.slice(catchAt);
+  const deferred = tail.indexOf("err?.deferred");
+  const oldWait = tail.indexOf("const oldTracksUsable");
+  assert.ok(deferred > -1 && oldWait > -1, "兩個判斷都要在 catch 裡");
+  assert.ok(deferred < oldWait,
+    "頁面已切到背景時應直接延後，不要再花數秒等音軌喚醒");
+});
