@@ -123,7 +123,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "117";
+const UI_VERSION = "118";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -453,15 +453,49 @@ async function verifyFileSignature(fileKey, fieldPin, expires, sig) {
   return sig === expected ? null : "簽名無效";
 }
 
+// Whisper 拿到靜音或極低音量時，不會老實回空字串，而是反覆吐出訓練資料裡的
+// 常見結尾語（英文最常見的是 "Thank you."／"Thank you for watching."，中文是
+// 「字幕由…提供」這類）。2026-08-16 使用者實測：麥克風喚醒失敗、實際錄到靜音時，
+// 即時逐字稿整段都是 "Thank you. Thank you. Thank you…"。
+//
+// 這種內容若照單全收，會同時污染三個地方：永久存成逐字稿、被拿去自動命名附件、
+// 還餵進語意搜尋的向量庫。判斷主要靠「重複」這個結構特徵而不是單純比對字串：
+// 真人講話不會整段只有一兩種句子重複十幾次；已知句型只當輔助訊號。
+const SILENCE_HALLUCINATION_PHRASES = [
+  "thank you", "thank you.", "thanks for watching", "thank you for watching",
+  "please subscribe", "you", "字幕由amara.org社群提供", "字幕志愿者", "谢谢观看", "謝謝觀看",
+];
+
+function looksLikeSilenceHallucination(text) {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return false;
+  const norm = (s) => s.toLowerCase().replace(/[\s。．.,，!！?？~-]+/g, " ").trim();
+  // 整段就是一句已知的靜音幻覺句
+  if (SILENCE_HALLUCINATION_PHRASES.includes(norm(trimmed))) return true;
+  const parts = trimmed.split(/(?<=[.。!！?？])\s*/).map(norm).filter(Boolean);
+  if (parts.length < 5) return false;
+  const unique = new Set(parts);
+  // 五句以上卻只有一兩種內容不斷重複＝不是人在講話
+  if (unique.size > 2) return false;
+  return [...unique].every((p) => SILENCE_HALLUCINATION_PHRASES.includes(p) || p.split(" ").length <= 4);
+}
+
 async function transcribeAttachment(env, db, old) {
   const obj = await env.FILES.get(old.key);
   if (!obj) throw new Error("找不到檔案內容");
   const bytes = new Uint8Array(await obj.arrayBuffer());
   const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(bytes), task: "transcribe" });
-  const text = (result?.text || "").trim();
+  const raw = (result?.text || "").trim();
+  const hallucinated = looksLikeSilenceHallucination(raw);
+  // 判定成幻覺就存成空的：留著只會讓之後的搜尋、命名、向量庫都以為這段有內容。
+  const text = hallucinated ? "" : raw;
   await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
   await autoRenameAttachment(db, old, text);
-  await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
+  await logHistory(db, old.entry_id, null, "錄音轉文字",
+    hallucinated
+      // 講清楚是麥克風沒收到聲音，不要只寫「無語音內容」讓人以為是自己沒講話
+      ? `${old.filename}：這段沒有收到聲音（辨識結果為靜音時的重複雜訊，已捨棄），請確認麥克風是否被其他程式佔用或靜音`
+      : `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
   await triggerEmbedding(env, { kind: "attachment", id: old.id, entryId: old.entry_id, textContent: text });
   return text;
 }
