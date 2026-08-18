@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "119";
+const APP_VERSION = "120";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -3614,14 +3614,17 @@ const AUDIO_LIVE_SEG_SECONDS = SEG_MINUTES * 60;
 // 尚未交給 JavaScript 的錄音資料量。timeslice 不是背景錄音保證，真正的中斷仍由
 // MediaStreamTrack mute/ended 與回前台重取麥克風處理。
 const AUDIO_DATA_SLICE_MS = 5000;
-// 回到前台後要求目前的 recorder 立刻交出一塊資料；桌機只要仍正常錄音，通常會
-// 很快收到非空 dataavailable。不能只看 recorder.state，因為卡住的 recorder 也可能
-// 繼續宣稱自己是 recording；也不能像舊版一樣，只要切過背景就一律顯示缺口警告。
-const AUDIO_FLOW_PROBE_TIMEOUT_MS = 2000;
 // 換下一段錄音時，新的一段提前這麼多毫秒先開始收音，跟舊的一段重疊一下再收尾舊的
 // （見 rotateAudioSegment）——比起先收尾舊的、才開始收新的，重疊比空隙安全：
 // 頂多兩段音檔開頭/結尾多重複這一小段，不會真的漏錄。
 const AUDIO_SEG_OVERLAP_MS = 800;
+// 有些裝置（尤其部分 Windows 音效卡）麥克風是獨佔的：舊 stream 的音軌即使已經
+// mute／ended，只要沒被明確 stop()，作業系統仍可能認為裝置被佔用，導致重新
+// getUserMedia() 立刻失敗。因此判定中斷後一律先停舊 stream 的音軌，再重試。
+// 重試給有限次數＋退避，是為了吃掉「裝置剛釋放、系統還沒反應過來」這類瞬時失敗，
+// 不是要無限等待。
+const AUDIO_RECOVERY_ATTEMPTS = 3;
+const AUDIO_RECOVERY_RETRY_MS = 600;
 
 function segOffset(session) { return Math.floor((Date.now() - session.startedAt) / 1000); }
 
@@ -3942,30 +3945,6 @@ function startAudioSegRecorder() {
   return recorder;
 }
 
-// 確認 recorder 不只是「狀態顯示 recording」，而是真的還能交出音訊資料。
-// requestData 不會停止或切換錄音，只會把目前累積的資料透過 dataavailable 交出。
-function probeAudioRecorderData(recorder) {
-  if (!recorder || recorder.state !== "recording") return Promise.resolve(false);
-  return new Promise((resolve) => {
-    let timerId = 0;
-    let settled = false;
-    const finish = (hasData) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timerId);
-      recorder.removeEventListener("dataavailable", onData);
-      resolve(hasData);
-    };
-    const onData = (event) => {
-      if (event.data?.size) finish(true);
-    };
-    recorder.addEventListener("dataavailable", onData);
-    timerId = setTimeout(() => finish(false), AUDIO_FLOW_PROBE_TIMEOUT_MS);
-    try { recorder.requestData(); }
-    catch { finish(false); }
-  });
-}
-
 // 行動瀏覽器可能只把麥克風 track 設成 muted，MediaRecorder.state 仍然維持
 // "recording"。只檢查 recorder.state 會誤判成一切正常，回前台後也不會接續。
 // 因此把 mute/ended 永久記到 session，等頁面可見時重新取得麥克風並開新段。
@@ -4112,90 +4091,81 @@ async function resumeAudioOnForeground() {
   const st = AUDIO.recorder && AUDIO.recorder.state;
   const tracks = AUDIO.stream ? AUDIO.stream.getAudioTracks() : [];
   const trackUnavailable = !tracks.length || tracks.every((track) => track.readyState === "ended") || tracks.some((track) => track.muted);
-  let needsRecovery = st !== "recording" || trackUnavailable || AUDIO.trackInterrupted || AUDIO.recorderFailed;
+  const needsRecovery = st !== "recording" || trackUnavailable || AUDIO.trackInterrupted || AUDIO.recorderFailed;
+
+  if (!needsRecovery) {
+    if (backgroundSecs) setAudioStatus(`✓ 背景 ${fmtSecs(backgroundSecs)}；錄音持續中`, false);
+    return;
+  }
+
   AUDIO.resuming = true;
   try {
-    // 桌機切分頁時，track 與 recorder 通常都維持正常。此時再用非空資料塊做一次
-    // 實際確認：有資料就明確回報仍在錄，不再顯示「系統無法保證」的誤導警告；
-    // 沒資料才把它視為卡住，走下面既有的重建與接續流程。
-    if (!needsRecovery && backgroundSecs) {
-      const probedRecorder = AUDIO.recorder;
-      const hasAudioData = await probeAudioRecorderData(probedRecorder);
-      if (!AUDIO || AUDIO.ending) return;
-      if (document.hidden) {
-        AUDIO.backgroundAt ||= Date.now();
-        return;
-      }
-      if (AUDIO.recorder !== probedRecorder) {
-        setAudioStatus(`✓ 已回到前景；錄音持續中`, false);
-        return;
-      }
-      if (hasAudioData) {
-        setAudioStatus(`✓ 背景 ${fmtSecs(backgroundSecs)} 錄音持續；已收到音訊資料`, false);
-        return;
-      }
-      AUDIO.recorderFailed = true;
-      needsRecovery = true;
-    }
-
-    if (!needsRecovery) return;
     const interruptionMs = AUDIO.trackInterruptedAt || backgroundStartedAt || Date.now();
     const interruptedAt = fmtSecs(Math.max(0, Math.floor((interruptionMs - AUDIO.startedAt) / 1000)));
     AUDIO.interrupted = true;
     const oldRecorder = AUDIO.recorder;
     const oldStream = AUDIO.stream;
+    // 先停掉舊音軌再重取：舊音軌即使已經 mute／ended，只要還沒 stop()，
+    // 部分裝置仍視為被佔用，導致下面的 getUserMedia 每次都失敗（實測會看到
+    // 「無法自動接續」連續出現在很接近的時間點，就是這個原因）。
+    try { oldStream?.getAudioTracks().forEach((track) => track.stop()); } catch {}
+
     let newStream = null;
-    try {
-      // 一律拿新的 stream：track 可能曾 muted 又自行 unmute；只沿用舊 stream 會讓
-      // MediaRecorder 看似 recording、實際卻沒有新的聲音資料。
-      newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!AUDIO || AUDIO.ending) {
-        newStream.getTracks().forEach((track) => track.stop());
+    let lastErr = null;
+    for (let attempt = 1; attempt <= AUDIO_RECOVERY_ATTEMPTS; attempt++) {
+      if (!AUDIO || AUDIO.ending) return;
+      if (document.hidden) {
+        // 重試途中頁面又被切到背景：不是永久失敗，保留中斷標記，
+        // 等下次回到前景時這個函式會再被呼叫一次繼續嘗試。
+        AUDIO.trackInterrupted = true;
+        AUDIO.trackInterruptedAt ||= interruptionMs;
+        AUDIO.backgroundAt ||= Date.now();
+        setAudioStatus("背景錄音中；回到前景後會再試一次接續", false);
         return;
       }
-      const newTracks = newStream.getAudioTracks();
-      if (!newTracks.length || newTracks.every((track) => track.readyState === "ended") || newTracks.some((track) => track.muted)) {
-        throw new Error("麥克風仍處於暫停狀態");
-      }
-      AUDIO.stream = newStream;
-      AUDIO.trackInterrupted = false;
-      AUDIO.trackInterruptedAt = 0;
-      AUDIO.recorderFailed = false;
-      watchAudioStream(newStream);
-      // 跟正常換段相同：先讓新 recorder 開始，再收掉舊 recorder，避免前景恢復的
-      // 瞬間多出一個本來可避免的空隙。
-      if (!AUDIO || AUDIO.ending) return;
-      AUDIO.segIndex++;
-      startAudioSegRecorder();
-      setTimeout(() => {
-        try { if (oldRecorder && oldRecorder.state !== "inactive") oldRecorder.stop(); } catch {}
-        try { if (oldStream && oldStream !== newStream) oldStream.getTracks().forEach((track) => track.stop()); } catch {}
-      }, AUDIO_SEG_OVERLAP_MS);
-      setAudioStatus(`⚠️ 背景期間偵測到中斷（最多可能漏錄 ${fmtSecs(backgroundSecs)}），已從第 ${AUDIO.segIndex} 段接續`, true);
-      showToast("錄音曾中斷，已另開新段接續");
-      noteAudioInterruption(AUDIO.entryId,
-        `⚠️ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，最多可能漏錄 ${fmtSecs(backgroundSecs)}，已自動開新的一段接續。`);
-    } catch (err) {
-      const oldTracksUsable = oldStream?.getAudioTracks().some((track) => track.readyState === "live" && !track.muted);
-      if (newStream && newStream !== oldStream) newStream.getTracks().forEach((track) => track.stop());
-      if (AUDIO && oldRecorder?.state === "recording" && oldTracksUsable) {
-        // mute 有時只是瞬時狀態；重取麥克風失敗但舊軌已恢復時，不要反而把
-        // 尚可繼續的 recorder 關掉。仍留下缺口警示，不能假裝背景段完整。
-        AUDIO.trackInterrupted = false;
-        AUDIO.trackInterruptedAt = 0;
-        AUDIO.recorderFailed = false;
-        AUDIO.stream = oldStream;
-        AUDIO.recorder = oldRecorder;
-        setAudioStatus(`⚠️ 背景期間麥克風曾暫停；原音軌已恢復，請確認重要內容`, true);
-        noteAudioInterruption(AUDIO.entryId,
-          `⚠️ 錄音在約 ${interruptedAt} 曾因 App／分頁背景化暫停；重新取得麥克風失敗，但原音軌已恢復。背景期間內容可能不完整。`);
-      } else if (AUDIO) {
-        setAudioStatus("⛔ 錄音已中斷且無法自動接續，請結束後重新錄音", true);
-        showToast("錄音無法自動接續：" + err.message);
-        noteAudioInterruption(AUDIO.entryId,
-          `⛔ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，且無法自動接續，錄音已中止，之後的內容請另外補記。`);
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < AUDIO_RECOVERY_ATTEMPTS) {
+          setAudioStatus(`麥克風恢復中（${attempt}/${AUDIO_RECOVERY_ATTEMPTS}）…`);
+          await new Promise((resolve) => setTimeout(resolve, AUDIO_RECOVERY_RETRY_MS * attempt));
+        }
       }
     }
+
+    if (!AUDIO || AUDIO.ending) {
+      if (newStream) newStream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    if (!newStream) {
+      const recoveryError = [lastErr?.name, lastErr?.message].filter(Boolean).join("：") || "未知錯誤";
+      setAudioStatus(`⛔ 錄音無法自動接續（${recoveryError}），請結束後重新錄音`, true);
+      showToast("錄音無法自動接續：" + recoveryError);
+      noteAudioInterruption(AUDIO.entryId,
+        `⛔ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，且無法自動接續（${recoveryError}），錄音已中止，之後的內容請另外補記。`);
+      return;
+    }
+
+    AUDIO.stream = newStream;
+    AUDIO.trackInterrupted = false;
+    AUDIO.trackInterruptedAt = 0;
+    AUDIO.recorderFailed = false;
+    watchAudioStream(newStream);
+    // 跟正常換段相同：先讓新 recorder 開始，再收掉舊 recorder，避免前景恢復的
+    // 瞬間多出一個本來可避免的空隙。舊 stream 的音軌已經在上面提前停掉了，
+    // 這裡只需要收尾 recorder 本身。
+    AUDIO.segIndex++;
+    startAudioSegRecorder();
+    setTimeout(() => {
+      try { if (oldRecorder && oldRecorder.state !== "inactive") oldRecorder.stop(); } catch {}
+    }, AUDIO_SEG_OVERLAP_MS);
+    setAudioStatus(`⚠️ 背景期間偵測到中斷（最多可能漏錄 ${fmtSecs(backgroundSecs)}），已從第 ${AUDIO.segIndex} 段接續`, true);
+    showToast("錄音曾中斷，已另開新段接續");
+    noteAudioInterruption(AUDIO.entryId,
+      `⚠️ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，最多可能漏錄 ${fmtSecs(backgroundSecs)}，已自動開新的一段接續。`);
   } finally {
     if (AUDIO) AUDIO.resuming = false;
   }
