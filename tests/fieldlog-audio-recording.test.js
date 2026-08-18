@@ -110,42 +110,6 @@ test("probeAudioRecorderData：收到非空資料回 true，inactive recorder �
     "已停止的 recorder 不可被資料探測誤判成健康");
 });
 
-test("回前景的新麥克風音軌可先 muted、稍後 unmute，不可立即判定接續失敗", async () => {
-  const start = app.indexOf("function waitForUsableAudioStream(stream");
-  const end = app.indexOf("\n\nasync function acquireAudioRecoveryStream", start);
-  assert.ok(start > -1 && end > start, "要有獨立的麥克風暖機等待函式");
-  const source = app.slice(start, end);
-  const waitForStream = new Function("AUDIO_RECOVERY_TRACK_TIMEOUT_MS",
-    `${source}; return waitForUsableAudioStream;`)(100);
-
-  class FakeTrack extends EventTarget {
-    constructor() {
-      super();
-      this.readyState = "live";
-      this.muted = true;
-    }
-    unmute() {
-      this.muted = false;
-      this.dispatchEvent(new Event("unmute"));
-    }
-  }
-  const track = new FakeTrack();
-  const waiting = waitForStream({ getAudioTracks: () => [track] }, 100);
-  setTimeout(() => track.unmute(), 10);
-  assert.equal(await waiting, true, "短暫 muted 後恢復的音軌應成功接續");
-});
-
-test("麥克風恢復會有限次重試，不因第一次暫時失敗就要求重錄", () => {
-  const fn = app.match(/async function acquireAudioRecoveryStream[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(fn, /AUDIO_RECOVERY_ATTEMPTS/, "恢復流程必須有有限次重試");
-  assert.match(fn, /await waitForUsableAudioStream\(stream\)/,
-    "新 stream 建立後要等待音軌真正可用");
-  assert.match(fn, /AUDIO_RECOVERY_RETRY_MS \* attempt/,
-    "重試間要留給瀏覽器與作業系統恢復裝置的時間");
-  assert.match(app, /const recoveryError = \[err\?\.name, err\?\.message\]/,
-    "最後仍失敗時要永久留下瀏覽器錯誤種類，不能只顯示無法接續");
-});
-
 test("音軌 muted 或 ended 也算中斷，不能只檢查 MediaRecorder.state", () => {
   const watch = app.match(/function watchAudioStream\(stream\)[\s\S]*?\n\}/)?.[0] || "";
   assert.match(watch, /addEventListener\("mute", markInterrupted\)/, "iOS 常只把 track muted，必須監聽");
@@ -191,28 +155,6 @@ test("frozen 或 bfcache 回復也會檢查並接續錄音", () => {
 // 而是恢復流程最長會跑十幾秒（AUDIO_RECOVERY_ATTEMPTS 次 × 每次最多等音軌
 // 喚醒 ＋ 逐次拉長的退避），迴圈每一輪開頭都檢查 document.hidden；使用者在
 // 這段期間只要再切走一次分頁就會被丟出這個錯，而它當時被當成永久失敗處理。
-test("恢復到一半頁面又切走，只能延後重試，不可宣告錄音無法接續", () => {
-  const acquire = app.match(/async function acquireAudioRecoveryStream[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(acquire, /throw audioRecoveryDeferred\(\)/,
-    "頁面切到背景要丟可延後的錯誤，不能跟真正的裝置失敗混為一談");
-
-  const helper = app.match(/function audioRecoveryDeferred\(\)[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(helper, /err\.deferred = true/, "可延後的錯誤要有明確標記供呼叫端判斷");
-
-  const resume = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0] || "";
-  const deferredBranch = resume.indexOf("err?.deferred");
-  const fatalMessage = resume.indexOf("錄音無法自動接續");
-  assert.ok(deferredBranch > -1, "catch 要先辨認出可延後的錯誤");
-  assert.ok(fatalMessage > -1 && deferredBranch < fatalMessage,
-    "可延後的分支必須擋在「無法自動接續」的永久失敗訊息之前");
-
-  const branch = resume.slice(deferredBranch, fatalMessage);
-  assert.match(branch, /AUDIO\.trackInterrupted = true/,
-    "延後時要保留中斷標記，下次回到前景才會再試一次");
-  assert.doesNotMatch(branch, /stopAudio|stopAnyActiveCapture/,
-    "延後重試不可順手把還在錄的 recorder 收掉");
-});
-
 test("版本號四處同步（app.js／worker.js／sw.js 快取名）", async () => {
   const appVer = app.match(/const APP_VERSION = "(\d+)"/)?.[1];
   const worker = await readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8");
@@ -232,37 +174,72 @@ test("版本號四處同步（app.js／worker.js／sw.js 快取名）", async ()
 // 緩衝（waitForUsableAudioStream），舊音軌卻還是用 !track.muted 瞬間判斷——
 // 同一件事只修了一半。觸發恢復的往往就是那一次短暫 muted，舊音軌在那個瞬間
 // 當然也是 muted，於是還能繼續錄的 recorder 被判成報廢。
-test("舊音軌也要給暖機緩衝，不可用瞬間 muted 判定成報廢", () => {
-  const resume = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0] || "";
-  assert.doesNotMatch(resume,
-    /const oldTracksUsable = oldStream\?\.getAudioTracks\(\)\.some/,
-    "舊音軌不可再用 !track.muted 的瞬間值判定，要跟新音軌一樣等暖機");
-  assert.match(resume, /const oldTracksUsable = oldRecorder\?\.state === "recording"\s*\n?\s*&& await waitForUsableAudioStream\(oldStream\)/,
-    "舊音軌要走 waitForUsableAudioStream 給同樣的緩衝");
-});
 
-test("重取麥克風之前先讓舊 stream 有機會自行恢復", () => {
-  const resume = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0] || "";
-  const selfHeal = resume.indexOf("await waitForUsableAudioStream(AUDIO.stream)");
-  const acquire = resume.indexOf("await acquireAudioRecoveryStream()");
-  assert.ok(selfHeal > -1, "要先給舊 stream 一次自行恢復的機會");
-  assert.ok(acquire > -1 && selfHeal < acquire,
-    "自行恢復的檢查必須在重取麥克風之前：舊 stream 還握著裝置時，新音軌可能一直停在 muted 直到逾時");
+/**
+ * ⛔ 2026-08-18 迴歸測試：背景錄音「看起來好、實際錄到靜音」
+ *
+ * 8/14 版可以正常背景錄音；8/15–8/17 疊了四層「恢復保護」之後就壞了，而且
+ * 四層都有測試護著、全綠——因為那些測試比對的是原始碼字串，不是行為。
+ *
+ * 真正的缺陷：判定「麥克風其實還活著」用的是 recorder.requestData() 有沒有
+ * 交出資料。這個判準無效——音軌被系統靜音時，編碼器照樣吐出「編碼過的靜音」，
+ * size 一樣大於 0。於是明明已經有中斷跡證（track mute／ended／recorder 失效），
+ * 卻被這個假陽性推翻，直接 return、不換段、不重取麥克風，畫面還顯示
+ * 「✓ 已自行恢復，錄音持續中」，實際錄下來整段是靜音。
+ *
+ * 所以這裡測的是行為不是字串：餵一個「有中斷跡證、但 recorder 仍宣稱 recording
+ * 且交得出資料」的情境進去，要求它照樣重取麥克風並開新的一段。
+ */
+test("有中斷跡證時，不可因為 recorder 還交得出資料就宣告已恢復（靜音也是資料）", async () => {
+  const source = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0];
+  assert.ok(source, "找不到 resumeAudioOnForeground");
 
-  const branch = resume.slice(selfHeal, acquire);
-  assert.match(branch, /probeAudioRecorderData\(AUDIO\.recorder\)/,
-    "只看音軌 unmute 不夠，還要確認 recorder 真的交得出資料才算自行恢復");
-  assert.match(branch, /AUDIO\.trackInterrupted = false/,
-    "確認自行恢復後要清掉中斷標記，否則每次回前景都會重跑一次恢復");
-});
+  const calls = { getUserMedia: 0, startSeg: 0, status: [] };
+  const liveTrack = () => ({ readyState: "live", muted: false, stop() {}, addEventListener() {} });
+  const AUDIO = {
+    ending: false, resuming: false, backgroundAt: Date.now() - 30_000, backgroundSecs: 0,
+    startedAt: Date.now() - 60_000, segIndex: 1, entryId: 7,
+    // 中斷跡證：音軌曾經 mute 過
+    trackInterrupted: true, trackInterruptedAt: Date.now() - 30_000, recorderFailed: false,
+    // 但 recorder 仍宣稱在錄，而且 requestData 交得出（靜音）資料
+    recorder: { state: "recording", stop() {} },
+    stream: { getAudioTracks: () => [liveTrack()] },
+  };
 
-test("延後重試的分支要擋在暖機等待之前，頁面已在背景不該白等", () => {
-  const resume = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0] || "";
-  const catchAt = resume.indexOf("} catch (err) {");
-  const tail = resume.slice(catchAt);
-  const deferred = tail.indexOf("err?.deferred");
-  const oldWait = tail.indexOf("const oldTracksUsable");
-  assert.ok(deferred > -1 && oldWait > -1, "兩個判斷都要在 catch 裡");
-  assert.ok(deferred < oldWait,
-    "頁面已切到背景時應直接延後，不要再花數秒等音軌喚醒");
+  const run = new Function(
+    "AUDIO", "navigator", "document", "fmtSecs", "setAudioStatus", "showToast",
+    "noteAudioInterruption", "probeAudioRecorderData", "watchAudioStream",
+    // 壞掉的版本才會用到這兩個；一併注入，讓測試是因為「行為不同」而失敗，
+    // 不是因為「少一個相依」而失敗。
+    "waitForUsableAudioStream", "acquireAudioRecoveryStream",
+    "startAudioSegRecorder", "AUDIO_SEG_OVERLAP_MS", "setTimeout",
+    `${source}; return resumeAudioOnForeground;`
+  )(
+    AUDIO,
+    { mediaDevices: { async getUserMedia() {
+        calls.getUserMedia++;
+        return { getAudioTracks: () => [liveTrack()], getTracks: () => [liveTrack()] };
+      } } },
+    { hidden: false },
+    (s) => String(s),
+    (msg) => calls.status.push(String(msg)),
+    () => {},
+    async () => {},
+    async () => true,           // ← recorder 交得出資料（實際是靜音）
+    () => {},
+    async () => true,           // waitForUsableAudioStream：音軌回前景後已 unmute
+    async () => ({ getAudioTracks: () => [liveTrack()], getTracks: () => [liveTrack()] }),
+    () => { calls.startSeg++; },
+    0,
+    (fn) => fn(),
+  );
+
+  await run();
+
+  assert.equal(calls.getUserMedia, 1,
+    "有中斷跡證就必須重取麥克風——舊音軌交得出資料不代表它錄得到聲音（靜音也是資料）");
+  assert.equal(calls.startSeg, 1, "重取麥克風後要開新的一段接續");
+  assert.equal(AUDIO.segIndex, 2, "段號要往前推，讓事後看得出這裡接過");
+  assert.ok(calls.status.some((s) => s.includes("接續")),
+    `狀態列要說明曾中斷並已接續，不能顯示「已自行恢復」，實際收到：${JSON.stringify(calls.status)}`);
 });
