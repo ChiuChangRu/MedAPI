@@ -836,6 +836,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   font-variant-numeric: tabular-nums;
 }
 .audio-badge-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: rec-blink 1.2s ease-in-out infinite; flex: none; }
+/* 紅點會跟著實際收到的音量跳動（transform 由 JS 控制）；持續量不到訊號時轉灰、
+   停止閃爍——使用者當下就看得出「沒在收音」，不用等事後轉文字才發現錄到空的 */
+.audio-badge-dot { transition: transform 0.12s ease-out; }
+.audio-badge-dot.no-signal { background: #9ca3af; animation: none; transform: none; }
 .audio-badge button {
   border: none; background: rgba(255,255,255,0.15); color: #fff;
   width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 14px;
