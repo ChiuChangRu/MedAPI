@@ -49,52 +49,11 @@ test("背景中斷時要把警示寫進記事永久保存，不是只有浮動�
     "要透過既有的「記一句」端點附加，不是自己另外發明一套寫法");
 });
 
-test("resumeAudioOnForeground：成功接續與無法接續兩種結果都要呼叫 noteAudioInterruption", () => {
-  const fn = app.match(/async function resumeAudioOnForeground[\s\S]*?\n\}\n/)?.[0] || "";
-  const calls = fn.match(/noteAudioInterruption\(/g) || [];
-  assert.equal(calls.length, 2, "成功接續、完全接不上兩條路徑都要留永久記錄，不能只顧一邊");
-});
-
 test("MediaRecorder 要定期交出資料，並監聽 recorder error", () => {
   assert.match(app, /const AUDIO_DATA_SLICE_MS = 5000;/, "背景凍結前要縮短尚未交給 JS 的錄音資料量");
   const fn = app.match(/function startAudioSegRecorder\(\)[\s\S]*?\n\}/)?.[0] || "";
   assert.match(fn, /recorder\.start\(AUDIO_DATA_SLICE_MS\)/, "MediaRecorder.start 要帶 timeslice");
   assert.match(fn, /recorder\.onerror\s*=.*recorderFailed/s, "MediaRecorder 自己報錯也要觸發接續判斷");
-});
-
-// 2026-08-18：拿掉「recorder 交得出資料＝還在錄」這個判準（見下方迴歸測試），
-// 一併拿掉了 probeAudioRecorderData 與它撐起來的桌機健康路徑。現在回前台
-// 只認 track.muted／readyState 與 recorder.state 這些真實訊號，不再用資料
-// 探測來斷言「已恢復」——這樣少一種假陽性，不需要額外的探測函式與逾時常數。
-test("resumeAudioOnForeground 不再依賴資料探測，只看 track／recorder 真實狀態", () => {
-  assert.doesNotMatch(app, /function probeAudioRecorderData/,
-    "資料探測函式已確認移除，不應該又被加回來");
-  assert.doesNotMatch(app, /AUDIO_FLOW_PROBE_TIMEOUT_MS/,
-    "探測逾時常數是死碼，不應該又被加回來");
-  const resume = app.match(/async function resumeAudioOnForeground[\s\S]*?\n\}\n/)?.[0] || "";
-  assert.match(resume, /track\.muted/, "判斷中斷要看音軌是否 muted");
-  assert.match(resume, /readyState === "ended"/, "判斷中斷要看音軌是否 ended");
-  assert.match(resume, /st !== "recording"/, "判斷中斷要看 recorder 是否還在錄");
-});
-
-test("音軌 muted 或 ended 也算中斷，不能只檢查 MediaRecorder.state", () => {
-  const watch = app.match(/function watchAudioStream\(stream\)[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(watch, /addEventListener\("mute", markInterrupted\)/, "iOS 常只把 track muted，必須監聽");
-  assert.match(watch, /addEventListener\("ended", markInterrupted\)/, "麥克風 track 結束必須監聽");
-  const resume = app.match(/async function resumeAudioOnForeground[\s\S]*?\n\}\n/)?.[0] || "";
-  assert.match(resume, /track\.muted/, "回前台要檢查仍處於 muted 的 track");
-  assert.match(resume, /AUDIO\.trackInterrupted/, "mute 後已自行 unmute 也要留下中斷邊界");
-  assert.match(resume, /AUDIO\.recorderFailed/, "recorder error 也要重建錄音器");
-});
-
-test("回前台重建時先開始新 recorder，再延遲停止舊 recorder", () => {
-  const resume = app.match(/async function resumeAudioOnForeground[\s\S]*?\n\}\n/)?.[0] || "";
-  const startIdx = resume.indexOf("startAudioSegRecorder()");
-  const stopIdx = resume.indexOf("oldRecorder.stop()");
-  assert.ok(startIdx > -1 && stopIdx > -1 && startIdx < stopIdx,
-    "恢復前景時要先接上新的 recorder，不能再製造可避免的空隙");
-  assert.match(resume, /setTimeout\([\s\S]*AUDIO_SEG_OVERLAP_MS\)/,
-    "舊 recorder 要延遲到重疊時間後才停止");
 });
 
 test("pagehide 不得停止背景錄音；真正離頁由 beforeunload 先警告", () => {
@@ -136,183 +95,142 @@ test("版本號四處同步（app.js／worker.js／sw.js 快取名）", async ()
     "index.html 的資源版號不可殘留上一版");
 });
 
-// 2026-08-16 v115 實測回報：改成延後重試後，錯誤換成「⛔ 錄音無法自動接續
-// （Error：麥克風音軌喚醒逾時）」。原因是 v114 只替「新取得的音軌」留了暖機
-// 緩衝（waitForUsableAudioStream），舊音軌卻還是用 !track.muted 瞬間判斷——
-// 同一件事只修了一半。觸發恢復的往往就是那一次短暫 muted，舊音軌在那個瞬間
-// 當然也是 muted，於是還能繼續錄的 recorder 被判成報廢。
+
 
 /**
- * ⛔ 2026-08-18 迴歸測試 #1：背景錄音「看起來好、實際錄到靜音」
+ * 🎙 2026-08-18 迴歸測試：換段太頻繁，把錄音剁碎並且每次換段都掉音訊
  *
- * 8/14 版可以正常背景錄音；8/15–8/17 疊了四層「恢復保護」之後就壞了。
- * 真正的缺陷：判定「麥克風其實還活著」用的是 recorder.requestData() 有沒有
- * 交出資料。這個判準無效——音軌被系統靜音時，編碼器照樣吐出「編碼過的靜音」，
- * size 一樣大於 0。於是明明已經有中斷跡證，卻被這個假陽性推翻，直接 return、
- * 不換段、不重取麥克風，畫面還顯示「✓ 已自行恢復」，實際錄下來整段是靜音。
+ * 使用者實測（桌機 Chrome 切分頁／切別的 App）：一段 3 分 34 秒（214 秒）的
+ * 錄音被剁成 6 段，實際只錄到 107 秒——整整一半掉在換段的空隙裡，而且每一段
+ * 都是「無語音內容」。
  *
- * 處理方式是整個拿掉這個判準（連同 probeAudioRecorderData 一起刪除，見上面
- * 「resumeAudioOnForeground 不再依賴資料探測」測試），不是再疊一層防護。
- * 這裡驗證：有中斷跡證時一定會呼叫 getUserMedia 重取，不會因為舊 recorder
- * 還「宣稱」在錄就放過。
+ * 根因不是「接不上」，而是「接得太頻繁」：桌機 Chrome 切分頁時錄音其實照常
+ * 進行，但程式每次回前景都判定中斷、把 stream 拆掉重建，重建的空窗就是掉掉
+ * 的音訊。track.muted 常常只是一瞬間（系統提示音、裝置切換），被當成報廢。
+ *
+ * 因此原則反過來：預設什麼都不做。只有「音軌全部 ended」或「recorder 不在
+ * recording」才算真的死了；muted 先給緩衝等它自行恢復；真的要換段時還有節流，
+ * 不能連續剁。
+ *
+ * 這幾個測試直接跑 resumeAudioOnForeground 的行為，不比對原始碼字串。
  */
-test("有中斷跡證時，一定會嘗試重取麥克風，不能因為舊 recorder 仍宣稱在錄就放過", async () => {
-  const source = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0];
-  assert.ok(source, "找不到 resumeAudioOnForeground");
+function makeAudioHarness(app, { AUDIO, getUserMedia, hidden = false }) {
+  const src = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n\n/)?.[0];
+  const rebuild = app.match(/async function rebuildAudioAfterInterruption\([\s\S]*?\n\}\n/)?.[0];
+  const alive = app.match(/async function audioStillAlive\(\)[\s\S]*?\n\}\n/)?.[0];
+  const waitFn = app.match(/function waitForTrackUsable\(stream, timeoutMs\)[\s\S]*?\n\}\n/)?.[0];
+  assert.ok(src && rebuild && alive && waitFn, "找不到錄音接續相關函式");
 
-  const calls = { getUserMedia: 0, startSeg: 0, status: [] };
-  const liveTrack = () => ({ readyState: "live", muted: false, stop() {} });
-  const AUDIO = {
-    ending: false, resuming: false, backgroundAt: Date.now() - 30_000, backgroundSecs: 0,
-    startedAt: Date.now() - 60_000, segIndex: 1, entryId: 7,
-    trackInterrupted: true, trackInterruptedAt: Date.now() - 30_000, recorderFailed: false,
-    recorder: { state: "recording", stop() {} },
-    stream: { getAudioTracks: () => [liveTrack()] },
-  };
-
-  const run = new Function(
+  const calls = { getUserMedia: 0, startSeg: 0, status: [], notes: [] };
+  const body = `
+    ${waitFn}
+    ${alive}
+    ${rebuild}
+    ${src}
+    return resumeAudioOnForeground;`;
+  const fn = new Function(
     "AUDIO", "navigator", "document", "fmtSecs", "setAudioStatus", "showToast",
     "noteAudioInterruption", "watchAudioStream", "startAudioSegRecorder",
-    "AUDIO_SEG_OVERLAP_MS", "AUDIO_RECOVERY_ATTEMPTS", "AUDIO_RECOVERY_RETRY_MS", "setTimeout",
-    `${source}; return resumeAudioOnForeground;`
+    "AUDIO_SEG_OVERLAP_MS", "AUDIO_RECOVERY_ATTEMPTS", "AUDIO_RECOVERY_RETRY_MS",
+    "AUDIO_MUTE_GRACE_MS", "AUDIO_MIN_ROTATE_INTERVAL_MS", "setTimeout", "clearTimeout",
+    body
   )(
     AUDIO,
-    { mediaDevices: { async getUserMedia() {
-        calls.getUserMedia++;
-        return { getAudioTracks: () => [liveTrack()], getTracks: () => [liveTrack()] };
-      } } },
-    { hidden: false },
-    (s) => String(s),
-    (msg) => calls.status.push(String(msg)),
-    () => {},
-    async () => {},
-    () => {},
-    () => { calls.startSeg++; },
-    0, 3, 0,
-    (fn) => fn(),
-  );
-
-  await run();
-
-  assert.equal(calls.getUserMedia, 1, "有中斷跡證就必須重取麥克風");
-  assert.equal(calls.startSeg, 1, "重取麥克風後要開新的一段接續");
-  assert.equal(AUDIO.segIndex, 2, "段號要往前推，讓事後看得出這裡接過");
-  assert.ok(calls.status.some((s) => s.includes("接續")),
-    `狀態列要說明曾中斷並已接續，實際收到：${JSON.stringify(calls.status)}`);
-});
-
-/**
- * ⛔ 2026-08-18 迴歸測試 #2：連續「錄音無法自動接續」（裝置被舊 stream 卡住）
- *
- * 使用者實測回報：上面那次修正上線後，背景錄音變成連續三次在幾十秒內都顯示
- * 「⛔ 錄音無法自動接續，請結束後重新錄音」——比原本的假陽性更糟，直接放棄。
- *
- * 原因：判定中斷後只呼叫一次 getUserMedia，沒有先停掉舊 stream 的音軌。部分
- * 裝置（尤其部分 Windows 音效卡）麥克風是獨佔的，舊音軌即使已經 mute／ended，
- * 只要沒被明確 stop()，作業系統仍可能認為裝置被佔用，導致重新 getUserMedia()
- * 立刻失敗——而且失敗後舊 stream 還是沒被停掉，下一次回前景會用同樣的方式
- * 再失敗一次，形成使用者截圖裡那種每隔十幾秒就報一次「無法接續」的迴圈。
- *
- * 這裡驗證：重取麥克風之前一定要先停掉舊 stream 的音軌；而且遇到暫時性失敗
- * 要重試而不是只試一次就放棄。
- */
-test("重取麥克風前要先停舊 stream 的音軌釋放裝置；暫時性失敗要重試不是只試一次", async () => {
-  const source = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0];
-  assert.ok(source, "找不到 resumeAudioOnForeground");
-
-  const calls = { getUserMedia: 0, startSeg: 0, oldTrackStopped: false, status: [] };
-  const liveTrack = () => ({ readyState: "live", muted: false, stop() { calls.oldTrackStopped = true; } });
-  const AUDIO = {
-    ending: false, resuming: false, backgroundAt: Date.now() - 30_000, backgroundSecs: 0,
-    startedAt: Date.now() - 60_000, segIndex: 1, entryId: 7,
-    trackInterrupted: true, trackInterruptedAt: Date.now() - 30_000, recorderFailed: false,
-    recorder: { state: "recording", stop() {} },
-    stream: { getAudioTracks: () => [liveTrack()] },
-  };
-  let attemptOrder = 0;
-  let stopOrderAtFirstAttempt = null;
-
-  const run = new Function(
-    "AUDIO", "navigator", "document", "fmtSecs", "setAudioStatus", "showToast",
-    "noteAudioInterruption", "watchAudioStream", "startAudioSegRecorder",
-    "AUDIO_SEG_OVERLAP_MS", "AUDIO_RECOVERY_ATTEMPTS", "AUDIO_RECOVERY_RETRY_MS", "setTimeout",
-    `${source}; return resumeAudioOnForeground;`
-  )(
-    AUDIO,
-    { mediaDevices: { async getUserMedia() {
-        calls.getUserMedia++;
-        attemptOrder++;
-        if (attemptOrder === 1) stopOrderAtFirstAttempt = calls.oldTrackStopped;
-        // 模擬裝置暫時被佔用：前兩次失敗（NotReadableError 這類瞬時錯誤），第三次成功
-        if (attemptOrder < 3) { const e = new Error("Device in use"); e.name = "NotReadableError"; throw e; }
-        return { getAudioTracks: () => [liveTrack()], getTracks: () => [liveTrack()] };
-      } } },
-    { hidden: false },
-    (s) => String(s),
-    (msg) => calls.status.push(String(msg)),
-    () => {},
-    async () => {},
-    () => {},
-    () => { calls.startSeg++; },
-    0, 3, 0,           // AUDIO_RECOVERY_RETRY_MS=0，測試不用真的等
-    (fn) => fn(),       // setTimeout 立即執行，不拖慢測試
-  );
-
-  await run();
-
-  assert.equal(calls.oldTrackStopped, true,
-    "重取麥克風前一定要停掉舊 stream 的音軌，否則獨佔裝置永遠釋放不出來");
-  assert.equal(stopOrderAtFirstAttempt, true,
-    "停舊音軌要發生在第一次 getUserMedia 之前，不是失敗後才亡羊補牢");
-  assert.equal(calls.getUserMedia, 3, "暫時性失敗要重試，不能第一次失敗就放棄");
-  assert.equal(calls.startSeg, 1, "重試成功後要開新的一段接續");
-  assert.ok(!calls.status.some((s) => s.includes("無法自動接續")),
-    `重試最終成功時不該顯示「無法自動接續」，實際收到：${JSON.stringify(calls.status)}`);
-});
-
-test("重取麥克風重試次數用盡仍失敗時，要明確顯示無法接續並留下永久記錄", async () => {
-  const source = app.match(/async function resumeAudioOnForeground\(\)[\s\S]*?\n\}\n/)?.[0];
-  assert.ok(source, "找不到 resumeAudioOnForeground");
-
-  const calls = { getUserMedia: 0, notes: [], status: [] };
-  const liveTrack = () => ({ readyState: "live", muted: false, stop() {} });
-  const AUDIO = {
-    ending: false, resuming: false, backgroundAt: Date.now() - 30_000, backgroundSecs: 0,
-    startedAt: Date.now() - 60_000, segIndex: 1, entryId: 7,
-    trackInterrupted: true, trackInterruptedAt: Date.now() - 30_000, recorderFailed: false,
-    recorder: { state: "recording", stop() {} },
-    stream: { getAudioTracks: () => [liveTrack()] },
-  };
-
-  const run = new Function(
-    "AUDIO", "navigator", "document", "fmtSecs", "setAudioStatus", "showToast",
-    "noteAudioInterruption", "watchAudioStream", "startAudioSegRecorder",
-    "AUDIO_SEG_OVERLAP_MS", "AUDIO_RECOVERY_ATTEMPTS", "AUDIO_RECOVERY_RETRY_MS", "setTimeout",
-    `${source}; return resumeAudioOnForeground;`
-  )(
-    AUDIO,
-    { mediaDevices: { async getUserMedia() {
-        calls.getUserMedia++;
-        const e = new Error("Permission denied");
-        e.name = "NotAllowedError";
-        throw e;
-      } } },
-    { hidden: false },
-    (s) => String(s),
+    { mediaDevices: { async getUserMedia() { calls.getUserMedia++; return getUserMedia(); } } },
+    { hidden },
+    (n) => String(n),
     (msg) => calls.status.push(String(msg)),
     () => {},
     async (id, line) => { calls.notes.push(line); },
     () => {},
-    () => {},
-    0, 3, 0,
-    (fn) => fn(),
+    () => { calls.startSeg++; },
+    0, 3, 0, 20, 20000,
+    (cb, ms) => globalThis.setTimeout(cb, Math.min(ms || 0, 5)),
+    (id) => globalThis.clearTimeout(id),
   );
+  return { run: fn, calls };
+}
 
+const liveTrack = () => ({ readyState: "live", muted: false, stop() { this.readyState = "ended"; }, addEventListener() {}, removeEventListener() {} });
+const newStreamOf = () => { const t = liveTrack(); return { getAudioTracks: () => [t], getTracks: () => [t] }; };
+
+test("桌機切分頁回來、錄音其實還活著時：完全不換段、不重取麥克風", async () => {
+  const track = liveTrack();
+  const AUDIO = {
+    ending: false, resuming: false, backgroundAt: Date.now() - 120_000, backgroundSecs: 0,
+    startedAt: Date.now() - 200_000, segIndex: 1, entryId: 7,
+    trackInterrupted: false, trackInterruptedAt: 0, recorderFailed: false,
+    lastRotateAt: 0, recheckTimer: 0,
+    recorder: { state: "recording", stop() {} },
+    stream: { getAudioTracks: () => [track] },
+  };
+  const { run, calls } = makeAudioHarness(app, { AUDIO, getUserMedia: newStreamOf });
   await run();
 
-  assert.equal(calls.getUserMedia, 3, "要重試到用盡次數才放棄，不能少試");
-  assert.ok(calls.status.some((s) => s.includes("無法自動接續")),
-    `重試用盡仍失敗要明確顯示無法接續，實際收到：${JSON.stringify(calls.status)}`);
-  assert.ok(calls.notes.some((n) => n.includes("無法自動接續")),
-    "重試用盡的失敗也要寫進記事永久保存，不能只有浮動列一閃而過");
+  assert.equal(calls.getUserMedia, 0, "錄音還活著就不該重取麥克風——重取的空窗正是音訊掉掉的地方");
+  assert.equal(calls.startSeg, 0, "錄音還活著就不該開新的一段");
+  assert.equal(AUDIO.segIndex, 1, "段號不可以前進，否則一次錄音會被切分頁次數剁碎");
+  assert.equal(calls.notes.length, 0, "沒有真的中斷就不該往記事寫中斷警告");
+});
+
+test("音軌只是短暫 muted、隨後自行 unmute：一樣不換段", async () => {
+  const track = { readyState: "live", muted: true, stop() {}, _h: [],
+    addEventListener(ev, cb) { this._h.push([ev, cb]); },
+    removeEventListener() {} };
+  // 緩衝期間自行 unmute
+  globalThis.setTimeout(() => {
+    track.muted = false;
+    track._h.filter(([e]) => e === "unmute").forEach(([, cb]) => cb());
+  }, 1);
+  const AUDIO = {
+    ending: false, resuming: false, backgroundAt: Date.now() - 5_000, backgroundSecs: 0,
+    startedAt: Date.now() - 60_000, segIndex: 1, entryId: 7,
+    trackInterrupted: true, trackInterruptedAt: Date.now() - 5_000, recorderFailed: false,
+    lastRotateAt: 0, recheckTimer: 0,
+    recorder: { state: "recording", stop() {} },
+    stream: { getAudioTracks: () => [track] },
+  };
+  const { run, calls } = makeAudioHarness(app, { AUDIO, getUserMedia: newStreamOf });
+  await run();
+
+  assert.equal(calls.getUserMedia, 0, "瞬間 muted 自行恢復後不該重取麥克風");
+  assert.equal(AUDIO.segIndex, 1, "瞬間 muted 不該讓錄音被切成兩段");
+  assert.equal(AUDIO.trackInterrupted, false, "自行恢復後要清掉中斷標記，否則下次回前景又會重跑一次");
+});
+
+test("音軌真的 ended：才重取麥克風並開新的一段", async () => {
+  const dead = { readyState: "ended", muted: false, stop() {}, addEventListener() {}, removeEventListener() {} };
+  const AUDIO = {
+    ending: false, resuming: false, backgroundAt: Date.now() - 30_000, backgroundSecs: 0,
+    startedAt: Date.now() - 60_000, segIndex: 1, entryId: 7,
+    trackInterrupted: true, trackInterruptedAt: Date.now() - 30_000, recorderFailed: false,
+    lastRotateAt: 0, recheckTimer: 0,
+    recorder: { state: "recording", stop() {} },
+    stream: { getAudioTracks: () => [dead] },
+  };
+  const { run, calls } = makeAudioHarness(app, { AUDIO, getUserMedia: newStreamOf });
+  await run();
+
+  assert.equal(calls.getUserMedia, 1, "音軌確定死掉就必須重取麥克風");
+  assert.equal(calls.startSeg, 1, "重取後要開新的一段接續");
+  assert.equal(AUDIO.segIndex, 2, "段號要前進");
+  assert.ok(calls.notes.some((n) => n.includes("接續")), "真的中斷要留下永久記錄");
+});
+
+test("換段有節流：短時間內反覆中斷不可把錄音剁成很多段", async () => {
+  const dead = { readyState: "ended", muted: false, stop() {}, addEventListener() {}, removeEventListener() {} };
+  const AUDIO = {
+    ending: false, resuming: false, backgroundAt: Date.now() - 5_000, backgroundSecs: 0,
+    startedAt: Date.now() - 60_000, segIndex: 3, entryId: 7,
+    trackInterrupted: true, trackInterruptedAt: Date.now() - 5_000, recorderFailed: false,
+    // 剛剛才換過段
+    lastRotateAt: Date.now() - 1_000, recheckTimer: 0,
+    recorder: { state: "recording", stop() {} },
+    stream: { getAudioTracks: () => [dead] },
+  };
+  const { run, calls } = makeAudioHarness(app, { AUDIO, getUserMedia: newStreamOf });
+  await run();
+
+  assert.equal(calls.getUserMedia, 0, "距離上次換段還太近，不可立刻又換一段");
+  assert.equal(AUDIO.segIndex, 3, "段號不可以前進——使用者實測 214 秒被剁成 6 段就是缺這道閘");
 });
