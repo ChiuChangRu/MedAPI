@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "118";
+const APP_VERSION = "119";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -3618,12 +3618,6 @@ const AUDIO_DATA_SLICE_MS = 5000;
 // 很快收到非空 dataavailable。不能只看 recorder.state，因為卡住的 recorder 也可能
 // 繼續宣稱自己是 recording；也不能像舊版一樣，只要切過背景就一律顯示缺口警告。
 const AUDIO_FLOW_PROBE_TIMEOUT_MS = 2000;
-// 回前景重取麥克風時，Chrome／作業系統可能先回傳一條短暫 muted 的新音軌，
-// 幾百毫秒後才送 unmute。舊程式在那一瞬間就宣告接續失敗。等待暖機並對
-// NotReadableError／AbortError 這類暫時性錯誤做有限次重試。
-const AUDIO_RECOVERY_TRACK_TIMEOUT_MS = 4000;
-const AUDIO_RECOVERY_ATTEMPTS = 3;
-const AUDIO_RECOVERY_RETRY_MS = 700;
 // 換下一段錄音時，新的一段提前這麼多毫秒先開始收音，跟舊的一段重疊一下再收尾舊的
 // （見 rotateAudioSegment）——比起先收尾舊的、才開始收新的，重疊比空隙安全：
 // 頂多兩段音檔開頭/結尾多重複這一小段，不會真的漏錄。
@@ -3972,66 +3966,6 @@ function probeAudioRecorderData(recorder) {
   });
 }
 
-function waitForUsableAudioStream(stream, timeoutMs = AUDIO_RECOVERY_TRACK_TIMEOUT_MS) {
-  const tracks = stream?.getAudioTracks?.() || [];
-  if (!tracks.length || tracks.every((track) => track.readyState === "ended")) return Promise.resolve(false);
-  if (tracks.some((track) => track.readyState === "live" && !track.muted)) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (usable) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timerId);
-      for (const track of tracks) {
-        track.removeEventListener("unmute", check);
-        track.removeEventListener("ended", check);
-      }
-      resolve(usable);
-    };
-    const check = () => {
-      const usable = tracks.some((track) => track.readyState === "live" && !track.muted);
-      const allEnded = tracks.every((track) => track.readyState === "ended");
-      if (usable || allEnded) finish(usable);
-    };
-    for (const track of tracks) {
-      track.addEventListener("unmute", check);
-      track.addEventListener("ended", check);
-    }
-    const timerId = setTimeout(() => check() || finish(false), timeoutMs);
-  });
-}
-
-// 恢復流程中頁面又被切到背景，不是永久失敗，只是這一輪不能繼續：整個重試迴圈
-// 最長可能跑十幾秒（3 次 × 每次最多等 4 秒喚醒麥克風＋退避間隔），使用者中途再
-// 切走一次就會撞到。標成可延後的錯誤，讓呼叫端保留中斷狀態、等下次回到前景自動
-// 重試，不要因為一次時機不巧就宣告整段錄音報廢。
-function audioRecoveryDeferred() {
-  const err = new Error("頁面尚未回到前景");
-  err.deferred = true;
-  return err;
-}
-
-async function acquireAudioRecoveryStream() {
-  let lastError = new Error("麥克風尚未恢復");
-  for (let attempt = 1; attempt <= AUDIO_RECOVERY_ATTEMPTS; attempt++) {
-    if (!AUDIO || AUDIO.ending || document.hidden) throw audioRecoveryDeferred();
-    let stream = null;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (await waitForUsableAudioStream(stream)) return stream;
-      lastError = new Error("麥克風音軌喚醒逾時");
-    } catch (err) {
-      lastError = err;
-    }
-    try { stream?.getTracks().forEach((track) => track.stop()); } catch {}
-    if (attempt < AUDIO_RECOVERY_ATTEMPTS) {
-      setAudioStatus(`麥克風恢復中（${attempt}/${AUDIO_RECOVERY_ATTEMPTS}）…`);
-      await new Promise((resolve) => setTimeout(resolve, AUDIO_RECOVERY_RETRY_MS * attempt));
-    }
-  }
-  throw lastError;
-}
-
 // 行動瀏覽器可能只把麥克風 track 設成 muted，MediaRecorder.state 仍然維持
 // "recording"。只檢查 recorder.state 會誤判成一切正常，回前台後也不會接續。
 // 因此把 mute/ended 永久記到 session，等頁面可見時重新取得麥克風並開新段。
@@ -4205,26 +4139,6 @@ async function resumeAudioOnForeground() {
     }
 
     if (!needsRecovery) return;
-
-    // 重取麥克風之前，先給舊音軌跟新音軌一樣的暖機緩衝。觸發恢復的往往就是一次
-    // 短暫 muted，稍後會自行 unmute——v114 只替新取得的音軌留了這個緩衝，舊音軌
-    // 卻還是用 !track.muted 瞬間判斷，等於同一件事只修了一半。舊的能自行恢復就
-    // 不必再 getUserMedia：省掉一次不必要的換段，也避開「舊 stream 還握著裝置、
-    // 新音軌一直停在 muted 直到喚醒逾時」（部分 Windows 音訊裝置是獨佔的）。
-    if (AUDIO.recorder?.state === "recording" && await waitForUsableAudioStream(AUDIO.stream)) {
-      if (!AUDIO || AUDIO.ending) return;
-      if (document.hidden) { AUDIO.backgroundAt ||= Date.now(); return; }
-      if (await probeAudioRecorderData(AUDIO.recorder)) {
-        if (!AUDIO || AUDIO.ending) return;
-        AUDIO.trackInterrupted = false;
-        AUDIO.trackInterruptedAt = 0;
-        AUDIO.recorderFailed = false;
-        setAudioStatus("✓ 麥克風短暫中斷後已自行恢復，錄音持續中", false);
-        return;
-      }
-      if (!AUDIO || AUDIO.ending) return;
-    }
-
     const interruptionMs = AUDIO.trackInterruptedAt || backgroundStartedAt || Date.now();
     const interruptedAt = fmtSecs(Math.max(0, Math.floor((interruptionMs - AUDIO.startedAt) / 1000)));
     AUDIO.interrupted = true;
@@ -4234,10 +4148,14 @@ async function resumeAudioOnForeground() {
     try {
       // 一律拿新的 stream：track 可能曾 muted 又自行 unmute；只沿用舊 stream 會讓
       // MediaRecorder 看似 recording、實際卻沒有新的聲音資料。
-      newStream = await acquireAudioRecoveryStream();
+      newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (!AUDIO || AUDIO.ending) {
         newStream.getTracks().forEach((track) => track.stop());
         return;
+      }
+      const newTracks = newStream.getAudioTracks();
+      if (!newTracks.length || newTracks.every((track) => track.readyState === "ended") || newTracks.some((track) => track.muted)) {
+        throw new Error("麥克風仍處於暫停狀態");
       }
       AUDIO.stream = newStream;
       AUDIO.trackInterrupted = false;
@@ -4258,24 +4176,8 @@ async function resumeAudioOnForeground() {
       noteAudioInterruption(AUDIO.entryId,
         `⚠️ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，最多可能漏錄 ${fmtSecs(backgroundSecs)}，已自動開新的一段接續。`);
     } catch (err) {
+      const oldTracksUsable = oldStream?.getAudioTracks().some((track) => track.readyState === "live" && !track.muted);
       if (newStream && newStream !== oldStream) newStream.getTracks().forEach((track) => track.stop());
-      // 只是「恢復到一半頁面又切走」：保留中斷標記與原本的 recorder／stream，
-      // 等下次回到前景時 visibilitychange → resumeAudioOnForeground 自動再試一次。
-      // 這裡如果照一般失敗處理，使用者只是中途瞄了一眼別的分頁就會被告知錄音報廢。
-      // 這個分支要擺在下面的暖機等待之前：頁面都已經在背景了，再花幾秒等音軌
-      // 喚醒只是白等一場。
-      if (err?.deferred && AUDIO && !AUDIO.ending) {
-        AUDIO.trackInterrupted = true;
-        AUDIO.trackInterruptedAt ||= interruptionMs;
-        AUDIO.backgroundAt ||= Date.now();
-        setAudioStatus("背景錄音中；回到前景後會再試一次接續", false);
-        return;
-      }
-      // 舊音軌一樣要給暖機緩衝再判定，不能瞬間看 !track.muted 就說它不能用——
-      // 觸發恢復的常常就是那一次短暫 muted，用瞬間值判斷會把「還能繼續錄的
-      // recorder」誤判成報廢，直接跳出要使用者重錄。
-      const oldTracksUsable = oldRecorder?.state === "recording"
-        && await waitForUsableAudioStream(oldStream);
       if (AUDIO && oldRecorder?.state === "recording" && oldTracksUsable) {
         // mute 有時只是瞬時狀態；重取麥克風失敗但舊軌已恢復時，不要反而把
         // 尚可繼續的 recorder 關掉。仍留下缺口警示，不能假裝背景段完整。
@@ -4288,11 +4190,10 @@ async function resumeAudioOnForeground() {
         noteAudioInterruption(AUDIO.entryId,
           `⚠️ 錄音在約 ${interruptedAt} 曾因 App／分頁背景化暫停；重新取得麥克風失敗，但原音軌已恢復。背景期間內容可能不完整。`);
       } else if (AUDIO) {
-        const recoveryError = [err?.name, err?.message].filter(Boolean).join("：") || "未知錯誤";
-        setAudioStatus(`⛔ 錄音無法自動接續（${recoveryError}），請結束後重新錄音`, true);
-        showToast("錄音無法自動接續：" + recoveryError);
+        setAudioStatus("⛔ 錄音已中斷且無法自動接續，請結束後重新錄音", true);
+        showToast("錄音無法自動接續：" + err.message);
         noteAudioInterruption(AUDIO.entryId,
-          `⛔ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，且無法自動接續（${recoveryError}），錄音已中止，之後的內容請另外補記。`);
+          `⛔ 錄音疑似中斷（App／分頁切到背景），發生在約 ${interruptedAt}，且無法自動接續，錄音已中止，之後的內容請另外補記。`);
       }
     }
   } finally {
