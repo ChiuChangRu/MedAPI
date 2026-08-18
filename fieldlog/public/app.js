@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "122";
+const APP_VERSION = "123";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -4065,7 +4065,7 @@ async function startAudio(entryId) {
   let ref;
   try { ref = await ensureEntryForCapture(entryId, "錄音"); }
   catch (err) { stream.getTracks().forEach((t) => t.stop()); showToast("無法建立紀錄：" + err.message); return; }
-  AUDIO = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, dest: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, liveLines: [], liveTranscriptionStopped: false };
+  AUDIO = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, dest: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false };
   initAudioGraph();
   watchAudioStream(stream);
   startAudioSegRecorder();
@@ -4097,7 +4097,7 @@ function stopAudio() {
 // 收尾：關麥克風、藏浮動列、跳完成提示、重開紀錄。stopAudio 與 onstop 收尾路徑共用
 function finalizeAudioStop() {
   if (!AUDIO) return;
-  const { stream, timerId, recheckTimer, meterTimer, micSource, audioCtx, photos, entryId, segIndex } = AUDIO;
+  const { stream, timerId, recheckTimer, meterTimer, micSource, audioCtx, photos, entryId, segIndex, diagPeakMax } = AUDIO;
   clearInterval(timerId);
   clearInterval(meterTimer);
   clearTimeout(recheckTimer);
@@ -4108,7 +4108,12 @@ function finalizeAudioStop() {
   setAudioStatus();
   resetAudioLiveTranscript();
   AUDIO = null;
-  showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}`);
+  const diagBit = diagPeakMax !== undefined
+    ? (diagPeakMax > AUDIO_SIGNAL_FLOOR
+        ? ""
+        : "　⚠️ 全程量到的最高音量是 0，這段錄音可能整個是靜音，建議先播放確認再離開")
+    : "";
+  showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}${diagBit}`);
   openEntry(entryId);
 }
 
@@ -4221,6 +4226,7 @@ function noteMicPeak(peak) {
   if (!AUDIO || peak === null) return;
   if (peak > AUDIO_SIGNAL_FLOOR) {
     AUDIO.deadSince = 0;
+    AUDIO.diagWarnedThisDeath = false;
     AUDIO.lastSignalAt = Date.now();
   } else {
     AUDIO.deadSince ||= Date.now();
@@ -4246,12 +4252,31 @@ function startAudioMeter() {
 // 量實際訊號判斷麥克風死活。全零持續超過 AUDIO_DEAD_SIGNAL_MS → 換訊號源。
 // 這是整個偵測的唯一判準：不看 muted、不看 recorder.state、不看資料塊大小
 // ——那些旗標在殭屍音軌上全部會說謊（v118–v121 的教訓）。
+//
+// 2026-08-18（三）新增診斷紀錄：v122 上線後使用者實測「不再被剁段，但整段
+// 播放沒聲音」。查歷史錄音發現這不是這次架構重寫造成的——8/14 版（已知良好
+// 基準）同一場 3.5 小時的錄音，前 131 分鐘逐字稿正常，但一次背景中斷接續後，
+// 後面 70 分鐘全部是 Whisper 對靜音的幻覺輸出（"Thank you" 反覆）。代表換上
+// 全新的 getUserMedia 音軌，在某些情況下依然量不到真實訊號——比較像作業系統
+// 層級把瀏覽器的錄音整個靜音掉，不是任何換源策略能在網頁端繞過的。
+// 在下一次真的猜對之前，先讓程式老實記下它量到的數字，不要再靠盲猜。
 function checkMicSignal() {
   if (!AUDIO || AUDIO.ending) return;
   const peak = readMicPeak();
   if (peak === null) return; // 沒有收音圖（退回模式）：無從量測
   noteMicPeak(peak);
-  if (AUDIO.deadSince && Date.now() - AUDIO.deadSince >= AUDIO_DEAD_SIGNAL_MS) attemptMicSwap();
+  AUDIO.diagPeakMax = Math.max(AUDIO.diagPeakMax || 0, peak);
+  if (!AUDIO.deadSince) return;
+  const deadMs = Date.now() - AUDIO.deadSince;
+  if (deadMs >= AUDIO_DEAD_SIGNAL_MS) {
+    attemptMicSwap();
+  } else if (deadMs >= 1000 && !AUDIO.diagWarnedThisDeath) {
+    // 死亡計時進行中就先留一筆記錄，換源萬一「假裝成功」（新音軌其實也是
+    // 靜音），至少事後能對照這裡的時間點，不用整段錄完才發現整個是空的。
+    AUDIO.diagWarnedThisDeath = true;
+    const at = fmtSecs(Math.max(0, Math.floor((AUDIO.deadSince - AUDIO.startedAt) / 1000)));
+    noteAudioInterruption(AUDIO.entryId, `🔬 診斷：約 ${at} 起偵測到麥克風無訊號（peak=0），持續中。`);
+  }
 }
 
 // 換訊號源：重新 getUserMedia，先把新源接上收音圖、再拔舊的。
@@ -4316,8 +4341,16 @@ async function attemptMicSwap() {
     watchAudioStream(fresh);
     const fromS = fmtSecs(Math.max(0, Math.floor((deadFrom - AUDIO.startedAt) / 1000)));
     setAudioStatus(`⚠️ 麥克風曾無訊號（約 ${fromS} 起），已自動更換收音來源；錄音檔連續未中斷`, true);
+    // 換源「成功」只代表 getUserMedia 順利拿到新的 track 物件，不保證這條新
+    // 音軌真的收得到聲音——8/14 版的實測結果就是換源成功後依然整段靜音。
+    // 因此這裡量一次新源的實際訊號，一起寫進記事，讓下次判斷不用再猜。
+    const postSwapPeak = readMicPeak();
+    const postSwapNote = postSwapPeak === null ? "" :
+      postSwapPeak > AUDIO_SIGNAL_FLOOR
+        ? `（換源後立即量測：peak=${postSwapPeak.toFixed(4)}，有收到訊號）`
+        : `（⚠️ 換源後立即量測：peak=${postSwapPeak.toFixed(4)}，仍是零——新音軌可能同樣收不到聲音，不是重取麥克風就能解決的）`;
     noteAudioInterruption(AUDIO.entryId,
-      `⚠️ 錄音在約 ${fromS} 偵測到麥克風無訊號（可能遭系統靜音或裝置切換），已自動更換收音來源。無訊號期間在錄音檔中為等長靜音，檔案時間軸連續。`);
+      `⚠️ 錄音在約 ${fromS} 偵測到麥克風無訊號（可能遭系統靜音或裝置切換），已自動更換收音來源。無訊號期間在錄音檔中為等長靜音，檔案時間軸連續。${postSwapNote}`);
   } finally {
     if (AUDIO) AUDIO.swapping = false;
   }

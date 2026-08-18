@@ -175,6 +175,7 @@ test("換源是無縫的：先接新源再拔舊源，recorder 與段號完全�
     "AUDIO", "navigator", "document", "AUDIO_CONSTRAINTS", "AUDIO_RECOVERY_ATTEMPTS",
     "AUDIO_RECOVERY_RETRY_MS", "AUDIO_MUTE_GRACE_MS", "AUDIO_MIN_SWAP_INTERVAL_MS",
     "waitForTrackUsable", "watchAudioStream", "setAudioStatus", "noteAudioInterruption", "fmtSecs",
+    "readMicPeak", "AUDIO_SIGNAL_FLOOR",
     `${src}; return attemptMicSwap;`
   )(
     AUDIO,
@@ -186,6 +187,7 @@ test("換源是無縫的：先接新源再拔舊源，recorder 與段號完全�
     () => {},
     async (id, line) => { notes.push(line); },
     (n) => String(n),
+    () => 0.05, 1e-4,     // 換源後量到有訊號（測試對照組；真實裝置未必如此，見下一則測試）
   );
   await run();
 
@@ -197,6 +199,53 @@ test("換源是無縫的：先接新源再拔舊源，recorder 與段號完全�
   assert.equal(AUDIO.segIndex, 1, "換源不可換段——重建 recorder 正是之前掉音訊的元凶");
   assert.equal(AUDIO.deadSince, 0, "換完要清掉死亡計時");
   assert.ok(notes.some((n) => n.includes("無訊號")), "換源要留下永久記錄");
+});
+
+/**
+ * 🔬 2026-08-18（三）診斷埋點：換源「成功」不等於「換到的音軌真的有聲音」
+ *
+ * 查歷史錄音發現：8/14 版（已知良好基準）同一場錄音裡，一次背景中斷「已自動
+ * 開新的一段接續」之後，後面 70 分鐘全部是 Whisper 對靜音的幻覺輸出。代表
+ * 換源這個動作本身「成功」了（拿到新的 track 物件），但新音軌實際上一樣收不
+ * 到聲音——這比較像作業系統層級把瀏覽器的錄音整個靜音掉，不是任何換源策略
+ * 能在網頁端繞過的。
+ *
+ * 在真正修好這個之前，程式至少要老實記下「換源後量到的是不是仍然零」，
+ * 不能讓「已自動更換收音來源」這句話看起來像問題解決了。
+ */
+test("換源後要老實回報新音軌是否真的收到訊號，不能讓「已更換」聽起來像已解決", async () => {
+  const src = extractFns(app, ["attemptMicSwap"]);
+  const oldTrack = { readyState: "live", muted: false, stop() {} };
+  const newTrack = liveTrack();
+  const notes = [];
+  const AUDIO = {
+    ending: false, swapping: false, lastSwapAt: 0, deadSince: Date.now() - 6000,
+    startedAt: Date.now() - 60000, segIndex: 1, entryId: 7,
+    stream: { getTracks: () => [oldTrack], getAudioTracks: () => [oldTrack] },
+    micSource: { disconnect() {} },
+    audioCtx: { createMediaStreamSource() { return { connect() {} }; } },
+    analyser: {}, dest: {}, recorder: { state: "recording" }, lastSignalAt: 0,
+  };
+  const run = new Function(
+    "AUDIO", "navigator", "document", "AUDIO_CONSTRAINTS", "AUDIO_RECOVERY_ATTEMPTS",
+    "AUDIO_RECOVERY_RETRY_MS", "AUDIO_MUTE_GRACE_MS", "AUDIO_MIN_SWAP_INTERVAL_MS",
+    "waitForTrackUsable", "watchAudioStream", "setAudioStatus", "noteAudioInterruption", "fmtSecs",
+    "readMicPeak", "AUDIO_SIGNAL_FLOOR",
+    `${src}; return attemptMicSwap;`
+  )(
+    AUDIO,
+    { mediaDevices: { async getUserMedia() { return { getTracks: () => [newTrack], getAudioTracks: () => [newTrack] }; } } },
+    { hidden: false },
+    { audio: {} }, 3, 0, 10, 15000,
+    async () => true, () => {}, () => {},
+    async (id, line) => { notes.push(line); },
+    (n) => String(n),
+    () => 0, 1e-4,   // ← 換源後立即量測：跟舊源一樣是零（8/14 實測到的情境）
+  );
+  await run();
+
+  assert.ok(notes.some((n) => n.includes("peak=0.0000") && n.includes("仍是零")),
+    `新音軌換源後仍是靜音時，記事必須明講「仍是零」，不能只說「已自動更換收音來源」讓人以為解決了。實際：${JSON.stringify(notes)}`);
 });
 
 test("換源失敗不是死路：維持現狀繼續錄，不宣告錄音報廢", async () => {
