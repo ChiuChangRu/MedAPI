@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "126";
+const APP_VERSION = "127";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -616,11 +616,13 @@ function initHomeSearch() {
   const input = $("home-search-input");
   const clearBtn = $("home-search-clear");
   const resultsBox = $("home-search-results");
-  const mainSections = $("home-main-sections");
+  // 首頁第一列（輸入與草稿）跟第三～五列分成兩個容器，中間夾著檢索本身——
+  // 搜尋啟動時兩個都要藏起來，讓出空間給搜尋結果。
+  const mainSections = [$("home-main-top"), $("home-main-sections")].filter(Boolean);
   if (!input) return;
   const setActive = (active) => {
     resultsBox.hidden = !active;
-    mainSections.hidden = active;
+    mainSections.forEach((el) => { el.hidden = active; });
     clearBtn.hidden = !input.value;
   };
   input.addEventListener("input", () => {
