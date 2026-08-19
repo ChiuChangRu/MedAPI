@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=126" />
+<link rel="stylesheet" href="style.css?v=127" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -44,10 +44,11 @@
 
     <!-- 首頁五列（2026-08-09 二次修正）：改回直向堆疊的整行區塊，不是並排的
          四欄——欄位太窄會把資料夾樹（縮排＋色系底）擠爛，上一版才修過這個
-         問題。只有第三列內部左右分兩欄（待處理｜Wiki 檔案），其餘四列都是
-         獨立整行。 -->
-    <div id="home-main-sections">
-
+         問題。只有第三列內部左右分兩欄（待處理｜Wiki 檔案），其餘列都是
+         獨立整行。第一列（輸入與草稿）跟第三～五列分成兩個 home-main-grid
+         容器，中間夾著檢索——搜尋啟動時兩個容器都要跟著藏起來，但檢索本身
+         （搜尋框＋結果框）要留在外面，見下方說明。 -->
+    <div id="home-main-top" class="home-main-grid">
       <!-- 第一列：輸入與草稿 -->
       <section class="home-section home-input-section" aria-labelledby="home-input-title">
         <div class="home-section-head">
@@ -60,21 +61,27 @@
           <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
         </div>
       </section>
+    </div>
 
-      <!-- 第二列：檢索。傳統關鍵字全文搜尋（標題／內文／欄位／附件檔名／逐字稿／
-           OCR 擷取文字），不是語意搜尋——依「MyWiki 首頁改版規格」§1.1，
-           Vectorize 語意搜尋目前命中率太差不適合當首頁入口。多詞空白分隔＝
-           AND，查無自動降級成 OR 並標示，簡繁互通，套用既有同義詞表。 -->
-      <section class="home-section home-search-section">
-        <h2 class="home-section-title">🔍 檢索</h2>
-        <div class="home-search-bar">
-          <span class="home-search-icon" aria-hidden="true">🔍</span>
-          <input type="search" id="home-search-input" class="home-search-input"
-                 placeholder="搜尋記事、附件、逐字稿…" autocomplete="off" />
-          <button type="button" id="home-search-clear" class="home-search-clear" hidden aria-label="清除搜尋">✕</button>
-        </div>
-        <div id="home-search-results" class="home-search-results" hidden></div>
-      </section>
+    <!-- 第二列：檢索。搜尋框固定不隨搜尋結果顯示／隱藏而跟著消失。搜尋結果框
+         （home-search-results）過去巢狀放在 home-main-sections 裡面——一啟動
+         搜尋，initHomeSearch() 把整個 home-main-sections 藏起來，連同巢狀在
+         裡面、原本該顯示的搜尋結果框一起被祖先的 display:none 蓋過去，畫面
+         整個空白（2026-08-19 使用者回報「搜尋文字內容會整個反白沒東西」）。
+         現在跟 home-main-top／home-main-sections 拉成同一層的兄弟元素，
+         各自獨立顯示／隱藏，不會互相拖累。 -->
+    <section class="home-section home-search-section">
+      <h2 class="home-section-title">🔍 檢索</h2>
+      <div class="home-search-bar">
+        <span class="home-search-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="home-search-input" class="home-search-input"
+               placeholder="搜尋記事、附件、逐字稿…" autocomplete="off" />
+        <button type="button" id="home-search-clear" class="home-search-clear" hidden aria-label="清除搜尋">✕</button>
+      </div>
+    </section>
+    <div id="home-search-results" class="home-search-results" hidden></div>
+
+    <div id="home-main-sections" class="home-main-grid">
 
       <!-- 第三列：待處理、草稿與 Wiki 檔案——直向堆疊，待處理在上、已分類
            的 Wiki 檔案在下（2026-08-09 三次修正：原本排成左右兩欄，改回
@@ -409,11 +416,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=126"></script>
+<script src="app.js?v=127"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=126"></script>
+<script src="pdf-editor.js?v=127"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=126"></script>
+<script src="richtext-editor.js?v=127"></script>
 </body>
 </html>
