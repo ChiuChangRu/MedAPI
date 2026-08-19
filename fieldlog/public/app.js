@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "125";
+const APP_VERSION = "126";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -3677,9 +3677,6 @@ const AUDIO_PROBE_MS = 900;
 // 「這一段實際編碼出來的檔案大小」當作跟訊號偵測互補、獨立的第二判準：這個
 // 數字量的是真正寫進檔案的東西，不是圖上的即時讀值，兩者可能不同步失敗。
 const AUDIO_SILENT_BYTES_PER_SEC = 400;
-// 連續幾段都疑似靜音編碼，才判定「收音圖／recorder 這條編碼管線本身壞了」
-// ——不是換麥克風源救得回來的，因為信號源换了，管線還是同一條。
-const AUDIO_SILENT_STREAK_LIMIT = 2;
 
 function segOffset(session) { return Math.floor((Date.now() - session.startedAt) / 1000); }
 
@@ -3980,8 +3977,12 @@ function appendAudioLiveTranscripts(items = []) {
 function startAudioSegRecorder() {
   const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
     .find((m) => MediaRecorder.isTypeSupported(m)) || "";
-  // 錄的是 Web Audio 的 destination stream（audioRecordStream），不是麥克風
-  // stream——麥克風換掉時 recorder 完全不受影響，檔案不會斷。
+  // 2026-08-19：改回直接錄麥克風原始 stream（audioRecordStream() = AUDIO.stream）
+  // ——跟錄影一律直接錄 track、不經過 AudioContext 是同一招。原本讓 recorder
+  // 錄 Web Audio 的 destination stream 是為了讓換源不用重建 recorder，但使用者
+  // 用同一台機器測「錄影有聲音、錄音沒聲音」，兩者差異就只有這層收音圖中繼
+  // ——這是目前唯一有實測證據支持的假說，換源因此改回「開新段」（見
+  // attemptMicSwap 的 overlap 技巧，不是重建整個 recorder，不會掉音訊）。
   const recStream = audioRecordStream();
   const recorder = mimeType ? new MediaRecorder(recStream, { mimeType }) : new MediaRecorder(recStream);
   const chunks = [];
@@ -4085,7 +4086,7 @@ async function startAudio(entryId) {
   let ref;
   try { ref = await ensureEntryForCapture(entryId, "錄音"); }
   catch (err) { stopStream(stream); showToast("無法建立紀錄：" + err.message); return; }
-  AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, dest: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0, bypassGraph: false };
+  AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0 };
   initAudioGraph();
   watchAudioStream(stream);
   startAudioSegRecorder();
@@ -4145,20 +4146,15 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
 
   // 這一段實際編碼出來的位元組率——量的是真的寫進檔案的東西，跟訊號監測（圖上
   // 即時讀值）是兩條獨立的判準，兩者可能不同步失敗（分貝計正常≠錄音檔有聲音）。
+  // 2026-08-19：錄音已改回直接錄麥克風原始 stream（不再有收音圖可以「切換」），
+  // 這裡純粹留診斷記錄，讓「訊號表顯示有音量但檔案其實是空的」這種情況第一次
+  // 變成看得到、可驗證的——如果切換架構後這個警告還會出現，代表問題不在收音
+  // 中繼，要往 MediaRecorder 編碼器或更底層查。
   if (AUDIO && AUDIO.recorder === recorder && blob.size / durationSecs < AUDIO_SILENT_BYTES_PER_SEC) {
     AUDIO.silentSegStreak = (AUDIO.silentSegStreak || 0) + 1;
     const bps = Math.round(blob.size / durationSecs);
     noteAudioInterruption(seg.entryId,
       `🔬 診斷：第 ${seg.index} 段編碼後只有約 ${bps} bytes/秒（正常人聲通常有數千 bytes/秒），這段錄音檔可能是靜音，即使當時訊號表顯示有音量。`);
-    if (AUDIO.silentSegStreak >= AUDIO_SILENT_STREAK_LIMIT && !AUDIO.bypassGraph) {
-      // 連續好幾段都疑似靜音編碼：問題不在麥克風訊號源，而在 Web Audio 收音圖
-      // 這條編碼管線本身——換源沒用，因為新源接的還是同一條壞掉的管線。
-      // 最後手段：跳過收音圖，直接錄麥克風原始 stream。
-      AUDIO.bypassGraph = true;
-      noteAudioInterruption(seg.entryId,
-        `⚠️ 連續 ${AUDIO.silentSegStreak} 段都疑似靜音編碼，判定是收音中繼管線本身的問題（不是麥克風訊號源），已切換成直接錄製麥克風原始訊號，跳過中繼。`);
-      setAudioStatus(`⚠️ 偵測到錄音管線疑似吐靜音，已切換錄製模式，下一段開始生效`, true);
-    }
   } else if (AUDIO && AUDIO.recorder === recorder) {
     AUDIO.silentSegStreak = 0;
   }
@@ -4322,18 +4318,21 @@ async function acquireLiveMic(avoidDeviceId, { singlePass = false } = {}) {
 
 // 建立 AudioContext 收音圖。建不起來（極舊瀏覽器）就退回直接錄麥克風 stream，
 // 此時沒有訊號監測，行為等同舊版。
+// 2026-08-19：AudioContext 只用來做即時音量監測（analyser），不再建立
+// destination node、不再參與錄音編碼路徑。錄影功能一直是直接把麥克風原始
+// track 塞進 MediaRecorder、完全不經過 Web Audio，而且錄影錄得到聲音；音訊
+// 這邊之前錄的是收音圖的 destination stream，同一台機器上使用者實測「錄影
+// 有聲音、錄音沒聲音」——這是目前唯一有實測證據支持的假說，所以把兩者的
+// 錄製路徑拉齊：analyser 純讀值監測，MediaRecorder 錄的是 AUDIO.stream 本身。
 function initAudioGraph() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     ctx.resume().catch(() => {});
-    const dest = ctx.createMediaStreamDestination();
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
     const src = ctx.createMediaStreamSource(AUDIO.stream);
     src.connect(analyser);
-    src.connect(dest);
     AUDIO.audioCtx = ctx;
-    AUDIO.dest = dest;
     AUDIO.analyser = analyser;
     AUDIO.micSource = src;
     // iOS 切背景會 suspend context；回前景時 resume（也掛在 resumeAudioOnForeground）
@@ -4341,17 +4340,13 @@ function initAudioGraph() {
       if (AUDIO && !AUDIO.ending && ctx.state !== "running" && !document.hidden) ctx.resume().catch(() => {});
     };
   } catch {
-    AUDIO.audioCtx = null; AUDIO.dest = null; AUDIO.analyser = null; AUDIO.micSource = null;
+    AUDIO.audioCtx = null; AUDIO.analyser = null; AUDIO.micSource = null;
   }
 }
 
-// MediaRecorder 要錄的 stream：有收音圖就錄 destination（永不換），否則退回麥克風。
-// bypassGraph＝實測證實「收音圖的編碼管線本身在吐靜音」之後的最後手段：改錄
-// 麥克風原始 stream，跳過整條 Web Audio 中繼（因此也跳過換源時的無縫接續，
-// 但總比繼續錄一段確定是空的檔案好）。
+// MediaRecorder 要錄的 stream：一律是麥克風原始 stream，跟錄影同一招。
 function audioRecordStream() {
-  if (AUDIO.bypassGraph) return AUDIO.stream;
-  return AUDIO.dest ? AUDIO.dest.stream : AUDIO.stream;
+  return AUDIO.stream;
 }
 
 // 這一瞬間的音量峰值（0–1）。null＝沒有收音圖可量
@@ -4477,20 +4472,29 @@ async function attemptMicSwap() {
     try {
       src = AUDIO.audioCtx.createMediaStreamSource(fresh);
       src.connect(AUDIO.analyser);
-      src.connect(AUDIO.dest);
     } catch (err) {
-      // 極少數情況（取樣率不合等）接不上收音圖：放掉新 stream 維持現狀
+      // 極少數情況（取樣率不合等）接不上監測用的收音圖：放掉新 stream 維持現狀
       stopStream(fresh);
       return;
     }
-    try { oldSource?.disconnect(); } catch {}
-    stopStream(oldStream);
+    // recorder 現在直接錄麥克風原始 stream，換源就不能再「悄悄接上同一顆
+    // recorder」——用跟 rotateAudioSegment 一樣的重疊技巧開新段：先在新
+    // stream 上開始收音，過 AUDIO_SEG_OVERLAP_MS 才收尾舊 recorder、拔舊
+    // stream，中間有一小段重疊，不會出現真正收不到音的空隙。
+    const oldRecorder = AUDIO.recorder;
     AUDIO.stream = fresh;
     AUDIO.micDeviceId = picked.deviceId;
     AUDIO.micSource = src;
     AUDIO.deadSince = 0;
     AUDIO.lastSignalAt = Date.now();
     watchAudioStream(fresh);
+    AUDIO.segIndex++;
+    startAudioSegRecorder();
+    setTimeout(() => {
+      try { oldSource?.disconnect(); } catch {}
+      try { if (oldRecorder.state !== "inactive") oldRecorder.stop(); } catch {}
+      stopStream(oldStream);
+    }, AUDIO_SEG_OVERLAP_MS);
     const fromS = fmtSecs(Math.max(0, Math.floor((deadFrom - AUDIO.startedAt) / 1000)));
     const changedDevice = picked.deviceId && picked.deviceId !== deadDeviceId;
     // 換源不再是「重要一次同一個預設裝置」，而是逐一驗收過實體裝置的結果，

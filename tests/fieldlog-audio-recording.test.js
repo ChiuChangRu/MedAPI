@@ -127,11 +127,13 @@ function swapRunner(src, AUDIO, overrides = {}) {
     AUDIO_RECOVERY_ATTEMPTS: 3,
     AUDIO_RECOVERY_RETRY_MS: 0,
     AUDIO_MIN_SWAP_INTERVAL_MS: 15000,
+    AUDIO_SEG_OVERLAP_MS: 5,
     stopStream: (s) => { try { s?.getTracks().forEach((t) => t.stop()); } catch {} },
     acquireLiveMic: async () => { throw new Error("測試未提供 acquireLiveMic"); },
     watchAudioStream: () => {},
     setAudioStatus: () => {},
     noteAudioInterruption: async () => {},
+    startAudioSegRecorder: () => {},
     fmtSecs: (n) => String(n),
     ...overrides,
   };
@@ -140,15 +142,20 @@ function swapRunner(src, AUDIO, overrides = {}) {
     AUDIO, ...names.map((n) => deps[n]));
 }
 
-test("錄音器錄的是 Web Audio destination stream，不是麥克風 stream", () => {
-  const seg = app.match(/function startAudioSegRecorder\(\)[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(seg, /audioRecordStream\(\)/,
-    "recorder 必須錄 audioRecordStream()——錄麥克風 stream 的話，換麥克風就得換段，音訊就會掉");
-  assert.doesNotMatch(seg, /MediaRecorder\(AUDIO\.stream/,
-    "不可以直接把 AUDIO.stream 餵給 MediaRecorder");
+/**
+ * 🎥 2026-08-19：使用者用同一台機器實測「錄影有聲音、錄音沒聲音」。錄影功能
+ * 一直是直接把麥克風原始 track 塞進 MediaRecorder，完全不經過 AudioContext；
+ * 音訊這邊原本錄的是 Web Audio 收音圖的 destination stream。這是目前唯一有
+ * 實測證據支持的假說，所以把兩條路徑拉齊：AudioContext 只留給 analyser 做
+ * 純讀值監測，MediaRecorder 一律直接錄 AUDIO.stream 本身，不再有 destination。
+ */
+test("錄音器直接錄麥克風原始 stream，跟錄影同一招——不再經過收音圖 destination", () => {
+  const stream = app.match(/function audioRecordStream\(\)[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(stream, /return AUDIO\.stream;/, "audioRecordStream 一律回傳麥克風原始 stream");
   const graph = app.match(/function initAudioGraph\(\)[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(graph, /createMediaStreamDestination\(\)/, "要有 destination 中繼");
-  assert.match(graph, /createAnalyser\(\)/, "要有 analyser 量測實際訊號");
+  assert.doesNotMatch(graph, /createMediaStreamDestination\(\)/,
+    "不該再建立 destination 中繼——它就是使用者實測懷疑的那一層");
+  assert.match(graph, /createAnalyser\(\)/, "analyser 仍要留著做純讀值監測，不進錄音路徑");
 });
 
 test("訊號監測：有訊號→不動作；持續全零→觸發換源；換源有節流", async () => {
@@ -177,18 +184,25 @@ test("訊號監測：有訊號→不動作；持續全零→觸發換源；換�
   assert.equal(calls.swap, 1, "持續全零超過門檻必須換訊號源——這正是殭屍音軌唯一會露餡的地方");
 });
 
-test("換源是無縫的：先接新源再拔舊源，recorder 與段號完全不動", async () => {
+/**
+ * 2026-08-19：recorder 改回直接錄麥克風原始 stream 之後，換源不能再「悄悄接上
+ * 同一顆 recorder」（那顆 recorder 已經綁定舊 stream 物件了）。改用跟
+ * rotateAudioSegment 一樣的重疊技巧：新 stream 先開始收音（開新段），過
+ * AUDIO_SEG_OVERLAP_MS 才收尾舊 recorder、拔舊 stream，中間有重疊、沒有空隙。
+ */
+test("換源改成開新段（重疊接續）：新 stream 先錄，過重疊時間才收尾舊 recorder", async () => {
   const src = extractFns(app, ["attemptMicSwap"]);
   const order = [];
   const oldTrack = { readyState: "live", muted: false, stop() { order.push("old-stop"); } };
   const newTrack = liveTrack();
+  const oldRecorder = { state: "recording", stop() { order.push("old-recorder-stop"); } };
   const AUDIO = {
     ending: false, swapping: false, lastSwapAt: 0, deadSince: Date.now() - 6000,
     startedAt: Date.now() - 60000, segIndex: 1, entryId: 7,
     stream: { getTracks: () => [oldTrack], getAudioTracks: () => [oldTrack] },
     micSource: { disconnect() { order.push("old-disconnect"); } },
-    audioCtx: { createMediaStreamSource() { return { connect(t) { order.push("new-connect"); } }; } },
-    analyser: {}, dest: {}, recorder: { state: "recording" }, lastSignalAt: 0,
+    audioCtx: { createMediaStreamSource() { return { connect() { order.push("new-connect"); } }; } },
+    analyser: {}, recorder: oldRecorder, lastSignalAt: 0,
   };
   AUDIO.micDeviceId = "dead-mic";
   const notes = [];
@@ -199,17 +213,23 @@ test("換源是無縫的：先接新源再拔舊源，recorder 與段號完全�
       return { stream: { getTracks: () => [newTrack], getAudioTracks: () => [newTrack] }, deviceId: "other-mic", peak: 0.05, silent: false };
     },
     noteAudioInterruption: async (id, line) => { notes.push(line); },
+    startAudioSegRecorder: () => { order.push("start-new-recorder"); },
   });
   await run();
 
   assert.deepEqual(avoided, ["dead-mic"],
     "換源必須把剛死掉的裝置當作要避開的對象——換回同一條殭屍是 v118–v123 一路失敗的主因");
-  assert.deepEqual(order.slice(0, 2), ["new-connect", "new-connect"],
-    "新源要先接上（analyser＋dest 各一次），才能拔舊的——順序反了就有空隙");
-  assert.ok(order.indexOf("old-disconnect") > order.lastIndexOf("new-connect"),
-    "拔舊源必須在新源接上之後");
-  assert.ok(order.includes("old-stop"), "舊 stream 的音軌要 stop() 釋放裝置");
-  assert.equal(AUDIO.segIndex, 1, "換源不可換段——重建 recorder 正是之前掉音訊的元凶");
+  assert.equal(AUDIO.segIndex, 2, "換源現在等於開新段（recorder 已綁定舊 stream，無法再原地重接）");
+  assert.deepEqual(order.slice(0, 2), ["new-connect", "start-new-recorder"],
+    "要先接上監測用的 analyser、開始錄新段，才能收尾舊的——順序反了就有空隙");
+  assert.ok(!order.includes("old-recorder-stop") && !order.includes("old-stop"),
+    "重疊時間到之前不可收尾舊 recorder／拔舊 stream");
+
+  await new Promise((resolve) => setTimeout(resolve, 30)); // 等重疊時間過
+
+  assert.ok(order.indexOf("old-recorder-stop") > order.indexOf("start-new-recorder"),
+    "收尾舊 recorder 必須在新段開始錄之後，這樣才有重疊、不會有空隙");
+  assert.ok(order.includes("old-stop"), "重疊時間過後，舊 stream 的音軌要 stop() 釋放裝置");
   assert.equal(AUDIO.deadSince, 0, "換完要清掉死亡計時");
   assert.equal(AUDIO.micDeviceId, "other-mic", "換完要記住新裝置，下次才知道該避開誰");
   assert.ok(notes.some((n) => n.includes("無訊號")), "換源要留下永久記錄");
@@ -239,7 +259,7 @@ test("換源後要老實回報新音軌是否真的收到訊號，不能讓「�
     stream: { getTracks: () => [oldTrack], getAudioTracks: () => [oldTrack] },
     micSource: { disconnect() {} },
     audioCtx: { createMediaStreamSource() { return { connect() {} }; } },
-    analyser: {}, dest: {}, recorder: { state: "recording" }, lastSignalAt: 0,
+    analyser: {}, recorder: { state: "recording", stop() {} }, lastSignalAt: 0,
   };
   const run = swapRunner(src, AUDIO, {
     // 每個裝置都試過了，全部量到零——8/14 版實測到的情境
@@ -330,7 +350,7 @@ test("換源失敗不是死路：維持現狀繼續錄，不宣告錄音報廢",
     startedAt: Date.now() - 60000, segIndex: 2, entryId: 7,
     stream: { getTracks: () => [oldTrack], getAudioTracks: () => [oldTrack] },
     micSource: { disconnect() { assert.fail("換不到新的就不可拔舊源"); } },
-    audioCtx: {}, analyser: {}, dest: {}, lastSignalAt: 0,
+    audioCtx: {}, analyser: {}, lastSignalAt: 0,
   };
   const run = new Function(
     "AUDIO", "navigator", "document", "AUDIO_CONSTRAINTS", "AUDIO_RECOVERY_ATTEMPTS",
@@ -400,7 +420,6 @@ function segStopRunner(AUDIO, overrides = {}) {
   const deps = {
     document: { hidden: false },
     AUDIO_SILENT_BYTES_PER_SEC: 400,
-    AUDIO_SILENT_STREAK_LIMIT: 2,
     noteAudioInterruption: async () => {},
     setAudioStatus: () => {},
     startAudioSegRecorder: () => {},
@@ -434,30 +453,27 @@ test("錄出來的檔案位元組率過低時要留診斷記錄——分貝計�
   assert.equal(AUDIO.bypassGraph, false, "只有一段還不能判定管線壞掉");
 });
 
-test("連續兩段都疑似靜音編碼：判定收音管線本身壞了，切換成直錄麥克風不再走收音圖", async () => {
+// 2026-08-19：錄音已改回直接錄麥克風原始 stream（跟錄影同一招），不再有收音圖
+// 可以「切換」——位元組率診斷純粹留記錄，不再觸發模式切換。
+test("連續兩段都疑似靜音編碼：連續計數會累加，每段都留診斷記錄", async () => {
   const notes = [];
-  const statuses = [];
   const recorder2 = { mimeType: "audio/webm;codecs=opus" };
-  const AUDIO = { recorder: recorder2, ending: false, entryId: 7, silentSegStreak: 1, bypassGraph: false };
+  const AUDIO = { recorder: recorder2, ending: false, entryId: 7, silentSegStreak: 1 };
   const seg2 = { index: 2, entryId: 7, startOffset: 5, startedAt: Date.now() - 5000 };
   const run = segStopRunner(AUDIO, {
     noteAudioInterruption: async (id, line) => notes.push(line),
-    setAudioStatus: (line) => statuses.push(line),
   });
   const chunks2 = [new Blob([new Uint8Array(50)])];
   await run(recorder2, chunks2, seg2);
 
-  assert.equal(AUDIO.silentSegStreak, 2);
-  assert.equal(AUDIO.bypassGraph, true,
-    "連續靜音編碼是編碼管線本身的問題，換麥克風源救不回來（新源接的還是同一條壞管線），必須跳過收音圖直錄麥克風");
-  assert.ok(notes.some((n) => n.includes("切換成直接錄製麥克風原始訊號")),
-    `要留下切換模式的永久記錄。實際：${JSON.stringify(notes)}`);
-  assert.ok(statuses.some((s) => s.includes("切換錄製模式")), "浮動列也要提示");
+  assert.equal(AUDIO.silentSegStreak, 2, "連續靜音編碼要累加計數");
+  assert.ok(notes.some((n) => n.includes("第 2 段") && n.includes("bytes/秒")),
+    `每一段都要留下位元組率過低的診斷記錄。實際：${JSON.stringify(notes)}`);
 });
 
-test("正常段落（位元組率夠高）要清掉疑似靜音的連續計數，不能一次誤判就永遠切換", async () => {
+test("正常段落（位元組率夠高）要清掉疑似靜音的連續計數，不能一次誤判就一直算下去", async () => {
   const recorder = { mimeType: "audio/webm;codecs=opus" };
-  const AUDIO = { recorder, ending: false, entryId: 7, silentSegStreak: 1, bypassGraph: false };
+  const AUDIO = { recorder, ending: false, entryId: 7, silentSegStreak: 1 };
   const seg = { index: 3, entryId: 7, startOffset: 10, startedAt: Date.now() - 5000 };
   const run = segStopRunner(AUDIO);
   // 5 秒編碼出 20000 bytes（4000 bytes/秒）：遠高於門檻，正常段落
@@ -465,12 +481,10 @@ test("正常段落（位元組率夠高）要清掉疑似靜音的連續計數�
   await run(recorder, chunks, seg);
 
   assert.equal(AUDIO.silentSegStreak, 0, "正常段落要把疑似靜音的連續計數歸零");
-  assert.equal(AUDIO.bypassGraph, false);
 });
 
-test("bypassGraph 開啟後，錄音要改錄麥克風原始 stream，跳過收音圖 destination", () => {
-  const fn = app.match(/function audioRecordStream\(\)[\s\S]*?\n\}/)?.[0] || "";
-  assert.match(fn, /bypassGraph/, "audioRecordStream 要看 bypassGraph 旗標");
-  assert.match(fn, /if \(AUDIO\.bypassGraph\) return AUDIO\.stream;/,
-    "bypassGraph 為真時要直接回傳麥克風原始 stream，不能還是 dest.stream");
+test("初始化的 AUDIO 狀態不再有 dest／bypassGraph 這種收音圖殘留欄位", () => {
+  const fn = app.match(/AUDIO = \{ stream, micDeviceId: mic\.deviceId[\s\S]*?\};/)?.[0] || "";
+  assert.doesNotMatch(fn, /\bdest:/, "已經沒有 destination node，不該再初始化 dest 欄位");
+  assert.doesNotMatch(fn, /bypassGraph/, "已經沒有兩種模式可切換，不該再留 bypassGraph 欄位");
 });
