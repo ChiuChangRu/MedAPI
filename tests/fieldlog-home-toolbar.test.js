@@ -119,3 +119,38 @@ test("sw.js：CACHE 與所有 UI 資源版本一致，避免舊快取卡住", as
     assert.match(sw, new RegExp(`[\"']${escaped}\\?v=${version}[\"']`), `${asset} 的預快取版本不一致`);
   }
 });
+
+/**
+ * 🔬 2026-08-19：使用者回報「搜尋文字內容會整個反白沒東西」。根因：
+ * home-search-results 過去巢狀放在 home-main-sections 裡面——一啟動搜尋，
+ * initHomeSearch() 把整個 home-main-sections 藏起來（mainSections.hidden =
+ * true），連同巢狀在裡面、原本該顯示的搜尋結果框一起被祖先的 display:none
+ * 蓋過去，畫面整個空白，連搜尋框本身都跟著消失。
+ *
+ * 修法：home-search-section／home-search-results 拉出來當 home-main-top
+ * （第一列）跟 home-main-sections（第三～五列）的兄弟元素，三者互不巢狀。
+ */
+test("index.html：搜尋框與搜尋結果框不可巢狀在會被隱藏的容器裡面", async () => {
+  const html = await read("../fieldlog/public/index.html");
+  const searchSectionIdx = html.indexOf('class="home-section home-search-section"');
+  const searchResultsIdx = html.indexOf('id="home-search-results"');
+  const mainTopOpen = html.indexOf('id="home-main-top"');
+  const mainTopClose = html.indexOf("</div>", mainTopOpen);
+  const mainSectionsOpen = html.indexOf('id="home-main-sections"');
+  assert.ok(searchSectionIdx !== -1 && searchResultsIdx !== -1 && mainTopOpen !== -1 && mainSectionsOpen !== -1,
+    "四個關鍵區塊都要找得到");
+  assert.ok(
+    !(searchSectionIdx > mainTopOpen && searchSectionIdx < mainTopClose),
+    "檢索區塊不可以巢狀在 home-main-top 裡面——會被搜尋時的 hidden 一起蓋掉"
+  );
+  assert.ok(searchResultsIdx > mainTopClose, "搜尋結果框要在 home-main-top 關閉之後才出現（同層兄弟，不是巢狀在裡面）");
+  assert.ok(searchResultsIdx < mainSectionsOpen, "搜尋結果框要在 home-main-sections 開始之前，兩者是兄弟關係");
+});
+
+test("app.js：搜尋啟動／清除要同時控制 home-main-top 與 home-main-sections 兩個容器，不能漏掉第一列", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const fn = app.match(/function initHomeSearch\(\)[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(fn, /\$\("home-main-top"\)/, "要抓到第一列的容器");
+  assert.match(fn, /\$\("home-main-sections"\)/, "要抓到第三～五列的容器");
+  assert.match(fn, /mainSections\.forEach/, "要同時切換兩個容器的 hidden，不能只切一個");
+});
