@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "123";
+const APP_VERSION = "124";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -3668,6 +3668,8 @@ const AUDIO_RECOVERY_ATTEMPTS = 3;
 const AUDIO_RECOVERY_RETRY_MS = 600;
 // 剛取得的新音軌可能短暫 muted、幾百毫秒後才送 unmute，給它這段喚醒時間
 const AUDIO_MUTE_GRACE_MS = 3000;
+// 驗收一條候選音軌要量多久才敢說「這條是靜音」。量到訊號會立刻提早結束。
+const AUDIO_PROBE_MS = 900;
 
 function segOffset(session) { return Math.floor((Date.now() - session.startedAt) / 1000); }
 
@@ -4059,13 +4061,21 @@ function rotateAudioSegment() {
 async function startAudio(entryId) {
   if (AUDIO) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("這個瀏覽器不支援錄音"); return; }
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia(AUDIO_CONSTRAINTS); }
+  // 開錄前先驗聲：真實麥克風連安靜房間都有底噪，量到精確全零就是收不到聲音。
+  // 寧可在這裡花一秒鐘擋下來，也不要錄完 40 分鐘才發現整段是空的。
+  let mic;
+  try { mic = await acquireLiveMic(null); }
   catch (err) { showToast("無法開啟麥克風：" + err.message); return; }
+  if (mic.silent && !confirm(
+    "⚠️ 麥克風目前收不到任何聲音（音量是 0）。\n\n" +
+    "這台電腦上每一個收音裝置都試過了，全部都是靜音。常見原因：Windows 音效設定裡麥克風被靜音、筆電實體靜音鍵、或被其他程式（Teams／Line／Zoom）佔用。\n\n" +
+    "按「確定」仍要開始錄音（很可能整段都是空的）；建議按「取消」先處理好麥克風再錄。"
+  )) { stopStream(mic.stream); return; }
+  const stream = mic.stream;
   let ref;
   try { ref = await ensureEntryForCapture(entryId, "錄音"); }
-  catch (err) { stream.getTracks().forEach((t) => t.stop()); showToast("無法建立紀錄：" + err.message); return; }
-  AUDIO = { stream, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, dest: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false };
+  catch (err) { stopStream(stream); showToast("無法建立紀錄：" + err.message); return; }
+  AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, dest: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false };
   initAudioGraph();
   watchAudioStream(stream);
   startAudioSegRecorder();
@@ -4171,6 +4181,110 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
 async function noteAudioInterruption(entryId, line) {
   try { await api(`/entries/${entryId}/notes`, { method: "POST", body: JSON.stringify({ line }) }); }
   catch {}
+}
+
+// ---------- 取得「真的收得到聲音」的麥克風 ----------
+//
+// 2026-08-19：v122／v123 把換源做到無縫了，實測卻仍然整段靜音，而診斷埋點顯示
+// 「換源後立即量測 peak 依然是 0」。原因在這裡：舊的換源是重新
+// getUserMedia(AUDIO_CONSTRAINTS)——沒有指定 deviceId，拿回來的永遠是同一個
+// 系統預設裝置。Windows 的預設／communications 裝置被別的程式（Teams／Line／
+// Zoom）搶佔或驅動卡住之後就會固定吐數位零，再要一百次也還是那條殭屍。
+// 所以換源必須換到「不同的實體裝置」，而且每一條候選都要先量過真的有樣本
+// 才敢採用——「拿得到 track 物件」從來就不等於「收得到聲音」。
+
+function stopStream(stream) {
+  try { stream?.getTracks().forEach((t) => t.stop()); } catch {}
+}
+
+function micDeviceIdOf(stream) {
+  try { return stream?.getAudioTracks()[0]?.getSettings?.().deviceId || null; } catch { return null; }
+}
+
+function openMicStream(deviceId) {
+  const constraints = deviceId
+    ? { audio: { ...AUDIO_CONSTRAINTS.audio, deviceId: { exact: deviceId } } }
+    : AUDIO_CONSTRAINTS;
+  return navigator.mediaDevices.getUserMedia(constraints);
+}
+
+// 量一條 stream 真正送出的樣本峰值（0–1）。用完就關，與主收音圖無關。
+// null＝量不出來（瀏覽器不支援等），此時一律當作「無從判斷」，不擋錄音。
+async function probeStreamPeak(stream, ms = AUDIO_PROBE_MS) {
+  let ctx = null;
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await ctx.resume().catch(() => {});
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    src.connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    let peak = 0;
+    const until = Date.now() + ms;
+    while (Date.now() < until) {
+      analyser.getFloatTimeDomainData(buf);
+      for (let i = 0; i < buf.length; i++) {
+        const v = Math.abs(buf[i]);
+        if (v > peak) peak = v;
+      }
+      if (peak > AUDIO_SIGNAL_FLOOR) break; // 已證明活著，不必等滿
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    try { src.disconnect(); } catch {}
+    return peak;
+  } catch {
+    return null;
+  } finally {
+    try { await ctx?.close(); } catch {}
+  }
+}
+
+async function listMicDeviceIds() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((d) => d.kind === "audioinput" && d.deviceId).map((d) => d.deviceId);
+  } catch { return []; }
+}
+
+/**
+ * 取一條量得到聲音的麥克風 stream。
+ * 回傳 { stream, deviceId, peak, silent }；silent=true 代表這台機器上每一個收音
+ * 裝置都試過、全部是靜音（此時仍回傳一條 stream，由呼叫端決定要不要照錄）。
+ * 一條都開不起來時，把最後一個錯誤丟出去，讓呼叫端能顯示真正的原因（權限被拒等）。
+ */
+async function acquireLiveMic(avoidDeviceId, { singlePass = false } = {}) {
+  const ids = (await listMicDeviceIds()).filter((id) => id !== "communications");
+  // 實體裝置優先；"default" 會跟著 Windows 預設／通訊裝置跑，放後面；
+  // 剛判定死掉的那一條排到最後（真的沒別的選擇時才回頭用它）。
+  const order = [...new Set([
+    ...ids.filter((id) => id !== "default" && id !== avoidDeviceId),
+    ...ids.filter((id) => id === "default" && id !== avoidDeviceId),
+    ...(avoidDeviceId ? [avoidDeviceId] : []),
+  ])];
+  if (!order.length) order.push(null); // 還沒授權、拿不到裝置清單：只能要系統預設
+  const candidates = singlePass ? order.slice(0, 1) : order;
+  let fallback = null;
+  let lastErr = null;
+  for (const deviceId of candidates) {
+    let stream = null;
+    try { stream = await openMicStream(deviceId); }
+    catch (err) { lastErr = err; continue; }
+    if (!(await waitForTrackUsable(stream, AUDIO_MUTE_GRACE_MS))) {
+      stopStream(stream);
+      lastErr = new Error("麥克風音軌喚醒逾時");
+      continue;
+    }
+    const peak = await probeStreamPeak(stream);
+    if (peak === null || peak > AUDIO_SIGNAL_FLOOR) {
+      stopStream(fallback?.stream);
+      return { stream, deviceId: micDeviceIdOf(stream), peak, silent: false };
+    }
+    if (fallback) stopStream(stream);
+    else fallback = { stream, deviceId: micDeviceIdOf(stream), peak, silent: true };
+  }
+  if (fallback) return fallback;
+  throw lastErr || new Error("找不到可用的收音裝置");
 }
 
 // ---------- Web Audio 收音圖：建立／量測／換源 ----------
@@ -4288,20 +4402,21 @@ async function attemptMicSwap() {
   AUDIO.swapping = true;
   AUDIO.lastSwapAt = Date.now();
   const deadFrom = AUDIO.deadSince || Date.now();
+  const deadDeviceId = AUDIO.micDeviceId;
   const oldStream = AUDIO.stream;
   const oldSource = AUDIO.micSource;
   try {
-    let fresh = null;
+    let picked = null;
     let lastErr = null;
     // 背景分頁只試一次（getUserMedia 在背景可能被擋），回前景時會立刻再檢查
     const attempts = document.hidden ? 1 : AUDIO_RECOVERY_ATTEMPTS;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-        fresh = await navigator.mediaDevices.getUserMedia(AUDIO_CONSTRAINTS);
-        if (await waitForTrackUsable(fresh, AUDIO_MUTE_GRACE_MS)) break;
-        fresh.getTracks().forEach((t) => t.stop());
-        fresh = null;
-        lastErr = new Error("麥克風音軌喚醒逾時");
+        // 避開剛死掉的那一個裝置：換回同一條殭屍是 v118–v123 一路失敗的主因
+        picked = await acquireLiveMic(AUDIO.micDeviceId, { singlePass: document.hidden });
+        if (!picked.silent) break; // 量到真訊號才算換成功
+        // 全部裝置都是靜音：先留著這條當備案，退避後再試一輪
+        if (attempt < attempts) { stopStream(picked.stream); picked = null; }
       } catch (err) {
         lastErr = err;
       }
@@ -4309,8 +4424,9 @@ async function attemptMicSwap() {
         await new Promise((resolve) => setTimeout(resolve, AUDIO_RECOVERY_RETRY_MS * attempt));
       }
     }
+    const fresh = picked?.stream || null;
     if (!AUDIO || AUDIO.ending) {
-      if (fresh) fresh.getTracks().forEach((t) => t.stop());
+      stopStream(fresh);
       return;
     }
     if (!fresh) {
@@ -4329,28 +4445,31 @@ async function attemptMicSwap() {
       src.connect(AUDIO.dest);
     } catch (err) {
       // 極少數情況（取樣率不合等）接不上收音圖：放掉新 stream 維持現狀
-      fresh.getTracks().forEach((t) => t.stop());
+      stopStream(fresh);
       return;
     }
     try { oldSource?.disconnect(); } catch {}
-    try { oldStream?.getTracks().forEach((t) => t.stop()); } catch {}
+    stopStream(oldStream);
     AUDIO.stream = fresh;
+    AUDIO.micDeviceId = picked.deviceId;
     AUDIO.micSource = src;
     AUDIO.deadSince = 0;
     AUDIO.lastSignalAt = Date.now();
     watchAudioStream(fresh);
     const fromS = fmtSecs(Math.max(0, Math.floor((deadFrom - AUDIO.startedAt) / 1000)));
-    setAudioStatus(`⚠️ 麥克風曾無訊號（約 ${fromS} 起），已自動更換收音來源；錄音檔連續未中斷`, true);
-    // 換源「成功」只代表 getUserMedia 順利拿到新的 track 物件，不保證這條新
-    // 音軌真的收得到聲音——8/14 版的實測結果就是換源成功後依然整段靜音。
-    // 因此這裡量一次新源的實際訊號，一起寫進記事，讓下次判斷不用再猜。
-    const postSwapPeak = readMicPeak();
-    const postSwapNote = postSwapPeak === null ? "" :
-      postSwapPeak > AUDIO_SIGNAL_FLOOR
-        ? `（換源後立即量測：peak=${postSwapPeak.toFixed(4)}，有收到訊號）`
-        : `（⚠️ 換源後立即量測：peak=${postSwapPeak.toFixed(4)}，仍是零——新音軌可能同樣收不到聲音，不是重取麥克風就能解決的）`;
+    const changedDevice = picked.deviceId && picked.deviceId !== deadDeviceId;
+    // 換源不再是「重要一次同一個預設裝置」，而是逐一驗收過實體裝置的結果，
+    // 所以這裡如實記下換到哪一類裝置、量到多少，事後才有得對照。
+    const verdict = picked.silent
+      ? `（⚠️ 這台電腦上每個收音裝置都試過，量到的仍是 peak=0——不是換裝置能解決的，比較可能是系統層級把麥克風靜音或被其他程式佔用）`
+      : `（新來源實測 peak=${(picked.peak ?? 0).toFixed(4)}，確認收得到聲音）`;
+    setAudioStatus(
+      picked.silent
+        ? `⚠️ 麥克風無訊號（約 ${fromS} 起），所有收音裝置都是靜音；錄音檔仍持續但可能是空的`
+        : `⚠️ 麥克風曾無訊號（約 ${fromS} 起），已${changedDevice ? "改用另一個收音裝置" : "重新取得收音來源"}；錄音檔連續未中斷`,
+      true);
     noteAudioInterruption(AUDIO.entryId,
-      `⚠️ 錄音在約 ${fromS} 偵測到麥克風無訊號（可能遭系統靜音或裝置切換），已自動更換收音來源。無訊號期間在錄音檔中為等長靜音，檔案時間軸連續。${postSwapNote}`);
+      `⚠️ 錄音在約 ${fromS} 偵測到麥克風無訊號（可能遭系統靜音或裝置切換），已自動${changedDevice ? "改用另一個收音裝置" : "重新取得收音來源"}。無訊號期間在錄音檔中為等長靜音，檔案時間軸連續。${verdict}`);
   } finally {
     if (AUDIO) AUDIO.swapping = false;
   }
