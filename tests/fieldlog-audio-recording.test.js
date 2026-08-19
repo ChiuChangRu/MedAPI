@@ -385,3 +385,92 @@ test("回前景：recorder 還活著就不換段；recorder 死了在同一條 s
   assert.equal(cb.getUserMedia, 0, "收音圖沒壞，開新段不需要重取麥克風");
   assert.ok(cb.notes.length === 1, "recorder 死亡要留永久記錄");
 });
+
+/**
+ * 🔬 2026-08-19：分貝計（純 AnalyserNode 讀值，不經過 MediaRecorder 編碼）錄音
+ * 正常，但 fieldlog 錄出來的檔案仍整段是 Whisper 對靜音的幻覺輸出。這證明
+ * 「訊號監測看到的即時讀值」跟「MediaRecorder 真的編碼進檔案的東西」是兩回
+ * 事——之前所有換源策略都建立在 analyser 讀值上，完全沒有涵蓋編碼這一段。
+ *
+ * opus／AAC 對純靜音的壓縮率極高，用「這一段實際編碼出來的檔案大小」當作
+ * 獨立於訊號監測的第二判準，才量得到真正寫進檔案的東西。
+ */
+function segStopRunner(AUDIO, overrides = {}) {
+  const src = extractFns(app, ["onAudioSegmentStop"]);
+  const deps = {
+    document: { hidden: false },
+    AUDIO_SILENT_BYTES_PER_SEC: 400,
+    AUDIO_SILENT_STREAK_LIMIT: 2,
+    noteAudioInterruption: async () => {},
+    setAudioStatus: () => {},
+    startAudioSegRecorder: () => {},
+    finalizeAudioStop: () => {},
+    putFile: async () => {},
+    queueFile: async () => {},
+    api: async () => ({}),
+    appendAudioLiveTranscripts: () => {},
+    navigator: { onLine: true },
+    showToast: () => {},
+    ...overrides,
+  };
+  const names = Object.keys(deps);
+  return new Function("AUDIO", ...names, `${src}; return onAudioSegmentStop;`)(
+    AUDIO, ...names.map((n) => deps[n]));
+}
+
+test("錄出來的檔案位元組率過低時要留診斷記錄——分貝計正常不代表錄音檔有聲音", async () => {
+  const notes = [];
+  const recorder = { mimeType: "audio/webm;codecs=opus" };
+  const seg = { index: 1, entryId: 7, startOffset: 0, startedAt: Date.now() - 5000 };
+  const AUDIO = { recorder, ending: false, entryId: 7, silentSegStreak: 0, bypassGraph: false };
+  const run = segStopRunner(AUDIO, { noteAudioInterruption: async (id, line) => notes.push(line) });
+  // 5 秒的段落只編碼出 100 bytes：遠低於門檻，判定疑似靜音編碼
+  const chunks = [new Blob([new Uint8Array(100)])];
+  await run(recorder, chunks, seg);
+
+  assert.equal(AUDIO.silentSegStreak, 1, "疑似靜音編碼要記一次");
+  assert.ok(notes.some((n) => n.includes("bytes/秒") && n.includes("第 1 段")),
+    `要留下位元組率過低的診斷記錄。實際：${JSON.stringify(notes)}`);
+  assert.equal(AUDIO.bypassGraph, false, "只有一段還不能判定管線壞掉");
+});
+
+test("連續兩段都疑似靜音編碼：判定收音管線本身壞了，切換成直錄麥克風不再走收音圖", async () => {
+  const notes = [];
+  const statuses = [];
+  const recorder2 = { mimeType: "audio/webm;codecs=opus" };
+  const AUDIO = { recorder: recorder2, ending: false, entryId: 7, silentSegStreak: 1, bypassGraph: false };
+  const seg2 = { index: 2, entryId: 7, startOffset: 5, startedAt: Date.now() - 5000 };
+  const run = segStopRunner(AUDIO, {
+    noteAudioInterruption: async (id, line) => notes.push(line),
+    setAudioStatus: (line) => statuses.push(line),
+  });
+  const chunks2 = [new Blob([new Uint8Array(50)])];
+  await run(recorder2, chunks2, seg2);
+
+  assert.equal(AUDIO.silentSegStreak, 2);
+  assert.equal(AUDIO.bypassGraph, true,
+    "連續靜音編碼是編碼管線本身的問題，換麥克風源救不回來（新源接的還是同一條壞管線），必須跳過收音圖直錄麥克風");
+  assert.ok(notes.some((n) => n.includes("切換成直接錄製麥克風原始訊號")),
+    `要留下切換模式的永久記錄。實際：${JSON.stringify(notes)}`);
+  assert.ok(statuses.some((s) => s.includes("切換錄製模式")), "浮動列也要提示");
+});
+
+test("正常段落（位元組率夠高）要清掉疑似靜音的連續計數，不能一次誤判就永遠切換", async () => {
+  const recorder = { mimeType: "audio/webm;codecs=opus" };
+  const AUDIO = { recorder, ending: false, entryId: 7, silentSegStreak: 1, bypassGraph: false };
+  const seg = { index: 3, entryId: 7, startOffset: 10, startedAt: Date.now() - 5000 };
+  const run = segStopRunner(AUDIO);
+  // 5 秒編碼出 20000 bytes（4000 bytes/秒）：遠高於門檻，正常段落
+  const chunks = [new Blob([new Uint8Array(20000)])];
+  await run(recorder, chunks, seg);
+
+  assert.equal(AUDIO.silentSegStreak, 0, "正常段落要把疑似靜音的連續計數歸零");
+  assert.equal(AUDIO.bypassGraph, false);
+});
+
+test("bypassGraph 開啟後，錄音要改錄麥克風原始 stream，跳過收音圖 destination", () => {
+  const fn = app.match(/function audioRecordStream\(\)[\s\S]*?\n\}/)?.[0] || "";
+  assert.match(fn, /bypassGraph/, "audioRecordStream 要看 bypassGraph 旗標");
+  assert.match(fn, /if \(AUDIO\.bypassGraph\) return AUDIO\.stream;/,
+    "bypassGraph 為真時要直接回傳麥克風原始 stream，不能還是 dest.stream");
+});
