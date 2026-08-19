@@ -527,6 +527,147 @@ async function showDataChangelog() {
   `).join("");
 }
 
+// 廠商協尋看板：同事有需求但沒空自己翻展商名冊，把問題列成卡片，
+// AI 從展商目錄挑候選廠商供參考（找不到明顯相關的會誠實說沒有，不會硬湊）。
+async function openHelpBoard() {
+  if (!API_OK) { showToast("共筆後端未連線，無法使用協尋看板"); return; }
+  $("help-board-overlay").classList.add("open");
+  await refreshHelpBoard();
+}
+
+async function refreshHelpBoard() {
+  const wrap = $("help-board-list");
+  wrap.innerHTML = '<p class="sub">載入中…</p>';
+  try {
+    const rows = await api("/help-requests");
+    renderHelpBoard(rows);
+  } catch (err) {
+    wrap.innerHTML = `<p class="sub">載入失敗：${esc(err.message)}</p>`;
+  }
+}
+
+function renderHelpBoard(rows) {
+  const wrap = $("help-board-list");
+  if (!rows.length) {
+    wrap.innerHTML = '<p class="sub">目前還沒有協尋問題，上面填一筆試試。</p>';
+    return;
+  }
+  wrap.innerHTML = rows.map((r) => {
+    const resolved = r.status === "resolved";
+    const suggestions = r.ai_suggestions || [];
+    const suggestHtml = suggestions.length
+      ? suggestions.map((s) => `
+          <div class="help-suggestion">
+            <div>
+              <strong>${esc(s.name)}</strong>
+              ${s.booth_no ? `<span class="help-suggestion-meta">${esc(s.booth_no)}</span>` : ""}
+              ${s.category_name ? `<span class="help-suggestion-meta">${esc(s.category_name)}</span>` : ""}
+              <div class="help-suggestion-reason">${esc(s.reason || "")}</div>
+            </div>
+            <button class="btn small ghost" data-pick="${esc(r.id)}" data-ex="${esc(s.exhibitor_id)}">✓ 就是這家</button>
+          </div>`).join("")
+      : `<p class="sub">${esc(r.ai_note || "AI 還沒有給出建議")}</p>`;
+    const matched = resolved && r.matched_exhibitor_id
+      ? `<div class="help-matched">✅ 已找到：${esc((EXHIBITORS.find((e) => e.id === r.matched_exhibitor_id) || {}).name_zh || r.matched_exhibitor_id)}${r.matched_note ? `｜${esc(r.matched_note)}` : ""}</div>`
+      : "";
+    return `
+      <div class="help-card${resolved ? " resolved" : ""}" data-id="${esc(r.id)}">
+        <div class="help-card-head">
+          <span class="help-status ${resolved ? "resolved" : "open"}">${resolved ? "已解決" : "待協尋"}</span>
+          <span class="help-card-meta">${esc(r.created_by)}｜${esc(r.created_at)}</span>
+        </div>
+        <div class="help-question">${esc(r.question)}</div>
+        ${matched}
+        <div class="help-suggestions">${suggestHtml}</div>
+        <div class="help-card-actions">
+          <button class="btn small ghost" data-resuggest="${esc(r.id)}">🔄 重新協尋</button>
+          ${resolved
+            ? `<button class="btn small ghost" data-reopen="${esc(r.id)}">↩️ 重新開放</button>`
+            : `<button class="btn small ghost" data-resolve="${esc(r.id)}">✔️ 標記已解決</button>`}
+          <button class="btn small ghost" data-delete="${esc(r.id)}">🗑 刪除</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  wrap.querySelectorAll("[data-pick]").forEach((btn) => {
+    btn.onclick = () => resolveHelpRequest(btn.dataset.pick, btn.dataset.ex);
+  });
+  wrap.querySelectorAll("[data-resuggest]").forEach((btn) => {
+    btn.onclick = () => reSuggestHelpRequest(btn.dataset.resuggest);
+  });
+  wrap.querySelectorAll("[data-resolve]").forEach((btn) => {
+    btn.onclick = () => resolveHelpRequest(btn.dataset.resolve, "");
+  });
+  wrap.querySelectorAll("[data-reopen]").forEach((btn) => {
+    btn.onclick = () => reopenHelpRequest(btn.dataset.reopen);
+  });
+  wrap.querySelectorAll("[data-delete]").forEach((btn) => {
+    btn.onclick = () => deleteHelpRequest(btn.dataset.delete);
+  });
+}
+
+async function submitHelpQuestion() {
+  if (!me()) { showLogin(); return; }
+  const question = $("help-board-question").value.trim();
+  if (!question) { showToast("請先填寫問題內容"); return; }
+  const btn = $("help-board-submit");
+  btn.disabled = true;
+  btn.textContent = "AI 協尋中…";
+  try {
+    await api("/help-requests", { method: "POST", body: JSON.stringify({ question, created_by: me() }) });
+    $("help-board-question").value = "";
+    showToast("已送出協尋問題");
+    await refreshHelpBoard();
+  } catch (err) {
+    showToast("送出失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "送出並請 AI 協尋";
+  }
+}
+
+async function reSuggestHelpRequest(id) {
+  try {
+    await api(`/help-requests/${id}/suggest`, { method: "POST" });
+    await refreshHelpBoard();
+  } catch (err) {
+    showToast("AI 協尋失敗：" + err.message);
+  }
+}
+
+async function resolveHelpRequest(id, exhibitorId) {
+  try {
+    await api(`/help-requests/${id}`, { method: "PUT", body: JSON.stringify({ status: "resolved", matched_exhibitor_id: exhibitorId || "" }) });
+    if (exhibitorId) {
+      $("help-board-overlay").classList.remove("open");
+      openDetail(exhibitorId);
+    } else {
+      await refreshHelpBoard();
+    }
+  } catch (err) {
+    showToast("標記失敗：" + err.message);
+  }
+}
+
+async function reopenHelpRequest(id) {
+  try {
+    await api(`/help-requests/${id}`, { method: "PUT", body: JSON.stringify({ status: "open" }) });
+    await refreshHelpBoard();
+  } catch (err) {
+    showToast("操作失敗：" + err.message);
+  }
+}
+
+async function deleteHelpRequest(id) {
+  if (!confirm("確定要刪除這則協尋問題？")) return;
+  try {
+    await api(`/help-requests/${id}`, { method: "DELETE" });
+    await refreshHelpBoard();
+  } catch (err) {
+    showToast("刪除失敗：" + err.message);
+  }
+}
+
 function forceOffline() {
   if (!me()) { showToast("請先登入再測試離線模式"); return; }
   const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
@@ -645,6 +786,11 @@ async function init() {
   $("data-changelog-close").onclick = () => $("data-changelog-overlay").classList.remove("open");
   closeOnBackdropClick("data-changelog-overlay", () => $("data-changelog-overlay").classList.remove("open"));
 
+  // 廠商協尋看板（同事有需求但沒空找，列成卡片讓 AI 協助建議候選廠商）
+  $("btn-help-board").onclick = openHelpBoard;
+  $("help-board-close").onclick = () => $("help-board-overlay").classList.remove("open");
+  closeOnBackdropClick("help-board-overlay", () => $("help-board-overlay").classList.remove("open"));
+  $("help-board-submit").onclick = submitHelpQuestion;
 
   // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
   $("capture-photo-btn").onclick = openCapturePhotoPopup;

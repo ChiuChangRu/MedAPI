@@ -31,6 +31,7 @@
         <button class="btn small ghost offline-dim" id="btn-export" title="需要連線">匯出 CSV</button>
         <button class="btn small ghost" id="btn-offline-toggle" title="模擬斷網，確認離線功能是否足夠">離線測試</button>
         <button class="btn small ghost" id="btn-data-changelog" title="展商資料每次更新的異動說明">📋 資料異動記錄</button>
+        <button class="btn small ghost offline-dim" id="btn-help-board" title="同事沒空找的廠商需求，列成卡片讓大家協尋，AI 會先給候選建議">🙋 廠商協尋看板</button>
       </div>
     </div>
   </div>
@@ -44,6 +45,21 @@
     <h2>📋 資料異動記錄</h2>
     <p class="sub">展商名冊每次重新匯入的前後差異紀錄，不是團隊拜訪紀錄。</p>
     <div id="data-changelog-body"><p class="sub">載入中…</p></div>
+  </div>
+</div>
+
+<!-- 廠商協尋看板：同事有需求但沒空自己翻展商名冊，把問題列成卡片，
+     AI 從展商目錄挑候選廠商供參考（找不到明顯相關的會誠實說沒有，不會硬湊）。 -->
+<div class="overlay" id="help-board-overlay">
+  <div class="modal">
+    <div class="modal-close-float"><button class="btn small ghost" id="help-board-close" type="button" aria-label="關閉">✕</button></div>
+    <h2>🙋 廠商協尋看板</h2>
+    <p class="sub">提出你需要找的廠商需求，AI 會先從展商目錄挑幾家候選給大家參考，找到後記得標記已解決。</p>
+    <div class="help-board-form">
+      <textarea id="help-board-question" rows="2" placeholder="例如：需要找可以做 PTFE 披膜/塗層加工的廠商，最好有醫療器材經驗"></textarea>
+      <button class="btn small" id="help-board-submit">送出並請 AI 協尋</button>
+    </div>
+    <div id="help-board-list"><p class="sub">載入中…</p></div>
   </div>
 </div>
 
