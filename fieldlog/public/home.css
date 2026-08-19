@@ -63,7 +63,7 @@ body {
   cursor: pointer;
 }
 
-#home-main-sections {
+.home-main-grid {
   display: grid;
   gap: 12px;
 }
