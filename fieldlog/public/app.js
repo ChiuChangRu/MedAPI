@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "127";
+const APP_VERSION = "128";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -507,9 +507,9 @@ async function doLogin() {
   const err = $("login-error");
   err.style.display = "none";
   try {
-    await api("/folders");
+    const folders = await api("/folders");
     $("login-overlay").classList.remove("open");
-    boot();
+    boot(folders);
   } catch (e) {
     err.textContent = e.message;
     err.style.display = "block";
@@ -655,7 +655,7 @@ function hideBootProgress() {
   $("boot-loading-overlay")?.classList.remove("open");
 }
 
-async function boot() {
+async function boot(preloadedFolders = null) {
   showBootProgress();
   try {
     const cfg = await api("/config");
@@ -673,7 +673,7 @@ async function boot() {
   // 分類清單要先載入：建資料夾的對話框、資料夾排序、記事欄位模板都靠它
   await loadCategories();
   setBootProgress(45);
-  await Promise.all([loadFolders(), loadRecent()]);
+  await Promise.all([loadFolders(preloadedFolders), loadRecent()]);
   setBootProgress(90);
   initUsageDetails();
   syncPendingFiles();
@@ -681,8 +681,8 @@ async function boot() {
   hideBootProgress();
 }
 
-async function loadFolders() {
-  FOLDERS = await api("/folders");
+async function loadFolders(preloadedFolders = null) {
+  FOLDERS = preloadedFolders || await api("/folders");
   renderFolders();
 }
 
@@ -4811,7 +4811,7 @@ function init() {
   if (!pin()) { showLogin(); } else {
     showBootProgress();
     setBootProgress(8);
-    api("/folders").then(() => boot()).catch(() => { hideBootProgress(); showLogin(); });
+    api("/folders").then((folders) => boot(folders)).catch(() => { hideBootProgress(); showLogin(); });
   }
 }
 

@@ -123,7 +123,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "127";
+const UI_VERSION = "128";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -648,9 +648,18 @@ async function handleApi(request, env, url) {
   if (path === "/folders" && method === "GET") {
     const { results } = await db.prepare(
       `SELECT f.*,
-        (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id AND e.parent_entry_id IS NULL AND COALESCE(e.deleted_at, '') = '') AS entry_count,
-        (SELECT COUNT(*) FROM folders c WHERE c.parent_id = f.id AND COALESCE(c.deleted_at, '') = '') AS child_count
-       FROM folders f WHERE COALESCE(f.deleted_at, '') = ''
+        COALESCE(ec.entry_count, 0) AS entry_count,
+        COALESCE(cc.child_count, 0) AS child_count
+       FROM folders f
+       LEFT JOIN (
+         SELECT folder_id, COUNT(*) AS entry_count FROM entries
+         WHERE parent_entry_id IS NULL AND COALESCE(deleted_at, '') = '' GROUP BY folder_id
+       ) ec ON ec.folder_id = f.id
+       LEFT JOIN (
+         SELECT parent_id, COUNT(*) AS child_count FROM folders
+         WHERE COALESCE(deleted_at, '') = '' GROUP BY parent_id
+       ) cc ON cc.parent_id = f.id
+       WHERE COALESCE(f.deleted_at, '') = ''
        ORDER BY ${FOLDER_CATEGORY_RANK_SQL}, f.status = '進行中' DESC, f.sort_order, f.id DESC`
     ).all();
     return json(results);
@@ -965,13 +974,19 @@ async function handleApi(request, env, url) {
     let q;
     if (inbox) {
       q = db.prepare(
-        `SELECT e.*, (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
+        `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                COALESCE(e.auto_filed_at, '') AS auto_filed_at,
+                COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
+                (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
          FROM entries e WHERE e.folder_id IS NULL AND e.parent_entry_id IS NULL
            AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`
       );
     } else if (folderId) {
       q = db.prepare(
-        `SELECT e.*, (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
+        `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                COALESCE(e.auto_filed_at, '') AS auto_filed_at,
+                COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
+                (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
          FROM entries e WHERE e.folder_id = ? AND e.parent_entry_id IS NULL
            AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`
       ).bind(Number(folderId));
@@ -985,7 +1000,9 @@ async function handleApi(request, env, url) {
     if (url.searchParams.get("include") === "attachments" && results.length) {
       const ids = results.map((e) => e.id);
       const { results: atts } = await db.prepare(
-        `SELECT * FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
+        `SELECT id, entry_id, kind, filename, key, mime, created_at, offset_secs,
+                source_pdf_id, rotation
+         FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
       ).bind(...ids).all();
       const byEntry = new Map();
       for (const a of atts || []) {
