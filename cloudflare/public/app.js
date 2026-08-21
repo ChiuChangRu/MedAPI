@@ -3139,6 +3139,13 @@ function renderItinerary() {
 
   wrap.innerHTML = TRIP_DAYS.map((d, i) => {
     const isToday = d.date === today;
+    const shuttleContact = d.shuttleContact ? `
+      <div class="itin-shuttle-contact">
+        🚐 ${esc(d.shuttleContact.company)}｜${esc(d.shuttleContact.who)}
+        ｜☎️ ${esc(d.shuttleContact.phone)}${d.shuttleContact.phoneIntl ? `（國外專線 ${esc(d.shuttleContact.phoneIntl)}）` : ""}
+        ${d.shuttleContact.lineId ? `｜LINE/微信 ${esc(d.shuttleContact.lineId)}` : ""}
+        ${d.shuttleContact.services ? `<div class="itin-shuttle-contact-services">${esc(d.shuttleContact.services)}</div>` : ""}
+      </div>` : "";
     const shuttle = (d.shuttle || []).length ? `
       <div class="itin-shuttle">
         <div class="itin-half-label">🚐 宜蘭包車接駁</div>
@@ -3148,6 +3155,7 @@ function renderItinerary() {
           </tbody>
         </table>
         ${d.shuttleNote ? `<div class="itin-shuttle-note">${esc(d.shuttleNote)}</div>` : ""}
+        ${shuttleContact}
       </div>` : "";
 
     // 看展日多給兩個捷徑：直接跳論壇議程、跳自己的分派清單
