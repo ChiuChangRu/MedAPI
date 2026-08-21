@@ -45,3 +45,27 @@ test("單檔與資料包都保留移動入口", async () => {
   assert.match(app, /class="record-group-move"/);
   assert.match(app, /class="entry-move"/);
 });
+
+test("右側單檔可以拖到左側資料夾並提供復原", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  assert.match(app, /application\/x-fieldlog-attachment/);
+  const tree = app.match(/function renderDesktopFolderTree[\s\S]*?\n}/)?.[0] || "";
+  assert.match(tree, /types\.includes\("application\/x-fieldlog-attachment"\)/);
+  assert.match(tree, /moveAttachmentToFolder\(payload, targetId\)/);
+  const move = app.match(/async function moveAttachmentToFolder[\s\S]*?\n}/)?.[0] || "";
+  assert.match(move, /actionLabel: "復原"/);
+  assert.match(move, /folder_id: sourceId/);
+});
+
+test("預覽可開關、可調欄寬並記住設定", async () => {
+  const [app, html, css] = await Promise.all([
+    read("../fieldlog/public/app.js"), read("../fieldlog/public/index.html"), read("../fieldlog/public/style.css"),
+  ]);
+  assert.match(html, /id="btn-toggle-preview"/);
+  assert.match(html, /id="folder-preview-resize"[^>]*role="separator"/);
+  assert.match(app, /fieldlog_preview_enabled/);
+  assert.match(app, /fieldlog_preview_width/);
+  assert.match(app, /function initPreviewLayout/);
+  assert.match(css, /--preview-width:/);
+  assert.match(css, /\.folder-workspace\.preview-off/);
+});

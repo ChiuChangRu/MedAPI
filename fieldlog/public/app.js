@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "129";
+const APP_VERSION = "130";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -127,6 +127,7 @@ let INBOX_VIEW = localStorage.getItem("fieldlog_inbox_view") || "list";
 // 是剛剛丟進來的那一份，它不該被排在幾十個舊檔案後面。想按檔名找（同一系列的
 // 標準編號連號排在一起）再切到 name。
 let FILE_SORT = localStorage.getItem("fieldlog_file_sort") || "new";
+let PREVIEW_ENABLED = localStorage.getItem("fieldlog_preview_enabled") !== "0";
 let MERGE_SOURCE_ID = null;
 let MERGE_ENTRY_SOURCE_ID = null;
 let CREATE_FOLDER_RESOLVE = null;
@@ -850,20 +851,52 @@ function renderDesktopFolderTree() {
       renderFolders();
     });
     row.ondragover = (event) => {
-      if (!event.dataTransfer.types.includes("application/x-fieldlog-entry") && !event.dataTransfer.types.includes("application/x-fieldlog-folder")) return;
-      event.preventDefault(); event.dataTransfer.dropEffect = "move";
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder") && !types.includes("application/x-fieldlog-attachment")) return;
+      event.preventDefault(); event.dataTransfer.dropEffect = "move"; row.classList.add("drop-target");
     };
+    row.ondragleave = () => row.classList.remove("drop-target");
     row.ondrop = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
-      if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder")) return;
-      event.preventDefault(); event.stopPropagation();
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder") && !types.includes("application/x-fieldlog-attachment")) return;
+      event.preventDefault(); event.stopPropagation(); row.classList.remove("drop-target");
       const targetId = Number(row.dataset.id);
       const entryId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
       const folderId = Number(event.dataTransfer.getData("application/x-fieldlog-folder"));
-      if (entryId) moveInboxEntry(entryId, targetId, Number(event.dataTransfer.getData("application/x-fieldlog-entry-folder")) || null);
+      if (types.includes("application/x-fieldlog-attachment")) {
+        let payload;
+        try { payload = JSON.parse(event.dataTransfer.getData("application/x-fieldlog-attachment")); }
+        catch { showToast("無法讀取拖曳的檔案"); return; }
+        if (payload?.attachmentId) moveAttachmentToFolder(payload, targetId);
+      } else if (entryId) moveInboxEntry(entryId, targetId, Number(event.dataTransfer.getData("application/x-fieldlog-entry-folder")) || null);
       else if (folderId && folderId !== targetId) moveFolderDirect(folderId, targetId);
     };
   });
+}
+
+async function moveAttachmentToFolder(payload, targetId) {
+  const sourceId = Number(payload.sourceFolderId || 0);
+  if (!targetId || targetId === sourceId) { showToast("檔案已經在這個資料夾"); return; }
+  const target = FOLDERS.find((folder) => Number(folder.id) === Number(targetId));
+  try {
+    const result = await api(`/attachments/${payload.attachmentId}/move`, {
+      method: "POST", body: JSON.stringify({ folder_id: targetId }),
+    });
+    if (!result.moved) { showToast("檔案已經在這個資料夾"); return; }
+    showToast(`已移到「${target?.name || "資料夾"}」`, sourceId ? {
+      actionLabel: "復原",
+      onAction: async () => {
+        try {
+          await api(`/attachments/${payload.attachmentId}/move`, {
+            method: "POST", body: JSON.stringify({ folder_id: sourceId }),
+          });
+          showToast("已復原移動");
+          await refreshFolderView();
+        } catch (error) { showToast("復原失敗：" + error.message); }
+      },
+    } : {});
+    await refreshFolderView();
+  } catch (error) { showToast("移動失敗：" + error.message); }
 }
 
 // 側欄寬度：可拖曳調整，記住使用者選的寬度（手機不套用雙欄檔案總管，
@@ -893,6 +926,8 @@ function initDesktopSidebarResize() {
     const onMove = (moveEvent) => {
       const width = Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, moveEvent.clientX));
       document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
+      const previewWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10);
+      if (previewWidth) setPreviewWidth(previewWidth);
     };
     const onUp = () => {
       handle.classList.remove("dragging");
@@ -1823,7 +1858,7 @@ async function removeOneFile(attachmentId, filename, closeDetail) {
 function bindFileRows() {
   document.querySelectorAll(".folder-file-row[data-att-id]").forEach((row) => {
     row.onclick = (event) => {
-      if (event.target.closest("button") || !matchMedia("(min-width: 1000px)").matches) return;
+      if (event.target.closest("button") || !PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
       event.preventDefault();
       showFilePreview({
         entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
@@ -1861,6 +1896,7 @@ function bindFileRows() {
         attachmentId: Number(row.dataset.attId),
         entryId: Number(row.dataset.entryId),
         filename: row.dataset.filename || "檔案",
+        sourceFolderId: CURRENT_FOLDER?.id || null,
       }));
     };
     row.ondragend = () => {
@@ -1891,7 +1927,7 @@ function clearFilePreview(message = "選取一份檔案以預覽") {
 }
 
 async function showFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
-  if (!matchMedia("(min-width: 1000px)").matches) return;
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
   const pane = $("folder-preview");
   const body = $("folder-preview-body");
   const title = $("folder-preview-title");
@@ -1955,6 +1991,79 @@ async function fetchTextPreview(url, maxChars) {
     if (truncated) await reader.cancel();
   }
   return { text: text.slice(0, maxChars), truncated };
+}
+
+const PREVIEW_WIDTH_KEY = "fieldlog_preview_width";
+const PREVIEW_WIDTH_MIN = 280;
+const PREVIEW_MAIN_MIN = 360;
+
+function syncPreviewLayout() {
+  const workspace = document.querySelector(".folder-workspace");
+  const button = $("btn-toggle-preview");
+  if (!workspace || !button) return;
+  workspace.classList.toggle("preview-off", !PREVIEW_ENABLED);
+  button.classList.toggle("active", PREVIEW_ENABLED);
+  button.textContent = PREVIEW_ENABLED ? "▣ 預覽：開" : "□ 預覽：關";
+  button.setAttribute("aria-pressed", PREVIEW_ENABLED ? "true" : "false");
+  if (!PREVIEW_ENABLED) clearFilePreview("預覽已關閉");
+}
+
+function clampPreviewWidth(width) {
+  const workspace = document.querySelector(".folder-workspace");
+  const available = workspace?.getBoundingClientRect().width || window.innerWidth;
+  const max = Math.max(PREVIEW_WIDTH_MIN, available - PREVIEW_MAIN_MIN - 8);
+  return Math.min(max, Math.max(PREVIEW_WIDTH_MIN, width));
+}
+
+function setPreviewWidth(width, persist = false) {
+  const clamped = clampPreviewWidth(width);
+  document.documentElement.style.setProperty("--preview-width", `${clamped}px`);
+  if (persist) localStorage.setItem(PREVIEW_WIDTH_KEY, String(Math.round(clamped)));
+}
+
+function initPreviewLayout() {
+  const handle = $("folder-preview-resize");
+  const button = $("btn-toggle-preview");
+  if (!handle || !button) return;
+  const saved = Number(localStorage.getItem(PREVIEW_WIDTH_KEY));
+  if (saved) setPreviewWidth(saved);
+  syncPreviewLayout();
+  button.onclick = () => {
+    PREVIEW_ENABLED = !PREVIEW_ENABLED;
+    localStorage.setItem("fieldlog_preview_enabled", PREVIEW_ENABLED ? "1" : "0");
+    syncPreviewLayout();
+  };
+  handle.addEventListener("pointerdown", (event) => {
+    if (!PREVIEW_ENABLED) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("dragging");
+    document.body.classList.add("preview-resizing");
+    const workspace = document.querySelector(".folder-workspace");
+    const onMove = (moveEvent) => setPreviewWidth(workspace.getBoundingClientRect().right - moveEvent.clientX);
+    const onUp = () => {
+      handle.classList.remove("dragging");
+      document.body.classList.remove("preview-resizing");
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10);
+      if (current) setPreviewWidth(current, true);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  });
+  handle.addEventListener("keydown", (event) => {
+    if (!PREVIEW_ENABLED || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10) || 400;
+    setPreviewWidth(current + (event.key === "ArrowLeft" ? 16 : -16), true);
+  });
+  window.addEventListener("resize", () => {
+    const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10) || 400;
+    setPreviewWidth(current);
+  });
 }
 
 function hasAttachmentDrag(event) {
@@ -3125,7 +3234,7 @@ function bindImageLinks(root = document) {
       event.preventDefault();
       event.stopPropagation();
       const row = link.closest(".folder-file-row[data-att-id]");
-      if (row && matchMedia("(min-width: 1000px)").matches) {
+      if (row && PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
         showFilePreview({
           entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
           filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
@@ -4779,6 +4888,7 @@ function init() {
   setupFileDropZone($("view-folder"), uploadDroppedFilesToCurrentLocation);
   setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToCurrentLocation);
   initDesktopSidebarResize();
+  initPreviewLayout();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
