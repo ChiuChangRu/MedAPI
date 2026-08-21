@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "128";
+const APP_VERSION = "129";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1531,7 +1531,7 @@ function folderFileHtml(a, entryId) {
     : `<a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
   // 每一列是「一份檔案」而不是「一筆記事」：可以拖到上方子資料夾搬移，
   // 🗑 只刪這一份，⋯ 開這一份的詳情（附屬記事、分類、AI 整理）
-  return `<div class="folder-file-row explorer-item" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}">
+  return `<div class="folder-file-row explorer-item" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}" data-key="${esc(a.key)}" data-mime="${esc(a.mime || "")}" data-kind="${esc(a.kind || "")}">
     <span class="folder-file-icon" title="拖曳到上方子資料夾">${icon}</span>
     ${nameLink}
     <span class="folder-file-meta">${esc(localDateTimeShort(a.created_at))}</span>
@@ -1633,6 +1633,7 @@ async function openFolder(id) {
   syncFolderSortButtons();
   syncSubfolderButton();
   $("folder-children").innerHTML = "";
+  clearFilePreview();
   await runLegacyCleanupOnce();
   // 一次帶附件回來，不要每筆有附件的記事各發一支 /entries/:id——資料夾裡
   // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
@@ -1821,6 +1822,20 @@ async function removeOneFile(attachmentId, filename, closeDetail) {
 
 function bindFileRows() {
   document.querySelectorAll(".folder-file-row[data-att-id]").forEach((row) => {
+    row.onclick = (event) => {
+      if (event.target.closest("button") || !matchMedia("(min-width: 1000px)").matches) return;
+      event.preventDefault();
+      showFilePreview({
+        entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
+        filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
+        mime: row.dataset.mime || "", kind: row.dataset.kind || "",
+      }).catch((error) => showToast("預覽失敗：" + error.message));
+    };
+    row.ondblclick = (event) => {
+      if (event.target.closest("button")) return;
+      const link = row.querySelector(".folder-file-name");
+      if (link?.href) window.open(link.href, "_blank", "noopener");
+    };
     const manage = row.querySelector(".folder-file-manage");
     if (manage) {
       manage.onclick = (event) => {
@@ -1855,6 +1870,91 @@ function bindFileRows() {
     };
   });
   bindImageLinks();
+}
+
+function clearFilePreview(message = "選取一份檔案以預覽") {
+  const pane = $("folder-preview");
+  const body = $("folder-preview-body");
+  if (!pane || !body) return;
+  pane.dataset.attachmentId = "";
+  if ($("folder-preview-title")) $("folder-preview-title").textContent = "預覽";
+  if ($("folder-preview-open")) {
+    $("folder-preview-open").href = "#";
+    $("folder-preview-open").onclick = (event) => event.preventDefault();
+  }
+  if ($("folder-preview-manage")) {
+    $("folder-preview-manage").disabled = true;
+    $("folder-preview-manage").onclick = null;
+  }
+  body.innerHTML = `<p class="folder-preview-empty">${esc(message)}</p>`;
+  document.querySelectorAll(".folder-file-row.preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+}
+
+async function showFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
+  if (!matchMedia("(min-width: 1000px)").matches) return;
+  const pane = $("folder-preview");
+  const body = $("folder-preview-body");
+  const title = $("folder-preview-title");
+  if (!pane || !body || !title) return;
+  document.querySelectorAll(".folder-file-row.preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+  document.querySelector(`.folder-file-row[data-att-id="${attachmentId}"]`)?.classList.add("preview-selected");
+  pane.dataset.attachmentId = String(attachmentId);
+  title.textContent = filename;
+  body.innerHTML = `<p class="folder-preview-empty">載入預覽中…</p>`;
+  const url = `/api/file/${encodeURIComponent(key)}?pin=${encodeURIComponent(pin())}`;
+  const ext = String(filename).split(".").pop().toLowerCase();
+  const image = kind === "photo" || /^image\//i.test(mime);
+  const audio = kind === "audio" || /^audio\//i.test(mime);
+  const video = kind === "video" || /^video\//i.test(mime);
+  const pdf = mime === "application/pdf" || ext === "pdf";
+  const html = /^text\/html/i.test(mime) || ["html", "htm"].includes(ext);
+  const plain = /^text\//i.test(mime) || ["txt", "md", "csv", "json", "xml"].includes(ext);
+  if (image) body.innerHTML = `<img class="folder-preview-image" src="${url}" alt="${esc(filename)}" />`;
+  else if (audio) body.innerHTML = `<audio class="folder-preview-media" controls preload="metadata" src="${url}"></audio>`;
+  else if (video) body.innerHTML = `<video class="folder-preview-media" controls preload="metadata" src="${url}"></video>`;
+  else if (pdf) body.innerHTML = `<iframe class="folder-preview-frame" src="${url}#view=FitH" title="${esc(filename)}"></iframe>`;
+  else if (html) body.innerHTML = `<iframe class="folder-preview-frame" sandbox src="${url}" title="${esc(filename)}"></iframe>`;
+  else if (plain) {
+    const { text, truncated } = await fetchTextPreview(url, 200000);
+    body.innerHTML = `<pre class="folder-preview-text">${esc(text)}${truncated ? "\n\n［預覽只顯示前 200,000 字］" : ""}</pre>`;
+  } else if (["doc", "docx", "odt", "rtf"].includes(ext)) {
+    const entry = await api(`/entries/${entryId}`);
+    const attachment = (entry.attachments || []).find((item) => Number(item.id) === Number(attachmentId));
+    const extracted = String(attachment?.ocr_text || attachment?.note || "").trim();
+    body.innerHTML = extracted
+      ? `<pre class="folder-preview-text">${esc(extracted.slice(0, 200000))}</pre>`
+      : `<p class="folder-preview-empty">這份 Word 尚無可顯示的解析文字。可按「開啟原檔」查看完整排版。</p>`;
+  } else body.innerHTML = `<p class="folder-preview-empty">此格式目前無法在側欄預覽，可開啟原檔。</p>`;
+  $("folder-preview-open").href = url;
+  $("folder-preview-open").onclick = null;
+  $("folder-preview-manage").disabled = false;
+  $("folder-preview-manage").onclick = () => openFileDetail(entryId, attachmentId)
+    .catch((error) => showToast("開啟檔案失敗：" + error.message));
+}
+
+async function fetchTextPreview(url, maxChars) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.body?.getReader) {
+    const text = await response.text();
+    return { text: text.slice(0, maxChars), truncated: text.length > maxChars };
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let truncated = false;
+  try {
+    while (text.length <= maxChars) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (text.length > maxChars) { truncated = true; break; }
+    }
+    text += decoder.decode();
+  } finally {
+    if (truncated) await reader.cancel();
+  }
+  return { text: text.slice(0, maxChars), truncated };
 }
 
 function hasAttachmentDrag(event) {
@@ -2361,8 +2461,14 @@ async function uploadFilesToFolder(files) {
   });
 }
 
-/** 從電腦拖進 App 的獨立檔案一律先進待分類，不受目前頁面位置影響。 */
-async function uploadDroppedFilesToPending(files) {
+/** 外部檔案放在資料夾頁就直接歸入目前資料夾；首頁放下才進待分類。 */
+async function uploadDroppedFilesToCurrentLocation(files) {
+  if (CURRENT_FOLDER) {
+    await uploadStandaloneFiles(files, Number(CURRENT_FOLDER.id), {
+      destination: `「${CURRENT_FOLDER.name}」`,
+    });
+    return;
+  }
   const folderId = await stagingFolderId();
   await uploadStandaloneFiles(files, folderId, { destination: "「待分類」" });
 }
@@ -3018,6 +3124,15 @@ function bindImageLinks(root = document) {
     link.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      const row = link.closest(".folder-file-row[data-att-id]");
+      if (row && matchMedia("(min-width: 1000px)").matches) {
+        showFilePreview({
+          entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
+          filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
+          mime: row.dataset.mime || "", kind: row.dataset.kind || "",
+        }).catch((error) => showToast("預覽失敗：" + error.message));
+        return;
+      }
       openImageViewer(link.dataset.imageUrl, link.dataset.imageName || "", link.dataset.imageId, link.dataset.imageRotation);
     };
   });
@@ -4648,7 +4763,7 @@ function init() {
     if (e.target === $("category-manager-overlay")) closeCategoryManager();
   });
   $("btn-cleanup-filenames").onclick = (e) => cleanupFilenames(e.currentTarget);
-  // 資料夾工具列的「＋ 上傳檔案」是明確指定目前資料夾；外部拖放則一律進待分類。
+  // 資料夾工具列與資料夾頁拖放都代表已指定目前資料夾；首頁拖放才進待分類。
   // 每個檔案自成一筆記事（標題＝去掉副檔名的檔名）
   const folderUploadInput = $("folder-upload-file-input");
   $("btn-folder-upload-file").onclick = () => {
@@ -4660,9 +4775,9 @@ function init() {
     folderUploadInput.value = "";
     uploadFilesToFolder(files);
   };
-  setupFileDropZone($("view-home"), uploadDroppedFilesToPending);
-  setupFileDropZone($("view-folder"), uploadDroppedFilesToPending);
-  setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToPending);
+  setupFileDropZone($("view-home"), uploadDroppedFilesToCurrentLocation);
+  setupFileDropZone($("view-folder"), uploadDroppedFilesToCurrentLocation);
+  setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToCurrentLocation);
   initDesktopSidebarResize();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
