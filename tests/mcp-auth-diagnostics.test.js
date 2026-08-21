@@ -51,11 +51,17 @@ function initialize(url = "https://x/mcp", headers = {}) {
   }), ENV);
 }
 
-test("未授權的 MCP 回應會公布 OAuth metadata 位置", async () => {
+test("未授權可探索 MCP 工具，但資料工具仍會要求 OAuth", async () => {
   const res = await initialize();
-  assert.equal(res.status, 401);
-  assert.match(res.headers.get("www-authenticate") || "", /oauth-protected-resource/);
-  assert.equal((await res.json()).error, "unauthorized");
+  assert.equal(res.status, 200);
+  const call = await worker.fetch(new Request("https://x/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_fieldlog_folders", arguments: {} } }),
+  }), ENV);
+  assert.equal(call.status, 401);
+  assert.match(call.headers.get("www-authenticate") || "", /oauth-protected-resource/);
+  assert.equal((await call.json()).error, "unauthorized");
 });
 
 test("OAuth discovery 公布 resource、DCR、PKCE 與 public-client token method", async () => {
@@ -251,8 +257,8 @@ test("健康檢查頁報工具數且不洩漏工具名", async () => {
   assert.doesNotMatch(text, /get_fieldlog|search_fieldlog/);
 });
 
-test("tools/list 提供 ChatGPT Plugin 所需的標題與安全 annotations", async () => {
-  const res = await worker.fetch(new Request("https://x/mcp?pin=right-pin", {
+test("tools/list 可在 OAuth 前探索，並提供 ChatGPT 所需的標題、安全 annotations 與 OAuth scheme", async () => {
+  const res = await worker.fetch(new Request("https://x/mcp", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
@@ -266,6 +272,8 @@ test("tools/list 提供 ChatGPT Plugin 所需的標題與安全 annotations", as
     assert.equal(typeof tool.annotations?.readOnlyHint, "boolean", `${tool.name} 缺少 readOnlyHint`);
     assert.equal(typeof tool.annotations?.destructiveHint, "boolean", `${tool.name} 缺少 destructiveHint`);
     assert.equal(typeof tool.annotations?.openWorldHint, "boolean", `${tool.name} 缺少 openWorldHint`);
+    assert.equal(tool.securitySchemes?.[0]?.type, "oauth2", `${tool.name} 缺少 OAuth security scheme`);
+    assert.deepEqual(tool._meta?.securitySchemes, tool.securitySchemes, `${tool.name} 缺少相容的 _meta.securitySchemes`);
   }
   const byName = Object.fromEntries(result.tools.map((tool) => [tool.name, tool]));
   assert.equal(byName.search_fieldlog.annotations.readOnlyHint, true);

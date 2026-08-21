@@ -83,8 +83,8 @@ const ATTACHMENT_CHUNK_CAP = 20000;
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, OPTIONS",
-  "access-control-allow-headers": "content-type, authorization, x-pin, mcp-session-id",
-  "access-control-expose-headers": "mcp-session-id",
+  "access-control-allow-headers": "content-type, authorization, x-pin, mcp-session-id, mcp-protocol-version, last-event-id",
+  "access-control-expose-headers": "mcp-session-id, mcp-protocol-version",
 };
 
 function json(data, status = 200, extraHeaders = {}) {
@@ -1754,8 +1754,27 @@ const TOOL_TITLES = {
   image_probe: "檢查圖片資訊",
 };
 
-function publicToolDefinition(tool) {
+function publicToolDefinition(tool, request) {
   const readOnly = !WRITE_TOOL_NAMES.has(tool.name);
+  const origin = new URL(request.url).origin;
+  // ChatGPT developer-mode must be able to read the tool catalogue before it
+  // has an access token.  Declaring the OAuth scheme on every data-bearing
+  // tool lets it discover the catalogue without making the actual data calls
+  // public.  `_meta.securitySchemes` keeps older MCP clients in sync with the
+  // top-level field.
+  const securitySchemes = [{
+    type: "oauth2",
+    flows: {
+      authorizationCode: {
+        authorizationUrl: `${origin}/authorize`,
+        tokenUrl: `${origin}/token`,
+        scopes: {
+          "mywiki:read": "查詢 MyWiki 資料",
+          "mywiki:write": "新增或整理 MyWiki 資料",
+        },
+      },
+    },
+  }];
   return {
     name: tool.name,
     title: TOOL_TITLES[tool.name] || tool.name,
@@ -1766,6 +1785,8 @@ function publicToolDefinition(tool) {
       destructiveHint: tool.name === "delete_folder",
       openWorldHint: false,
     },
+    securitySchemes,
+    _meta: { securitySchemes },
   };
 }
 
@@ -1791,7 +1812,7 @@ async function handleMcp(request, env, auth = {}) {
     const want = params?.protocolVersion;
     return rpcResult(id, {
       protocolVersion: SUPPORTED_PROTOCOLS.has(want) ? want : PROTOCOL_DEFAULT,
-      capabilities: { tools: {} },
+      capabilities: { tools: { listChanged: true } },
       serverInfo: { name: "medapi-mcp", version: "1.1.0" },
       instructions:
         "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
@@ -1808,7 +1829,7 @@ async function handleMcp(request, env, auth = {}) {
     return rpcResult(id, {
       tools: TOOLS
         .filter(({ name }) => canWrite || !WRITE_TOOL_NAMES.has(name))
-        .map(publicToolDefinition),
+        .map((tool) => publicToolDefinition(tool, request)),
     });
   }
   if (method === "tools/call") {
@@ -1865,7 +1886,23 @@ export default {
       // CORS 預檢不帶認證資訊，瀏覽器也不允許預檢回應是 401——一律放行，
       // 真正的認證在後面實際的 GET/POST 請求上做
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
-      const auth = await authorizeMcpRequest(request, env);
+      // ChatGPT scans an MCP app before it has OAuth tokens.  The official
+      // mixed-auth flow explicitly keeps initialize/tools/list unauthenticated
+      // and relies on each tool's securitySchemes for the later OAuth prompt.
+      // Only metadata is public here; every tools/call still goes through
+      // authorizeMcpRequest below.
+      let discoveryRequest = false;
+      if (request.method === "POST") {
+        try {
+          const probe = await request.clone().json();
+          discoveryRequest = ["initialize", "tools/list", "ping"].includes(probe?.method)
+            || String(probe?.method || "").startsWith("notifications/");
+        } catch {
+          // Let the normal authenticated handler produce its JSON-RPC parse
+          // error.  A malformed request must not become a public data path.
+        }
+      }
+      const auth = discoveryRequest ? { ok: true, discovery: true } : await authorizeMcpRequest(request, env);
       if (!auth.ok) return oauthUnauthorized(request, auth.reason);
       try {
         return await handleMcp(request, env, auth);
