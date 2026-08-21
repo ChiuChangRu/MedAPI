@@ -45,6 +45,27 @@ export const SCHEMA = [
     detail TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    entry_id INTEGER NOT NULL,
+    attachment_id INTEGER,
+    snapshot_json TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT DEFAULT '',
+    allow_attachments INTEGER DEFAULT 1,
+    allow_download INTEGER DEFAULT 0,
+    created_by TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    access_count INTEGER DEFAULT 0,
+    last_accessed_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_attempts (
+    client_key TEXT PRIMARY KEY,
+    failures INTEGER DEFAULT 0,
+    window_started_at TEXT NOT NULL,
+    blocked_until TEXT DEFAULT ''
+  )`,
   `CREATE TABLE IF NOT EXISTS ai_usage_reservations (
     attachment_id INTEGER PRIMARY KEY,
     usage_date TEXT NOT NULL,

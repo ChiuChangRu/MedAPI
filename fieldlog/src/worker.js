@@ -57,6 +57,7 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import { ensureStagingFolder } from "./lib/autofile.js";
+import { createLegacySession, securityHeaders, verifyAccessRequest, verifyLegacySession } from "./lib/access-auth.js";
 import { ensurePatrolFolder, formatPatrolReport } from "./lib/patrol.js";
 import {
   entrySubtreeIds,
@@ -123,7 +124,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "130";
+const UI_VERSION = "131";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -423,6 +424,16 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+function randomShareToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 // 帶時效的檔案簽名。origin 要帶進來組完整網址——呼叫端（MCP server）拿到是直接
 // 當連結用的，只給相對路徑會是死連結。key 逐段編碼，中文檔名才不會壞。
 // 注意：這不是「免驗證的對外分享連結」——/api/* 的 FIELD_PIN 閘門在簽名檢查
@@ -583,7 +594,7 @@ function parseNotionPageId(input) {
   return `${id32.slice(0, 8)}-${id32.slice(8, 12)}-${id32.slice(12, 16)}-${id32.slice(16, 20)}-${id32.slice(20)}`;
 }
 
-async function handleApi(request, env, url) {
+async function handleApi(request, env, url, identity = {}) {
   const db = env.DB;
   await ensureSchema(db, now());
   const path = url.pathname.replace(/^\/api/, "");
@@ -1048,6 +1059,57 @@ async function handleApi(request, env, url) {
     });
     return json({ id: r.meta.last_row_id, ok: true });
   }
+  if (path === "/shares" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const entryId = Number(body.entry_id || 0);
+    const attachmentId = body.attachment_id ? Number(body.attachment_id) : null;
+    const expiresDays = Math.min(Math.max(Number(body.expires_days) || 7, 1), 30);
+    const entry = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(entryId).first();
+    if (!entry) return bad("找不到要分享的資料", 404);
+    const { results: allAttachments } = await db.prepare(
+      "SELECT id, kind, filename, key, size, mime, created_at FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY id"
+    ).bind(entryId).all();
+    const attachments = attachmentId
+      ? (allAttachments || []).filter((item) => Number(item.id) === attachmentId)
+      : (allAttachments || []);
+    if (attachmentId && !attachments.length) return bad("找不到要分享的附件", 404);
+    const allowAttachments = body.allow_attachments !== false;
+    const allowDownload = body.allow_download === true;
+    const snapshot = {
+      version: 1,
+      entry: { id: entry.id, title: entry.title, body: entry.body, body_format: entry.body_format, created_at: entry.created_at, updated_at: entry.updated_at },
+      attachments: allowAttachments ? attachments : [],
+    };
+    const token = randomShareToken();
+    const tokenHash = await sha256Hex(token);
+    const expiresAt = new Date(Date.now() + expiresDays * 86400000).toISOString();
+    const createdAt = now();
+    const result = await db.prepare(
+      `INSERT INTO share_links (token_hash, entry_id, attachment_id, snapshot_json, expires_at, allow_attachments, allow_download, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(tokenHash, entryId, attachmentId, JSON.stringify(snapshot), expiresAt, allowAttachments ? 1 : 0, allowDownload ? 1 : 0, identity.email || "legacy-pin", createdAt).run();
+    await logHistory(db, entryId, entry.folder_id, "建立分享", `到期：${expiresAt}；附件：${allowAttachments ? "是" : "否"}；下載：${allowDownload ? "是" : "否"}`);
+    const origin = String(env.SHARE_ORIGIN || "https://share.gogoyankee.workers.dev").replace(/\/$/, "");
+    return json({ id: result.meta.last_row_id, url: `${origin}/s/${token}`, expires_at: expiresAt, allow_download: allowDownload });
+  }
+  if (path === "/shares" && method === "GET") {
+    const entryId = Number(url.searchParams.get("entry_id") || 0);
+    const query = entryId
+      ? db.prepare("SELECT id, entry_id, attachment_id, expires_at, revoked_at, allow_attachments, allow_download, created_by, created_at, access_count, last_accessed_at FROM share_links WHERE entry_id = ? ORDER BY id DESC").bind(entryId)
+      : db.prepare("SELECT id, entry_id, attachment_id, expires_at, revoked_at, allow_attachments, allow_download, created_by, created_at, access_count, last_accessed_at FROM share_links ORDER BY id DESC LIMIT 100");
+    const { results } = await query.all();
+    return json({ shares: results || [] });
+  }
+  const shareRevokeMatch = path.match(/^\/shares\/(\d+)$/);
+  if (shareRevokeMatch && method === "DELETE") {
+    const id = Number(shareRevokeMatch[1]);
+    const share = await db.prepare("SELECT entry_id FROM share_links WHERE id = ?").bind(id).first();
+    if (!share) return bad("找不到分享連結", 404);
+    await db.prepare("UPDATE share_links SET revoked_at = ? WHERE id = ?").bind(now(), id).run();
+    await logHistory(db, share.entry_id, null, "撤銷分享", `分享編號 ${id}`);
+    return json({ ok: true });
+  }
+
   const entryMatch = path.match(/^\/entries\/(\d+)$/);
   if (entryMatch && method === "GET") {
     const id = Number(entryMatch[1]);
@@ -2288,34 +2350,77 @@ async function noStoreAsset(request, env) {
   return new Response(response.body, { status: response.status, headers });
 }
 
+function secureResponse(response) {
+  const headers = securityHeaders(new Headers(response.headers));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+async function privateIdentity(request, env, url) {
+  const access = await verifyAccessRequest(request, env);
+  if (access.configured) return access;
+  const pin = (env.FIELD_PIN || "").trim();
+  if (!pin) return { ok: false, error: "尚未設定 FIELD_PIN 或 Cloudflare Access" };
+  if (await verifyLegacySession(request, pin)) return { ok: true, email: "legacy-session" };
+  const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
+  return given === pin ? { ok: true, email: "legacy-pin" } : { ok: false, error: "PIN 錯誤或未提供" };
+}
+
+async function handleSession(request, env) {
+  if (env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD) return bad("已啟用 Cloudflare Access，不接受 PIN Session", 404);
+  await ensureSchema(env.DB, now());
+  const headers = new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  if (request.method === "DELETE") {
+    headers.set("set-cookie", "__Host-myw_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+    return new Response(JSON.stringify({ ok: true }), { headers });
+  }
+  if (request.method !== "POST") return bad("只接受 POST", 405);
+  const fieldPin = String(env.FIELD_PIN || "").trim();
+  if (!fieldPin) return bad("尚未設定登入方式", 401);
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  const clientKey = await sha256Hex(`${ip}:${fieldPin}`);
+  const attempt = await env.DB.prepare("SELECT * FROM auth_attempts WHERE client_key = ?").bind(clientKey).first();
+  if (attempt?.blocked_until && Date.parse(attempt.blocked_until) > Date.now()) return bad("登入嘗試過多，請稍後再試", 429);
+  const body = await request.json().catch(() => ({}));
+  if (String(body.pin || "").trim() !== fieldPin) {
+    const activeWindow = attempt && Date.now() - Date.parse(attempt.window_started_at) < 10 * 60 * 1000;
+    const failures = activeWindow ? Number(attempt.failures || 0) + 1 : 1;
+    const blockedUntil = failures >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : "";
+    await env.DB.prepare(
+      `INSERT INTO auth_attempts (client_key, failures, window_started_at, blocked_until) VALUES (?, ?, ?, ?)
+       ON CONFLICT(client_key) DO UPDATE SET failures = excluded.failures, window_started_at = excluded.window_started_at, blocked_until = excluded.blocked_until`
+    ).bind(clientKey, failures, activeWindow ? attempt.window_started_at : new Date().toISOString(), blockedUntil).run();
+    return bad(failures >= 5 ? "登入嘗試過多，已暫時鎖定" : "PIN 錯誤", failures >= 5 ? 429 : 401);
+  }
+  await env.DB.prepare("DELETE FROM auth_attempts WHERE client_key = ?").bind(clientKey).run();
+  const session = await createLegacySession(fieldPin);
+  headers.set("set-cookie", `__Host-myw_session=${session}; Path=/; Max-Age=43200; HttpOnly; Secure; SameSite=Strict`);
+  return new Response(JSON.stringify({ ok: true, expires_in: 43200 }), { headers });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/session") return secureResponse(await handleSession(request, env));
     // /wiki/* 是個人知識庫內容（wrangler run_worker_first 導進來的），
     // 與 API 同一套 PIN 驗證，通過才放行到靜態資產
     if (url.pathname.startsWith("/wiki/")) {
-      const pin = (env.FIELD_PIN || "").trim();
-      if (!pin) return bad("尚未設定 FIELD_PIN：請至 Worker Settings → Variables and Secrets 新增", 401);
-      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
-      if (given !== pin) return bad("PIN 錯誤或未提供", 401);
-      return env.ASSETS.fetch(new Request(new URL(url.pathname, url.origin), request));
+      const identity = await privateIdentity(request, env, url);
+      if (!identity.ok) return secureResponse(bad(identity.error, 401));
+      return secureResponse(await env.ASSETS.fetch(new Request(new URL(url.pathname, url.origin), request)));
     }
     if (NO_CACHE_SHELL_PATHS.has(url.pathname)) {
-      return noStoreAsset(request, env);
+      return secureResponse(await noStoreAsset(request, env));
     }
     if (url.pathname.startsWith("/api/")) {
-      // fail-closed：FIELD_PIN 未設定時全部拒絕
-      const pin = (env.FIELD_PIN || "").trim();
-      if (!pin) return bad("尚未設定 FIELD_PIN：請至 Worker Settings → Variables and Secrets 新增", 401);
-      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
-      if (given !== pin) return bad("PIN 錯誤或未提供", 401);
+      const identity = await privateIdentity(request, env, url);
+      if (!identity.ok) return secureResponse(bad(identity.error, 401));
       try {
-        return await handleApi(request, env, url);
+        return secureResponse(await handleApi(request, env, url, identity));
       } catch (err) {
-        return bad(`伺服器錯誤：${err.message}`, 500);
+        return secureResponse(bad(`伺服器錯誤：${err.message}`, 500));
       }
     }
-    return env.ASSETS.fetch(request);
+    return secureResponse(await env.ASSETS.fetch(request));
   },
 
   // 每天自動同步 sources 表裡的外部來源（cron 排程見 wrangler.jsonc 的 triggers；

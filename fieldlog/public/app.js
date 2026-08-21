@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "130";
+const APP_VERSION = "131";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -504,10 +504,17 @@ function initUsageDetails() {
 function showLogin() { $("login-overlay").classList.add("open"); }
 
 async function doLogin() {
-  localStorage.setItem("fieldlog_pin", $("login-pin").value.trim());
   const err = $("login-error");
   err.style.display = "none";
   try {
+    const response = await fetch("/api/session", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pin: $("login-pin").value.trim() }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    localStorage.removeItem("fieldlog_pin");
+    $("login-pin").value = "";
     const folders = await api("/folders");
     $("login-overlay").classList.remove("open");
     boot(folders);
@@ -515,6 +522,16 @@ async function doLogin() {
     err.textContent = e.message;
     err.style.display = "block";
   }
+}
+
+async function migrateLegacyPinToSession() {
+  const legacyPin = pin();
+  if (!legacyPin) return;
+  const response = await fetch("/api/session", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ pin: legacyPin }),
+  });
+  if (response.ok) localStorage.removeItem("fieldlog_pin");
 }
 
 // ---------- 版本對版：避免「部署是新的、瀏覽器跑的是舊的」無聲卡住 ----------
@@ -1555,7 +1572,7 @@ function bindChildFolderCards(wrap) {
 }
 
 function folderFileHtml(a, entryId) {
-  const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
+  const url = `/api/file/${encodeURIComponent(a.key)}`;
   const ext = (a.filename || "").split(".").pop().toLowerCase();
   const icon = isPdfAtt(a) ? "📕" : a.kind === "photo" ? "🖼️" : a.kind === "audio" ? "🎙️"
     : ["doc", "docx"].includes(ext) ? "📘" : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
@@ -1937,7 +1954,7 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
   pane.dataset.attachmentId = String(attachmentId);
   title.textContent = filename;
   body.innerHTML = `<p class="folder-preview-empty">載入預覽中…</p>`;
-  const url = `/api/file/${encodeURIComponent(key)}?pin=${encodeURIComponent(pin())}`;
+  const url = `/api/file/${encodeURIComponent(key)}`;
   const ext = String(filename).split(".").pop().toLowerCase();
   const image = kind === "photo" || /^image\//i.test(mime);
   const audio = kind === "audio" || /^audio\//i.test(mime);
@@ -2254,6 +2271,20 @@ async function askQuickNoteFolder(entryId) {
   } catch (err) { showToast("分類失敗：" + err.message); }
 }
 
+async function createReadOnlyShare(entryId, attachmentId = null) {
+  const daysRaw = prompt("分享幾天後到期？請輸入 1～30 天", "7");
+  if (daysRaw === null) return;
+  const expiresDays = Math.min(Math.max(Number(daysRaw) || 7, 1), 30);
+  const allowAttachments = attachmentId ? true : confirm("是否包含這筆資料的附件？\n按「取消」只分享文字內容。");
+  const allowDownload = allowAttachments && confirm("是否允許附件下載？\n建議按「取消」，只提供線上預覽。");
+  const result = await api("/shares", {
+    method: "POST",
+    body: JSON.stringify({ entry_id: entryId, attachment_id: attachmentId, expires_days: expiresDays, allow_attachments: allowAttachments, allow_download: allowDownload }),
+  });
+  try { await navigator.clipboard.writeText(result.url); } catch { /* 非安全環境時仍用提示框顯示 */ }
+  prompt(`唯讀分享已建立，${expiresDays} 天後到期。\n連結已嘗試複製；需要時可在這裡再複製：`, result.url);
+}
+
 async function openEntry(id) {
   // 從單一檔案詳情觸發的重新開啟（存檔、AI 整理完成）要停在同一份檔案上，
   // 不要跳回整筆記事——否則使用者每整理一次就被彈回上一層
@@ -2324,7 +2355,7 @@ async function openEntry(id) {
       </div>`).join("")}</div></section>` : ""}
     ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
     ${bodySection}
-    <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button></div>
+    <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button><button class="btn" id="e-share" type="button">🔗 唯讀分享</button></div>
     <hr/>
     <h3 class="section-title">附件</h3>
     <div class="upload-row">
@@ -2355,6 +2386,7 @@ async function openEntry(id) {
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("e-close").onclick = closeEntry;
+  $("e-share").onclick = () => createReadOnlyShare(entryId).catch((error) => showToast("分享失敗：" + error.message));
   modal.querySelectorAll(".entry-child-card").forEach((card) => {
     card.onclick = () => openEntry(Number(card.dataset.id));
     card.ondragover = (event) => {
@@ -3077,7 +3109,7 @@ async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
     }
     btn.textContent = "下載 PDF…";
-    const fileRes = await fetch(`/api/file/${encodeURIComponent(pdfAtt.key)}?pin=${encodeURIComponent(pin())}`);
+    const fileRes = await fetch(`/api/file/${encodeURIComponent(pdfAtt.key)}`);
     if (!fileRes.ok) throw new Error(`下載 PDF 失敗（HTTP ${fileRes.status}）`);
     const pdf = await pdfjsLib.getDocument({ data: await fileRes.arrayBuffer() }).promise;
     const total = pdf.numPages;
@@ -3283,7 +3315,7 @@ async function openFileDetail(entryId, attachmentId) {
   // 只有一份檔案時才把舊的 body 當成這份檔案的記事顯示，避免多檔案時張冠李戴。
   const legacyNote = sourceAttachments.length === 1 ? String(entry.body || "").trim() : "";
   const noteValue = String(attachment.note || "").trim() || legacyNote;
-  const fileUrl = `/api/file/${encodeURIComponent(attachment.key)}?pin=${encodeURIComponent(pin())}`;
+  const fileUrl = `/api/file/${encodeURIComponent(attachment.key)}`;
   const canDoodle = isPdfAtt(attachment) && typeof window.fieldlogOpenPdfEditor === "function";
   const originalName = attachment.original_filename && attachment.original_filename !== attachment.filename
     ? `<p class="sub">原始檔名：${esc(attachment.original_filename)}</p>` : "";
@@ -3300,6 +3332,7 @@ async function openFileDetail(entryId, attachmentId) {
       <button id="file-move-action" type="button">📂 移動</button>
       <button id="file-category-action" type="button">🏷 分類</button>
       <button id="file-note-action" type="button">📝 Note</button>
+      <button id="file-share-action" type="button">🔗 分享</button>
     </div>
     <div class="file-category-panel" id="file-category-panel">
       <strong>醫療器材分類</strong>
@@ -3332,6 +3365,7 @@ async function openFileDetail(entryId, attachmentId) {
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("file-detail-close").onclick = closeEntry;
+  $("file-share-action").onclick = () => createReadOnlyShare(entryId, attachmentId).catch((error) => showToast("分享失敗：" + error.message));
   bindAttActions(entryId);
   bindImageLinks(modal);
   setupFileDropZone(modal, (files) => uploadFiles(entryId, files));
@@ -3461,7 +3495,7 @@ async function openFileDetail(entryId, attachmentId) {
 }
 
 function attHtml(a, siblings) {
-  const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
+  const url = `/api/file/${encodeURIComponent(a.key)}`;
   const originalName = a.original_filename && a.original_filename !== a.filename
     ? `<div class="att-original">原始名稱：${esc(a.original_filename)}</div>` : "";
   const docIcon = (a.filename || "").toLowerCase();
@@ -3631,9 +3665,7 @@ function bindAttActions(entryId) {
 // 才動態補上，存檔前一定要剝掉。這裡假設檔案網址永遠是 `/api/file/{key}` 後面
 // 最多接一個 `?pin=...`（app.js 全部檔案連結都是這個形狀，見 attHtml 等處）。
 function injectFilePinForDisplay(html) {
-  if (!html) return html;
-  const p = encodeURIComponent(pin());
-  return html.replace(/(<img\b[^>]*\bsrc=")(\/api\/file\/[^"?]+)(")/gi, (m, pre, src, post) => `${pre}${src}?pin=${p}${post}`);
+  return html;
 }
 function stripFilePinForSave(html) {
   if (!html) return html;
@@ -3760,7 +3792,7 @@ async function insertFilesIntoRichEditor(entryId, editorEl, files) {
     try {
       const uploaded = await putFile(entryId, f, f.name, null);
       if (uploaded.duplicate) { showToast(`${f.name} 是重複檔案，已略過`); continue; }
-      const url = `/api/file/${encodeURIComponent(uploaded.key)}?pin=${encodeURIComponent(pin())}`;
+      const url = `/api/file/${encodeURIComponent(uploaded.key)}`;
       window.fieldlogRichEditor?.insertImage(editorEl, url, uploaded.id);
       await refreshEntryAttachmentsPanel(entryId);
     } catch (err) { showToast(`${f.name} 上傳失敗：${err.message}`); }
@@ -4845,7 +4877,7 @@ function guardRecordingNavigation(event) {
 // ---------- 匯出 ----------
 function exportFolder() {
   if (!CURRENT_FOLDER) return;
-  window.open(`/api/export/folder/${CURRENT_FOLDER.id}?pin=${encodeURIComponent(pin())}`, "_blank");
+  window.open(`/api/export/folder/${CURRENT_FOLDER.id}`, "_blank", "noopener");
 }
 
 // ---------- init ----------
@@ -5033,11 +5065,11 @@ function init() {
   window.addEventListener("online", syncPendingFiles);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
-  if (!pin()) { showLogin(); } else {
-    showBootProgress();
-    setBootProgress(8);
-    api("/folders").then((folders) => boot(folders)).catch(() => { hideBootProgress(); showLogin(); });
-  }
+  showBootProgress();
+  setBootProgress(8);
+  const startBoot = () => api("/folders").then((folders) => boot(folders))
+    .catch(() => { hideBootProgress(); showLogin(); });
+  migrateLegacyPinToSession().finally(startBoot);
 }
 
 init();
