@@ -1792,7 +1792,7 @@ async function handleMcp(request, env, auth = {}) {
     return rpcResult(id, {
       protocolVersion: SUPPORTED_PROTOCOLS.has(want) ? want : PROTOCOL_DEFAULT,
       capabilities: { tools: {} },
-      serverInfo: { name: "medapi-mcp", version: "1.0.0" },
+      serverInfo: { name: "medapi-mcp", version: "1.1.0" },
       instructions:
         "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " category 是「色系分組」（project／qa_reg／literature／training／admin／misc），跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，回應裡提到這兩者時不要混為一談。" +
@@ -1880,7 +1880,7 @@ export default {
       // 排查時分不清是「Worker 沒部署」還是「客戶端把工具清單快取住了」。
       // 工具數不是機密（README 本來就寫著），但工具名不列，不擴大暴露面。
       return new Response(
-        `medapi-mcp OK — MCP 端點在 POST /mcp（OAuth 2.1；保留 PIN 相容）\n`
+        `medapi-mcp OK — MCP 端點在 POST /mcp（OAuth 2.1 CIMD＋DCR；保留 PIN 相容）\n`
         + `工具數：${TOOLS.length}\n`
         + `（連接器連不上時：先確認這裡的工具數是不是最新的，是的話就是客戶端要重新連接以更新工具清單）\n`,
         { headers: { "content-type": "text/plain; charset=utf-8", ...CORS_HEADERS } },

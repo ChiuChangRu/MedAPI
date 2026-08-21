@@ -68,6 +68,8 @@ test("OAuth discovery 公布 resource、DCR、PKCE 與 public-client token metho
   assert.equal(metadata.registration_endpoint, "https://x/register");
   assert.deepEqual(metadata.code_challenge_methods_supported, ["S256"]);
   assert.deepEqual(metadata.token_endpoint_auth_methods_supported, ["none"]);
+  assert.equal(metadata.client_id_metadata_document_supported, true);
+  assert.equal(metadata.authorization_response_iss_parameter_supported, true);
 });
 
 test("DCR 只接受 public PKCE client 與安全 redirect URI", async () => {
@@ -138,6 +140,98 @@ test("完整 authorization-code + PKCE 流程可換 token，code 不可重放", 
   const replay = await exchange();
   assert.equal(replay.status, 400);
   assert.equal((await replay.json()).error, "invalid_grant");
+});
+
+test("ChatGPT CIMD 可免 DCR 授權，Cookie 被擋時同源 POST 仍可完成", async () => {
+  const redirectUri = "https://chatgpt.com/connector_platform_oauth_redirect";
+  const clientId = "https://chatgpt.com/oauth/client.json";
+  const env = {
+    MCP_PIN: "right-pin",
+    DB_FIELDLOG: new OAuthDb(),
+    OAUTH_CLIENT_METADATA_FETCH: async (url) => {
+      assert.equal(url, clientId);
+      return new Response(JSON.stringify({
+        client_name: "ChatGPT",
+        redirect_uris: [redirectUri],
+        token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      }), { headers: { "content-type": "application/json" } });
+    },
+  };
+  const verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  let binary = "";
+  for (const byte of digest) binary += String.fromCharCode(byte);
+  const challenge = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const authorizeUrl = new URL("https://x/authorize");
+  for (const [key, value] of Object.entries({ response_type: "code", client_id: clientId,
+    redirect_uri: redirectUri, state: "cimd-state", code_challenge: challenge,
+    code_challenge_method: "S256", resource: "https://x/mcp", scope: "mywiki:read" })) {
+    authorizeUrl.searchParams.set(key, value);
+  }
+
+  const consent = await worker.fetch(new Request(authorizeUrl), env);
+  assert.equal(consent.status, 200);
+  const html = await consent.text();
+  const requestToken = html.match(/name="request_token" value="([^"]+)"/)?.[1];
+  const csrf = html.match(/name="csrf_token" value="([^"]+)"/)?.[1];
+  assert.ok(requestToken && csrf);
+
+  const approved = await worker.fetch(new Request("https://x/authorize", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      origin: "https://x",
+      "cf-connecting-ip": "203.0.113.10",
+    },
+    body: new URLSearchParams({ request_token: requestToken, csrf_token: csrf, pin: "right-pin", decision: "allow" }),
+  }), env);
+  assert.equal(approved.status, 302);
+  const callback = new URL(approved.headers.get("location"));
+  assert.equal(callback.searchParams.get("state"), "cimd-state");
+  assert.equal(callback.searchParams.get("iss"), "https://x");
+  const code = callback.searchParams.get("code");
+  assert.ok(code);
+
+  const exchange = await worker.fetch(new Request("https://x/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", client_id: clientId,
+      redirect_uri: redirectUri, resource: "https://x/mcp", code, code_verifier: verifier }),
+  }), env);
+  assert.equal(exchange.status, 200);
+  const tokens = await exchange.json();
+  assert.ok(tokens.access_token);
+  const mcp = await worker.fetch(new Request("https://x/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${tokens.access_token}` },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
+  }), env);
+  assert.equal(mcp.status, 200);
+});
+
+test("授權表單沒有 Cookie 且不是同源 POST 時仍拒絕", async () => {
+  const register = await worker.fetch(new Request("https://x/register", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_name: "ChatGPT", redirect_uris: ["https://chatgpt.com/connector/oauth/test"] }),
+  }), ENV);
+  const { client_id: clientId } = await register.json();
+  const challenge = "a".repeat(43);
+  const authorizeUrl = new URL("https://x/authorize");
+  for (const [key, value] of Object.entries({ response_type: "code", client_id: clientId,
+    redirect_uri: "https://chatgpt.com/connector/oauth/test", state: "state-x",
+    code_challenge: challenge, code_challenge_method: "S256", resource: "https://x/mcp",
+    scope: "mywiki:read" })) authorizeUrl.searchParams.set(key, value);
+  const consent = await worker.fetch(new Request(authorizeUrl), ENV);
+  const html = await consent.text();
+  const requestToken = html.match(/name="request_token" value="([^"]+)"/)?.[1];
+  const csrf = html.match(/name="csrf_token" value="([^"]+)"/)?.[1];
+  const rejected = await worker.fetch(new Request("https://x/authorize", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://evil.example" },
+    body: new URLSearchParams({ request_token: requestToken, csrf_token: csrf, pin: "right-pin", decision: "allow" }),
+  }), ENV);
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).error_description, "CSRF validation failed");
 });
 
 test("既有三種 PIN 方式保持相容，未設定 secret 仍 fail-closed", async () => {

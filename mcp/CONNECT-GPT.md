@@ -33,7 +33,7 @@
 |---|---|
 | 協定 | MCP，Streamable HTTP（`POST /mcp`），JSON-RPC 2.0 |
 | 端點 URL | `https://medapi-mcp.<你的帳號>.workers.dev/mcp` |
-| 驗證方式 | OAuth 2.1（DCR＋authorization code＋S256 PKCE） |
+| 驗證方式 | OAuth 2.1（優先 CIMD，並保留 DCR；authorization code＋S256 PKCE） |
 | 支援的 protocolVersion | `2024-11-05`／`2025-03-26`／`2025-06-18` |
 
 **PIN 從哪裡拿**：Cloudflare Dashboard → 這個 Worker（`medapi-mcp`）→
@@ -41,8 +41,9 @@ Settings → Variables and Secrets → `MCP_PIN`。這串 PIN 等同一把鑰匙
 **不要貼到會被公開分享的地方**（例如公開的對話紀錄、GitHub issue）。
 
 PIN 只在 MCP Worker 自己顯示的授權頁輸入，不要放進 Server URL。伺服器支援
-OAuth 動態用戶端註冊（DCR）、PKCE、access token 與 refresh token；若畫面讓你
-選註冊方式，選「動態用戶端註冊」。
+ChatGPT 現行偏好的 Client ID Metadata Document（CIMD），也保留動態用戶端註冊
+（DCR）、PKCE、access token 與 refresh token。若畫面提供 CIMD，優先選 CIMD；
+舊畫面只有 DCR 時再選「動態用戶端註冊」。
 
 ## 在 ChatGPT 裡設定連接器
 
@@ -54,7 +55,8 @@ connector」這類選項即可：
 2. 選「新增自訂連接器 / Add custom connector」
 3. **Name**：自己取一個看得懂的名字，例如「Mywiki」
 4. **Server URL / MCP endpoint**：只貼 `https://medapi-mcp.<帳號>.workers.dev/mcp`
-5. 驗證選 **OAuth**，用戶端選 **動態註冊（DCR）**，不要自行填 Client ID／Secret
+5. 驗證選 **OAuth**，用戶端優先選 **CIMD**；沒有 CIMD 才選 **動態註冊（DCR）**。
+   不要自行填 Client ID／Secret
 6. 儲存後會開啟 MyWiki 授權頁；在那裡輸入 `MCP_PIN` 並按「允許」
 7. ChatGPT 會完成 token 交換並呼叫 `tools/list`，抓到下面這 28 個工具
 
