@@ -265,7 +265,7 @@ test("tools/list 可在 OAuth 前探索，並提供 ChatGPT 所需的標題、�
   }), ENV);
   assert.equal(res.status, 200);
   const { result } = await res.json();
-  assert.equal(result.tools.length, 28);
+  assert.equal(result.tools.length, 29);
   for (const tool of result.tools) {
     assert.ok(tool.title, `${tool.name} 缺少 title`);
     assert.equal(tool.inputSchema?.type, "object", `${tool.name} 的 inputSchema 無效`);
@@ -278,5 +278,6 @@ test("tools/list 可在 OAuth 前探索，並提供 ChatGPT 所需的標題、�
   const byName = Object.fromEntries(result.tools.map((tool) => [tool.name, tool]));
   assert.equal(byName.search_fieldlog.annotations.readOnlyHint, true);
   assert.equal(byName.create_fieldlog_entry.annotations.readOnlyHint, false);
+  assert.equal(byName.update_weekly_report.annotations.readOnlyHint, false);
   assert.equal(byName.delete_folder.annotations.destructiveHint, true);
 });

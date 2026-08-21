@@ -237,7 +237,7 @@ body {
 /* 快速輸入改為工具列，不再使用四張彩色展示卡 */
 .home-input-section .capture-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin: 0 0 14px;
 }
@@ -246,7 +246,8 @@ body {
 .home-input-section .cap-video,
 .home-input-section .cap-photo,
 .home-input-section .cap-audio,
-.home-input-section .cap-note {
+.home-input-section .cap-note,
+.home-input-section .cap-weekly {
   display: flex;
   flex-direction: row;
   align-items: center;

@@ -123,6 +123,22 @@ function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
 }
 
+function weeklyReportText(fields) {
+  return [
+    `週次：${fields["週次"] || ""}`,
+    `期間：${fields["期間"] || ""}`,
+    "",
+    "一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）",
+    fields["中長期規劃"] || "",
+    "",
+    "二、本週工作報告",
+    fields["本週工作報告"] || "",
+    "",
+    "三、下週重要工作計畫",
+    fields["下週重要工作計畫"] || "",
+  ].join("\n").trim();
+}
+
 function needQuery(args) {
   const q = (args.query || "").trim();
   if (!q) throw new Error("query 為必填");
@@ -1069,6 +1085,45 @@ const TOOLS = [
     },
   },
   {
+    // 唯一能修改記事內容的例外：只接受 fieldlog 前台建立、fields_json._kind
+    // 明確等於 weekly_report 的週報模板。中長期規劃、週次、期間與其他記事
+    // 都不能透過這支工具改寫，避免把「Claude 幫填週報」擴張成任意編輯權。
+    name: "update_weekly_report",
+    description: "把整理好的內容填入既有的 MyWiki 週報模板。只能更新標記為 weekly_report 的「本週工作報告」，可選填「下週重要工作計畫」；不能修改中長期規劃、週次、期間、標題或其他記事。先用 search_fieldlog 搜尋「工作週報」取得 entry_id。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entry_id: { type: "number", description: "週報模板的 entry id" },
+        weekly_report: { type: "string", description: "二、本週工作報告的完整內容" },
+        next_week_plan: { type: "string", description: "選填：三、下週重要工作計畫；未提供時保留原內容" },
+      },
+      required: ["entry_id", "weekly_report"],
+    },
+    async handler(env, args) {
+      const entryId = Number(args.entry_id || 0);
+      if (!entryId) throw new Error("entry_id 為必填");
+      const entry = await env.DB_FIELDLOG.prepare(
+        "SELECT id, title, folder_id, fields_json FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+      ).bind(entryId).first();
+      if (!entry) throw new Error(`找不到記事 ${entryId}`);
+      let fields = {};
+      try { fields = JSON.parse(entry.fields_json || "{}"); } catch { throw new Error("週報欄位資料損壞，請回 MyWiki 前台檢查"); }
+      if (fields._kind !== "weekly_report") {
+        throw new Error("安全限制：這筆不是 MyWiki 週報模板，不能透過此工具修改");
+      }
+      fields["本週工作報告"] = String(args.weekly_report || "").trim();
+      if (args.next_week_plan !== undefined) fields["下週重要工作計畫"] = String(args.next_week_plan || "").trim();
+      const updatedAt = now();
+      await env.DB_FIELDLOG.prepare(
+        "UPDATE entries SET fields_json = ?, body = ?, body_format = 'text', updated_at = ? WHERE id = ?"
+      ).bind(JSON.stringify(fields), weeklyReportText(fields), updatedAt, entryId).run();
+      await env.DB_FIELDLOG.prepare(
+        "INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(entryId, entry.folder_id, "更新週報", `${fields["週次"] || entry.title}（透過 MCP／claude.ai）`, updatedAt).run();
+      return `已更新 [entry ${entryId}] ${entry.title} 的本週工作報告。請使用者回 MyWiki 檢查內容並按需要補寫下週計畫。`;
+    },
+  },
+  {
     // 第二個可寫入工具，但走的是 HTTP 而不是直接 INSERT D1：MCP 這個 Worker
     // 沒有綁 R2（見 wrangler.jsonc），檔案本體只能透過 FIELDLOG Service Binding
     // 打對方既有的 POST /api/upload——跟 App 上傳完全同一條路徑、同一套去重
@@ -1711,6 +1766,7 @@ const IMAGE_PROBE_PNG_BASE64 =
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 const WRITE_TOOL_NAMES = new Set([
   "create_fieldlog_entry",
+  "update_weekly_report",
   "create_fieldlog_attachment",
   "create_relation",
   "add_synonym",
@@ -1736,6 +1792,7 @@ const TOOL_TITLES = {
   get_fieldlog_attachment: "讀取附件",
   get_related: "查詢關聯紀錄",
   create_fieldlog_entry: "新增隨身記紀錄",
+  update_weekly_report: "更新工作週報",
   create_fieldlog_attachment: "新增附件",
   create_relation: "建立紀錄關聯",
   search_exhibitors: "搜尋 Medtec 展商",
@@ -1815,7 +1872,7 @@ async function handleMcp(request, env, auth = {}) {
       capabilities: { tools: { listChanged: true } },
       serverInfo: { name: "medapi-mcp", version: "1.1.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。update_weekly_report 是唯一可更新記事內容的例外，而且只能寫入前台建立並標記為 weekly_report 的週報欄位。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " category 是「色系分組」（project／qa_reg／literature／training／admin／misc），跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，回應裡提到這兩者時不要混為一談。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
         " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。組內嵌照片的 HTML 報告請用 get_fieldlog_image_base64 拿純文字 base64，不要用 get_fieldlog_image 的圖片內容硬抄。" +

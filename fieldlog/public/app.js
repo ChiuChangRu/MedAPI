@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "132";
+const APP_VERSION = "133";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -2315,6 +2315,24 @@ async function createEntry(folderId, title) {
   return r.id;
 }
 
+async function openCurrentWeeklyReport() {
+  const button = $("btn-weekly-report");
+  button.disabled = true;
+  const original = button.innerHTML;
+  button.innerHTML = "⏳<span>建立中…</span>";
+  try {
+    const report = await api("/weekly-reports/current", { method: "POST" });
+    await loadFolders();
+    CURRENT_FOLDER = FOLDERS.find((folder) => Number(folder.id) === Number(report.folder_id)) || null;
+    await openEntry(report.id);
+  } catch (error) {
+    showToast("開啟週報失敗：" + error.message);
+  } finally {
+    button.disabled = false;
+    button.innerHTML = original;
+  }
+}
+
 // 打字沒有「錄影錄到一半」的時間壓力，所以寫完可以選位置；取消就留在待分類。
 function quickNote() {
   openEditModal({
@@ -2380,6 +2398,7 @@ async function openEntry(id) {
   const folder = e.folder_id ? FOLDERS.find((f) => f.id === e.folder_id) : null;
   const template = templateFor(folder ? folder.type : "其他");
   const fields = JSON.parse(e.fields_json || "{}");
+  const isWeeklyReport = fields._kind === "weekly_report";
   // 來源同步管理的記事（fields_json._sid／litdb_id 有值）永遠鎖在純文字：
   // sync.js 用 <!-- sync:start/end --> 這組純文字標記圈出管理區，換成富文字
   // 編輯器很容易在瀏覽器序列化時弄丟標記，下次同步會整段覆蓋掉使用者手動
@@ -2393,7 +2412,17 @@ async function openEntry(id) {
   // src/lib/sync.js）。那類記事維持純文字編輯框。
   const bodyFormat = isSynced ? "text" : "html";
   const storedAsText = e.body_format !== "html";
-  const bodySection = bodyFormat === "html"
+  const weeklyReportSection = `<section class="weekly-report-editor">
+      <div class="weekly-report-meta"><strong>${esc(fields["週次"] || "週報")}</strong><span>${esc(fields["期間"] || "")}</span></div>
+      <label for="weekly-long-term">一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）</label>
+      <textarea id="weekly-long-term" class="weekly-report-textarea fixed" readonly>${esc(fields["中長期規劃"] || "")}</textarea>
+      <p class="sub">固定範本，不會由 Claude 或一般存檔流程改寫。</p>
+      <label for="weekly-current">二、本週工作報告</label>
+      <textarea id="weekly-current" class="e-field weekly-report-textarea current" data-key="本週工作報告" placeholder="可自行填寫，或請 Claude MCP 整理後寫入。">${esc(fields["本週工作報告"] || "")}</textarea>
+      <label for="weekly-next">三、下週重要工作計畫</label>
+      <textarea id="weekly-next" class="e-field weekly-report-textarea" data-key="下週重要工作計畫" placeholder="保留給你自行填寫。">${esc(fields["下週重要工作計畫"] || "")}</textarea>
+    </section>`;
+  const bodySection = isWeeklyReport ? weeklyReportSection : bodyFormat === "html"
     ? `<div class="field-label-row"><label>內文／速記</label></div>
        <div id="e-body-rich" class="rich-editor"></div>`
     : `<div class="field-label-row">
@@ -2434,7 +2463,7 @@ async function openEntry(id) {
         <span>📁</span><strong>${esc(child.title || "（未命名）")}</strong>
         <small>📎${child.att_count || 0}${child.child_count ? `｜${child.child_count} 個子資料包` : ""}</small>
       </div>`).join("")}</div></section>` : ""}
-    ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
+    ${isWeeklyReport ? "" : template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
     ${bodySection}
     <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button><button class="btn" id="e-share" type="button">🔗 唯讀分享</button></div>
     <hr/>
@@ -2510,7 +2539,9 @@ async function openEntry(id) {
       if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
     } catch (err) { showToast("刪除失敗：" + err.message); }
   };
-  if (bodyFormat === "html") {
+  if (isWeeklyReport) {
+    // 週報使用三段固定表單，不載入一般富文字編輯器。
+  } else if (bodyFormat === "html") {
     // 還存成純文字的舊記事：載進編輯器前先轉成 HTML 段落，使用者看到的內容
     // 不變（換行、空行都保留），存檔時才真的寫回 body_format='html'
     const initialHtml = storedAsText ? textToHtmlForEditor(e.body || "") : (e.body || "");
@@ -2544,15 +2575,29 @@ async function openEntry(id) {
       : "⏳ 待分類（按儲存才生效）";
   };
   $("e-save").onclick = async () => {
-    const newFields = {};
+    const newFields = isWeeklyReport ? {
+      _kind: "weekly_report",
+      "週次": fields["週次"] || "",
+      "期間": fields["期間"] || "",
+      "中長期規劃": fields["中長期規劃"] || "",
+    } : {};
     modal.querySelectorAll(".e-field").forEach((i) => { newFields[i.dataset.key] = i.value.trim(); });
-    const bodyValue = bodyFormat === "html"
-      ? stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("e-body-rich")) || "")
-      : $("e-body").value.trim();
+    const bodyValue = isWeeklyReport
+      ? [
+          `週次：${fields["週次"] || ""}`,
+          `期間：${fields["期間"] || ""}`,
+          "", "一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）", newFields["中長期規劃"] || "",
+          "", "二、本週工作報告", newFields["本週工作報告"] || "",
+          "", "三、下週重要工作計畫", newFields["下週重要工作計畫"] || "",
+        ].join("\n").trim()
+      : bodyFormat === "html"
+        ? stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("e-body-rich")) || "")
+        : $("e-body").value.trim();
     const patch = { title: $("e-title").value.trim(), body: bodyValue, fields: newFields };
+    if (isWeeklyReport) patch.body_format = "text";
     // 舊記事第一次存檔時順手把格式定下來，不用使用者自己按升級。
     // 同步管理的記事不送 body_format，維持 text（後端也有第二道防線會擋）。
-    if (bodyFormat === "html" && storedAsText) patch.body_format = "html";
+    if (!isWeeklyReport && bodyFormat === "html" && storedAsText) patch.body_format = "html";
     if (pendingFolderId !== undefined) patch.folder_id = pendingFolderId;
     await api(`/entries/${id}`, { method: "PUT", body: JSON.stringify(patch) });
     showToast("已儲存");
@@ -2574,7 +2619,7 @@ async function openEntry(id) {
     uploadFiles(id, files);
   };
   setupFileDropZone($("entry-modal"), (files) => uploadFiles(id, files));
-  if (bodyFormat === "html") setupRichImageDropZone($("e-body-rich"), id);
+  if (!isWeeklyReport && bodyFormat === "html") setupRichImageDropZone($("e-body-rich"), id);
   const processBtn = $("e-process");
   if (processBtn) processBtn.onclick = () => processEntryAttachments(id, processBtn);
   const renameBtn = $("e-rename-files");
@@ -4989,6 +5034,7 @@ function init() {
   $("btn-photo").onclick = () => startPhoto(null);
   $("btn-audio").onclick = () => startAudio(null);
   $("btn-quick-note").onclick = quickNote;
+  $("btn-weekly-report").onclick = openCurrentWeeklyReport;
   $("btn-new-folder").onclick = newFolder;
   $("btn-new-subfolder").onclick = newSubfolder;
   $("btn-manage-categories").onclick = () => openCategoryManager("folder_type");

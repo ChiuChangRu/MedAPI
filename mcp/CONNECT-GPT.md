@@ -17,14 +17,15 @@
   「AI 深度解析」段落並明確標示）
 - **Medtec 2026 參展系統**——585 家展商名單＋團隊拜訪紀錄＋附件全文
 
-**對記事內容預設唯讀，例外分兩組。** 27 個工具裡 19 個只做 SELECT／fetch。
+**對記事內容預設唯讀，例外分三組。** 29 個工具裡 20 個只做 SELECT／fetch。
 第一組`create_fieldlog_entry`／`create_fieldlog_attachment`／`create_relation`／
 `add_synonym` 四支鎖死在「只能新增一筆全新的記事／附件／關聯／同義詞對照」，
-不會修改或刪除既有資料。第二組是 2026-08-08 新增的資料夾整理工具
+不會修改或刪除既有資料。第二組是 `update_weekly_report`，只能更新前台建立並
+標記為週報模板的本週工作報告與選填的下週計畫。第三組是 2026-08-08 新增的資料夾整理工具
 `update_folder`／`move_folder`／`move_entry`／`delete_folder`，範圍限定在
 資料夾名稱／分類／排序／巢狀位置與記事的歸檔位置，會真的 UPDATE／DELETE，
 但不會動到任何記事或附件的內容（`delete_folder` 也不會遺失資料，見下方
-工具表說明）。除了這兩組之外，要改內容、刪東西，一律要回隨身記／參展系統
+工具表說明）。除了這三組之外，要改內容、刪東西，一律要回隨身記／參展系統
 前台親自操作；wiki 收錄一律走 git 人審。
 
 ## 連線資訊
@@ -58,14 +59,14 @@ connector」這類選項即可：
 5. 驗證選 **OAuth**，用戶端優先選 **CIMD**；沒有 CIMD 才選 **動態註冊（DCR）**。
    不要自行填 Client ID／Secret
 6. 儲存後會開啟 MyWiki 授權頁；在那裡輸入 `MCP_PIN` 並按「允許」
-7. ChatGPT 會完成 token 交換並呼叫 `tools/list`，抓到下面這 28 個工具
+7. ChatGPT 會完成 token 交換並呼叫 `tools/list`，抓到下面這 29 個工具
 
 設定好之後，直接在對話裡問就好，例如：「幫我查展商裡做親水塗層的」
 「上次實驗紀錄裡提到的固化溫度是多少」「wiki 的抗結痂條目現在寫到哪」
 「litdb 裡有沒有講活檢針擊發機構的文獻」（LitDB 已併入隨身記並每日自動
 同步，`search_fieldlog` 就查得到）——GPT 會自己判斷該呼叫哪個工具。
 
-## 可用工具（28 個）
+## 可用工具（29 個）
 
 **先列目錄、再決定要不要細看，不要一開始就猜關鍵字。** `search_*` 查不到不代表
 沒有這份資料，可能只是關鍵字沒猜對——先用 `list_fieldlog_entries`／
@@ -103,6 +104,7 @@ connector」這類選項即可：
 | 工具 | 用途 |
 |---|---|
 | `create_fieldlog_entry` | 新增一筆記事（標題／內文／選填歸檔資料夾／選填自訂欄位）。只會 INSERT，不會動到任何既有內容 |
+| `update_weekly_report` | 只更新前台建立、標記為週報模板的「本週工作報告」與選填的「下週重要工作計畫」；不能修改其他記事、週次、期間或固定中長期規劃 |
 | `create_fieldlog_attachment` | 上傳檔案（Word／Excel／PDF／圖片等，base64 傳入，伺服器端上限 8MB）掛到一筆**已存在**的記事底下。跟該記事既有附件內容重複會自動略過，不會重複存 |
 | `create_relation` | 把兩筆**已存在**的記事建立關聯。兩筆記事都必須先存在，不能用猜的編號 |
 | `add_synonym` | 新增一組同義詞對照（例：把「BaClear」掛到「抗結痂披膜」）。查不到但確定只是用詞沒對上時當場補，下一次查詢立刻生效；只會 INSERT，改不掉也刪不掉既有對照 |
@@ -144,12 +146,13 @@ connector」這類選項即可：
 ## 安全設計摘要
 
 - **fail-closed**：`MCP_PIN` 沒設定時，這個端點會拒絕所有請求，不會裸奔
-- **預設唯讀，例外分兩組**：程式碼裡絕大多數是 SELECT／fetch。第一組
+- **預設唯讀，例外分三組**：程式碼裡絕大多數是 SELECT／fetch。第一組
   `create_fieldlog_entry`／`create_fieldlog_attachment`／`create_relation`／
   `add_synonym` 全部只會新增（`create_fieldlog_attachment` 上傳檔案是透過
   fieldlog 自己的 `/api/upload`，跟其餘三支直接 INSERT D1 的路徑不同，但
   一樣只新增一筆附件），沒有任何 UPDATE／DELETE 語句碰得到 entries 的內容／
-  attachments／relations／synonyms。第二組 `update_folder`／`move_folder`／
+  attachments／relations／synonyms。第二組 `update_weekly_report` 只更新週報模板。
+  第三組 `update_folder`／`move_folder`／
   `move_entry`／`delete_folder`（2026-08-08 新增）會真的造成 UPDATE／DELETE，
   但透過 FIELDLOG Service Binding 代理呼叫 fieldlog 自己既有的
   `PUT`／`DELETE /api/folders`、`PUT /api/entries` 端點，範圍鎖死在資料夾
