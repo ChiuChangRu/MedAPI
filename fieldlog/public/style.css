@@ -289,8 +289,10 @@ body {
   .child-folder-list.grid-view .child-folder-card { padding-right: 16px; padding-left: 16px; }
   .child-folder-list.grid-view .child-folder-move { right: 34px; }
   .child-folder-list.grid-view .record-group-move { right: 34px; top: 8px; }
+  .child-folder-list.grid-view .record-group-rename { right: 60px; top: 8px; }
   .child-folder-list.grid-view .record-group-drag { left: 8px; top: 8px; transform: none; }
   .child-folder-list.grid-view .record-group-del,
+  .child-folder-list.grid-view .record-group-rename,
   .child-folder-list.grid-view .record-group-move,
   .child-folder-list.grid-view .record-group-drag,
   .child-folder-list.grid-view .child-folder-edit,
@@ -298,6 +300,7 @@ body {
     color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.15); border-radius: 50%;
   }
   .child-folder-list.grid-view .record-group-del:hover,
+  .child-folder-list.grid-view .record-group-rename:hover,
   .child-folder-list.grid-view .record-group-move:hover,
   .child-folder-list.grid-view .record-group-drag:hover,
   .child-folder-list.grid-view .child-folder-edit:hover,
@@ -375,6 +378,14 @@ body {
 .entry-row.dragging { opacity: 0.4; }
 .entry-row.merge-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
 .entry-title { min-width: 0; flex: 1; }
+.entry-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px; }
+.entry-main .entry-title { overflow-wrap: anywhere; line-height: 1.45; font-weight: 600; }
+.entry-secondary { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-muted); font-size: 12px; }
+.entry-rename {
+  flex: none; border: 0; background: transparent; color: var(--text-muted);
+  cursor: pointer; opacity: .55; padding: 4px;
+}
+.entry-rename:hover { opacity: 1; }
 .entry-drag {
   flex: none; width: 28px; height: 36px; padding: 0;
   border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 18px;
@@ -425,7 +436,8 @@ body {
      可用寬度不夠時標題會被壓到只剩幾像素，中文字就會變成一字一行。讓標題
      自己獨佔一行，時間／按鈕換到下一行 */
   .entry-row { flex-wrap: wrap; }
-  .entry-title { flex: 1 1 100%; }
+  .entry-main { flex: 1 1 100%; }
+  .entry-secondary { flex: 1 1 100%; flex-wrap: wrap; padding-left: 0; }
   .folder-file-list.grid-view { display: flex; }
   .folder-file-list.grid-view .folder-file-row,
   .folder-file-row { min-height: 0; grid-template-columns: 26px minmax(0, 1fr) auto; }
@@ -651,9 +663,12 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .modal.narrow { max-width: 340px; margin-top: 12vh; }
 .boot-loading-box { text-align: center; }
 .boot-loading-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+.boot-loading-stage { min-height: 22px; margin: 0 0 10px; font-size: 14px; color: var(--text); }
 .boot-loading-bar { height: 10px; }
 .boot-loading-bar i { transition: width 0.25s ease; }
 #boot-loading-pct { margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+.boot-loading-hint { min-height: 18px; margin: 8px 0 0; }
+.boot-loading-retry { margin-top: 12px; }
 .modal h2 { margin-top: 0; }
 .modal label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
 .modal input, .modal textarea, .modal select {
@@ -1005,7 +1020,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
    撐得歪七扭八。點卡片開整筆記事詳情，右上角保留單獨的刪除鈕。 */
 /* 左邊拖曳把手／右邊 📂 移動＋🗑 刪除都用絕對定位疊在卡片上，不進網格排版，
    跟 .child-folder-edit／.child-folder-move／.record-group-del 同一手法。 */
-.record-group-card { position: relative; padding-left: 30px; padding-right: 58px; }
+.record-group-card { position: relative; padding-left: 30px; padding-right: 82px; }
 .record-group-drag {
   position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
   border: 0; background: transparent; color: var(--text-muted); cursor: grab;
@@ -1013,16 +1028,43 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 }
 .record-group-drag:hover { opacity: 1; }
 .record-group-drag:active { cursor: grabbing; }
-.record-group-move {
+.record-group-rename, .record-group-move {
   position: absolute; right: 32px; top: 8px; border: 0; background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
 }
-.record-group-move:hover { opacity: 1; }
+.record-group-rename { right: 56px; }
+.record-group-move:hover, .record-group-rename:hover { opacity: 1; }
 .record-group-del {
   position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
 }
 .record-group-del:hover { opacity: 1; }
+
+@media (min-width: 720px) {
+  /* 清單模式讓標題獨佔主要欄；路徑、時間與附件數移到第二行，避免預覽欄
+     開啟後把長標題擠成一字一行。 */
+  .folder-content-list.list-view > .entry-row,
+  .folder-content-list.details-view > .entry-row {
+    display: grid;
+    grid-template-columns: 28px minmax(220px, 1fr) auto auto auto;
+    grid-template-areas:
+      "drag main move merge del"
+      "drag secondary secondary secondary secondary";
+    column-gap: 8px; row-gap: 4px;
+  }
+  .folder-content-list.list-view > .entry-row .entry-drag,
+  .folder-content-list.details-view > .entry-row .entry-drag { grid-area: drag; }
+  .folder-content-list.list-view > .entry-row .entry-main,
+  .folder-content-list.details-view > .entry-row .entry-main { grid-area: main; }
+  .folder-content-list.list-view > .entry-row .entry-secondary,
+  .folder-content-list.details-view > .entry-row .entry-secondary { grid-area: secondary; }
+  .folder-content-list.list-view > .entry-row .entry-move,
+  .folder-content-list.details-view > .entry-row .entry-move { grid-area: move; }
+  .folder-content-list.list-view > .entry-row .entry-merge,
+  .folder-content-list.details-view > .entry-row .entry-merge { grid-area: merge; }
+  .folder-content-list.list-view > .entry-row .entry-del,
+  .folder-content-list.details-view > .entry-row .entry-del { grid-area: del; }
+}
 
 /* ===== 資料夾內的檔案列（一列＝一份檔案，可拖曳搬移）===== */
 .folder-file-row {

@@ -124,7 +124,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "131";
+const UI_VERSION = "132";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1815,6 +1815,25 @@ async function handleApi(request, env, url, identity = {}) {
     const body = await request.json().catch(() => ({}));
     const old = await activeAttachment(db, id);
     if (!old) return bad("找不到附件", 404);
+    if (body.filename !== undefined) {
+      let filename = String(body.filename || "").trim();
+      if (!filename) return bad("檔名不可空白");
+      if (filename.length > 240) return bad("檔名不可超過 240 個字元");
+      if (/[\\/\u0000-\u001f\u007f]/.test(filename) || filename === "." || filename === "..") {
+        return bad("檔名不可包含路徑符號或控制字元");
+      }
+      const oldExt = String(old.filename || "").match(/(\.[^./\\]+)$/)?.[1] || "";
+      const newExt = filename.match(/(\.[^./\\]+)$/)?.[1] || "";
+      // UI 會自動補副檔名；API 仍做第二道防線，避免直接呼叫 API 把檔案類型改壞。
+      if (oldExt && !newExt) filename += oldExt;
+      else if (oldExt && newExt.toLowerCase() !== oldExt.toLowerCase()) return bad(`副檔名必須保留為 ${oldExt}`);
+      if (filename === old.filename) return json({ ok: true, filename });
+      await db.prepare(
+        "UPDATE attachments SET original_filename = CASE WHEN COALESCE(original_filename, '') = '' THEN filename ELSE original_filename END, filename = ? WHERE id = ?"
+      ).bind(filename, id).run();
+      await logHistory(db, old.entry_id, null, "重新命名附件", `${old.filename} → ${filename}`);
+      return json({ ok: true, filename });
+    }
     if (body.ocr_text !== undefined) {
       const ocrText = (body.ocr_text || "").trim();
       await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(ocrText, id).run();

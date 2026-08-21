@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "131";
+const APP_VERSION = "132";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -501,7 +501,10 @@ function initUsageDetails() {
 }
 
 // ---------- 登入 ----------
-function showLogin() { $("login-overlay").classList.add("open"); }
+function showLogin() {
+  hideBootProgress();
+  $("login-overlay").classList.add("open");
+}
 
 async function doLogin() {
   const err = $("login-error");
@@ -659,22 +662,51 @@ function initHomeSearch() {
 // 開啟 App 到畫面填滿內容之間，要打好幾支 API（設定／分類／資料夾／待分類），
 // 資料夾、記事、附件越多這幾支就越慢；空白畫面撐久了容易被誤會當機，用
 // 百分比讓使用者知道還在跑。
-function showBootProgress() {
-  $("boot-loading-overlay")?.classList.add("open");
-  setBootProgress(0);
+let BOOT_SLOW_TIMER = null;
+let BOOT_RETRY_TIMER = null;
+
+function clearBootTimers() {
+  clearTimeout(BOOT_SLOW_TIMER);
+  clearTimeout(BOOT_RETRY_TIMER);
+  BOOT_SLOW_TIMER = null;
+  BOOT_RETRY_TIMER = null;
 }
-function setBootProgress(pct) {
+
+function showBootProgress(message = "檢查登入狀態…") {
+  clearBootTimers();
+  $("boot-loading-overlay")?.classList.add("open");
+  $("boot-loading-overlay")?.setAttribute("aria-busy", "true");
+  const retry = $("boot-loading-retry");
+  const hint = $("boot-loading-hint");
+  if (retry) retry.hidden = true;
+  if (hint) hint.textContent = "第一次通過安全驗證時可能需要稍等。";
+  setBootProgress(5, message);
+  BOOT_SLOW_TIMER = setTimeout(() => {
+    if (hint) hint.textContent = "資料量較多，系統仍在讀取，請不要關閉頁面。";
+  }, 12000);
+  BOOT_RETRY_TIMER = setTimeout(() => {
+    if (hint) hint.textContent = "載入時間異常偏長，可重新載入後再試。";
+    if (retry) retry.hidden = false;
+  }, 30000);
+}
+function setBootProgress(pct, message = "") {
   const fill = $("boot-loading-bar-fill");
   const label = $("boot-loading-pct");
+  const stage = $("boot-loading-stage");
+  const bar = fill?.parentElement;
   if (fill) fill.style.width = `${pct}%`;
   if (label) label.textContent = `${pct}%`;
+  if (stage && message) stage.textContent = message;
+  bar?.setAttribute("aria-valuenow", String(pct));
 }
 function hideBootProgress() {
+  clearBootTimers();
+  $("boot-loading-overlay")?.setAttribute("aria-busy", "false");
   $("boot-loading-overlay")?.classList.remove("open");
 }
 
 async function boot(preloadedFolders = null) {
-  showBootProgress();
+  showBootProgress("讀取系統設定…");
   try {
     const cfg = await api("/config");
     TRANSCRIBE_ENABLED = cfg.transcribe;
@@ -686,17 +718,17 @@ async function boot(preloadedFolders = null) {
     TRANSCRIBE_ENABLED = !!JSON.parse(localStorage.getItem("fieldlog_config") || "{}").transcribe;
     showVersion(null);
   }
-  setBootProgress(20);
+  setBootProgress(25, "載入分類設定…");
   initHomeSearch();
   // 分類清單要先載入：建資料夾的對話框、資料夾排序、記事欄位模板都靠它
   await loadCategories();
-  setBootProgress(45);
+  setBootProgress(50, "建立資料夾與記事清單…");
   await Promise.all([loadFolders(preloadedFolders), loadRecent()]);
-  setBootProgress(90);
+  setBootProgress(90, "整理畫面與待同步資料…");
   initUsageDetails();
   syncPendingFiles();
-  setBootProgress(100);
-  hideBootProgress();
+  setBootProgress(100, "載入完成");
+  setTimeout(hideBootProgress, 180);
 }
 
 async function loadFolders(preloadedFolders = null) {
@@ -1123,9 +1155,11 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
     : esc(localDateTimeShort(e.created_at));
   return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
-    <span class="entry-title">${esc(e.title || "（未命名）")}</span>
-    <span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}
-    <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
+    <span class="entry-main"><span class="entry-title">${esc(e.title || "（未命名）")}</span>
+      <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}">✏️</button>
+    </span>
+    <span class="entry-secondary"><span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}
+      <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span></span>
     <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
     <button class="entry-merge" data-id="${e.id}" type="button" title="合併到另一筆記事">合併</button>
     <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄">🗑</button>
@@ -1170,6 +1204,14 @@ function bindEntryRows(wrap) {
         showToast("已移到垃圾桶");
         if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
       } catch (err) { showToast("刪除失敗：" + err.message); }
+    };
+  });
+  wrap.querySelectorAll(".entry-rename").forEach((btn) => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const row = btn.closest(".entry-row");
+      renameEntry(Number(btn.dataset.id), row?.querySelector(".entry-title")?.textContent || "")
+        .catch((err) => showToast("重新命名失敗：" + err.message));
     };
   });
   wrap.querySelectorAll(".entry-move").forEach((btn) => {
@@ -1588,7 +1630,7 @@ function folderFileHtml(a, entryId) {
     ${nameLink}
     <span class="folder-file-meta">${esc(localDateTimeShort(a.created_at))}</span>
     <button class="folder-file-delete" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="刪除這份檔案" aria-label="刪除這份檔案">🗑</button>
-    <button class="folder-file-manage" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="管理這一份檔案" aria-label="管理這一份檔案">⋯</button>
+    <button class="folder-file-manage" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="管理／重新命名這一份檔案" aria-label="管理或重新命名這一份檔案">⋯</button>
   </div>`;
 }
 
@@ -1747,6 +1789,7 @@ function recordGroupCardHtml(e, atts) {
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
     <small>${esc(localDateTimeShort(e.created_at))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
+    <button class="record-group-rename" type="button" data-id="${e.id}" title="重新命名資料包" aria-label="重新命名這筆紀錄">✏️</button>
     <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
     <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>
   </div>`;
@@ -1755,7 +1798,7 @@ function recordGroupCardHtml(e, atts) {
 function bindRecordGroupCards() {
   document.querySelectorAll(".record-group-card[data-id]").forEach((card) => {
     card.onclick = (ev) => {
-      if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-drag")) return;
+      if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-rename") || ev.target.closest(".record-group-drag")) return;
       openEntry(Number(card.dataset.id));
     };
     card.ondragover = (event) => {
@@ -1796,6 +1839,13 @@ function bindRecordGroupCards() {
       const title = card.querySelector("strong")?.textContent || "這筆記事";
       openMoveEntryDialog(Number(card.dataset.id), { currentFolderId: CURRENT_FOLDER?.id ?? null, title })
         .catch((err) => showToast("移動失敗：" + err.message));
+    };
+    const rename = card.querySelector(".record-group-rename");
+    rename.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      renameEntry(Number(card.dataset.id), card.querySelector("strong")?.textContent || "")
+        .catch((err) => showToast("重新命名失敗：" + err.message));
     };
     const drag = card.querySelector(".record-group-drag");
     drag.onclick = (ev) => ev.stopPropagation();
@@ -1858,6 +1908,37 @@ async function refreshFolderView() {
   await loadFolders();
   if (CURRENT_FOLDER) await openFolder(CURRENT_FOLDER.id);
   else await loadRecent();
+}
+
+async function renameEntry(entryId, currentTitle) {
+  const next = prompt("輸入新的名稱", currentTitle || "");
+  if (next === null) return;
+  const title = next.trim();
+  if (!title) { showToast("名稱不可空白"); return; }
+  if (title === currentTitle) return;
+  await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ title }) });
+  showToast("名稱已更新");
+  await refreshFolderView();
+}
+
+function fileExtension(filename) {
+  const match = String(filename || "").match(/(\.[^./\\]+)$/);
+  return match ? match[1] : "";
+}
+
+async function renameAttachment(attachmentId, currentFilename, { reopenEntryId = null } = {}) {
+  const ext = fileExtension(currentFilename);
+  const base = ext ? currentFilename.slice(0, -ext.length) : currentFilename;
+  const entered = prompt(ext ? `輸入新的檔名（${ext} 會自動保留）` : "輸入新的檔名", base || currentFilename || "");
+  if (entered === null) return;
+  let filename = entered.trim();
+  if (!filename) { showToast("檔名不可空白"); return; }
+  if (ext && !filename.toLowerCase().endsWith(ext.toLowerCase())) filename += ext;
+  if (filename === currentFilename) return;
+  await api(`/attachments/${attachmentId}`, { method: "PUT", body: JSON.stringify({ filename }) });
+  showToast("檔名已更新");
+  await refreshFolderView();
+  if (reopenEntryId) await openEntry(reopenEntryId);
 }
 
 async function removeOneFile(attachmentId, filename, closeDetail) {
@@ -3332,6 +3413,7 @@ async function openFileDetail(entryId, attachmentId) {
       <button id="file-move-action" type="button">📂 移動</button>
       <button id="file-category-action" type="button">🏷 分類</button>
       <button id="file-note-action" type="button">📝 Note</button>
+      <button id="file-rename-action" type="button">✏️ 重新命名</button>
       <button id="file-share-action" type="button">🔗 分享</button>
     </div>
     <div class="file-category-panel" id="file-category-panel">
@@ -3365,6 +3447,9 @@ async function openFileDetail(entryId, attachmentId) {
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("file-detail-close").onclick = closeEntry;
+  $("file-rename-action").onclick = () => renameAttachment(attachmentId, attachment.filename)
+    .then(() => FOCUSED_FILE && openFileDetail(entryId, attachmentId))
+    .catch((error) => showToast("重新命名失敗：" + error.message));
   $("file-share-action").onclick = () => createReadOnlyShare(entryId, attachmentId).catch((error) => showToast("分享失敗：" + error.message));
   bindAttActions(entryId);
   bindImageLinks(modal);
@@ -3568,13 +3653,21 @@ function attHtml(a, siblings) {
   const doodleBit = isPdfAtt(a) ? `<a href="#" class="att-pdf-doodle" data-id="${a.id}">✍️ 塗鴉</a>` : "";
   return `<div class="att-item" data-id="${a.id}" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(localDateTimeShort(a.created_at))} ${offset}
-      ${doodleBit}<a href="#" class="att-delete" data-id="${a.id}">刪除</a>
+      ${doodleBit}<a href="#" class="att-rename" data-id="${a.id}" data-filename="${esc(a.filename)}">重新命名</a>
+      <a href="#" class="att-delete" data-id="${a.id}">刪除</a>
     </div>
     ${preview}${originalName}${ocrBit}${transcribeBit}${tier2Bit}
   </div>`;
 }
 
 function bindAttActions(entryId) {
+  document.querySelectorAll(".att-rename").forEach((el) => {
+    el.onclick = (ev) => {
+      ev.preventDefault();
+      renameAttachment(Number(el.dataset.id), el.dataset.filename || "檔案", { reopenEntryId: entryId })
+        .catch((error) => showToast("重新命名失敗：" + error.message));
+    };
+  });
   document.querySelectorAll(".att-transcribe").forEach((el) => {
     el.onclick = async (ev) => {
       ev.preventDefault();
@@ -5065,10 +5158,13 @@ function init() {
   window.addEventListener("online", syncPendingFiles);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
-  showBootProgress();
-  setBootProgress(8);
-  const startBoot = () => api("/folders").then((folders) => boot(folders))
-    .catch(() => { hideBootProgress(); showLogin(); });
+  showBootProgress("檢查登入狀態…");
+  setBootProgress(8, "連線到 MyWiki…");
+  const startBoot = () => {
+    setBootProgress(12, "讀取資料夾…");
+    return api("/folders").then((folders) => boot(folders))
+      .catch(() => { hideBootProgress(); showLogin(); });
+  };
   migrateLegacyPinToSession().finally(startBoot);
 }
 

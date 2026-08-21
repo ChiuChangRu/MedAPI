@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=131" />
+<link rel="stylesheet" href="style.css?v=132" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -318,11 +318,16 @@
 
 <!-- 開啟 App 時的載入進度：資料夾／記事／附件變多，boot() 要打的 API 陸續
      跑完前畫面會空白一段時間，容易讓人以為當機。用百分比讓使用者知道還在動。 -->
-<div class="overlay boot-loading-overlay" id="boot-loading-overlay">
+<div class="overlay boot-loading-overlay open" id="boot-loading-overlay" role="status" aria-live="polite" aria-busy="true">
   <div class="modal narrow boot-loading-box">
-    <div class="boot-loading-title">🎒 載入中…</div>
-    <div class="usage-bar boot-loading-bar"><i id="boot-loading-bar-fill" style="width:0%"></i></div>
-    <p class="sub" id="boot-loading-pct">0%</p>
+    <div class="boot-loading-title">🎒 正在開啟 MyWiki</div>
+    <p class="boot-loading-stage" id="boot-loading-stage">準備載入程式…</p>
+    <div class="usage-bar boot-loading-bar" role="progressbar" aria-label="MyWiki 載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="3">
+      <i id="boot-loading-bar-fill" style="width:3%"></i>
+    </div>
+    <p class="sub" id="boot-loading-pct">3%</p>
+    <p class="sub boot-loading-hint" id="boot-loading-hint">第一次通過安全驗證時可能需要稍等。</p>
+    <button class="btn ghost boot-loading-retry" id="boot-loading-retry" type="button" hidden onclick="location.reload()">重新載入</button>
   </div>
 </div>
 
@@ -432,11 +437,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=131"></script>
+<script src="app.js?v=132"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=131"></script>
+<script src="pdf-editor.js?v=132"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=131"></script>
+<script src="richtext-editor.js?v=132"></script>
 </body>
 </html>
