@@ -1,86 +1,283 @@
-/**
- * 401 要讓人看得出下一步該做什麼——但不能透過 WWW-Authenticate 傳。
- *
- * 這裡有兩次踩坑，順序記著：
- *
- * 1. 一開始 401 body 寫「PIN 錯誤或未提供」，兩種原因合一句，連不上時
- *    兩邊都要試。改成把「沒帶 PIN」跟「PIN 帶錯」拆開講。
- * 2. 拆開之後，一度覺得「RFC 7235 要求 401 帶 WWW-Authenticate」，加了
- *    `WWW-Authenticate: Bearer ...`。結果直接把 claude.ai 的連接器弄壞：
- *    MCP 的 Authorization 規範把「看到 Bearer」當成「這台伺服器支援 OAuth」
- *    的訊號，客戶端因此去戳 /.well-known/oauth-*（見 fetch() 裡的路由，
- *    這台故意全部 404，因為這裡從頭到尾只用 PIN），註冊失敗，跳出
- *    「Couldn't register with sign-in service」——而且不管 PIN 對不對都會
- *    卡在這步，比原本沒有這個 header 還糟。
- *
- * 結論：這支端點的認證訊息只能放 JSON body，不能透過任何 auth challenge
- * header 傳遞。下面的測試會擋住這個 header 再被加回來。
- */
-
+/** OAuth discovery, PKCE flow, and legacy PIN compatibility. */
 import assert from "node:assert/strict";
 import test from "node:test";
-
 import worker from "../mcp/src/worker.js";
 
-function call({ pin, headers = {} } = {}) {
-  const url = pin === undefined ? "https://x/mcp" : `https://x/mcp?pin=${pin}`;
+class OAuthDb {
+  constructor() { this.codes = new Map(); this.attempts = new Map(); }
+  prepare(sql) {
+    const db = this;
+    return { bind(...args) { return {
+      async first() {
+        if (sql.includes("FROM mcp_oauth_attempts")) return db.attempts.get(args[0]) || null;
+        return null;
+      },
+      async run() {
+        if (sql.includes("INSERT INTO mcp_oauth_codes")) {
+          if (db.codes.has(args[0])) throw new Error("duplicate code");
+          db.codes.set(args[0], { expires_at: args[1], used_at: null });
+          return { meta: { changes: 1 } };
+        }
+        if (sql.includes("UPDATE mcp_oauth_codes")) {
+          const row = db.codes.get(args[1]);
+          if (!row || row.used_at !== null || row.expires_at < args[2]) return { meta: { changes: 0 } };
+          row.used_at = args[0];
+          return { meta: { changes: 1 } };
+        }
+        if (sql.includes("INSERT INTO mcp_oauth_attempts")) {
+          const old = db.attempts.get(args[0]);
+          db.attempts.set(args[0], old && old.window_started_at >= args[2]
+            ? { ...old, attempts: old.attempts + 1 }
+            : { window_started_at: args[1], attempts: 1 });
+          return { meta: { changes: 1 } };
+        }
+        if (sql.includes("DELETE FROM mcp_oauth_attempts")) {
+          db.attempts.delete(args[0]);
+          return { meta: { changes: 1 } };
+        }
+        return { meta: { changes: 0 } };
+      },
+    }; } };
+  }
+  async batch() { return []; }
+}
+
+const ENV = { MCP_PIN: "right-pin", DB_FIELDLOG: new OAuthDb() };
+function initialize(url = "https://x/mcp", headers = {}) {
   return worker.fetch(new Request(url, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
-  }), { MCP_PIN: "right-pin" });
+  }), ENV);
 }
 
-test("沒帶 PIN 與帶錯 PIN 要給不同訊息（決定要修網址還是對 PIN 值）", async () => {
-  const missing = await call();
-  const wrong = await call({ pin: "nope" });
-  assert.equal(missing.status, 401);
-  assert.equal(wrong.status, 401);
-  const a = (await missing.json()).error;
-  const b = (await wrong.json()).error;
-  assert.notEqual(a, b, "兩種原因不能共用同一句訊息");
-  assert.match(a, /\?pin=/, "沒帶 PIN 時要直接寫出網址該長什麼樣");
-  assert.match(b, /MCP_PIN/, "帶錯時要指出去哪裡對值");
-  assert.match(b, /FIELD_PIN/, "要提醒別跟 FIELD_PIN 搞混——兩個 PIN 刻意不同值");
-});
-
-test("401 絕對不能帶 WWW-Authenticate（會被 claude.ai 誤判成支援 OAuth）", async () => {
-  // 這是回歸測試，不是「應該有但還沒做」——2026-08-01 真的加過又拿掉，
-  // 別再因為想符合 RFC 7235 而加回來
-  for (const res of [await call(), await call({ pin: "nope" })]) {
-    assert.equal(res.headers.get("www-authenticate"), null,
-      "任何值都會觸發 claude.ai 的 OAuth 探測，讓連接器連不上，跟 PIN 對不對無關");
-  }
-});
-
-test("MCP_PIN 未設定時仍 fail-closed，且說得出要去哪裡設", async () => {
-  const res = await worker.fetch(new Request("https://x/mcp?pin=whatever", {
+test("未授權可探索 MCP 工具，但資料工具仍會要求 OAuth", async () => {
+  const res = await initialize();
+  assert.equal(res.status, 200);
+  const call = await worker.fetch(new Request("https://x/mcp", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
-  }), {});
-  assert.equal(res.status, 401);
-  assert.match((await res.json()).error, /尚未設定 MCP_PIN/);
-  assert.equal(res.headers.get("www-authenticate"), null);
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_fieldlog_folders", arguments: {} } }),
+  }), ENV);
+  assert.equal(call.status, 401);
+  assert.match(call.headers.get("www-authenticate") || "", /oauth-protected-resource/);
+  assert.equal((await call.json()).error, "unauthorized");
 });
 
-test("健康檢查頁要報工具數，好從外部判斷部署有沒有生效", async () => {
-  // 不然連接器連不上時，分不清是「Worker 沒部署到新版」還是「客戶端把工具
-  // 清單快取住了」——這兩件事的處理方式完全不同
-  const res = await worker.fetch(new Request("https://x/"), {});
-  assert.equal(res.status, 200);
-  const text = await res.text();
-  assert.match(text, /工具數：\d+/, "看不到工具數就沒辦法從外部確認部署版本");
-  assert.doesNotMatch(text, /get_fieldlog|search_fieldlog/, "工具名不用列，不擴大暴露面");
+test("OAuth discovery 公布 resource、DCR、PKCE 與 public-client token method", async () => {
+  const resource = await worker.fetch(new Request("https://x/.well-known/oauth-protected-resource"), ENV);
+  assert.equal(resource.status, 200);
+  assert.deepEqual((await resource.json()).authorization_servers, ["https://x"]);
+  const auth = await worker.fetch(new Request("https://x/.well-known/oauth-authorization-server"), ENV);
+  assert.equal(auth.status, 200);
+  const metadata = await auth.json();
+  assert.equal(metadata.registration_endpoint, "https://x/register");
+  assert.deepEqual(metadata.code_challenge_methods_supported, ["S256"]);
+  assert.deepEqual(metadata.token_endpoint_auth_methods_supported, ["none"]);
+  assert.equal(metadata.client_id_metadata_document_supported, true);
+  assert.equal(metadata.authorization_response_iss_parameter_supported, true);
 });
 
-test("三種帶 PIN 的方式都還能正常連上（沒有被這次改動弄壞）", async () => {
-  const ok = async (res) => {
-    assert.equal(res.status, 200);
-    const body = await res.json();
-    assert.equal(body.result.serverInfo.name, "medapi-mcp");
+test("DCR 只接受 public PKCE client 與安全 redirect URI", async () => {
+  const bad = await worker.fetch(new Request("https://x/register", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ redirect_uris: ["javascript:alert(1)"] }),
+  }), ENV);
+  assert.equal(bad.status, 400);
+  const ok = await worker.fetch(new Request("https://x/register", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_name: "ChatGPT", redirect_uris: ["https://chatgpt.com/connector/oauth/test"], token_endpoint_auth_method: "none" }),
+  }), ENV);
+  assert.equal(ok.status, 201);
+  const client = await ok.json();
+  assert.ok(client.client_id);
+  assert.equal(client.token_endpoint_auth_method, "none");
+});
+
+test("完整 authorization-code + PKCE 流程可換 token，code 不可重放", async () => {
+  const register = await worker.fetch(new Request("https://x/register", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_name: "ChatGPT", redirect_uris: ["https://chatgpt.com/connector/oauth/test"] }),
+  }), ENV);
+  const { client_id: clientId } = await register.json();
+  const verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  let binary = "";
+  for (const byte of digest) binary += String.fromCharCode(byte);
+  const challenge = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const authorizeUrl = new URL("https://x/authorize");
+  for (const [key, value] of Object.entries({ response_type: "code", client_id: clientId,
+    redirect_uri: "https://chatgpt.com/connector/oauth/test", state: "state-1",
+    code_challenge: challenge, code_challenge_method: "S256", resource: "https://x/mcp",
+    scope: "mywiki:read mywiki:write" })) authorizeUrl.searchParams.set(key, value);
+
+  const consent = await worker.fetch(new Request(authorizeUrl), ENV);
+  assert.equal(consent.status, 200);
+  const consentCookie = consent.headers.get("set-cookie") || "";
+  assert.match(consentCookie, /SameSite=None/i);
+  assert.match(consentCookie, /Partitioned/i);
+  const html = await consent.text();
+  const requestToken = html.match(/name="request_token" value="([^"]+)"/)?.[1];
+  const csrf = html.match(/name="csrf_token" value="([^"]+)"/)?.[1];
+  assert.ok(requestToken && csrf);
+  assert.doesNotMatch(html, /right-pin/);
+
+  const approved = await worker.fetch(new Request("https://x/authorize", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", cookie: `__Host-MYWIKI_OAUTH_CSRF=${csrf}`, "cf-connecting-ip": "203.0.113.9" },
+    body: new URLSearchParams({ request_token: requestToken, csrf_token: csrf, pin: "right-pin", decision: "allow" }),
+  }), ENV);
+  assert.equal(approved.status, 302);
+  const callback = new URL(approved.headers.get("location"));
+  const code = callback.searchParams.get("code");
+  assert.ok(code);
+  assert.equal(callback.searchParams.get("state"), "state-1");
+
+  const exchangeBody = new URLSearchParams({ grant_type: "authorization_code", client_id: clientId,
+    redirect_uri: "https://chatgpt.com/connector/oauth/test", resource: "https://x/mcp", code, code_verifier: verifier });
+  const exchange = () => worker.fetch(new Request("https://x/token", {
+    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: exchangeBody,
+  }), ENV);
+  const first = await exchange();
+  assert.equal(first.status, 200);
+  const tokens = await first.json();
+  assert.ok(tokens.access_token && tokens.refresh_token);
+  assert.equal((await initialize("https://x/mcp", { authorization: `Bearer ${tokens.access_token}` })).status, 200);
+  const replay = await exchange();
+  assert.equal(replay.status, 400);
+  assert.equal((await replay.json()).error, "invalid_grant");
+});
+
+test("ChatGPT CIMD 可免 DCR 授權，Cookie 被擋時同源 POST 仍可完成", async () => {
+  const redirectUri = "https://chatgpt.com/connector_platform_oauth_redirect";
+  const clientId = "https://chatgpt.com/oauth/client.json";
+  const env = {
+    MCP_PIN: "right-pin",
+    DB_FIELDLOG: new OAuthDb(),
+    OAUTH_CLIENT_METADATA_FETCH: async (url) => {
+      assert.equal(url, clientId);
+      return new Response(JSON.stringify({
+        client_name: "ChatGPT",
+        redirect_uris: [redirectUri],
+        token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      }), { headers: { "content-type": "application/json" } });
+    },
   };
-  await ok(await call({ pin: "right-pin" }));
-  await ok(await call({ headers: { "x-pin": "right-pin" } }));
-  await ok(await call({ headers: { authorization: "Bearer right-pin" } }));
+  const verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  let binary = "";
+  for (const byte of digest) binary += String.fromCharCode(byte);
+  const challenge = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const authorizeUrl = new URL("https://x/authorize");
+  for (const [key, value] of Object.entries({ response_type: "code", client_id: clientId,
+    redirect_uri: redirectUri, state: "cimd-state", code_challenge: challenge,
+    code_challenge_method: "S256", resource: "https://x/mcp", scope: "mywiki:read" })) {
+    authorizeUrl.searchParams.set(key, value);
+  }
+
+  const consent = await worker.fetch(new Request(authorizeUrl), env);
+  assert.equal(consent.status, 200);
+  const html = await consent.text();
+  const requestToken = html.match(/name="request_token" value="([^"]+)"/)?.[1];
+  const csrf = html.match(/name="csrf_token" value="([^"]+)"/)?.[1];
+  assert.ok(requestToken && csrf);
+
+  const approved = await worker.fetch(new Request("https://x/authorize", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      origin: "https://x",
+      "cf-connecting-ip": "203.0.113.10",
+    },
+    body: new URLSearchParams({ request_token: requestToken, csrf_token: csrf, pin: "right-pin", decision: "allow" }),
+  }), env);
+  assert.equal(approved.status, 302);
+  const callback = new URL(approved.headers.get("location"));
+  assert.equal(callback.searchParams.get("state"), "cimd-state");
+  assert.equal(callback.searchParams.get("iss"), "https://x");
+  const code = callback.searchParams.get("code");
+  assert.ok(code);
+
+  const exchange = await worker.fetch(new Request("https://x/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", client_id: clientId,
+      redirect_uri: redirectUri, resource: "https://x/mcp", code, code_verifier: verifier }),
+  }), env);
+  assert.equal(exchange.status, 200);
+  const tokens = await exchange.json();
+  assert.ok(tokens.access_token);
+  const mcp = await worker.fetch(new Request("https://x/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${tokens.access_token}` },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
+  }), env);
+  assert.equal(mcp.status, 200);
+});
+
+test("授權表單沒有 Cookie 且不是同源 POST 時仍拒絕", async () => {
+  const register = await worker.fetch(new Request("https://x/register", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_name: "ChatGPT", redirect_uris: ["https://chatgpt.com/connector/oauth/test"] }),
+  }), ENV);
+  const { client_id: clientId } = await register.json();
+  const challenge = "a".repeat(43);
+  const authorizeUrl = new URL("https://x/authorize");
+  for (const [key, value] of Object.entries({ response_type: "code", client_id: clientId,
+    redirect_uri: "https://chatgpt.com/connector/oauth/test", state: "state-x",
+    code_challenge: challenge, code_challenge_method: "S256", resource: "https://x/mcp",
+    scope: "mywiki:read" })) authorizeUrl.searchParams.set(key, value);
+  const consent = await worker.fetch(new Request(authorizeUrl), ENV);
+  const html = await consent.text();
+  const requestToken = html.match(/name="request_token" value="([^"]+)"/)?.[1];
+  const csrf = html.match(/name="csrf_token" value="([^"]+)"/)?.[1];
+  const rejected = await worker.fetch(new Request("https://x/authorize", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://evil.example" },
+    body: new URLSearchParams({ request_token: requestToken, csrf_token: csrf, pin: "right-pin", decision: "allow" }),
+  }), ENV);
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).error_description, "CSRF validation failed");
+});
+
+test("既有三種 PIN 方式保持相容，未設定 secret 仍 fail-closed", async () => {
+  for (const res of [await initialize("https://x/mcp?pin=right-pin"),
+    await initialize("https://x/mcp", { "x-pin": "right-pin" }),
+    await initialize("https://x/mcp", { authorization: "Bearer right-pin" })]) assert.equal(res.status, 200);
+  const missing = await worker.fetch(new Request("https://x/mcp", { method: "POST" }), {});
+  assert.equal(missing.status, 401);
+  assert.match((await missing.json()).error_description, /MCP_PIN/);
+});
+
+test("健康檢查頁報工具數且不洩漏工具名", async () => {
+  const res = await worker.fetch(new Request("https://x/"), ENV);
+  const text = await res.text();
+  assert.equal(res.status, 200);
+  assert.match(text, /工具數：\d+/);
+  assert.doesNotMatch(text, /get_fieldlog|search_fieldlog/);
+});
+
+test("tools/list 可在 OAuth 前探索，並提供 ChatGPT 所需的標題、安全 annotations 與 OAuth scheme", async () => {
+  const res = await worker.fetch(new Request("https://x/mcp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+  }), ENV);
+  assert.equal(res.status, 200);
+  const { result } = await res.json();
+  assert.equal(result.tools.length, 29);
+  for (const tool of result.tools) {
+    assert.ok(tool.title, `${tool.name} 缺少 title`);
+    assert.equal(tool.inputSchema?.type, "object", `${tool.name} 的 inputSchema 無效`);
+    assert.equal(typeof tool.annotations?.readOnlyHint, "boolean", `${tool.name} 缺少 readOnlyHint`);
+    assert.equal(typeof tool.annotations?.destructiveHint, "boolean", `${tool.name} 缺少 destructiveHint`);
+    assert.equal(typeof tool.annotations?.openWorldHint, "boolean", `${tool.name} 缺少 openWorldHint`);
+    assert.equal(tool.securitySchemes?.[0]?.type, "oauth2", `${tool.name} 缺少 OAuth security scheme`);
+    assert.deepEqual(tool._meta?.securitySchemes, tool.securitySchemes, `${tool.name} 缺少相容的 _meta.securitySchemes`);
+  }
+  const byName = Object.fromEntries(result.tools.map((tool) => [tool.name, tool]));
+  assert.equal(byName.search_fieldlog.annotations.readOnlyHint, true);
+  assert.equal(byName.create_fieldlog_entry.annotations.readOnlyHint, false);
+  assert.equal(byName.update_weekly_report.annotations.readOnlyHint, false);
+  assert.equal(byName.delete_folder.annotations.destructiveHint, true);
 });

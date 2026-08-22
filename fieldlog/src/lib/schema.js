@@ -45,6 +45,27 @@ export const SCHEMA = [
     detail TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    entry_id INTEGER NOT NULL,
+    attachment_id INTEGER,
+    snapshot_json TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT DEFAULT '',
+    allow_attachments INTEGER DEFAULT 1,
+    allow_download INTEGER DEFAULT 0,
+    created_by TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    access_count INTEGER DEFAULT 0,
+    last_accessed_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_attempts (
+    client_key TEXT PRIMARY KEY,
+    failures INTEGER DEFAULT 0,
+    window_started_at TEXT NOT NULL,
+    blocked_until TEXT DEFAULT ''
+  )`,
   `CREATE TABLE IF NOT EXISTS ai_usage_reservations (
     attachment_id INTEGER PRIMARY KEY,
     usage_date TEXT NOT NULL,
@@ -130,6 +151,21 @@ export const SCHEMA = [
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  // 垃圾桶只記「被刪除的根項目」。資料夾／紀錄本身仍保留原本的父子關係，
+  // deleted_at 只負責把整棵樹從一般查詢隱藏；還原時才能原封不動回到原位置。
+  `CREATE TABLE IF NOT EXISTS trash_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_type TEXT NOT NULL,
+    item_id INTEGER NOT NULL,
+    title TEXT DEFAULT '',
+    deleted_at TEXT NOT NULL,
+    purge_after TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'trashed',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT DEFAULT '',
+    purge_started_at TEXT DEFAULT '',
+    UNIQUE(item_type, item_id)
+  )`,
   // 2026-08-09 前：AI 自動歸類的判斷規則（keyword → folder_id）。AI 自動歸類
   // 整個拿掉之後這兩張表沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE。
   `CREATE TABLE IF NOT EXISTS autofile_hints (
@@ -165,6 +201,7 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_trash_purge ON trash_items(purge_after)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique ON categories(kind, level, name)`,
 ];
 
@@ -253,6 +290,32 @@ export const MIGRATIONS = [
   // 同一層級內的手動排序，數字小的排前面；NULL／相同值時退回既有的
   // id／status 排序，不影響原本沒設定過排序的資料夾。
   `ALTER TABLE folders ADD COLUMN sort_order INTEGER`,
+  // v109：紀錄本身也是 Windows 式資料包，可以一層包一層；正式資料夾與
+  // 紀錄刪除都先進垃圾桶，60 天後才永久清除。
+  `ALTER TABLE entries ADD COLUMN parent_entry_id INTEGER`,
+  `ALTER TABLE entries ADD COLUMN deleted_at TEXT DEFAULT ''`,
+  `ALTER TABLE folders ADD COLUMN deleted_at TEXT DEFAULT ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(parent_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_deleted ON entries(deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_folders_deleted ON folders(deleted_at)`,
+  // 首頁與檔案總管的熱路徑索引。放在 MIGRATIONS（不是 SCHEMA），因為舊資料庫
+  // 要先補 parent_id／parent_entry_id／deleted_at 欄位後才能建立這些索引。
+  `CREATE INDEX IF NOT EXISTS idx_folders_parent_active ON folders(parent_id) WHERE COALESCE(deleted_at, '') = ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_folder_root_active ON entries(folder_id, parent_entry_id) WHERE COALESCE(deleted_at, '') = ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_recent_active ON entries(COALESCE(NULLIF(updated_at, ''), created_at) DESC, id DESC) WHERE COALESCE(deleted_at, '') = '' AND parent_entry_id IS NULL`,
+  `ALTER TABLE trash_items ADD COLUMN state TEXT NOT NULL DEFAULT 'trashed'`,
+  `ALTER TABLE trash_items ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE trash_items ADD COLUMN last_error TEXT DEFAULT ''`,
+  `ALTER TABLE trash_items ADD COLUMN purge_started_at TEXT DEFAULT ''`,
+  // 語意搜尋（Vectorize）：附件與記事各自的向量化狀態。vector_id 存的是
+  // Vectorize 那邊的 id（附件可能對應多支分段向量，這裡存主 id 前綴，實際
+  // 分段 id 用 att-{id}-{n} 規則算出來，不用另外存清單）。
+  `ALTER TABLE attachments ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE attachments ADD COLUMN embedding_error TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE entries ADD COLUMN embedding_error TEXT DEFAULT ''`,
 ];
 
 // folders.category 的合法值——色系分組，見上面 MIGRATIONS 裡的說明。
@@ -363,7 +426,31 @@ export async function ensureSchema(db, timestamp) {
   }
   await seedCategories(db, timestamp);
   await seedSources(db, timestamp);
+  await ensurePatrolCategory(db, timestamp);
   schemaReady = true;
+}
+
+/**
+ * 一次性補上「巡廠」資料夾分類（2026-08-09，Jeremy 假日巡廠回報功能規格）。
+ * seedCategories() 只在 categories 表完全空的時候跑一次，那時已經跑過了、
+ * 不會再自動長出新分類，這裡用同一套「標記列」手法補一筆，不放進 cron
+ * （applyFolderReorg20260808 那種），而是掛在 ensureSchema()——它本來就每次
+ * 冷啟動都跑，這樣部署完立刻能用，不用等下一次排程。
+ */
+export async function ensurePatrolCategory(db, timestamp) {
+  const applied = await db
+    .prepare("SELECT id FROM categories WHERE kind = '_patrol_category_2026_08_09' LIMIT 1")
+    .first()
+    .catch(() => null);
+  if (applied) return;
+  await db.batch([
+    db.prepare(
+      "INSERT INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('_patrol_category_2026_08_09', 0, 'applied', '', '', '[]', 0, ?)"
+    ).bind(timestamp),
+    db.prepare(
+      "INSERT OR IGNORE INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('folder_type', 0, '巡廠', '🚶', '假日巡廠出勤與生產紀錄', '[]', 999, ?)"
+    ).bind(timestamp),
+  ]);
 }
 
 // 測試用：重置「已初始化」旗標

@@ -82,10 +82,18 @@ function makeDB() {
       const row = tables.categories.find((c) => c.kind === "_folder_reorg_2026_08_08");
       return { results: row ? [row] : [], changes: 0 };
     }
+    // 巡廠頁面（Jeremy 功能規格書，2026-08-09）一次性補上「巡廠」分類，掛在
+    // ensureSchema() 裡（跟上面幾個種子同一批，每次冷啟動都會檢查一次）。
+    if (q === "SELECT id FROM categories WHERE kind = '_patrol_category_2026_08_09' LIMIT 1") {
+      const row = tables.categories.find((c) => c.kind === "_patrol_category_2026_08_09");
+      return { results: row ? [row] : [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO categories") || q.startsWith("INSERT OR IGNORE INTO categories")) {
       const kind = q.includes("VALUES ('_seeded'") ? "_seeded"
         : q.includes("VALUES ('_sources_seeded'") ? "_sources_seeded"
-        : q.includes("VALUES ('_folder_reorg_2026_08_08'") ? "_folder_reorg_2026_08_08" : args[0];
+        : q.includes("VALUES ('_folder_reorg_2026_08_08'") ? "_folder_reorg_2026_08_08"
+        : q.includes("VALUES ('_patrol_category_2026_08_09'") ? "_patrol_category_2026_08_09"
+        : q.includes("VALUES ('folder_type', 0, '巡廠'") ? "folder_type" : args[0];
       insert("categories", { kind });
       return { results: [], changes: 1 };
     }

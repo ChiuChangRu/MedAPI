@@ -32,10 +32,8 @@ async function get(path) {
   return worker.fetch(new Request(`https://x${path}`), ENV);
 }
 
-test("未知路徑（含 OAuth 探測路徑）404 的 body 必須是合法 JSON", async () => {
+test("未知路徑 404 的 body 必須是合法 JSON，OAuth discovery 則已啟用", async () => {
   for (const path of [
-    "/.well-known/oauth-authorization-server",
-    "/.well-known/oauth-protected-resource",
     "/some-random-path",
   ]) {
     const res = await get(path);
@@ -44,6 +42,14 @@ test("未知路徑（含 OAuth 探測路徑）404 的 body 必須是合法 JSON"
     assert.doesNotThrow(() => JSON.parse(text), `${path} 的 404 body 不是合法 JSON：${text}`);
     assert.match(res.headers.get("content-type") || "", /application\/json/,
       `${path} 的 content-type 也要標成 JSON，不能是 text/plain`);
+  }
+  for (const path of [
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource",
+  ]) {
+    const res = await get(path);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type") || "", /application\/json/);
   }
 });
 
