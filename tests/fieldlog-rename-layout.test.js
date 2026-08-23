@@ -9,13 +9,14 @@ const worker = await readFile(new URL("../fieldlog/src/worker.js", import.meta.u
 test("清單標題是主要欄，路徑與時間移到第二行", () => {
   assert.match(app, /class="entry-main"/);
   assert.match(app, /class="entry-secondary"/);
-  assert.match(css, /grid-template-areas:\s*"drag main move merge del"\s*"drag secondary secondary secondary secondary"/);
-  assert.match(css, /grid-template-columns:\s*28px minmax\(220px, 1fr\)/);
+  assert.match(css, /grid-template-areas:\s*"drag icon main menu"\s*"drag icon secondary menu"/);
+  assert.match(css, /grid-template-columns:\s*28px 30px minmax\(220px, 1fr\) 38px/);
 });
 
-test("記事、資料包與附件都有重新命名入口", () => {
+test("統一記事與附件都有重新命名入口", () => {
   assert.match(app, /class="entry-rename"/);
-  assert.match(app, /class="record-group-rename"/);
+  assert.match(app, /class="entry-actions-menu"/);
+  assert.doesNotMatch(app, /class="record-group-rename"/);
   assert.match(app, /id="file-rename-action"/);
   assert.match(app, /class="att-rename"/);
   assert.match(app, /async function renameEntry/);
