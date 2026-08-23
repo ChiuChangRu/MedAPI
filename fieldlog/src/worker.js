@@ -186,6 +186,15 @@ function weeklyReportText(fields) {
   ].join("\n").trim();
 }
 
+// 週報的權威資料只有 fields_json。body 是為搜尋、分享與匯出保留的衍生文字，
+// 舊版本或中途失敗的寫入可能讓兩者暫時不同步；讀取時一律由欄位即時重建，
+// 才不會出現「點進編輯器是一版，外部預覽又是另一版」。一般記事仍使用原 body。
+function canonicalEntryBody(entry) {
+  let fields = {};
+  try { fields = JSON.parse(entry?.fields_json || "{}"); } catch { return entry?.body || ""; }
+  return fields._kind === "weekly_report" ? weeklyReportText(fields) : (entry?.body || "");
+}
+
 // ========== 語意搜尋（Vectorize）==========
 // 2026-08 曾在別的分支做過一版，命中率太差沒上線：根因是完全沒把記事本文
 // （entries.body）向量化——只有附件轉錄/OCR 內容會排入，速記類記事從頭到尾
@@ -1165,7 +1174,7 @@ async function handleApi(request, env, url, identity = {}) {
     const allowDownload = body.allow_download === true;
     const snapshot = {
       version: 1,
-      entry: { id: entry.id, title: entry.title, body: entry.body, body_format: entry.body_format, created_at: entry.created_at, updated_at: entry.updated_at },
+      entry: { id: entry.id, title: entry.title, body: canonicalEntryBody(entry), body_format: entry.body_format, created_at: entry.created_at, updated_at: entry.updated_at },
       attachments: allowAttachments ? attachments : [],
     };
     const token = randomShareToken();
@@ -1209,7 +1218,7 @@ async function handleApi(request, env, url, identity = {}) {
                   (SELECT COUNT(*) FROM entries c WHERE c.parent_entry_id = e.id AND COALESCE(c.deleted_at, '') = '') AS child_count
                   FROM entries e WHERE e.parent_entry_id = ? AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`).bind(id).all(),
     ]);
-    return json({ ...entry, attachments: atts, children });
+    return json({ ...entry, body: canonicalEntryBody(entry), attachments: atts, children });
   }
   // 一筆記事的操作履歷（history 表是 append-only 的稽核軌跡）。
   // 這張表從第一版就在寫，但一直沒有任何地方讀得到——等於白記。前台的
@@ -2406,12 +2415,18 @@ async function handleApi(request, env, url, identity = {}) {
       const { results: atts } = await db.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(e.id).all();
       lines.push(`---`, ``, `## ${e.title || "（未命名紀錄）"}`, ``, `建立：${e.created_at}${e.updated_at ? `｜更新：${e.updated_at}` : ""}`);
       const fields = JSON.parse(e.fields_json || "{}");
-      const filled = Object.entries(fields).filter(([, v]) => v && String(v).trim());
+      const isWeeklyReport = fields._kind === "weekly_report";
+      // 一般記事保留欄位列表；週報欄位本身就是完整文件，若再列一次欄位、
+      // 接著又輸出 body，會把整份週報重複兩遍，而且可能把舊 body 一併帶出。
+      const filled = isWeeklyReport
+        ? []
+        : Object.entries(fields).filter(([key, v]) => !key.startsWith("_") && v && String(v).trim());
       if (filled.length) {
         lines.push(``);
         for (const [k, v] of filled) lines.push(`- **${k}**：${v}`);
       }
-      const bodyOut = e.body_format === "html" ? htmlToPlainText(e.body) : e.body;
+      const canonicalBody = canonicalEntryBody(e);
+      const bodyOut = e.body_format === "html" ? htmlToPlainText(canonicalBody) : canonicalBody;
       if (bodyOut) lines.push(``, bodyOut);
       const audios = atts.filter((a) => a.kind === "audio");
       const photos = atts.filter((a) => a.kind === "photo");
@@ -2441,7 +2456,9 @@ async function handleApi(request, env, url, identity = {}) {
       }
       lines.push(``);
     }
-    return new Response(lines.join("\n"), {
+    // UTF-8 BOM：部分 Windows 瀏覽器／文字工具即使看到 charset=utf-8，仍會
+    // 把直接開啟的 .md 猜成 ANSI/Big5。BOM 不改內容，只讓解碼器明確使用 UTF-8。
+    return new Response(`\uFEFF${lines.join("\n")}`, {
       headers: {
         "content-type": "text/markdown; charset=utf-8",
         "content-disposition": `attachment; filename="fieldlog-folder-${id}.md"`,
