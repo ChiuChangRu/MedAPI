@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "134";
+const APP_VERSION = "135";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -2087,12 +2087,18 @@ async function showEntryPreview(entryId) {
   pane.dataset.attachmentId = "";
   title.textContent = "載入中…";
   body.innerHTML = `<p class="folder-preview-empty">載入閱讀內容中…</p>`;
-  configurePreviewActions({ editLabel: "編輯", onEdit: () => { setReaderFullscreen(false); openEntry(entryId); } });
+  configurePreviewActions();
   const entry = await api(`/entries/${entryId}`);
   if (requestId !== PREVIEW_REQUEST_ID) return;
   title.textContent = entry.title || "（未命名）";
   let fields = {};
   try { fields = JSON.parse(entry.fields_json || "{}"); } catch { fields = {}; }
+  configurePreviewActions({
+    editLabel: "編輯",
+    onEdit: () => fields._kind === "weekly_report"
+      ? (setReaderFullscreen(false), openEntry(entryId))
+      : showEntryInlineEditor(entryId, entry).catch((error) => showToast("開啟編輯失敗：" + error.message)),
+  });
   const properties = Object.entries(fields).filter(([key, value]) =>
     !key.startsWith("_") && value !== null && value !== undefined && String(value).trim(),
   );
@@ -2128,6 +2134,149 @@ async function showEntryPreview(entryId) {
       }).catch((error) => showToast("預覽失敗：" + error.message));
     };
   });
+}
+
+function inlineEditorAttachmentsHtml(entryId, attachments = []) {
+  const visible = attachments.filter((item) => !item.source_pdf_id);
+  if (!visible.length) return `<p class="entry-reader-empty">尚無附件</p>`;
+  return visible.map((item) => `<a class="entry-inline-attachment" href="/api/file/${encodeURIComponent(item.key)}" target="_blank" rel="noopener">
+      <span>${item.kind === "audio" ? "🎙️" : item.kind === "photo" ? "🖼️" : item.kind === "video" ? "🎥" : "📎"}</span>
+      <span>${esc(item.filename || "檔案")}</span>
+    </a>`).join("");
+}
+
+async function refreshInlineEditorAttachments(entryId) {
+  const panel = $("reader-editor-attachments");
+  if (!panel) return;
+  const fresh = await api(`/entries/${entryId}`);
+  panel.innerHTML = inlineEditorAttachmentsHtml(entryId, fresh.attachments || []);
+}
+
+async function uploadInlineEditorFiles(entryId, editorEl, files) {
+  if (!files?.length) return;
+  const status = $("reader-editor-upload-status");
+  const sourceUrl = files.some(isDocLikeFile)
+    ? (prompt("這份文件的來源網址（選填）：") || "").trim()
+    : "";
+  let done = 0;
+  let duplicates = 0;
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
+    if (file.size > 50 * 1024 * 1024) { showToast(`${file.name} 超過 50MB，已略過`); continue; }
+    if (status) status.textContent = `上傳中…（${index + 1}/${files.length}）`;
+    try {
+      const meta = sourceUrl && isDocLikeFile(file) ? { sourceUrl } : null;
+      const uploaded = await putFile(entryId, file, file.name, null, meta);
+      if (uploaded.duplicate) { duplicates++; continue; }
+      done++;
+      if ((file.type || "").startsWith("image/") && editorEl) {
+        window.fieldlogRichEditor?.insertImage(editorEl, `/api/file/${encodeURIComponent(uploaded.key)}`, uploaded.id);
+      }
+    } catch {
+      await queueFile(entryId, file, file.name, null);
+      done++;
+    }
+  }
+  if (status) status.textContent = "";
+  await refreshInlineEditorAttachments(entryId);
+  showToast(`已上傳 ${done} 個檔案${duplicates ? `，略過 ${duplicates} 個重複檔案` : ""}`);
+}
+
+async function showEntryInlineEditor(entryId, loadedEntry = null) {
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openEntry(entryId);
+  const entry = loadedEntry || await api(`/entries/${entryId}`);
+  let fields = {};
+  try { fields = JSON.parse(entry.fields_json || "{}"); } catch { fields = {}; }
+  if (fields._kind === "weekly_report") return openEntry(entryId);
+  const requestId = ++PREVIEW_REQUEST_ID;
+  const pane = $("folder-preview");
+  const body = $("folder-preview-body");
+  const title = $("folder-preview-title");
+  if (!pane || !body || !title) return;
+  markPreviewSelection(`.entry-row[data-id="${entryId}"], .record-group-card[data-id="${entryId}"]`);
+  pane.dataset.entryId = String(entryId);
+  pane.dataset.attachmentId = "";
+  title.textContent = "編輯記事";
+  configurePreviewActions({
+    editLabel: "取消",
+    onEdit: () => showEntryPreview(entryId).catch((error) => showToast("返回閱讀失敗：" + error.message)),
+  });
+  const isSynced = !!(fields._sid || fields.litdb_id);
+  const storedAsText = entry.body_format !== "html";
+  body.innerHTML = `<article class="entry-inline-editor">
+    <input id="reader-editor-title" class="entry-inline-title" value="${esc(entry.title || "")}" placeholder="標題" />
+    <p class="entry-reader-meta">${esc(localDateTime(entry.updated_at || entry.created_at))}${isSynced ? "｜🔒 外部來源同步管理" : ""}</p>
+    ${isSynced
+      ? `<textarea id="reader-editor-text" class="entry-inline-text" aria-label="記事內文">${esc(entry.body || "")}</textarea>`
+      : `<div id="reader-editor-rich" class="rich-editor entry-inline-rich"></div>`}
+    <div class="entry-inline-tools" aria-label="加入多媒體">
+      <label class="btn small upload-btn">📎 上傳／插圖<input type="file" id="reader-editor-file" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xlsx,.pptx,.txt,.md,.csv,.html" multiple hidden /></label>
+      <button class="btn small" id="reader-editor-photo" type="button">📷 拍照</button>
+      <button class="btn small" id="reader-editor-audio" type="button">🎙 錄音</button>
+      <button class="btn small" id="reader-editor-video" type="button">🎥 錄影</button>
+      <span id="reader-editor-upload-status" class="sub"></span>
+    </div>
+    <details class="entry-inline-attachments" open>
+      <summary>附件</summary>
+      <div id="reader-editor-attachments">${inlineEditorAttachmentsHtml(entryId, entry.attachments || [])}</div>
+    </details>
+    <div class="entry-inline-actions">
+      <button class="btn primary" id="reader-editor-save" type="button">儲存</button>
+      <button class="btn" id="reader-editor-cancel" type="button">取消</button>
+    </div>
+  </article>`;
+  if (requestId !== PREVIEW_REQUEST_ID) return;
+  const rich = $("reader-editor-rich");
+  if (rich) {
+    const initialHtml = storedAsText ? textToHtmlForEditor(entry.body || "") : (entry.body || "");
+    window.fieldlogRichEditor?.init(rich, injectFilePinForDisplay(initialHtml), {
+      onImagePaste: (file) => uploadInlineEditorFiles(entryId, rich, [file]),
+    });
+    setupFileDropZone(rich, (files) => uploadInlineEditorFiles(entryId, rich, files));
+  }
+  const save = async ({ returnToReader = true } = {}) => {
+    const button = $("reader-editor-save");
+    if (button) { button.disabled = true; button.textContent = "儲存中…"; }
+    try {
+      const patch = {
+        title: $("reader-editor-title").value.trim(),
+        body: isSynced
+          ? $("reader-editor-text").value.trim()
+          : stripFilePinForSave(window.fieldlogRichEditor?.getHtml(rich) || ""),
+      };
+      if (!isSynced && storedAsText) patch.body_format = "html";
+      await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify(patch) });
+      showToast("已儲存");
+      if (returnToReader) {
+        await refreshFolderView();
+        await showEntryPreview(entryId);
+      }
+      return true;
+    } catch (error) {
+      showToast("儲存失敗：" + error.message);
+      if (button) { button.disabled = false; button.textContent = "儲存"; }
+      return false;
+    }
+  };
+  $("reader-editor-save").onclick = () => save();
+  $("reader-editor-cancel").onclick = () => showEntryPreview(entryId).catch((error) => showToast("返回閱讀失敗：" + error.message));
+  const fileInput = $("reader-editor-file");
+  fileInput.onchange = () => {
+    const files = Array.from(fileInput.files || []);
+    fileInput.value = "";
+    uploadInlineEditorFiles(entryId, rich, files).catch((error) => showToast("上傳失敗：" + error.message));
+  };
+  $("reader-editor-photo").onclick = async () => { if (await save({ returnToReader: false })) { await showEntryPreview(entryId); startPhoto(entryId); } };
+  $("reader-editor-audio").onclick = async () => { if (await save({ returnToReader: false })) { await showEntryPreview(entryId); startAudio(entryId); } };
+  $("reader-editor-video").onclick = async () => { if (await save({ returnToReader: false })) { await showEntryPreview(entryId); startVideo(entryId); } };
+}
+
+function reopenEntryAfterCapture(entryId) {
+  if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+    showEntryPreview(entryId).catch((error) => showToast("返回記事失敗：" + error.message));
+    return;
+  }
+  openEntry(entryId);
 }
 
 async function showFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
@@ -2729,7 +2878,7 @@ async function openEntry(id) {
     if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
   };
   // 錄影／拍照要開全螢幕鏡頭預覽，跟詳情頁沒辦法同時顯示，關掉合理
-  // （結束後 finishPhoto／onVideoSegmentStop 會自動 openEntry 帶你回來）。
+  // （結束後 finishPhoto／onVideoSegmentStop 會自動帶回目前版面的記事閱讀區）。
   // 錄音不需要畫面、只是背景跑的浮動小工具（z-index 高於詳情頁），
   // 沒有理由把整頁關掉——按下去卻整個畫面跳走，讓人搞不清楚錄音到底
   // 有沒有接對這一筆，也是這次要修的「除了打叉不要自動關掉」。
@@ -4394,7 +4543,7 @@ async function onVideoSegmentStop(recorder, chunks) {
     showToast(`錄影完成：錄音 ${segIndex} 段＋照片 ${photos} 張`);
     if (CURRENT_FOLDER && folderId === CURRENT_FOLDER.id) openFolder(CURRENT_FOLDER.id);
     else { loadRecent(); loadFolders(); }
-    openEntry(entryId);
+    reopenEntryAfterCapture(entryId);
   } else {
     VIDEO.segIndex++;
     startVideoSegRecorder();
@@ -4463,7 +4612,7 @@ function finishPhoto() {
   if (photos) showToast(`已拍 ${photos} 張`);
   if (CURRENT_FOLDER && folderId === CURRENT_FOLDER.id) openFolder(CURRENT_FOLDER.id);
   else { loadRecent(); loadFolders(); }
-  if (photos) openEntry(entryId);
+  if (photos) reopenEntryAfterCapture(entryId);
 }
 
 // ================= 🎙 錄音（不開鏡頭；浮動控制列，拍照時才臨時開鏡頭預覽） =================
@@ -4655,7 +4804,7 @@ function finalizeAudioStop() {
         : "　⚠️ 全程量到的最高音量是 0，這段錄音可能整個是靜音，建議先播放確認再離開")
     : "";
   showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}${diagBit}`);
-  openEntry(entryId);
+  reopenEntryAfterCapture(entryId);
 }
 
 async function onAudioSegmentStop(recorder, chunks, seg) {
