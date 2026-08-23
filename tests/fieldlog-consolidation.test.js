@@ -987,14 +987,22 @@ test("分類種子的內容與程式碼裡的預設清單一致（避免只改�
   }
 });
 
-test("記事詳情頁按🎙錄音不會自動關掉整頁——錄音不需要畫面，只是浮動小工具（2026-07-27 回報）", async () => {
+test("記事編輯頁按🎙錄音會先保存草稿、維持頁面並把錄音插回內文", async () => {
   // 使用者反應「按下錄音鍵後畫面跳走，很亂」：e-audio 原本跟 e-video/e-photo
   // 一樣，onclick 先 closeEntry() 才 startAudio()。但錄影/拍照要開全螢幕鏡頭，
   // 關掉合理；錄音只是背景跑的浮動列（z-index 高於詳情頁），沒有理由把整頁關掉，
   // 而且錄音可能持續好幾分鐘，這段時間畫面全跳走比錄影/拍照的短暫跳走更擾民。
   const { readFile } = await import("node:fs/promises");
   const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
-  assert.match(app, /\$\("e-audio"\)\.onclick = \(\) => startAudio\(id\);/, "錄音鍵不該再呼叫 closeEntry()");
+  const audioHandler = app.match(/if \(\$\("e-audio"\)\)[\s\S]*?\n  \};/u)?.[0] || "";
+  assert.match(audioHandler, /saveEntryModal\(\{ closeAfter: false \}\)/, "開錄前要保存尚未儲存的富文字草稿");
+  assert.doesNotMatch(audioHandler, /closeEntry\(\)/, "錄音鍵不該關掉編輯頁");
+  assert.match(audioHandler, /startAudio\(id, \{ insertIntoBody: bodyFormat === "html" \}\)/, "一般富文字記事的錄音完成後要插回內文");
+
+  const photoHandler = app.match(/if \(\$\("e-photo"\)\)[\s\S]*?\n  \};/u)?.[0] || "";
+  assert.match(photoHandler, /saveEntryModal\(\{ closeAfter: false \}\)/, "拍照前也要先保存草稿，避免插回內文時覆蓋修改");
+  assert.match(photoHandler, /closeEntry\(\)/, "拍照需開全螢幕鏡頭，關閉編輯頁維持不變");
+  assert.match(photoHandler, /startPhoto\(id, \{ insertIntoBody: bodyFormat === "html" \}\)/, "一般富文字記事的照片完成後要插回內文");
+
   assert.match(app, /\$\("e-video"\)\.onclick = \(\) => \{ closeEntry\(\); startVideo\(id\); \};/, "錄影開全螢幕鏡頭，關閉詳情頁維持不變");
-  assert.match(app, /\$\("e-photo"\)\.onclick = \(\) => \{ closeEntry\(\); startPhoto\(id\); \};/, "拍照開全螢幕鏡頭，關閉詳情頁維持不變");
 });
