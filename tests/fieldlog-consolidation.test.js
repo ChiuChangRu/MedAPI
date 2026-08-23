@@ -844,10 +844,10 @@ test("照片一律走站內檢視器，不能用 target=_blank 開原始圖片 U
   assert.match(app, /function closeImageViewer/);
   assert.match(app, /function openImageViewer/);
 
-  // 產生照片連結的三個地方都要帶 data-image-url（＝交給站內檢視器），
+  // 產生照片連結的地方都要帶 data-image-url（＝交給站內檢視器），
   // 而且同一個標籤裡不能同時有 target="_blank"
   const imageLinks = [...app.matchAll(/<a[^>]*data-image-url[^>]*>/g)].map((m) => m[0]);
-  assert.ok(imageLinks.length >= 3, `照片連結應該有三處（縮圖／檔案列／閱讀），實得 ${imageLinks.length}`);
+  assert.ok(imageLinks.length >= 2, `照片連結應該出現在縮圖與閱讀區；獨立檔案列已於 v136 移除，實得 ${imageLinks.length}`);
   for (const tag of imageLinks) {
     assert.doesNotMatch(tag, /target="_blank"/, `照片連結不該另開分頁：${tag.slice(0, 90)}`);
   }
