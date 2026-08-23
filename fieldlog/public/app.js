@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "133";
+const APP_VERSION = "134";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -953,8 +953,24 @@ async function moveAttachmentToFolder(payload, targetId) {
 // width 與 .container 的 margin-left，拖曳時只要改這一個變數就好，
 // 不用分別去動兩個元素的 inline style。
 const SIDEBAR_WIDTH_KEY = "fieldlog_sidebar_width";
+const SIDEBAR_COLLAPSED_KEY = "fieldlog_sidebar_collapsed";
 const SIDEBAR_WIDTH_MIN = 220;
 const SIDEBAR_WIDTH_MAX = 480;
+
+function setDesktopSidebarCollapsed(collapsed, persist = true) {
+  document.body.classList.toggle("sidebar-collapsed", !!collapsed);
+  $("desktop-sidebar-close")?.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  $("desktop-sidebar-open")?.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  if (persist) localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  const previewWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10);
+  if (previewWidth) setPreviewWidth(previewWidth);
+}
+
+function initDesktopSidebarCollapse() {
+  setDesktopSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1", false);
+  $("desktop-sidebar-close").onclick = () => setDesktopSidebarCollapsed(true);
+  $("desktop-sidebar-open").onclick = () => setDesktopSidebarCollapsed(false);
+}
 
 function initDesktopSidebarResize() {
   const handle = $("desktop-explorer-resize");
@@ -1168,7 +1184,12 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
 
 function bindEntryRows(wrap) {
   wrap.querySelectorAll(".entry-row").forEach((el) => {
-    el.onclick = () => openEntry(Number(el.dataset.id));
+    el.onclick = () => {
+      const id = Number(el.dataset.id);
+      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+        showEntryPreview(id).catch((error) => showToast("開啟閱讀失敗：" + error.message));
+      } else openEntry(id);
+    };
     // 拖一筆紀錄資料包到另一筆＝完整放入，不再破壞式合併。
     el.ondragover = (ev) => {
       const types = Array.from(ev.dataTransfer?.types || []);
@@ -1799,7 +1820,10 @@ function bindRecordGroupCards() {
   document.querySelectorAll(".record-group-card[data-id]").forEach((card) => {
     card.onclick = (ev) => {
       if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-rename") || ev.target.closest(".record-group-drag")) return;
-      openEntry(Number(card.dataset.id));
+      const id = Number(card.dataset.id);
+      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+        showEntryPreview(id).catch((error) => showToast("開啟閱讀失敗：" + error.message));
+      } else openEntry(id);
     };
     card.ondragover = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
@@ -2006,22 +2030,104 @@ function bindFileRows() {
   bindImageLinks();
 }
 
-function clearFilePreview(message = "選取一份檔案以預覽") {
+let PREVIEW_REQUEST_ID = 0;
+
+function markPreviewSelection(selector = "") {
+  document.querySelectorAll(".folder-file-row.preview-selected, .entry-row.preview-selected, .record-group-card.preview-selected")
+    .forEach((row) => row.classList.remove("preview-selected"));
+  if (selector) document.querySelector(selector)?.classList.add("preview-selected");
+}
+
+function setReaderFullscreen(enabled) {
+  const active = !!enabled && PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches;
+  document.body.classList.toggle("reader-fullscreen", active);
+  const button = $("folder-preview-expand");
+  if (!button) return;
+  button.textContent = active ? "⤡" : "⤢";
+  button.title = active ? "縮回右側閱讀" : "全欄寬閱讀";
+  button.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
+function configurePreviewActions({ openUrl = "", editLabel = "編輯", onEdit = null } = {}) {
+  const open = $("folder-preview-open");
+  open.hidden = !openUrl;
+  open.href = openUrl || "#";
+  open.onclick = openUrl ? null : (event) => event.preventDefault();
+  const edit = $("folder-preview-edit");
+  edit.textContent = editLabel;
+  edit.disabled = !onEdit;
+  edit.onclick = onEdit;
+  $("folder-preview-expand").disabled = false;
+}
+
+function clearFilePreview(message = "選取一筆資料以閱讀") {
+  PREVIEW_REQUEST_ID++;
   const pane = $("folder-preview");
   const body = $("folder-preview-body");
   if (!pane || !body) return;
   pane.dataset.attachmentId = "";
-  if ($("folder-preview-title")) $("folder-preview-title").textContent = "預覽";
-  if ($("folder-preview-open")) {
-    $("folder-preview-open").href = "#";
-    $("folder-preview-open").onclick = (event) => event.preventDefault();
-  }
-  if ($("folder-preview-manage")) {
-    $("folder-preview-manage").disabled = true;
-    $("folder-preview-manage").onclick = null;
-  }
+  pane.dataset.entryId = "";
+  $("folder-preview-title").textContent = "預覽";
+  configurePreviewActions();
+  $("folder-preview-expand").disabled = true;
   body.innerHTML = `<p class="folder-preview-empty">${esc(message)}</p>`;
-  document.querySelectorAll(".folder-file-row.preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+  markPreviewSelection();
+  setReaderFullscreen(false);
+}
+
+async function showEntryPreview(entryId) {
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openEntry(entryId);
+  const pane = $("folder-preview");
+  const body = $("folder-preview-body");
+  const title = $("folder-preview-title");
+  if (!pane || !body || !title) return;
+  const requestId = ++PREVIEW_REQUEST_ID;
+  markPreviewSelection(`.entry-row[data-id="${entryId}"], .record-group-card[data-id="${entryId}"]`);
+  pane.dataset.entryId = String(entryId);
+  pane.dataset.attachmentId = "";
+  title.textContent = "載入中…";
+  body.innerHTML = `<p class="folder-preview-empty">載入閱讀內容中…</p>`;
+  configurePreviewActions({ editLabel: "編輯", onEdit: () => { setReaderFullscreen(false); openEntry(entryId); } });
+  const entry = await api(`/entries/${entryId}`);
+  if (requestId !== PREVIEW_REQUEST_ID) return;
+  title.textContent = entry.title || "（未命名）";
+  let fields = {};
+  try { fields = JSON.parse(entry.fields_json || "{}"); } catch { fields = {}; }
+  const properties = Object.entries(fields).filter(([key, value]) =>
+    !key.startsWith("_") && value !== null && value !== undefined && String(value).trim(),
+  );
+  const bodyHtml = entry.body
+    ? entry.body_format === "html"
+      ? `<div class="entry-reader-body rich-content">${entry.body}</div>`
+      : `<div class="entry-reader-body plain">${esc(entry.body)}</div>`
+    : `<p class="entry-reader-empty">這筆資料目前沒有文字內容。</p>`;
+  const propertyHtml = properties.length ? `<details class="entry-reader-properties">
+      <summary>舊有屬性（${properties.length}）</summary>
+      <dl>${properties.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(String(value))}</dd>`).join("")}</dl>
+    </details>` : "";
+  const attachments = (entry.attachments || []).filter((item) => !item.source_pdf_id);
+  const attachmentsHtml = attachments.length ? `<section class="entry-reader-attachments">
+      <strong>附件（${attachments.length}）</strong>
+      ${attachments.map((item) => `<div class="entry-reader-attachment" data-att-id="${item.id}" data-entry-id="${entryId}" data-filename="${esc(item.filename || "檔案")}" data-key="${esc(item.key || "")}" data-mime="${esc(item.mime || "")}" data-kind="${esc(item.kind || "")}">
+        <span>${item.kind === "audio" ? "🎙️" : item.kind === "photo" ? "🖼️" : item.kind === "video" ? "🎥" : "📎"}</span>
+        <a href="/api/file/${encodeURIComponent(item.key)}" target="_blank" rel="noopener">${esc(item.filename || "檔案")}</a>
+      </div>`).join("")}
+    </section>` : "";
+  const folder = entry.folder_id ? FOLDERS.find((item) => Number(item.id) === Number(entry.folder_id)) : null;
+  body.innerHTML = `<article class="entry-reader">
+    <p class="entry-reader-meta">${folder ? esc(folderPathOf(folder).join(" ／ ")) : "⏳ 待分類"}｜${esc(localDateTime(entry.updated_at || entry.created_at))}</p>
+    ${bodyHtml}${propertyHtml}${attachmentsHtml}
+  </article>`;
+  body.querySelectorAll(".entry-reader-attachment").forEach((row) => {
+    row.onclick = (event) => {
+      if (event.target.closest("a")) return;
+      showFilePreview({
+        entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
+        filename: row.dataset.filename, key: row.dataset.key,
+        mime: row.dataset.mime, kind: row.dataset.kind,
+      }).catch((error) => showToast("預覽失敗：" + error.message));
+    };
+  });
 }
 
 async function showFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
@@ -2030,12 +2136,21 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
   const body = $("folder-preview-body");
   const title = $("folder-preview-title");
   if (!pane || !body || !title) return;
-  document.querySelectorAll(".folder-file-row.preview-selected").forEach((row) => row.classList.remove("preview-selected"));
-  document.querySelector(`.folder-file-row[data-att-id="${attachmentId}"]`)?.classList.add("preview-selected");
+  const requestId = ++PREVIEW_REQUEST_ID;
+  markPreviewSelection(`.folder-file-row[data-att-id="${attachmentId}"]`);
   pane.dataset.attachmentId = String(attachmentId);
+  pane.dataset.entryId = String(entryId);
   title.textContent = filename;
   body.innerHTML = `<p class="folder-preview-empty">載入預覽中…</p>`;
   const url = `/api/file/${encodeURIComponent(key)}`;
+  configurePreviewActions({
+    openUrl: url,
+    editLabel: "管理",
+    onEdit: () => {
+      setReaderFullscreen(false);
+      openFileDetail(entryId, attachmentId).catch((error) => showToast("開啟檔案失敗：" + error.message));
+    },
+  });
   const ext = String(filename).split(".").pop().toLowerCase();
   const image = kind === "photo" || /^image\//i.test(mime);
   const audio = kind === "audio" || /^audio\//i.test(mime);
@@ -2043,27 +2158,24 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
   const pdf = mime === "application/pdf" || ext === "pdf";
   const html = /^text\/html/i.test(mime) || ["html", "htm"].includes(ext);
   const plain = /^text\//i.test(mime) || ["txt", "md", "csv", "json", "xml"].includes(ext);
-  if (image) body.innerHTML = `<img class="folder-preview-image" src="${url}" alt="${esc(filename)}" />`;
-  else if (audio) body.innerHTML = `<audio class="folder-preview-media" controls preload="metadata" src="${url}"></audio>`;
-  else if (video) body.innerHTML = `<video class="folder-preview-media" controls preload="metadata" src="${url}"></video>`;
-  else if (pdf) body.innerHTML = `<iframe class="folder-preview-frame" src="${url}#view=FitH" title="${esc(filename)}"></iframe>`;
-  else if (html) body.innerHTML = `<iframe class="folder-preview-frame" sandbox src="${url}" title="${esc(filename)}"></iframe>`;
+  let previewHtml = "";
+  if (image) previewHtml = `<img class="folder-preview-image" src="${url}" alt="${esc(filename)}" />`;
+  else if (audio) previewHtml = `<audio class="folder-preview-media" controls preload="metadata" src="${url}"></audio>`;
+  else if (video) previewHtml = `<video class="folder-preview-media" controls preload="metadata" src="${url}"></video>`;
+  else if (pdf) previewHtml = `<iframe class="folder-preview-frame" src="${url}#view=FitH" title="${esc(filename)}"></iframe>`;
+  else if (html) previewHtml = `<iframe class="folder-preview-frame" sandbox src="${url}" title="${esc(filename)}"></iframe>`;
   else if (plain) {
     const { text, truncated } = await fetchTextPreview(url, 200000);
-    body.innerHTML = `<pre class="folder-preview-text">${esc(text)}${truncated ? "\n\n［預覽只顯示前 200,000 字］" : ""}</pre>`;
+    previewHtml = `<pre class="folder-preview-text">${esc(text)}${truncated ? "\n\n［預覽只顯示前 200,000 字］" : ""}</pre>`;
   } else if (["doc", "docx", "odt", "rtf"].includes(ext)) {
     const entry = await api(`/entries/${entryId}`);
     const attachment = (entry.attachments || []).find((item) => Number(item.id) === Number(attachmentId));
     const extracted = String(attachment?.ocr_text || attachment?.note || "").trim();
-    body.innerHTML = extracted
+    previewHtml = extracted
       ? `<pre class="folder-preview-text">${esc(extracted.slice(0, 200000))}</pre>`
       : `<p class="folder-preview-empty">這份 Word 尚無可顯示的解析文字。可按「開啟原檔」查看完整排版。</p>`;
-  } else body.innerHTML = `<p class="folder-preview-empty">此格式目前無法在側欄預覽，可開啟原檔。</p>`;
-  $("folder-preview-open").href = url;
-  $("folder-preview-open").onclick = null;
-  $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => openFileDetail(entryId, attachmentId)
-    .catch((error) => showToast("開啟檔案失敗：" + error.message));
+  } else previewHtml = `<p class="folder-preview-empty">此格式目前無法在側欄預覽，可開啟原檔。</p>`;
+  if (requestId === PREVIEW_REQUEST_ID) body.innerHTML = previewHtml;
 }
 
 async function fetchTextPreview(url, maxChars) {
@@ -2131,6 +2243,8 @@ function initPreviewLayout() {
     localStorage.setItem("fieldlog_preview_enabled", PREVIEW_ENABLED ? "1" : "0");
     syncPreviewLayout();
   };
+  $("folder-preview-expand").onclick = () => setReaderFullscreen(!document.body.classList.contains("reader-fullscreen"));
+  $("folder-preview-close").onclick = () => clearFilePreview();
   handle.addEventListener("pointerdown", (event) => {
     if (!PREVIEW_ENABLED) return;
     event.preventDefault();
@@ -2396,9 +2510,16 @@ async function openEntry(id) {
   // 不逐張顯示在附件清單，避免數十頁 PDF 產生大量縮圖。處理進度仍顯示在來源 PDF 上。
   const visibleAttachments = (e.attachments || []).filter((a) => !a.source_pdf_id);
   const folder = e.folder_id ? FOLDERS.find((f) => f.id === e.folder_id) : null;
-  const template = templateFor(folder ? folder.type : "其他");
   const fields = JSON.parse(e.fields_json || "{}");
   const isWeeklyReport = fields._kind === "weekly_report";
+  const legacyFields = Object.entries(fields).filter(([key, value]) =>
+    !key.startsWith("_") && value !== null && value !== undefined && String(value).trim(),
+  );
+  const legacyPropertiesSection = !isWeeklyReport && legacyFields.length
+    ? `<details class="entry-reader-properties legacy-properties"><summary>舊有屬性（保留、不再依資料夾套用專用表單）</summary>
+        <dl>${legacyFields.map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(String(value))}</dd>`).join("")}</dl>
+      </details>`
+    : "";
   // 來源同步管理的記事（fields_json._sid／litdb_id 有值）永遠鎖在純文字：
   // sync.js 用 <!-- sync:start/end --> 這組純文字標記圈出管理區，換成富文字
   // 編輯器很容易在瀏覽器序列化時弄丟標記，下次同步會整段覆蓋掉使用者手動
@@ -2463,7 +2584,7 @@ async function openEntry(id) {
         <span>📁</span><strong>${esc(child.title || "（未命名）")}</strong>
         <small>📎${child.att_count || 0}${child.child_count ? `｜${child.child_count} 個子資料包` : ""}</small>
       </div>`).join("")}</div></section>` : ""}
-    ${isWeeklyReport ? "" : template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
+    ${legacyPropertiesSection}
     ${bodySection}
     <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button><button class="btn" id="e-share" type="button">🔗 唯讀分享</button></div>
     <hr/>
@@ -2593,8 +2714,11 @@ async function openEntry(id) {
       : bodyFormat === "html"
         ? stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("e-body-rich")) || "")
         : $("e-body").value.trim();
-    const patch = { title: $("e-title").value.trim(), body: bodyValue, fields: newFields };
-    if (isWeeklyReport) patch.body_format = "text";
+    const patch = { title: $("e-title").value.trim(), body: bodyValue };
+    if (isWeeklyReport) {
+      patch.fields = newFields;
+      patch.body_format = "text";
+    }
     // 舊記事第一次存檔時順手把格式定下來，不用使用者自己按升級。
     // 同步管理的記事不送 body_format，維持 text（後端也有第二道防線會擋）。
     if (!isWeeklyReport && bodyFormat === "html" && storedAsText) patch.body_format = "html";
@@ -5058,6 +5182,7 @@ function init() {
   setupFileDropZone($("view-home"), uploadDroppedFilesToCurrentLocation);
   setupFileDropZone($("view-folder"), uploadDroppedFilesToCurrentLocation);
   setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToCurrentLocation);
+  initDesktopSidebarCollapse();
   initDesktopSidebarResize();
   initPreviewLayout();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
@@ -5189,7 +5314,9 @@ function init() {
   // 🔄 旋轉同理，別被暗色區域的關閉行為吃掉
   $("image-viewer-rotate").addEventListener("click", (e) => { e.stopPropagation(); rotateCurrentImage(); });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeImageViewer();
+    if (e.key !== "Escape") return;
+    if (document.body.classList.contains("reader-fullscreen")) setReaderFullscreen(false);
+    else closeImageViewer();
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) onPageHidden();     // 背景：錄影結束、錄音續錄
