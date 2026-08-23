@@ -83,3 +83,25 @@ test("桌機點選筆記先在右欄唯讀閱讀，另有編輯與全欄寬模�
   assert.match(css, /body\.reader-fullscreen/);
   assert.match(css, /\.entry-reader/);
 });
+
+test("一般記事在右欄直接編輯，週報才沿用專用表單", async () => {
+  const [app, css] = await Promise.all([
+    read("../fieldlog/public/app.js"), read("../fieldlog/public/style.css"),
+  ]);
+  const preview = app.match(/async function showEntryPreview\(entryId\)[\s\S]*?\n}/)?.[0] || "";
+  const inline = app.match(/async function showEntryInlineEditor\(entryId, loadedEntry = null\)[\s\S]*?\n}\n\nfunction reopenEntryAfterCapture/)?.[0] || "";
+  assert.match(preview, /fields\._kind === "weekly_report"/);
+  assert.match(preview, /showEntryInlineEditor\(entryId, entry\)/);
+  assert.match(inline, /id="reader-editor-title"/);
+  assert.match(inline, /id="reader-editor-rich"/);
+  assert.match(inline, /id="reader-editor-save"/);
+  assert.match(inline, /id="reader-editor-cancel"/);
+  assert.match(inline, /📎 上傳／插圖/);
+  assert.match(inline, /📷 拍照/);
+  assert.match(inline, /🎙 錄音/);
+  assert.match(inline, /🎥 錄影/);
+  assert.doesNotMatch(inline, /合併逐字稿|e-folder-path|e-provenance|e-relations/);
+  assert.match(app, /function reopenEntryAfterCapture\(entryId\)/);
+  assert.match(app, /showEntryPreview\(entryId\)\.catch/);
+  assert.match(css, /\.entry-inline-editor/);
+});
