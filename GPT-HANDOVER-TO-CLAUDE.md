@@ -273,3 +273,34 @@ npm test
 - 不要為了 ChatGPT 改壞 Claude Code 既有 PIN/Bearer 相容。
 - 不要宣稱 ChatGPT MCP 已完成；目前證據是未載入任何 MyWiki 工具。
 - 不要把 PIN、Cloudflare Token、GitHub Token 寫入本文或任何 commit。
+
+## 14. 2026-08-23：v134 Evernote 式閱讀工作區
+
+使用者決定先把 MyWiki 的一般資料結構簡化，暫不實作 MD 副檔、AI 每日整理或
+AI 自動分類，但介面與資料保存方式不得妨礙日後加入這些能力。
+
+本次完成：
+
+- 桌機左側資料夾樹可像 ChatGPT 收合／展開，狀態記在 `localStorage`；既有滑鼠
+  調整欄寬功能保留。
+- 桌機點選一般筆記或錄音資料包時，先在右側顯示唯讀閱讀內容，不再立刻進入
+  編輯器。
+- 右側閱讀欄提供「編輯」、「全欄寬閱讀／縮回」與關閉按鈕；附件仍可切換成
+  圖片、PDF、HTML、文字、影音或 Office 解析文字預覽。
+- 一般筆記統一使用標題＋Evernote/Word 式富文字本文；不再依資料夾 type 自動
+  產生上海參展式專用欄位。
+- 舊 `fields_json` 完整保留，於閱讀／編輯畫面以收合的「舊有屬性」唯讀呈現；
+  儲存一般筆記時不覆寫這些舊屬性。
+- `weekly_report` 仍保留既有三段式週報專用編輯器與明確儲存按鈕，避免破壞
+  Claude MCP 的 `update_weekly_report` 白名單欄位流程。
+- 搜尋 API、附件解析、錄音資料包、拖放搬移、資料庫 schema 均未改動。
+- UI／Worker／Service Worker 版本同步為 v134。
+
+驗證：本次相關測試 57/57 通過，`app.js` 與 Worker 語法檢查通過；全套測試仍為
+既存 78 項失敗（主要是舊 SQL mock、MCP 舊字串／fixture），本次沒有把它們冒充
+成全綠。新增測試為 `tests/fieldlog-unified-editor.test.js`，並加強右側閱讀與側欄
+收合測試。
+
+提交資訊：本機整合提交為 `3cba4a0`；因工作環境無法直接 Git push，正式分支
+改由 GitHub Contents API 逐檔同步，遠端最後提交為 `ccfc3bc`。兩端本次 9 個檔案
+已逐一以 Git blob SHA 比對一致。
