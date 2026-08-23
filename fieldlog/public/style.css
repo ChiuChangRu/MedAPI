@@ -1002,6 +1002,29 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .entry-reader-attachment { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
   .entry-reader-attachment a { min-width: 0; overflow-wrap: anywhere; }
 
+  /* 一般記事直接在右欄編輯；不再跳回展場時期的大型詳情視窗。 */
+  .entry-inline-editor { width: 100%; min-height: 100%; padding: 18px 20px 36px; background: #fff; overflow-wrap: anywhere; }
+  .entry-inline-title {
+    width: 100%; margin: 0 0 8px; padding: 8px 2px 10px; border: 0; border-bottom: 1px solid var(--border);
+    border-radius: 0; background: transparent; color: var(--text); font-size: 22px; font-weight: 700;
+  }
+  .entry-inline-title:focus { outline: 0; border-bottom-color: var(--accent); box-shadow: 0 1px 0 var(--accent); }
+  .entry-inline-rich { min-height: 340px; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  .entry-inline-rich .ql-editor { min-height: 300px; font-size: 16px; line-height: 1.75; }
+  .entry-inline-text {
+    width: 100%; min-height: 360px; margin-top: 12px; padding: 14px; resize: vertical;
+    border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 16px; line-height: 1.75;
+  }
+  .entry-inline-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
+  .entry-inline-tools .sub { margin-left: auto; }
+  .entry-inline-attachments { margin: 12px 0 18px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .entry-inline-attachments summary { cursor: pointer; color: var(--text-muted); font-size: 13px; font-weight: 600; }
+  .entry-inline-attachment { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+  .entry-inline-actions {
+    position: sticky; bottom: 0; display: flex; gap: 8px; justify-content: flex-end;
+    margin: 18px -20px -36px; padding: 12px 20px; border-top: 1px solid var(--border); background: rgba(255, 255, 255, .96);
+  }
+
   /* 全欄寬閱讀時連資料夾樹與中間清單一起暫時收起，但保留固定縮回按鈕。 */
   body.reader-fullscreen { overflow: hidden; }
   body.reader-fullscreen .desktop-explorer-nav,
@@ -1017,7 +1040,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   }
   body.reader-fullscreen .folder-preview-head { padding: 12px 18px; background: #fff; }
   body.reader-fullscreen .folder-preview-body { background: #fff; }
-  body.reader-fullscreen .entry-reader { max-width: 980px; margin: 0 auto; padding: 34px 52px 80px; }
+  body.reader-fullscreen .entry-reader,
+  body.reader-fullscreen .entry-inline-editor { max-width: 980px; margin: 0 auto; padding: 34px 52px 80px; }
+  body.reader-fullscreen .entry-inline-actions { margin: 18px -52px -80px; padding: 12px 52px; }
 }
 @media (max-width: 999px) { .preview-toggle { display: none; } }
 .folder-content-list > .explorer-item { width: 100%; margin: 0; min-width: 0; }
