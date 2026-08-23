@@ -41,3 +41,18 @@ test("richtext-editor.js：貼上不是自己插入的 <img>（沒有 data-att-i
   assert.match(matcher, /hasAttribute\("data-att-id"\)/, "要用 data-att-id 判斷是不是這篇記事自己透過附件流程插入的圖片");
   assert.match(matcher, /new Delta\(\)/, "沒有 data-att-id 的圖片要整個丟掉（回傳空 Delta），不能原樣保留破圖");
 });
+
+test("富文字編輯器：錄音與一般檔案要插入內文附件卡，不只掛在文章底部", async () => {
+  const [editor, app] = await Promise.all([
+    readFile(new URL("../fieldlog/public/richtext-editor.js", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(editor, /FieldlogAttachmentBlot/, "要註冊附件用的 Quill embed");
+  assert.match(editor, /insertAttachment/, "要提供在游標位置插入附件卡的介面");
+  assert.match(editor, /document\.createElement\("audio"\)/, "錄音附件要顯示可播放控制列");
+  assert.match(app, /fieldlogRichEditor\?\.insertAttachment/, "上傳一般檔案或錄音後要接到內文附件卡");
+  assert.match(app, /e-inline-upload-progress/, "編輯視窗要顯示上傳進度");
+  assert.match(app, /appendCapturedAttachmentsToBody/, "從記事編輯器開始的拍照／錄音完成後也要寫回內文引用");
+  assert.match(app, /startAudio\(entryId, \{ insertIntoBody: true \}\)/, "右欄錄音要明確標記為插入目前記事");
+  assert.match(app, /startPhoto\(entryId, \{ insertIntoBody: true \}\)/, "右欄拍照要明確標記為插入目前記事");
+});
