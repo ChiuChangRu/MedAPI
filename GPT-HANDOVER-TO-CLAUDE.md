@@ -301,6 +301,6 @@ AI 自動分類，但介面與資料保存方式不得妨礙日後加入這些�
 成全綠。新增測試為 `tests/fieldlog-unified-editor.test.js`，並加強右側閱讀與側欄
 收合測試。
 
-提交資訊：本機整合提交為 `3cba4a0`；因工作環境無法直接 Git push，正式分支
-改由 GitHub Contents API 逐檔同步，遠端最後提交為 `ccfc3bc`。兩端本次 9 個檔案
-已逐一以 Git blob SHA 比對一致。
+提交資訊：本機功能整合提交為 `3cba4a0`；因工作環境無法直接 Git push，正式
+分支改由 GitHub Contents API 逐檔同步，UI／測試檔案批次最後一筆為 `ccfc3bc`，
+交接文件另案提交。兩端本次 9 個功能／測試檔案已逐一以 Git blob SHA 比對一致。
