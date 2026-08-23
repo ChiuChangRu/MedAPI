@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "136";
+const APP_VERSION = "137";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -2029,6 +2029,7 @@ async function refreshInlineEditorAttachments(entryId) {
 async function uploadInlineEditorFiles(entryId, editorEl, files) {
   if (!files?.length) return;
   const status = $("reader-editor-upload-status");
+  const progress = $("reader-editor-upload-progress");
   const sourceUrl = files.some(isDocLikeFile)
     ? (prompt("這份文件的來源網址（選填）：") || "").trim()
     : "";
@@ -2038,6 +2039,7 @@ async function uploadInlineEditorFiles(entryId, editorEl, files) {
     const file = files[index];
     if (file.size > 50 * 1024 * 1024) { showToast(`${file.name} 超過 50MB，已略過`); continue; }
     if (status) status.textContent = `上傳中…（${index + 1}/${files.length}）`;
+    if (progress) { progress.hidden = false; progress.max = files.length; progress.value = index; }
     try {
       const meta = sourceUrl && isDocLikeFile(file) ? { sourceUrl } : null;
       const uploaded = await putFile(entryId, file, file.name, null, meta);
@@ -2045,6 +2047,13 @@ async function uploadInlineEditorFiles(entryId, editorEl, files) {
       done++;
       if ((file.type || "").startsWith("image/") && editorEl) {
         window.fieldlogRichEditor?.insertImage(editorEl, `/api/file/${encodeURIComponent(uploaded.key)}`, uploaded.id);
+      } else if (editorEl) {
+        window.fieldlogRichEditor?.insertAttachment(editorEl, {
+          attId: uploaded.id,
+          kind: (file.type || "").startsWith("audio/") ? "audio" : "file",
+          filename: file.name,
+          url: `/api/file/${encodeURIComponent(uploaded.key)}`,
+        });
       }
     } catch {
       await queueFile(entryId, file, file.name, null);
@@ -2052,8 +2061,37 @@ async function uploadInlineEditorFiles(entryId, editorEl, files) {
     }
   }
   if (status) status.textContent = "";
+  if (progress) { progress.value = files.length; progress.hidden = true; }
   await refreshInlineEditorAttachments(entryId);
   showToast(`已上傳 ${done} 個檔案${duplicates ? `，略過 ${duplicates} 個重複檔案` : ""}`);
+}
+
+function inlineAttachmentBodyHtml(item) {
+  const filename = esc(item.filename || "附件");
+  const url = `/api/file/${encodeURIComponent(item.key || "")}`;
+  if (item.kind === "photo") {
+    return `<img src="${url}" alt="${filename}" data-att-id="${Number(item.id)}">`;
+  }
+  const kind = item.kind === "audio" ? "audio" : "file";
+  const content = kind === "audio"
+    ? `<strong>🎙️ ${filename}</strong><audio controls="controls" preload="metadata" src="${url}"></audio>`
+    : `<a href="${url}" target="_blank" rel="noopener">📎 ${filename}</a>`;
+  return `<figure class="fieldlog-attachment-card" data-att-id="${Number(item.id)}" data-kind="${kind}" data-filename="${filename}" data-url="${url}">${content}</figure>`;
+}
+
+// 從編輯器啟動的拍照／錄音會先存文字草稿；採集完成後再把新附件卡接到內文
+// 最後。離線佇列尚未取得 attachment id，不硬造引用，仍會留在文章附件區。
+async function appendCapturedAttachmentsToBody(entryId, attachments = []) {
+  if (!attachments.length) return;
+  const entry = await api(`/entries/${entryId}`);
+  let body = entry.body_format === "html" ? (entry.body || "") : textToHtmlForEditor(entry.body || "");
+  const fresh = attachments.filter((item) => item.id && item.key && !body.includes(`data-att-id="${Number(item.id)}"`));
+  if (!fresh.length) return;
+  body = `${body}${fresh.map(inlineAttachmentBodyHtml).join("")}`;
+  await api(`/entries/${entryId}`, {
+    method: "PUT",
+    body: JSON.stringify({ body, body_format: "html" }),
+  });
 }
 
 async function showEntryInlineEditor(entryId, loadedEntry = null) {
@@ -2089,6 +2127,7 @@ async function showEntryInlineEditor(entryId, loadedEntry = null) {
       <button class="btn small" id="reader-editor-audio" type="button">🎙 錄音</button>
       <button class="btn small" id="reader-editor-video" type="button">🎥 錄影</button>
       <span id="reader-editor-upload-status" class="sub"></span>
+      <progress id="reader-editor-upload-progress" class="editor-upload-progress" max="1" value="0" hidden></progress>
     </div>
     <details class="entry-inline-attachments" open>
       <summary>附件</summary>
@@ -2140,8 +2179,8 @@ async function showEntryInlineEditor(entryId, loadedEntry = null) {
     fileInput.value = "";
     uploadInlineEditorFiles(entryId, rich, files).catch((error) => showToast("上傳失敗：" + error.message));
   };
-  $("reader-editor-photo").onclick = async () => { if (await save({ returnToReader: false })) { await showEntryPreview(entryId); startPhoto(entryId); } };
-  $("reader-editor-audio").onclick = async () => { if (await save({ returnToReader: false })) { await showEntryPreview(entryId); startAudio(entryId); } };
+  $("reader-editor-photo").onclick = async () => { if (await save({ returnToReader: false })) { await showEntryPreview(entryId); startPhoto(entryId, { insertIntoBody: true }); } };
+  $("reader-editor-audio").onclick = async () => { if (await save({ returnToReader: false })) { await showEntryPreview(entryId); startAudio(entryId, { insertIntoBody: true }); } };
   $("reader-editor-video").onclick = async () => { if (await save({ returnToReader: false })) { await showEntryPreview(entryId); startVideo(entryId); } };
 }
 
@@ -2608,15 +2647,19 @@ async function openEntry(id) {
         <small>📎${child.att_count || 0}${child.child_count ? `｜${child.child_count} 個子資料包` : ""}</small>
       </div>`).join("")}</div></section>` : ""}
     ${legacyPropertiesSection}
+    ${!isWeeklyReport ? `<div class="upload-row entry-compose-media" aria-label="插入圖片、錄音或檔案">
+      <label class="btn small upload-btn">📎 插入圖片／檔案<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xlsx,.pptx,.txt,.md,.csv,.html" multiple hidden /></label>
+      <button class="btn small capture-btn" id="e-photo">📷 拍照附件</button>
+      <button class="btn small capture-btn" id="e-audio">🎙 錄音附件</button>
+      <button class="btn small capture-btn" id="e-video">🎥 錄影附件</button>
+      <span id="e-inline-upload-status" class="sub"></span>
+      <progress id="e-inline-upload-progress" class="editor-upload-progress" max="1" value="0" hidden></progress>
+    </div>` : ""}
     ${bodySection}
     <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button><button class="btn" id="e-share" type="button">🔗 唯讀分享</button></div>
     <hr/>
     <h3 class="section-title">附件</h3>
-    <div class="upload-row">
-      <button class="btn small capture-btn" id="e-video">🎥 錄影</button>
-      <button class="btn small capture-btn" id="e-photo">📷 拍照</button>
-      <button class="btn small capture-btn" id="e-audio">🎙 錄音</button>
-      <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf,.docx,.xlsx,.pptx,.txt,.md,.csv" multiple hidden /></label>
+    <div class="upload-row attachment-maintenance">
       <button class="btn small" id="e-process" type="button" title="用 Cloudflare AI 把還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取（已處理過的不會重跑）">🪄 Cloudflare AI 整理</button>
       <button class="btn small" id="e-rename-files" type="button" title="利用既有 OCR、逐字稿與記事資訊整理全部舊附件名稱，不會重新呼叫 AI">🏷 整理舊檔名</button>
       <span id="e-upload-status" class="sub"></span>
@@ -2718,7 +2761,7 @@ async function openEntry(id) {
       ? `${folderPathOf(target).join(" ／ ")}（按儲存才生效）`
       : "⏳ 待分類（按儲存才生效）";
   };
-  $("e-save").onclick = async () => {
+  const saveEntryModal = async ({ closeAfter = true } = {}) => {
     const newFields = isWeeklyReport ? {
       _kind: "weekly_report",
       "週次": fields["週次"] || "",
@@ -2748,22 +2791,34 @@ async function openEntry(id) {
     if (pendingFolderId !== undefined) patch.folder_id = pendingFolderId;
     await api(`/entries/${id}`, { method: "PUT", body: JSON.stringify(patch) });
     showToast("已儲存");
-    closeEntry();
-    if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
+    if (closeAfter) {
+      closeEntry();
+      if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
+    }
+    return true;
   };
+  $("e-save").onclick = () => saveEntryModal();
   // 錄影／拍照要開全螢幕鏡頭預覽，跟詳情頁沒辦法同時顯示，關掉合理
   // （結束後 finishPhoto／onVideoSegmentStop 會自動帶回目前版面的記事閱讀區）。
   // 錄音不需要畫面、只是背景跑的浮動小工具（z-index 高於詳情頁），
   // 沒有理由把整頁關掉——按下去卻整個畫面跳走，讓人搞不清楚錄音到底
   // 有沒有接對這一筆，也是這次要修的「除了打叉不要自動關掉」。
-  $("e-video").onclick = () => { closeEntry(); startVideo(id); };
-  $("e-photo").onclick = () => { closeEntry(); startPhoto(id); };
-  $("e-audio").onclick = () => startAudio(id);
+  if ($("e-video")) $("e-video").onclick = () => { closeEntry(); startVideo(id); };
+  if ($("e-photo")) $("e-photo").onclick = async () => {
+    if (bodyFormat === "html") await saveEntryModal({ closeAfter: false });
+    closeEntry();
+    startPhoto(id, { insertIntoBody: bodyFormat === "html" });
+  };
+  if ($("e-audio")) $("e-audio").onclick = async () => {
+    if (bodyFormat === "html") await saveEntryModal({ closeAfter: false });
+    startAudio(id, { insertIntoBody: bodyFormat === "html" });
+  };
   const fileInput = $("e-file");
-  fileInput.onchange = () => {
+  if (fileInput) fileInput.onchange = () => {
     const files = Array.from(fileInput.files || []);
     fileInput.value = "";
-    uploadFiles(id, files);
+    if (bodyFormat === "html") insertFilesIntoRichEditor(id, $("e-body-rich"), files);
+    else uploadFiles(id, files);
   };
   setupFileDropZone($("entry-modal"), (files) => uploadFiles(id, files));
   if (!isWeeklyReport && bodyFormat === "html") setupRichImageDropZone($("e-body-rich"), id);
@@ -3945,7 +4000,7 @@ function injectFilePinForDisplay(html) {
 }
 function stripFilePinForSave(html) {
   if (!html) return html;
-  return html.replace(/(<img\b[^>]*\bsrc="\/api\/file\/[^"?]+)\?pin=[^"]*(")/gi, "$1$2");
+  return html.replace(/((?:src|href|data-url)="\/api\/file\/[^"?]+)\?pin=[^"]*(")/gi, "$1$2");
 }
 
 // 把純文字 body 轉成安全轉義過的 HTML，換行變段落。用在兩個地方：載入還存成
@@ -4039,9 +4094,8 @@ async function uploadFiles(entryId, files) {
   openEntry(entryId);
 }
 
-// 富文字記事的編輯框：拖圖片進來直接插進游標位置（跟 Word 一樣），不是只掛在
-// 附件清單下面；非圖片檔（PDF、錄音…）維持原本「附件」流程，走 uploadFiles
-// 既有的整批上傳＋略過重複＋離線佇列，這裡不重複實作一次。
+// 富文字記事的編輯框：拖入圖片就插圖，錄音檔插入播放器，PDF／Office／
+// 其他檔案插入附件卡片。檔案本體仍只存 R2，D1 內文只保存附件引用。
 function setupRichImageDropZone(el, entryId) {
   if (!el) return;
   const isFileDrag = (ev) => Array.from(ev.dataTransfer?.types || []).includes("Files");
@@ -4061,21 +4115,48 @@ function setupRichImageDropZone(el, entryId) {
 }
 
 async function insertFilesIntoRichEditor(entryId, editorEl, files) {
-  const images = files.filter((f) => (f.type || "").startsWith("image/"));
-  const others = files.filter((f) => !(f.type || "").startsWith("image/"));
-  for (const f of images) {
+  if (!files?.length) return;
+  const status = $("e-inline-upload-status") || $("e-upload-status");
+  const progress = $("e-inline-upload-progress");
+  const sourceUrl = files.some(isDocLikeFile)
+    ? (prompt("這份文件的來源網址（選填）：") || "").trim()
+    : "";
+  let inserted = 0;
+  let duplicates = 0;
+  for (let index = 0; index < files.length; index++) {
+    const f = files[index];
     if (f.size > 50 * 1024 * 1024) { showToast(`${f.name} 超過 50MB，已略過`); continue; }
+    if (status) status.textContent = `上傳中…（${index + 1}/${files.length}）`;
+    if (progress) { progress.hidden = false; progress.max = files.length; progress.value = index; }
     try {
-      const uploaded = await putFile(entryId, f, f.name, null);
-      if (uploaded.duplicate) { showToast(`${f.name} 是重複檔案，已略過`); continue; }
+      const meta = sourceUrl && isDocLikeFile(f) ? { sourceUrl } : null;
+      const uploaded = await putFile(entryId, f, f.name, null, meta);
+      if (uploaded.duplicate) { duplicates++; continue; }
       const url = `/api/file/${encodeURIComponent(uploaded.key)}`;
-      window.fieldlogRichEditor?.insertImage(editorEl, url, uploaded.id);
-      await refreshEntryAttachmentsPanel(entryId);
-    } catch (err) { showToast(`${f.name} 上傳失敗：${err.message}`); }
+      if ((f.type || "").startsWith("image/")) {
+        window.fieldlogRichEditor?.insertImage(editorEl, url, uploaded.id);
+      } else {
+        window.fieldlogRichEditor?.insertAttachment(editorEl, {
+          attId: uploaded.id,
+          kind: (f.type || "").startsWith("audio/") ? "audio" : "file",
+          filename: f.name,
+          url,
+        });
+      }
+      inserted++;
+    } catch (err) {
+      try {
+        await queueFile(entryId, f, f.name, null);
+        showToast(`${f.name} 已先存到離線佇列；連線後會成為附件，但不會立即插入內文`);
+      } catch {
+        showToast(`${f.name} 上傳失敗：${err.message}`);
+      }
+    }
   }
-  // 非圖片走既有附件上傳流程；uploadFiles 結尾會整個重開記事，不能跟上面
-  // 插圖流程共用同一輪迴圈（插圖故意不整個重開，才不會把正在打的字沖掉）
-  if (others.length) uploadFiles(entryId, others);
+  if (status) status.textContent = "";
+  if (progress) { progress.value = files.length; progress.hidden = true; }
+  await refreshEntryAttachmentsPanel(entryId);
+  showToast(`已插入 ${inserted} 個項目${duplicates ? `，略過 ${duplicates} 個重複檔案` : ""}`);
 }
 
 // 插圖後只重畫附件清單那一小塊（沿用附件卡片跟按鈕綁定邏輯），不整個重開
@@ -4422,7 +4503,7 @@ async function onVideoSegmentStop(recorder, chunks) {
 // ================= 📷 拍照（單獨鏡頭，不錄音） =================
 let PHOTO = null;
 
-async function startPhoto(entryId) {
+async function startPhoto(entryId, options = {}) {
   if (PHOTO) return;
   if (!navigator.mediaDevices) { showToast("這個瀏覽器不支援拍照"); return; }
   let stream;
@@ -4435,7 +4516,10 @@ async function startPhoto(entryId) {
   try { ref = await ensureEntryForCapture(entryId, "拍照"); }
   catch (err) { stream.getTracks().forEach((t) => t.stop()); showToast("無法建立紀錄：" + err.message); return; }
   $("photo-video").srcObject = stream;
-  PHOTO = { stream, startedAt: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId };
+  PHOTO = {
+    stream, startedAt: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId,
+    insertIntoBody: !!options.insertIntoBody, inlineAttachments: [],
+  };
   $("photo-count").textContent = "";
   $("photo-folder-chip").textContent = folderChipLabel(PHOTO.folderId);
   $("photo-overlay").style.display = "flex";
@@ -4462,19 +4546,28 @@ async function photoSnap() {
   const offset = session ? segOffset(session) : null;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
   const filename = `照片-${Date.now()}.jpg`;
-  try { await putFile(entryId, blob, filename, offset); }
+  try {
+    const uploaded = await putFile(entryId, blob, filename, offset);
+    if (PHOTO?.insertIntoBody && uploaded?.id && uploaded?.key) {
+      PHOTO.inlineAttachments.push({ ...uploaded, filename, kind: "photo" });
+    }
+  }
   catch { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); }
 }
 
-function finishPhoto() {
+async function finishPhoto() {
   if (!PHOTO) return;
-  const { stream, entryId, photos, folderId } = PHOTO;
+  const { stream, entryId, photos, folderId, inlineAttachments } = PHOTO;
   stream.getTracks().forEach((t) => t.stop());
   $("photo-video").srcObject = null;
   $("photo-folder-picker").style.display = "none";
   $("photo-overlay").style.display = "none";
   PHOTO = null;
   if (photos) showToast(`已拍 ${photos} 張`);
+  if (inlineAttachments?.length) {
+    try { await appendCapturedAttachmentsToBody(entryId, inlineAttachments); }
+    catch (error) { showToast("照片已保存，但插入內文失敗：" + error.message); }
+  }
   if (CURRENT_FOLDER && folderId === CURRENT_FOLDER.id) openFolder(CURRENT_FOLDER.id);
   else { loadRecent(); loadFolders(); }
   if (photos) reopenEntryAfterCapture(entryId);
@@ -4604,6 +4697,7 @@ function rotateAudioSegment() {
 }
 
 async function startAudio(entryId) {
+  const options = arguments[1] || {};
   if (AUDIO) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("這個瀏覽器不支援錄音"); return; }
   // 開錄前先驗聲：真實麥克風連安靜房間都有底噪，量到精確全零就是收不到聲音。
@@ -4620,7 +4714,7 @@ async function startAudio(entryId) {
   let ref;
   try { ref = await ensureEntryForCapture(entryId, "錄音"); }
   catch (err) { stopStream(stream); showToast("無法建立紀錄：" + err.message); return; }
-  AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0 };
+  AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0, insertIntoBody: !!options.insertIntoBody, inlineAttachments: [] };
   initAudioGraph();
   watchAudioStream(stream);
   startAudioSegRecorder();
@@ -4645,14 +4739,14 @@ function stopAudio() {
   if (AUDIO.recorder && AUDIO.recorder.state !== "inactive") {
     AUDIO.recorder.stop(); // → onstop 走 ending 收尾路徑（會上傳最後一段）
   } else {
-    finalizeAudioStop(); // recorder 已被系統停掉（背景中斷）：沒有新段可傳，直接收尾
+    void finalizeAudioStop(); // recorder 已被系統停掉（背景中斷）：沒有新段可傳，直接收尾
   }
 }
 
 // 收尾：關麥克風、藏浮動列、跳完成提示、重開紀錄。stopAudio 與 onstop 收尾路徑共用
-function finalizeAudioStop() {
+async function finalizeAudioStop() {
   if (!AUDIO) return;
-  const { stream, timerId, recheckTimer, meterTimer, micSource, audioCtx, photos, entryId, segIndex, diagPeakMax } = AUDIO;
+  const { stream, timerId, recheckTimer, meterTimer, micSource, audioCtx, photos, entryId, segIndex, diagPeakMax, inlineAttachments } = AUDIO;
   clearInterval(timerId);
   clearInterval(meterTimer);
   clearTimeout(recheckTimer);
@@ -4669,6 +4763,10 @@ function finalizeAudioStop() {
         : "　⚠️ 全程量到的最高音量是 0，這段錄音可能整個是靜音，建議先播放確認再離開")
     : "";
   showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}${diagBit}`);
+  if (inlineAttachments?.length) {
+    try { await appendCapturedAttachmentsToBody(entryId, inlineAttachments); }
+    catch (error) { showToast("錄音已保存，但插入內文失敗：" + error.message); }
+  }
   reopenEntryAfterCapture(entryId);
 }
 
@@ -4695,7 +4793,12 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
 
   const uploadSeg = async () => {
     if (!blob.size) return;
-    try { await putFile(seg.entryId, blob, filename, seg.startOffset, { durationSecs }); }
+    try {
+      const uploaded = await putFile(seg.entryId, blob, filename, seg.startOffset, { durationSecs });
+      if (AUDIO?.insertIntoBody && uploaded?.id && uploaded?.key) {
+        AUDIO.inlineAttachments.push({ ...uploaded, filename, kind: "audio" });
+      }
+    }
     catch { await queueFile(seg.entryId, blob, filename, seg.startOffset); return; }
     // 錄音仍持續時才做準即時轉錄；最後一段由記事頁的既有安全流程接手。
     if (AUDIO && !AUDIO.ending && AUDIO.entryId === seg.entryId && !AUDIO.liveTranscriptionStopped && navigator.onLine) {
@@ -4724,7 +4827,7 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
   if (AUDIO.ending && isCurrent) {
     if (blob.size) showToast(AUDIO.autoStopped ? "頁面關閉，已自動存檔" : "錄音上傳中…");
     await uploadSeg();
-    finalizeAudioStop();
+    await finalizeAudioStop();
     return;
   }
 
