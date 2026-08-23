@@ -39,22 +39,23 @@ test("HTML 原檔伺服器端也有 CSP sandbox 與 nosniff", async () => {
   assert.match(fileRoute, /form-action 'none'/);
 });
 
-test("單檔與資料包都保留移動入口", async () => {
+test("所有記事與單一附件管理頁都保留移動入口", async () => {
   const app = await read("../fieldlog/public/app.js");
   assert.match(app, /id="file-move-action"/);
-  assert.match(app, /class="record-group-move"/);
   assert.match(app, /class="entry-move"/);
+  assert.match(app, /class="entry-file-manage"/);
+  assert.doesNotMatch(app, /class="record-group-move"/);
 });
 
-test("右側單檔可以拖到左側資料夾並提供復原", async () => {
+test("右側統一記事可以拖到左側資料夾並提供復原", async () => {
   const app = await read("../fieldlog/public/app.js");
-  assert.match(app, /application\/x-fieldlog-attachment/);
+  assert.match(app, /application\/x-fieldlog-entry/);
   const tree = app.match(/function renderDesktopFolderTree[\s\S]*?\n}/)?.[0] || "";
-  assert.match(tree, /types\.includes\("application\/x-fieldlog-attachment"\)/);
-  assert.match(tree, /moveAttachmentToFolder\(payload, targetId\)/);
-  const move = app.match(/async function moveAttachmentToFolder[\s\S]*?\n}/)?.[0] || "";
+  assert.match(tree, /types\.includes\("application\/x-fieldlog-entry"\)/);
+  assert.match(tree, /moveInboxEntry\(entryId, targetId, Number\(event\.dataTransfer\.getData\("application\/x-fieldlog-entry-folder"\)\) \|\| null\)/);
+  const move = app.match(/async function moveInboxEntry[\s\S]*?\n}/)?.[0] || "";
   assert.match(move, /actionLabel: "復原"/);
-  assert.match(move, /folder_id: sourceId/);
+  assert.match(move, /folder_id: folderId/);
 });
 
 test("預覽可開關、可調欄寬並記住設定", async () => {
