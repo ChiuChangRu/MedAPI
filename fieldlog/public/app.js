@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "135";
+const APP_VERSION = "136";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1158,7 +1158,32 @@ function entryLocationLabel(e) {
  * 作業最上面卻還看得到一週前的日期——因為顯示的是 created_at，但排序用的
  * 是 updated_at，兩者對不上，使用者根本看不出排序邏輯有沒有在動）。
  */
-function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
+function entryAttachmentSummary(attachments = []) {
+  const visible = attachments.filter((item) => !item.source_pdf_id);
+  const counts = visible.reduce((acc, item) => {
+    const kind = item.kind || "file";
+    acc[kind] = (acc[kind] || 0) + 1;
+    return acc;
+  }, {});
+  const one = visible.length === 1 ? visible[0] : null;
+  const ext = String(one?.filename || "").split(".").pop().toLowerCase();
+  let icon = "📝";
+  let label = "記事";
+  if (counts.audio) { icon = "🎙️"; label = "錄音記事"; }
+  else if (visible.length > 1) { icon = "📝"; label = "多媒體記事"; }
+  else if (one?.kind === "photo") { icon = "🖼️"; label = "圖片記事"; }
+  else if (one?.kind === "video") { icon = "🎥"; label = "影片記事"; }
+  else if (one) {
+    icon = isPdfAtt(one) ? "📕"
+      : ["doc", "docx"].includes(ext) ? "📘"
+        : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
+          : ["ppt", "pptx"].includes(ext) ? "📙" : "📄";
+    label = "文件記事";
+  }
+  return { visible, one, icon, label };
+}
+
+function entryRowHtml(e, { showRecency = false, explorer = false, attachments = [] } = {}) {
   // 🤖＝這個位置是 AI 挑的，不是人放的。這個區別對法規／專利場景很重要：
   // 引用之前要知道哪些判斷出自機器。點一下可以確認或改掉。
   const aiChip = e.auto_filed_at && e.auto_filed_at !== "failed"
@@ -1169,50 +1194,96 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   const dateLabel = showRecency
     ? `${e.updated_at ? "動過" : "建立"} ${esc(localDateTimeShort(e.updated_at || e.created_at))}`
     : esc(localDateTimeShort(e.created_at));
-  return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
+  const presentation = entryAttachmentSummary(attachments);
+  const attachmentCount = presentation.visible.length || Number(e.att_count || 0);
+  const one = presentation.one;
+  const primaryData = one
+    ? ` data-primary-att-id="${one.id}" data-primary-filename="${esc(one.filename || "檔案")}" data-primary-key="${esc(one.key || "")}" data-primary-mime="${esc(one.mime || "")}" data-primary-kind="${esc(one.kind || "")}"`
+    : "";
+  return `<div class="entry-row${explorer ? " explorer-item unified-entry-card" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}"${primaryData}>
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
-    <span class="entry-main"><span class="entry-title">${esc(e.title || "（未命名）")}</span>
-      <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}">✏️</button>
-    </span>
-    <span class="entry-secondary"><span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}
-      <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span></span>
-    <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
-    <button class="entry-merge" data-id="${e.id}" type="button" title="合併到另一筆記事">合併</button>
-    <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄">🗑</button>
+    <span class="entry-kind-icon" aria-hidden="true">${presentation.icon}</span>
+    <span class="entry-main"><span class="entry-title">${esc(e.title || one?.filename || "（未命名）")}</span></span>
+    <span class="entry-secondary">${explorer ? "" : `<span class="entry-where">${esc(entryLocationLabel(e))}</span>`}${aiChip}
+      <span class="entry-type-label">${presentation.label}</span>
+      <span class="entry-meta">${dateLabel}${attachmentCount ? `｜📎 ${attachmentCount}` : ""}</span></span>
+    <details class="entry-actions-menu">
+      <summary title="更多操作" aria-label="${esc(e.title || "這筆記事")}的更多操作">⋯</summary>
+      <div class="entry-actions-popover" role="menu">
+        <button class="entry-edit" data-id="${e.id}" type="button" role="menuitem">編輯記事</button>
+        ${one ? `<button class="entry-file-manage" data-id="${e.id}" data-att-id="${one.id}" type="button" role="menuitem">管理附件</button>` : ""}
+        <button class="entry-rename" data-id="${e.id}" type="button" role="menuitem">重新命名</button>
+        <button class="entry-move" data-id="${e.id}" type="button" role="menuitem">移動</button>
+        <button class="entry-merge" data-id="${e.id}" type="button" role="menuitem">合併</button>
+        <button class="entry-del danger" data-id="${e.id}" type="button" role="menuitem">移到垃圾桶</button>
+      </div>
+    </details>
   </div>`;
 }
 
 function bindEntryRows(wrap) {
   wrap.querySelectorAll(".entry-row").forEach((el) => {
-    el.onclick = () => {
+    el.onclick = (event) => {
+      if (event.target.closest(".entry-actions-menu")) return;
       const id = Number(el.dataset.id);
       if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
-        showEntryPreview(id).catch((error) => showToast("開啟閱讀失敗：" + error.message));
+        if (el.dataset.primaryAttId) {
+          showFilePreview({
+            entryId: id,
+            attachmentId: Number(el.dataset.primaryAttId),
+            filename: el.dataset.primaryFilename || "檔案",
+            key: el.dataset.primaryKey || "",
+            mime: el.dataset.primaryMime || "",
+            kind: el.dataset.primaryKind || "",
+          }).catch((error) => showToast("預覽失敗：" + error.message));
+        } else {
+          showEntryPreview(id).catch((error) => showToast("開啟閱讀失敗：" + error.message));
+        }
       } else openEntry(id);
     };
-    // 拖一筆紀錄資料包到另一筆＝完整放入，不再破壞式合併。
+    // 外部檔案拖到記事＝附加到該記事。站內記事只允許拖到資料夾搬移，
+    // 不再允許記事拖到記事形成第三層巢狀結構。
     el.ondragover = (ev) => {
       const types = Array.from(ev.dataTransfer?.types || []);
-      if (!types.includes("application/x-fieldlog-entry") && !types.includes("Files")) return;
+      if (types.includes("application/x-fieldlog-entry") || !types.includes("Files")) return;
       ev.preventDefault();
       el.classList.add("merge-target");
-      ev.dataTransfer.dropEffect = types.includes("application/x-fieldlog-entry") ? "move" : "copy";
+      ev.dataTransfer.dropEffect = "copy";
     };
     el.ondragleave = () => el.classList.remove("merge-target");
     el.ondrop = (ev) => {
       const types = Array.from(ev.dataTransfer?.types || []);
-      if (!types.includes("application/x-fieldlog-entry") && !types.includes("Files")) return;
+      if (types.includes("application/x-fieldlog-entry") || !types.includes("Files")) return;
       ev.preventDefault();
       ev.stopPropagation();
       el.classList.remove("merge-target");
-      if (types.includes("application/x-fieldlog-entry")) {
-        const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
-        const targetId = Number(el.dataset.id);
-        if (sourceId && targetId && sourceId !== targetId) nestEntry(sourceId, targetId);
-        return;
-      }
       const files = Array.from(ev.dataTransfer.files || []);
       if (files.length) uploadFiles(Number(el.dataset.id), files);
+    };
+  });
+  wrap.querySelectorAll(".entry-actions-menu").forEach((menu) => {
+    menu.onclick = (event) => event.stopPropagation();
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      wrap.querySelectorAll(".entry-actions-menu[open]").forEach((other) => {
+        if (other !== menu) other.open = false;
+      });
+    });
+  });
+  wrap.querySelectorAll(".entry-edit").forEach((btn) => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const id = Number(btn.dataset.id);
+      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+        showEntryInlineEditor(id).catch((err) => showToast("開啟編輯失敗：" + err.message));
+      } else openEntry(id);
+    };
+  });
+  wrap.querySelectorAll(".entry-file-manage").forEach((btn) => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      openFileDetail(Number(btn.dataset.id), Number(btn.dataset.attId))
+        .catch((err) => showToast("開啟附件失敗：" + err.message));
     };
   });
   wrap.querySelectorAll(".entry-del").forEach((btn) => {
@@ -1535,7 +1606,7 @@ async function moveInboxEntry(entryId, folderId, previousFolderId = null) {
   if (!folder) return;
   await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: folderId }) });
   showToast(`已移至「${folder.name}」`, {
-    actionLabel: "上一動",
+    actionLabel: "復原",
     onAction: async () => {
       await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: previousFolderId }) });
       showToast(previousFolderId ? "已復原" : "已復原至待分類");
@@ -1634,42 +1705,6 @@ function bindChildFolderCards(wrap) {
   });
 }
 
-function folderFileHtml(a, entryId) {
-  const url = `/api/file/${encodeURIComponent(a.key)}`;
-  const ext = (a.filename || "").split(".").pop().toLowerCase();
-  const icon = isPdfAtt(a) ? "📕" : a.kind === "photo" ? "🖼️" : a.kind === "audio" ? "🎙️"
-    : ["doc", "docx"].includes(ext) ? "📘" : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
-      : ["ppt", "pptx"].includes(ext) ? "📙" : "📄";
-  // 照片走站內檢視器；其他檔案（PDF、Office）交給瀏覽器開新分頁，那邊的檢視器比較好用
-  const nameLink = isImageAtt(a)
-    ? `<a class="folder-file-name is-photo" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}" data-image-id="${a.id}" data-image-rotation="${Number(a.rotation) || 0}">${esc(a.filename)}</a>`
-    : `<a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
-  // 每一列是「一份檔案」而不是「一筆記事」：可以拖到上方子資料夾搬移，
-  // 🗑 只刪這一份，⋯ 開這一份的詳情（附屬記事、分類、AI 整理）
-  return `<div class="folder-file-row explorer-item" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}" data-key="${esc(a.key)}" data-mime="${esc(a.mime || "")}" data-kind="${esc(a.kind || "")}">
-    <span class="folder-file-icon" title="拖曳到上方子資料夾">${icon}</span>
-    ${nameLink}
-    <span class="folder-file-meta">${esc(localDateTimeShort(a.created_at))}</span>
-    <button class="folder-file-delete" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="刪除這份檔案" aria-label="刪除這份檔案">🗑</button>
-    <button class="folder-file-manage" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="管理／重新命名這一份檔案" aria-label="管理或重新命名這一份檔案">⋯</button>
-  </div>`;
-}
-
-/**
- * 資料夾內的檔案排序：預設新到舊（剛加進來的排最上面），可切成檔名排序。
- * 新舊用 created_at，同一秒內建立的（一次拖進來一整批）再用 attachment id
- * 當第二鍵，順序才穩定，不會每次重整都跳來跳去。
- */
-function sortFolderFiles(items) {
-  const byName = (a, b) => String(a.attachment.filename || "").localeCompare(
-    String(b.attachment.filename || ""), "zh-Hant", { numeric: true, sensitivity: "base" },
-  );
-  if (FILE_SORT === "name") return items.sort(byName);
-  return items.sort((a, b) =>
-    String(b.attachment.created_at || "").localeCompare(String(a.attachment.created_at || ""))
-    || Number(b.attachment.id) - Number(a.attachment.id));
-}
-
 function setFileSort(sort) {
   FILE_SORT = sort;
   localStorage.setItem("fieldlog_file_sort", sort);
@@ -1754,27 +1789,21 @@ async function openFolder(id) {
   // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
   const entries = await api(`/entries?folder_id=${id}&include=attachments`);
   const visibleAtts = (e) => (e.attachments || []).filter((a) => !a.source_pdf_id);
-  // 錄音不論只有一段或多段，都維持「一筆錄音紀錄」：先錄音再分類，和先進
-  // 資料夾再錄音，最後都會看到同一種結構。舊邏輯把單段錄音攤成檔案列、多段錄音
-  // 包成紀錄卡，導致同一次操作只因錄音長短不同就變成兩種檔案結構。
-  // 非錄音仍沿用原規則：單一附件可直接瀏覽，多附件要整筆一起顯示，避免被排序拆散。
-  const isRecordingEntry = (e) => visibleAtts(e).some((a) => a.kind === "audio");
+  // UI 只保留兩種物件：真正的資料夾，以及記事。PDF、圖片、錄音、多附件都只是
+  // 記事的附件，不再依附件數量分裂成單檔列／資料包卡／一般筆記三套結構。
   const children = FOLDERS.filter((f) => Number(f.parent_id) === Number(id));
   const explorerItems = [
     ...children.map((f) => ({
       kind: "folder", id: f.id, name: f.name, createdAt: f.updated_at || f.created_at,
       html: childFolderHtml(f),
     })),
-    ...entries.flatMap((e) => {
+    ...entries.map((e) => {
       const atts = visibleAtts(e);
-      if (atts.length === 1 && !isRecordingEntry(e)) {
-        const a = atts[0];
-        return [{ kind: "file", id: a.id, name: a.filename, createdAt: a.created_at || e.created_at, html: folderFileHtml(a, e.id) }];
-      }
-      if (isRecordingEntry(e) || atts.length > 1) {
-        return [{ kind: "package", id: e.id, name: e.title, createdAt: e.created_at, html: recordGroupCardHtml(e, atts) }];
-      }
-      return [{ kind: "note", id: e.id, name: e.title, createdAt: e.created_at, html: entryRowHtml(e, { explorer: true }) }];
+      return {
+        kind: "entry", id: e.id, name: e.title || atts[0]?.filename || "",
+        createdAt: e.updated_at || e.created_at,
+        html: entryRowHtml(e, { explorer: true, attachments: atts }),
+      };
     }),
   ];
   sortExplorerItems(explorerItems);
@@ -1785,108 +1814,6 @@ async function openFolder(id) {
   bindChildFolderCards($("folder-entries"));
   bindFolderDropTargets();
   bindEntryRows($("folder-entries"));
-  bindFileRows();
-  bindRecordGroupCards();
-}
-
-// 多檔案記事（分段錄音等）的卡片：跟子資料夾用同一套 .child-folder-card
-// 樣式，看起來就是資料夾把附件包在裡面，不是攤平成一堆檔案列（也不是借用
-// note 那組會被 grid-view 的 min-height/flex-wrap 撐得歪七扭八的 entry-row 樣式）。
-function recordGroupCardHtml(e, atts) {
-  const kindLabel = { audio: "🎙️ 錄音", photo: "🖼️ 照片", video: "🎥 影片" };
-  const counts = atts.reduce((acc, a) => { acc[a.kind] = (acc[a.kind] || 0) + 1; return acc; }, {});
-  const summary = Object.entries(counts).map(([k, n]) => `${kindLabel[k] || k} ×${n}`).join("、");
-  const icon = counts.audio ? "🎙️" : "📁";
-  // 刻意不共用 .child-folder-card 這個 class 名稱：bindFolderDropTargets() 用
-  // ".child-folder-card[data-id]" 當拖曳檔案的落點，抓的是真正的資料夾 id；
-  // 這張卡片的 data-id 其實是記事 id，混進同一個 class 會讓拖檔案誤觸到這裡，
-  // 把檔案搬去一個根本不存在的資料夾。視覺樣式另外在 CSS 裡共用選取器套用。
-  //
-  // 拖曳／📂 移動：跟 entryRowHtml 的 .entry-drag／.entry-move 共用同一套
-  // application/x-fieldlog-entry payload 與 openMoveEntryDialog()，這樣多檔案
-  // 記事（分段錄音一類）才能跟純文字筆記一樣在分類後繼續移動，不用先
-  // 刪掉重建（entry 266：之前這裡只有刪除鍵，完全搬不動）。
-  return `<div class="record-group-card explorer-item" data-id="${e.id}">
-    <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
-    <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
-    <small>${esc(localDateTimeShort(e.created_at))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
-    <button class="record-group-rename" type="button" data-id="${e.id}" title="重新命名資料包" aria-label="重新命名這筆紀錄">✏️</button>
-    <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
-    <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>
-  </div>`;
-}
-
-function bindRecordGroupCards() {
-  document.querySelectorAll(".record-group-card[data-id]").forEach((card) => {
-    card.onclick = (ev) => {
-      if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-rename") || ev.target.closest(".record-group-drag")) return;
-      const id = Number(card.dataset.id);
-      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
-        showEntryPreview(id).catch((error) => showToast("開啟閱讀失敗：" + error.message));
-      } else openEntry(id);
-    };
-    card.ondragover = (event) => {
-      const types = Array.from(event.dataTransfer?.types || []);
-      if (!types.includes("application/x-fieldlog-entry") && !types.includes("Files")) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = types.includes("application/x-fieldlog-entry") ? "move" : "copy";
-      card.classList.add("file-drop-target");
-    };
-    card.ondragleave = () => card.classList.remove("file-drop-target");
-    card.ondrop = (event) => {
-      event.preventDefault(); event.stopPropagation(); card.classList.remove("file-drop-target");
-      const types = Array.from(event.dataTransfer?.types || []);
-      if (!types.includes("application/x-fieldlog-entry")) {
-        const files = Array.from(event.dataTransfer.files || []);
-        if (files.length) uploadFiles(Number(card.dataset.id), files);
-        return;
-      }
-      const sourceId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
-      const targetId = Number(card.dataset.id);
-      if (sourceId && sourceId !== targetId) nestEntry(sourceId, targetId);
-    };
-    const del = card.querySelector(".record-group-del");
-    del.onclick = async (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (!confirm("將這筆紀錄資料包及其中全部內容移到垃圾桶？垃圾桶保留 60 天。")) return;
-      try {
-        await api(`/entries/${card.dataset.id}`, { method: "DELETE" });
-        showToast("已移到垃圾桶");
-        await refreshFolderView();
-      } catch (err) { showToast("刪除失敗：" + err.message); }
-    };
-    const move = card.querySelector(".record-group-move");
-    move.onclick = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const title = card.querySelector("strong")?.textContent || "這筆記事";
-      openMoveEntryDialog(Number(card.dataset.id), { currentFolderId: CURRENT_FOLDER?.id ?? null, title })
-        .catch((err) => showToast("移動失敗：" + err.message));
-    };
-    const rename = card.querySelector(".record-group-rename");
-    rename.onclick = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      renameEntry(Number(card.dataset.id), card.querySelector("strong")?.textContent || "")
-        .catch((err) => showToast("重新命名失敗：" + err.message));
-    };
-    const drag = card.querySelector(".record-group-drag");
-    drag.onclick = (ev) => ev.stopPropagation();
-    drag.ondragstart = (ev) => {
-      ev.stopPropagation();
-      ev.dataTransfer.effectAllowed = "move";
-      ev.dataTransfer.setData("application/x-fieldlog-entry", String(card.dataset.id));
-      ev.dataTransfer.setData("application/x-fieldlog-entry-title", card.querySelector("strong")?.textContent || "新資料夾");
-      ev.dataTransfer.setData("application/x-fieldlog-entry-folder", CURRENT_FOLDER?.id != null ? String(CURRENT_FOLDER.id) : "");
-      card.classList.add("dragging");
-      document.body.classList.add("entry-dragging");
-    };
-    drag.ondragend = () => {
-      card.classList.remove("dragging");
-      document.body.classList.remove("entry-dragging");
-    };
-  });
 }
 
 /**
@@ -1926,7 +1853,7 @@ async function cleanupFilenames(button) {
   }
 }
 
-// ---------- 檔案列：拖曳搬移、單檔刪除、單檔詳情 ----------
+// ---------- 統一記事：名稱與附件管理 ----------
 
 async function refreshFolderView() {
   await loadFolders();
@@ -1977,63 +1904,10 @@ async function removeOneFile(attachmentId, filename, closeDetail) {
   await refreshFolderView();
 }
 
-function bindFileRows() {
-  document.querySelectorAll(".folder-file-row[data-att-id]").forEach((row) => {
-    row.onclick = (event) => {
-      if (event.target.closest("button") || !PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
-      event.preventDefault();
-      showFilePreview({
-        entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
-        filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
-        mime: row.dataset.mime || "", kind: row.dataset.kind || "",
-      }).catch((error) => showToast("預覽失敗：" + error.message));
-    };
-    row.ondblclick = (event) => {
-      if (event.target.closest("button")) return;
-      const link = row.querySelector(".folder-file-name");
-      if (link?.href) window.open(link.href, "_blank", "noopener");
-    };
-    const manage = row.querySelector(".folder-file-manage");
-    if (manage) {
-      manage.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        openFileDetail(Number(manage.dataset.entryId), Number(manage.dataset.attId))
-          .catch((error) => showToast("開啟檔案失敗：" + error.message));
-      };
-    }
-    const deleteButton = row.querySelector(".folder-file-delete");
-    if (deleteButton) {
-      deleteButton.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        removeOneFile(Number(deleteButton.dataset.attId), row.dataset.filename || "這份檔案", false)
-          .catch((error) => showToast("刪除失敗：" + error.message));
-      };
-    }
-    row.ondragstart = (event) => {
-      row.classList.add("dragging");
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("application/x-fieldlog-attachment", JSON.stringify({
-        attachmentId: Number(row.dataset.attId),
-        entryId: Number(row.dataset.entryId),
-        filename: row.dataset.filename || "檔案",
-        sourceFolderId: CURRENT_FOLDER?.id || null,
-      }));
-    };
-    row.ondragend = () => {
-      row.classList.remove("dragging");
-      document.querySelectorAll(".child-folder-card.file-drop-target")
-        .forEach((card) => card.classList.remove("file-drop-target"));
-    };
-  });
-  bindImageLinks();
-}
-
 let PREVIEW_REQUEST_ID = 0;
 
 function markPreviewSelection(selector = "") {
-  document.querySelectorAll(".folder-file-row.preview-selected, .entry-row.preview-selected, .record-group-card.preview-selected")
+  document.querySelectorAll(".entry-row.preview-selected")
     .forEach((row) => row.classList.remove("preview-selected"));
   if (selector) document.querySelector(selector)?.classList.add("preview-selected");
 }
@@ -2082,7 +1956,7 @@ async function showEntryPreview(entryId) {
   const title = $("folder-preview-title");
   if (!pane || !body || !title) return;
   const requestId = ++PREVIEW_REQUEST_ID;
-  markPreviewSelection(`.entry-row[data-id="${entryId}"], .record-group-card[data-id="${entryId}"]`);
+  markPreviewSelection(`.entry-row[data-id="${entryId}"]`);
   pane.dataset.entryId = String(entryId);
   pane.dataset.attachmentId = "";
   title.textContent = "載入中…";
@@ -2193,7 +2067,7 @@ async function showEntryInlineEditor(entryId, loadedEntry = null) {
   const body = $("folder-preview-body");
   const title = $("folder-preview-title");
   if (!pane || !body || !title) return;
-  markPreviewSelection(`.entry-row[data-id="${entryId}"], .record-group-card[data-id="${entryId}"]`);
+  markPreviewSelection(`.entry-row[data-id="${entryId}"]`);
   pane.dataset.entryId = String(entryId);
   pane.dataset.attachmentId = "";
   title.textContent = "編輯記事";
@@ -2286,7 +2160,7 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
   const title = $("folder-preview-title");
   if (!pane || !body || !title) return;
   const requestId = ++PREVIEW_REQUEST_ID;
-  markPreviewSelection(`.folder-file-row[data-att-id="${attachmentId}"]`);
+  markPreviewSelection(`.entry-row[data-primary-att-id="${attachmentId}"]`);
   pane.dataset.attachmentId = String(attachmentId);
   pane.dataset.entryId = String(entryId);
   title.textContent = filename;
@@ -2729,7 +2603,7 @@ async function openEntry(id) {
       <button class="btn small" id="e-move" type="button">📂 移動…</button>
     </div>
     ${(e.children || []).length ? `<section class="entry-children"><h3 class="section-title">內含紀錄資料包</h3>
-      <div class="child-folder-list list-view">${e.children.map((child) => `<div class="record-group-card entry-child-card" draggable="true" data-id="${child.id}">
+      <div class="child-folder-list list-view">${e.children.map((child) => `<div class="entry-child-card" draggable="true" data-id="${child.id}">
         <span>📁</span><strong>${esc(child.title || "（未命名）")}</strong>
         <small>📎${child.att_count || 0}${child.child_count ? `｜${child.child_count} 個子資料包` : ""}</small>
       </div>`).join("")}</div></section>` : ""}
@@ -3664,15 +3538,6 @@ function bindImageLinks(root = document) {
     link.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const row = link.closest(".folder-file-row[data-att-id]");
-      if (row && PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
-        showFilePreview({
-          entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
-          filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
-          mime: row.dataset.mime || "", kind: row.dataset.kind || "",
-        }).catch((error) => showToast("預覽失敗：" + error.message));
-        return;
-      }
       openImageViewer(link.dataset.imageUrl, link.dataset.imageName || "", link.dataset.imageId, link.dataset.imageRotation);
     };
   });
