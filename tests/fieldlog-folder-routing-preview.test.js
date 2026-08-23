@@ -69,3 +69,17 @@ test("預覽可開關、可調欄寬並記住設定", async () => {
   assert.match(css, /--preview-width:/);
   assert.match(css, /\.folder-workspace\.preview-off/);
 });
+
+test("桌機點選筆記先在右欄唯讀閱讀，另有編輯與全欄寬模式", async () => {
+  const [app, html, css] = await Promise.all([
+    read("../fieldlog/public/app.js"), read("../fieldlog/public/index.html"), read("../fieldlog/public/style.css"),
+  ]);
+  assert.match(html, /id="folder-preview-edit"/);
+  assert.match(html, /id="folder-preview-expand"/);
+  assert.match(html, /id="folder-preview-close"/);
+  assert.match(app, /async function showEntryPreview\(entryId\)/);
+  assert.match(app, /function setReaderFullscreen\(enabled\)/);
+  assert.match(app, /entry-reader-body/);
+  assert.match(css, /body\.reader-fullscreen/);
+  assert.match(css, /\.entry-reader/);
+});
