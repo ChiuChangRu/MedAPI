@@ -706,6 +706,21 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .rich-editor .ql-container { border: none; font-size: 15px; }
 .rich-editor .ql-editor { min-height: 260px; line-height: 1.6; }
 .rich-editor .ql-editor img { max-width: 100%; border-radius: 6px; }
+.fieldlog-attachment-card {
+  display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 11px 13px;
+  border: 1px solid var(--border); border-radius: 9px; background: #f8fafc;
+  overflow-wrap: anywhere;
+}
+.fieldlog-attachment-card strong { flex: none; }
+.fieldlog-attachment-card a { min-width: 0; color: var(--accent); font-weight: 600; }
+.fieldlog-attachment-card audio { width: min(100%, 420px); min-width: 180px; }
+.editor-upload-progress { width: 150px; height: 8px; accent-color: var(--accent); }
+.editor-upload-progress[hidden] { display: none; }
+.entry-compose-media {
+  position: sticky; top: 0; z-index: 3; margin: 10px 0; padding: 9px;
+  border: 1px solid var(--border); border-radius: 9px; background: rgba(255,255,255,.97);
+}
+.attachment-maintenance { margin-top: 8px; }
 /* 貼進來的 Markdown 結構（標題／清單／程式碼／分隔線）要看得出層次，
    不然「有轉成標題」跟「沒轉」在畫面上長得一樣。 */
 .rich-editor .ql-editor h1 { font-size: 1.5em; margin: 0.7em 0 0.3em; }
@@ -961,6 +976,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .entry-reader-body { font-size: 16px; line-height: 1.75; }
   .entry-reader-body.plain { white-space: pre-wrap; }
   .entry-reader-body img { max-width: 100%; height: auto; }
+  .entry-reader-body .fieldlog-attachment-card { margin: 14px 0; }
   .entry-reader-empty { color: var(--text-muted); }
   .entry-reader-properties { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 12px; }
   .entry-reader-properties summary { cursor: pointer; color: var(--text-muted); font-size: 13px; }
