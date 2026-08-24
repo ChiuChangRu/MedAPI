@@ -8,12 +8,12 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "143";
+const APP_VERSION = "144";
 
-// 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
+// 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
 const LEVEL_HINTS = {
-  1: "產品／專案",
+  1: "分類內的主題／專案",
   2: "文件類型",
   3: "主題／試驗／標準系列",
   4: "年份／版本／特定文件群",
@@ -60,8 +60,9 @@ function choicesForLevel(level) {
  * 屬性，不能各自輸出一個 style="..."：同一個元素出現兩個 style 屬性時瀏覽器只認第一個，
  * 第二個會被靜默忽略（2026-08-09 樹狀清單上線時就是這樣把顏色弄不見的）。 */
 function folderCategoryBg(f) {
-  const meta = FOLDER_CATEGORY_META[f.category];
-  if (!meta || f.category === "misc" || meta.bg === "transparent") return "";
+  const section = folderSectionKey(f);
+  const meta = FOLDER_CATEGORY_META[section];
+  if (!meta || section === "misc" || meta.bg === "transparent") return "";
   return meta.bg;
 }
 
@@ -73,8 +74,9 @@ function folderCategoryStyle(f) {
 
 /** 色系分類徽章：未分類或 misc 不顯示，避免每個資料夾都掛一個「暫存／其他」而失去辨識度 */
 function folderCategoryChipHtml(f) {
-  const meta = FOLDER_CATEGORY_META[f.category];
-  if (!meta || f.category === "misc") return "";
+  const section = folderSectionKey(f);
+  const meta = FOLDER_CATEGORY_META[section];
+  if (!meta || section === "misc") return "";
   return `<span class="folder-category">${esc(meta.label)}</span>`;
 }
 
@@ -87,15 +89,18 @@ function typeOrderOf(type) {
 // 資料夾的色系分組（folders.category，2026-08-08 分類重整）。跟上面的
 // folder_type／typeOrderOf（既有的「活動性質」欄位，例如「參展／實驗／
 // 會議」）是完全不同的軸，這裡刻意不共用同一份清單——category 是固定的
-// 六個色系，不像 type 可以在「管理分類」裡自由增刪。rank 決定排序順序，
-// 是「預期會長多大」不是「現在筆數多少」，避免之後又要重排一次。
+// 八個工作分類，不像 type 可以在「管理分類」裡自由增刪。這是虛擬顯示層，
+// 不占用 folders.parent_id 的四層知識架構。
+const WORK_SECTION_ORDER = ["project", "training", "admin", "literature", "routine_report", "ai_adoption", "qa_reg", "misc"];
 const FOLDER_CATEGORY_META = {
-  project: { label: "專案開發", bg: "#FFE5E5", rank: 1 },
-  qa_reg: { label: "品保與法規", bg: "#FFEDD5", rank: 2 },
-  literature: { label: "文獻與知識庫", bg: "#DBEAFE", rank: 3 },
-  training: { label: "教育訓練", bg: "#DCFCE7", rank: 4 },
-  admin: { label: "行政與廠商", bg: "#FEF9C3", rank: 5 },
-  misc: { label: "暫存／其他", bg: "transparent", rank: 6 },
+  project: { label: "專案", icon: "🧩", bg: "#FEE2E2", accent: "#DC2626", rank: 1 },
+  training: { label: "教育訓練", icon: "🎓", bg: "#DCFCE7", accent: "#15803D", rank: 2 },
+  admin: { label: "行政", icon: "🏢", bg: "#FEF9C3", accent: "#A16207", rank: 3 },
+  literature: { label: "文獻", icon: "📚", bg: "#DBEAFE", accent: "#1D4ED8", rank: 4 },
+  routine_report: { label: "例行報告", icon: "📊", bg: "#EDE9FE", accent: "#6D28D9", rank: 5 },
+  ai_adoption: { label: "AI導用", icon: "✨", bg: "#CCFBF1", accent: "#0F766E", rank: 6 },
+  qa_reg: { label: "法規", icon: "⚖️", bg: "#FFEDD5", accent: "#C2410C", rank: 7 },
+  misc: { label: "其他", icon: "🗂️", bg: "transparent", accent: "#64748B", rank: 8 },
 };
 
 /** 還沒設定 category 的資料夾（NULL）當 misc 處理，排在最後，不排最前面造成視覺混亂 */
@@ -118,6 +123,31 @@ async function loadCategories() {
 
 let FOLDERS = [];
 let CURRENT_FOLDER = null; // 開啟中的資料夾物件
+
+/** 取得實體資料夾樹的根；工作分類以根資料夾的 category 為準。 */
+function rootFolderOf(folder) {
+  let current = folder;
+  const visited = new Set();
+  while (current?.parent_id && !visited.has(Number(current.id))) {
+    visited.add(Number(current.id));
+    const parent = FOLDERS.find((item) => Number(item.id) === Number(current.parent_id));
+    if (!parent) break;
+    current = parent;
+  }
+  return current || folder;
+}
+
+function folderSectionKey(folder) {
+  const category = rootFolderOf(folder)?.category;
+  return WORK_SECTION_ORDER.includes(category) ? category : "misc";
+}
+
+function folderDisplayPath(folder) {
+  const path = folderPathOf(folder);
+  const section = FOLDER_CATEGORY_META[folderSectionKey(folder)] || FOLDER_CATEGORY_META.misc;
+  if (path[0] !== section.label) path.unshift(section.label);
+  return path;
+}
 let TRANSCRIBE_ENABLED = false;
 let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 // 待分類預設清單模式（本來就是待整理的內容，清單本來就夠緊湊），卡片模式
@@ -154,7 +184,7 @@ function compareFolders(a, b) {
   if (staging) return staging;
   // 色系分組（category）優先於進行中／類型——同一色系的資料夾要能連在一起看，
   // 不然上色分組也沒有意義。未分類（NULL）當 misc 排最後。
-  const byCategory = categoryRankOf(a.category) - categoryRankOf(b.category);
+  const byCategory = categoryRankOf(folderSectionKey(a)) - categoryRankOf(folderSectionKey(b));
   if (byCategory) return byCategory;
   const active = Number(b.status === "進行中") - Number(a.status === "進行中");
   if (active) return active;
@@ -812,6 +842,7 @@ async function loadFolders(preloadedFolders = null) {
 // Notion 側欄的頁面樹是同一種互動。EXPANDED_FOLDER_IDS 只存在記憶體裡、
 // 重新整理就重置，符合「預設跟上一版一樣」的要求。
 let EXPANDED_FOLDER_IDS = new Set();
+let COLLAPSED_FOLDER_SECTIONS = new Set();
 
 /** 只留下「目前看得到」的列：根層一定看得到，其餘要一路往上追到全部祖先都展開才算 */
 function visibleFolderRows() {
@@ -839,28 +870,14 @@ function visibleFolderRows() {
     .map(({ folder, depth }) => ({ folder, depth, childCount: childCountOf.get(Number(folder.id)) || 0 }));
 }
 
-function renderFolders() {
-  const wrap = $("folder-list");
-  const rows = visibleFolderRows();
-  wrap.className = "folder-list";
-  syncFolderSortButtons();
-  if (!rows.length) {
-    wrap.innerHTML = `<p class="sub">還沒有資料夾。新資料會先進待分類；建立資料夾後再移動進去。</p>`;
-    renderDesktopFolderTree();
-    return;
-  }
-  wrap.innerHTML = rows.map(({ folder: f, depth, childCount }) => {
-    const expanded = EXPANDED_FOLDER_IDS.has(Number(f.id));
-    const bg = folderCategoryBg(f);
-    // 色系底已經表達了分類，卡片裡再重複一個「專案開發」之類的白底文字
-    // 標籤是多餘的（folderCategoryChipHtml，2026-08-08 分類重整時加的）；
-    // 首頁這份清單拿掉，child-folder-card（資料夾內頁的子資料夾卡片）沒有
-    // 底色可以借，那邊繼續保留文字標籤。
-    const style = `margin-left:${depth * 28}px${bg ? `;background:${bg}` : ""}`;
-    const expandBtn = childCount
-      ? `<button class="folder-expand" type="button" data-id="${f.id}" aria-expanded="${expanded}" aria-label="${expanded ? "收合" : "展開"}「${esc(f.name)}」的子資料夾">${expanded ? "▾" : "▸"}</button>`
-      : `<span class="folder-expand-spacer" aria-hidden="true"></span>`;
-    return `
+function homeFolderRowHtml({ folder: f, depth, childCount }) {
+  const expanded = EXPANDED_FOLDER_IDS.has(Number(f.id));
+  const bg = folderCategoryBg(f);
+  const style = `margin-left:${depth * 28}px${bg ? `;background:${bg}` : ""}`;
+  const expandBtn = childCount
+    ? `<button class="folder-expand" type="button" data-id="${f.id}" aria-expanded="${expanded}" aria-label="${expanded ? "收合" : "展開"}「${esc(f.name)}」的子資料夾">${expanded ? "▾" : "▸"}</button>`
+    : `<span class="folder-expand-spacer" aria-hidden="true"></span>`;
+  return `
     <div class="folder-card ${f.status !== "進行中" ? "done" : ""}" data-id="${f.id}" style="${style}">
       <button class="folder-drag" type="button" draggable="true" title="拖曳移動或放入垃圾桶" aria-label="拖曳${esc(f.name)}">⠿</button>
       ${expandBtn}
@@ -873,12 +890,32 @@ function renderFolders() {
       <button class="folder-more" type="button" aria-label="${esc(f.name)}操作選單">⋯</button>
       <div class="folder-menu" hidden>
         <button type="button" data-act="add-child">新增子資料夾</button>
-        <button type="button" data-act="rename">編輯（名稱／類型）</button>
+        <button type="button" data-act="rename">編輯（名稱／類型／工作分類）</button>
         <button type="button" data-act="move">移動到其他資料夾</button>
         <button type="button" data-act="merge">合併至其他資料夾</button>
         <button type="button" data-act="delete" class="danger">刪除資料夾</button>
       </div>
     </div>`;
+}
+
+function renderFolders() {
+  const wrap = $("folder-list");
+  const rows = visibleFolderRows();
+  wrap.className = "folder-list";
+  syncFolderSortButtons();
+  if (!rows.length) {
+    wrap.innerHTML = `<p class="sub">還沒有資料夾。新資料會先進待分類；建立資料夾後再移動進去。</p>`;
+    renderDesktopFolderTree();
+    return;
+  }
+  wrap.innerHTML = WORK_SECTION_ORDER.map((key) => {
+    const sectionRows = rows.filter(({ folder }) => folderSectionKey(folder) === key);
+    if (!sectionRows.length) return "";
+    const meta = FOLDER_CATEGORY_META[key];
+    return `<section class="folder-work-section" data-section="${key}" style="--section-accent:${meta.accent}">
+      <div class="folder-work-section-head"><span>${meta.icon}</span><strong>${esc(meta.label)}</strong><small>${sectionRows.length} 個資料夾</small></div>
+      <div class="folder-work-section-body">${sectionRows.map(homeFolderRowHtml).join("")}</div>
+    </section>`;
   }).join("");
   renderDesktopFolderTree();
   wrap.querySelectorAll(".folder-expand").forEach((btn) => {
@@ -951,13 +988,36 @@ function renderDesktopFolderTree() {
   const wrap = $("desktop-folder-tree");
   if (!wrap) return;
   const rows = visibleFolderRows();
-  wrap.innerHTML = rows.map(({ folder, depth, childCount }) => {
-    const expanded = EXPANDED_FOLDER_IDS.has(Number(folder.id));
-    return `<div class="desktop-tree-row ${CURRENT_FOLDER?.id === folder.id ? "active" : ""}" data-id="${folder.id}" style="padding-left:${8 + depth * 17}px">
-      ${childCount ? `<button class="desktop-tree-toggle" type="button">${expanded ? "▾" : "▸"}</button>` : `<span class="desktop-tree-toggle-spacer"></span>`}
-      <span>${folder.parent_id ? "📁" : "📂"} ${esc(folder.name)}</span>
-    </div>`;
-  }).join("") || `<p class="sub" style="padding:8px;">尚無資料夾</p>`;
+  wrap.innerHTML = WORK_SECTION_ORDER.map((key) => {
+    const meta = FOLDER_CATEGORY_META[key];
+    const sectionRows = rows.filter(({ folder }) => folderSectionKey(folder) === key);
+    const total = FOLDERS.filter((folder) => folder.role !== "staging" && folderSectionKey(folder) === key).length;
+    const collapsed = COLLAPSED_FOLDER_SECTIONS.has(key);
+    const body = collapsed ? "" : sectionRows.map(({ folder, depth, childCount }) => {
+      const expanded = EXPANDED_FOLDER_IDS.has(Number(folder.id));
+      return `<div class="desktop-tree-row ${Number(CURRENT_FOLDER?.id) === Number(folder.id) ? "active" : ""}" data-id="${folder.id}" data-depth="${depth}" style="--tree-depth:${depth};--section-accent:${meta.accent}">
+        ${childCount ? `<button class="desktop-tree-toggle" type="button" aria-label="${expanded ? "收合" : "展開"}${esc(folder.name)}">${expanded ? "▾" : "▸"}</button>` : `<span class="desktop-tree-toggle-spacer"></span>`}
+        <span class="desktop-tree-folder-icon">${folder.parent_id ? "📁" : "📂"}</span>
+        <span class="desktop-tree-name">${esc(folder.name)}</span>
+      </div>`;
+    }).join("");
+    return `<section class="desktop-tree-section" data-section="${key}" style="--section-accent:${meta.accent};--section-bg:${meta.bg}">
+      <button class="desktop-tree-section-head" type="button" aria-expanded="${!collapsed}">
+        <span class="desktop-tree-section-caret">${collapsed ? "▸" : "▾"}</span>
+        <span class="desktop-tree-section-icon">${meta.icon}</span>
+        <strong>${esc(meta.label)}</strong><small>${total}</small>
+      </button>
+      <div class="desktop-tree-section-body">${body || (!collapsed && total === 0 ? `<span class="desktop-tree-empty">尚無資料</span>` : "")}</div>
+    </section>`;
+  }).join("");
+  wrap.querySelectorAll(".desktop-tree-section-head").forEach((head) => {
+    head.onclick = () => {
+      const key = head.closest(".desktop-tree-section").dataset.section;
+      if (COLLAPSED_FOLDER_SECTIONS.has(key)) COLLAPSED_FOLDER_SECTIONS.delete(key);
+      else COLLAPSED_FOLDER_SECTIONS.add(key);
+      renderDesktopFolderTree();
+    };
+  });
   wrap.querySelectorAll(".desktop-tree-row").forEach((row) => {
     row.onclick = () => openFolder(Number(row.dataset.id));
     row.querySelector(".desktop-tree-toggle")?.addEventListener("click", (event) => {
@@ -1100,10 +1160,18 @@ function initDesktopSidebarResize() {
 async function renameFolder(id) {
   const folder = FOLDERS.find((f) => f.id === id);
   if (!folder) return;
-  const details = await askFolderDetails({ title: "編輯資料夾", desc: "調整名稱或類型（分類選錯了也能在這裡修正）", name: folder.name, type: folder.type });
+  const details = await askFolderDetails({
+    title: "編輯資料夾",
+    desc: "調整名稱或類型；最上層也能改工作分類",
+    name: folder.name,
+    type: folder.type,
+    category: folderSectionKey(folder),
+    parentId: folder.parent_id || null,
+  });
   if (!details) return;
-  if (details.name === folder.name && details.type === folder.type) return;
-  await api(`/folders/${id}`, { method: "PUT", body: JSON.stringify({ name: details.name, type: details.type }) });
+  const categoryChanged = !folder.parent_id && details.category !== folderSectionKey(folder);
+  if (details.name === folder.name && details.type === folder.type && !categoryChanged) return;
+  await api(`/folders/${id}`, { method: "PUT", body: JSON.stringify(details) });
   showToast("資料夾已更新");
   loadFolders();
 }
@@ -1458,16 +1526,26 @@ function renderFolderPickerList(filter, { currentId, allowInbox, rootLabel, excl
     };
     walk(excludeSubtreeOf);
   }
-  for (const { folder, depth } of folderTreeOrdered()) {
-    if (excluded.has(Number(folder.id))) continue;
-    const path = folderPathOf(folder).join(" ／ ");
-    if (keyword && !path.toLowerCase().includes(keyword) && !String(folder.type || "").toLowerCase().includes(keyword)) continue;
-    const here = Number(currentId) === Number(folder.id);
-    rows.push(`<button class="fp-row" type="button" data-id="${folder.id}" style="padding-left:${12 + depth * 18}px" ${here ? "disabled" : ""} title="${esc(path)}">
-      <span class="fp-name">${folder.parent_id ? "📁" : "📂"} ${esc(folder.name)}</span>
-      <span class="fp-meta">第${depth + 1}層｜${esc(folder.type)}｜${folder.entry_count} 筆</span>
-      ${here ? `<span class="fp-here">目前位置</span>` : ""}
-    </button>`);
+  const treeRows = folderTreeOrdered();
+  for (const key of WORK_SECTION_ORDER) {
+    const sectionRows = treeRows.filter(({ folder }) => folderSectionKey(folder) === key);
+    const matched = sectionRows.filter(({ folder }) => {
+      if (excluded.has(Number(folder.id))) return false;
+      const path = folderDisplayPath(folder).join(" ／ ");
+      return !keyword || path.toLowerCase().includes(keyword) || String(folder.type || "").toLowerCase().includes(keyword);
+    });
+    if (!matched.length) continue;
+    const meta = FOLDER_CATEGORY_META[key];
+    rows.push(`<div class="fp-section-head" style="--section-accent:${meta.accent}">${meta.icon} <strong>${esc(meta.label)}</strong></div>`);
+    for (const { folder, depth } of matched) {
+      const path = folderDisplayPath(folder).join(" ／ ");
+      const here = Number(currentId) === Number(folder.id);
+      rows.push(`<button class="fp-row" type="button" data-id="${folder.id}" style="padding-left:${12 + depth * 18}px" ${here ? "disabled" : ""} title="${esc(path)}">
+        <span class="fp-name">${folder.parent_id ? "📁" : "📂"} ${esc(folder.name)}</span>
+        <span class="fp-meta">第${depth + 1}層｜${esc(folder.type)}｜${folder.entry_count} 筆</span>
+        ${here ? `<span class="fp-here">目前位置</span>` : ""}
+      </button>`);
+    }
   }
   wrap.innerHTML = rows.length ? rows.join("") : `<p class="sub">沒有符合的資料夾。可以按下面「＋ 建立新資料夾」。</p>`;
   wrap.querySelectorAll(".fp-row").forEach((el) => {
@@ -1594,20 +1672,28 @@ function folderPathOf(folder) {
 }
 
 /**
- * 建資料夾的對話框。分類選項依「這是第幾層」給——第 1 層問的是產品／專案，
- * 第 2 層問文件類型，不會把四層的選項混在一起讓人選錯。
+ * 建資料夾的對話框。第 1 層先選工作分類，分類內的第 2 層再選文件類型；
+ * 工作分類只是顯示層，不會把既有實體資料夾推成第五層。
  */
-function askFolderDetails({ title = "", desc = "", name = "", type = "", parentId = null } = {}) {
+function askFolderDetails({ title = "", desc = "", name = "", type = "", category = "project", parentId = null } = {}) {
   if (CREATE_FOLDER_RESOLVE) closeCreateFolderDialog(null);
   const parent = parentId ? FOLDERS.find((item) => Number(item.id) === Number(parentId)) : null;
   const level = parent ? Math.min(MAX_FOLDER_DEPTH, folderDepthOf(parent) + 1) : 1;
   const choices = choicesForLevel(level);
   const selected = choices.some((item) => item.name === type) ? type : (choices[0]?.name || "其他");
 
-  $("create-folder-title").textContent = title || (level === 1 ? "新增產品／專案" : `新增第 ${level} 層資料夾`);
+  $("create-folder-title").textContent = title || (level === 1 ? "新增最上層資料夾" : `新增第 ${level} 層資料夾`);
   $("create-folder-desc").textContent =
     `${desc || "建立可延伸到所有文件的共用架構"}｜第 ${level} 層：${LEVEL_HINTS[level]}`;
   $("create-folder-name").value = name;
+  const categoryRow = $("create-folder-category-row");
+  const categorySelect = $("create-folder-category");
+  categoryRow.hidden = !!parent;
+  categorySelect.innerHTML = WORK_SECTION_ORDER.map((key) => {
+    const meta = FOLDER_CATEGORY_META[key];
+    return `<option value="${key}">${meta.icon} ${esc(meta.label)}</option>`;
+  }).join("");
+  categorySelect.value = WORK_SECTION_ORDER.includes(category) ? category : "project";
   $("create-folder-types").innerHTML = choices.map((item) => `
     <label class="folder-type-option">
       <input type="radio" name="folder-type" value="${esc(item.name)}" ${item.name === selected ? "checked" : ""}>
@@ -1621,9 +1707,10 @@ function askFolderDetails({ title = "", desc = "", name = "", type = "", parentI
 async function createFolderForArchive(suggestedName) {
   const defaultName = String(suggestedName || "待分類專案").replace(/（未命名）/g, "").trim() || "待分類專案";
   const details = await askFolderDetails({
-    title: "建立產品／專案並移入",
-    desc: "先建立第 1 層，後續可再加入文件類型與主題",
+    title: "建立資料夾並移入",
+    desc: "選擇工作分類並建立第 1 層，後續可再加入文件類型與主題",
     name: defaultName,
+    category: "project",
     parentId: null,
   });
   if (!details) return null;
@@ -1664,13 +1751,14 @@ async function moveInboxEntry(entryId, folderId, previousFolderId = null) {
 
 async function newFolder() {
   const details = await askFolderDetails({
-    title: "新增產品／專案",
-    desc: "第 1 層不限定 ISO，可建立任何產品、共通法規或合作專案",
+    title: "新增最上層資料夾",
+    desc: "先選擇專案、教育訓練、行政、文獻、例行報告、AI導用、法規或其他",
+    category: "project",
     parentId: null,
   });
   if (!details) return;
   await api("/folders", { method: "POST", body: JSON.stringify(details) });
-  showToast("產品／專案資料夾已建立");
+  showToast("資料夾已建立");
   loadFolders();
 }
 
@@ -1849,6 +1937,15 @@ function syncFolderSortButtons() {
 async function openFolder(id) {
   CURRENT_FOLDER = FOLDERS.find((f) => f.id === id);
   if (!CURRENT_FOLDER) return;
+  // 從搜尋或右欄直接開啟深層資料夾時，左欄同步展開所有祖先並取消該工作分類收合。
+  // 否則內容已切換、左欄卻仍停在別列，看起來像選錯資料夾。
+  let treeCursor = CURRENT_FOLDER;
+  while (treeCursor?.parent_id) {
+    EXPANDED_FOLDER_IDS.add(Number(treeCursor.parent_id));
+    treeCursor = FOLDERS.find((folder) => Number(folder.id) === Number(treeCursor.parent_id));
+  }
+  COLLAPSED_FOLDER_SECTIONS.delete(folderSectionKey(CURRENT_FOLDER));
+  renderDesktopFolderTree();
   return withViewLoading(`正在載入「${CURRENT_FOLDER.name}」…`, async () => {
   $("desktop-pending")?.classList.remove("active");
   $("desktop-trash")?.classList.remove("active");
@@ -1857,7 +1954,7 @@ async function openFolder(id) {
   const parent = CURRENT_FOLDER.parent_id ? FOLDERS.find((f) => f.id === CURRENT_FOLDER.parent_id) : null;
   $("btn-back").textContent = parent ? `‹ ${parent.name}` : "‹ 回首頁";
   // 標題顯示完整路徑，四層架構下才看得出「現在在哪一層的哪個分支」
-  $("folder-title").textContent = folderPathOf(CURRENT_FOLDER).join(" ／ ");
+  $("folder-title").textContent = folderDisplayPath(CURRENT_FOLDER).join(" ／ ");
   const activeView = matchMedia("(max-width: 719px)").matches ? "list" : INNER_FOLDER_VIEW;
   $("btn-inner-grid").classList.toggle("active", activeView === "grid");
   $("btn-inner-list").classList.toggle("active", activeView === "list");
@@ -3036,6 +3133,7 @@ async function openPendingFromDesktop() {
     $("desktop-pending")?.classList.add("active");
     $("desktop-trash")?.classList.remove("active");
     CURRENT_FOLDER = null;
+    renderDesktopFolderTree();
     $("view-folder").style.display = "none";
     $("view-home").style.display = "block";
     $("inbox-panel").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3047,6 +3145,7 @@ async function backHome() {
   return withViewLoading("正在載入首頁…", async () => {
     await Promise.all([loadFolders(), loadRecent()]);
     CURRENT_FOLDER = null;
+    renderDesktopFolderTree();
     $("view-folder").style.display = "none";
     $("view-home").style.display = "block";
   });
@@ -6127,8 +6226,10 @@ function init() {
     e.preventDefault();
     const name = $("create-folder-name").value.trim();
     const type = document.querySelector('input[name="folder-type"]:checked')?.value || "其他";
+    const categoryRow = $("create-folder-category-row");
+    const category = $("create-folder-category").value;
     if (!name) { $("create-folder-name").focus(); return; }
-    closeCreateFolderDialog({ name, type });
+    closeCreateFolderDialog({ name, type, ...(!categoryRow.hidden ? { category } : {}) });
   };
   const trash = $("folder-trash-zone");
   trash.ondragover = (ev) => { ev.preventDefault(); trash.classList.add("active"); ev.dataTransfer.dropEffect = "move"; };

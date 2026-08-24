@@ -342,7 +342,16 @@ export const MIGRATIONS = [
 // folders.category 的合法值——色系分組，見上面 MIGRATIONS 裡的說明。
 // 陣列順序＝顯示優先序（category_rank），不是字母序：越前面代表「預期會長越大」，
 // 不是「現在筆數比較多」，避免之後又要重排一次。
-export const FOLDER_CATEGORIES = ["project", "qa_reg", "literature", "training", "admin", "misc"];
+export const FOLDER_CATEGORIES = [
+  "project",
+  "training",
+  "admin",
+  "literature",
+  "routine_report",
+  "ai_adoption",
+  "qa_reg",
+  "misc",
+];
 
 // 資料夾清單依 category 分組排序用的 SQL 片段（§B5）。放這裡讓 fieldlog／mcp
 // 兩支 worker 的 /folders 查詢共用同一份順序定義，不用各自寫一次、之後

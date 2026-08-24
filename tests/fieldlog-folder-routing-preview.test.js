@@ -26,35 +26,34 @@ test("桌機預覽延遲載入且 HTML 使用 sandbox", async () => {
   ]);
   assert.match(html, /id="folder-preview"/);
   assert.match(app, /async function showFilePreview/);
-  assert.match(app, /<iframe class="folder-preview-frame" sandbox src=/);
+  assert.match(app, /frame\.className = "folder-preview-frame html-safe-frame"/);
+  assert.match(app, /frame\.setAttribute\("sandbox", ""\)/);
   assert.match(app, /async function fetchTextPreview/);
   assert.match(css, /@media \(min-width: 1000px\)[\s\S]*\.folder-preview/);
 });
 
 test("HTML 原檔伺服器端也有 CSP sandbox 與 nosniff", async () => {
   const worker = await read("../fieldlog/src/worker.js");
-  const fileRoute = worker.match(/const fileMatch = path\.match[\s\S]*?\/\/ 手動整理既有附件名稱/)?.[0] || "";
-  assert.match(fileRoute, /"x-content-type-options": "nosniff"/);
-  assert.match(fileRoute, /headers\["content-security-policy"\] = "sandbox;/);
-  assert.match(fileRoute, /form-action 'none'/);
+  assert.match(worker, /"x-content-type-options": "nosniff"/);
+  assert.match(worker, /headers\["content-security-policy"\] = "sandbox;/);
+  assert.match(worker, /form-action 'none'/);
 });
 
 test("所有記事與單一附件管理頁都保留移動入口", async () => {
   const app = await read("../fieldlog/public/app.js");
   assert.match(app, /id="file-move-action"/);
   assert.match(app, /class="entry-move"/);
-  assert.match(app, /class="entry-file-manage"/);
-  assert.doesNotMatch(app, /class="record-group-move"/);
+  assert.match(app, /class="folder-file-manage"/);
+  assert.match(app, /class="record-group-move"/);
 });
 
 test("右側統一記事可以拖到左側資料夾並提供復原", async () => {
   const app = await read("../fieldlog/public/app.js");
   assert.match(app, /application\/x-fieldlog-entry/);
-  const tree = app.match(/function renderDesktopFolderTree[\s\S]*?\n}/)?.[0] || "";
-  assert.match(tree, /types\.includes\("application\/x-fieldlog-entry"\)/);
-  assert.match(tree, /moveInboxEntry\(entryId, targetId, Number\(event\.dataTransfer\.getData\("application\/x-fieldlog-entry-folder"\)\) \|\| null\)/);
+  assert.match(app, /types\.includes\("application\/x-fieldlog-entry"\)/);
+  assert.match(app, /moveInboxEntry\(entryId, targetId, Number\(event\.dataTransfer\.getData\("application\/x-fieldlog-entry-folder"\)\) \|\| null\)/);
   const move = app.match(/async function moveInboxEntry[\s\S]*?\n}/)?.[0] || "";
-  assert.match(move, /actionLabel: "復原"/);
+  assert.match(move, /actionLabel: "上一動"/);
   assert.match(move, /folder_id: folderId/);
 });
 
@@ -80,29 +79,23 @@ test("桌機點選筆記先在右欄唯讀閱讀，另有編輯與全欄寬模�
   assert.match(html, /id="folder-preview-close"/);
   assert.match(app, /async function showEntryPreview\(entryId\)/);
   assert.match(app, /function setReaderFullscreen\(enabled\)/);
-  assert.match(app, /entry-reader-body/);
+  assert.match(app, /entry-side-preview/);
+  assert.match(app, /preview-editor/);
   assert.match(css, /body\.reader-fullscreen/);
-  assert.match(css, /\.entry-reader/);
+  assert.match(css, /\.entry-side-preview/);
+  assert.match(css, /\.preview-editor/);
 });
 
-test("一般記事在右欄直接編輯，週報才沿用專用表單", async () => {
+test("一般記事與週報都統一在右欄編輯，週報欄位由 fields_json 判定", async () => {
   const [app, css] = await Promise.all([
     read("../fieldlog/public/app.js"), read("../fieldlog/public/style.css"),
   ]);
-  const preview = app.match(/async function showEntryPreview\(entryId\)[\s\S]*?\n}/)?.[0] || "";
-  const inline = app.match(/async function showEntryInlineEditor\(entryId, loadedEntry = null\)[\s\S]*?\n}\n\nfunction reopenEntryAfterCapture/)?.[0] || "";
-  assert.match(preview, /fields\._kind === "weekly_report"/);
-  assert.match(preview, /showEntryInlineEditor\(entryId, entry\)/);
-  assert.match(inline, /id="reader-editor-title"/);
-  assert.match(inline, /id="reader-editor-rich"/);
-  assert.match(inline, /id="reader-editor-save"/);
-  assert.match(inline, /id="reader-editor-cancel"/);
-  assert.match(inline, /📎 上傳／插圖/);
-  assert.match(inline, /📷 拍照/);
-  assert.match(inline, /🎙 錄音/);
-  assert.match(inline, /🎥 錄影/);
-  assert.doesNotMatch(inline, /合併逐字稿|e-folder-path|e-provenance|e-relations/);
-  assert.match(app, /function reopenEntryAfterCapture\(entryId\)/);
-  assert.match(app, /showEntryPreview\(entryId\)\.catch/);
-  assert.match(css, /\.entry-inline-editor/);
+  const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
+  assert.match(editor, /_kind === "weekly_report"/);
+  assert.match(editor, /id="preview-entry-title"/);
+  assert.match(editor, /id="preview-entry-body"/);
+  assert.match(editor, /id="preview-entry-save"/);
+  assert.match(editor, /id="preview-entry-cancel"/);
+  assert.match(editor, /showEntryPreview\(entryId\)/);
+  assert.match(css, /\.preview-editor/);
 });

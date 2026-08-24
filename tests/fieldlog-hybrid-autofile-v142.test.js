@@ -91,8 +91,8 @@ test("真實 SQLite：人工規則自動搬動，AI 單獨判斷只產生待確�
   const { sqlite, DB } = makeRealSqliteD1();
   t.after(() => sqlite.close());
   sqlite.prepare("INSERT INTO folders (id, name, type, parent_id, role, created_at) VALUES (1, '⏳ 待分類', '其他', NULL, 'staging', '2026-08-24 00:00:00Z')").run();
-  sqlite.prepare("INSERT INTO folders (id, name, type, parent_id, role, created_at) VALUES (2, '檢體針專案', '專案', NULL, '', '2026-08-24 00:00:00Z')").run();
-  sqlite.prepare("INSERT INTO folders (id, name, type, parent_id, role, created_at) VALUES (3, '法規文件', '法規', NULL, '', '2026-08-24 00:00:00Z')").run();
+  sqlite.prepare("INSERT INTO folders (id, name, type, category, parent_id, role, created_at) VALUES (2, '檢體針專案', '專案', 'project', NULL, '', '2026-08-24 00:00:00Z')").run();
+  sqlite.prepare("INSERT INTO folders (id, name, type, category, parent_id, role, created_at) VALUES (3, '法規文件', '法規', 'qa_reg', NULL, '', '2026-08-24 00:00:00Z')").run();
   sqlite.prepare("INSERT INTO autofile_hints (folder_id, keyword, status, created_at) VALUES (2, '檢體針', 'active', '2026-08-24 00:00:00Z')").run();
   sqlite.prepare("INSERT INTO entries (id, folder_id, title, fields_json, body, body_format, created_at) VALUES (10, 1, '檢體針測試紀錄', '{}', '', 'text', '2026-08-24 01:00:00Z')").run();
   sqlite.prepare("INSERT INTO entries (id, folder_id, title, fields_json, body, body_format, created_at) VALUES (11, 1, 'Sampling procedures', '{}', 'ISO 文件內容', 'text', '2026-08-24 01:01:00Z')").run();
@@ -143,8 +143,8 @@ test("分類模型只使用 Cloudflare Workers AI 的 BGE-M3 與 Llama", () => {
 test("母體整理會凍結最大記事 ID，部署後新增的已分類資料不納入", async (t) => {
   const { sqlite, DB } = makeRealSqliteD1();
   t.after(() => sqlite.close());
-  sqlite.prepare("INSERT INTO folders (id, name, type, parent_id, role, created_at) VALUES (2, '檢體針專案', '專案', NULL, '', '2026-08-24 00:00:00Z')").run();
-  sqlite.prepare("INSERT INTO folders (id, name, type, parent_id, role, created_at) VALUES (3, '法規文件', '法規', NULL, '', '2026-08-24 00:00:00Z')").run();
+  sqlite.prepare("INSERT INTO folders (id, name, type, category, parent_id, role, created_at) VALUES (2, '檢體針專案', '專案', 'project', NULL, '', '2026-08-24 00:00:00Z')").run();
+  sqlite.prepare("INSERT INTO folders (id, name, type, category, parent_id, role, created_at) VALUES (3, '法規文件', '法規', 'qa_reg', NULL, '', '2026-08-24 00:00:00Z')").run();
   sqlite.prepare("INSERT INTO autofile_hints (folder_id, keyword, status, created_at) VALUES (2, '檢體針', 'active', '2026-08-24 00:00:00Z')").run();
   sqlite.prepare("INSERT INTO entries (id, folder_id, title, fields_json, body, body_format, created_at) VALUES (12, 3, '檢體針既有母體', '{}', '', 'text', '2026-08-24 01:00:00Z')").run();
   sqlite.prepare("INSERT INTO entries (id, folder_id, title, fields_json, body, body_format, created_at) VALUES (13, 3, '檢體針部署後新增', '{}', '', 'text', '2026-08-24 02:00:00Z')").run();

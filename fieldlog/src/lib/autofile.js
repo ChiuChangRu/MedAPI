@@ -311,8 +311,9 @@ export async function runHybridAutofile(env, {
   const startedAt = stamp();
   const staging = await ensureStagingFolder(env.DB, startedAt);
   const folders = buildFolderPaths(resultRows(await env.DB.prepare(
-    `SELECT id, name, type, parent_id FROM folders
+    `SELECT id, name, type, category, parent_id FROM folders
      WHERE COALESCE(deleted_at, '') = '' AND COALESCE(role, '') = ''
+       AND COALESCE(category, 'misc') <> 'misc'
      ORDER BY parent_id IS NOT NULL, parent_id, id`
   ).all()));
   const allowedFolderIds = new Set(folders.map((folder) => Number(folder.id)));
@@ -415,8 +416,9 @@ export async function runBaselineFilingReview(env, {
   if (!env?.DB) throw new Error("缺少 D1 DB binding");
   const stamp = typeof timestamp === "function" ? timestamp : () => String(timestamp || new Date().toISOString());
   const folders = buildFolderPaths(resultRows(await env.DB.prepare(
-    `SELECT id, name, type, parent_id FROM folders
+    `SELECT id, name, type, category, parent_id FROM folders
      WHERE COALESCE(deleted_at, '') = '' AND COALESCE(role, '') = ''
+       AND COALESCE(category, 'misc') <> 'misc'
      ORDER BY parent_id IS NOT NULL, parent_id, id`
   ).all()));
   const allowedFolderIds = new Set(folders.map((folder) => Number(folder.id)));

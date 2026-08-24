@@ -87,3 +87,31 @@ jobs:
           done
           echo "資料夾名稱整理超過 5 分鐘仍未完成"
           exit 1
+
+      # v144：建立八個虛擬工作分類並統一既有根資料夾名稱。只更新
+      # folders.name/category，不改 parent_id，也不搬動記事或附件。
+      - name: Normalize and verify work sections
+        working-directory: fieldlog
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          instance_id="work-sections-v144-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          npx --yes wrangler@4.113.0 workflows trigger fieldlog-embedding-workflow \
+            '{"kind":"normalize_work_sections_v144"}' \
+            --id "$instance_id"
+          for attempt in $(seq 1 30); do
+            output="$(npx --yes wrangler@4.113.0 workflows instances describe \
+              fieldlog-embedding-workflow "$instance_id" --step-output=true 2>&1)"
+            echo "$output"
+            if echo "$output" | grep -qi "complete"; then
+              exit 0
+            fi
+            if echo "$output" | grep -Eqi "errored|terminated"; then
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "工作分類整理超過 5 分鐘仍未完成"
+          exit 1

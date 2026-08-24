@@ -62,6 +62,7 @@ import {
   findSiblingFolderNameConflict,
   normalizeExistingChildFolderNames,
 } from "./lib/folder-names.js";
+import { normalizeExistingWorkSections } from "./lib/work-sections.js";
 import { createLegacySession, securityHeaders, verifyAccessRequest, verifyLegacySession } from "./lib/access-auth.js";
 import { ensurePatrolFolder, formatPatrolReport } from "./lib/patrol.js";
 import {
@@ -129,7 +130,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "143";
+const UI_VERSION = "144";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -281,6 +282,46 @@ export class EmbeddingWorkflow extends WorkflowEntrypoint {
         ).bind(maintenanceKey, JSON.stringify(state), now()).run();
         // Workflow step output 會出現在 GitHub Actions log：只回傳數量，不把
         // renamed/conflicts 裡的實際資料夾名稱公開；完整明細只留在 D1 settings。
+        return summary(state);
+      });
+    }
+
+    // v144：把既有根資料夾對齊八個虛擬工作分類。只更新根資料夾的
+    // name/category；不改 parent_id，也不移動 entries/attachments。
+    if (kind === "normalize_work_sections_v144") {
+      const maintenanceKey = "maintenance.work_sections_v144";
+      const maintenanceVersion = "2026-08-24-v1";
+      const summary = (state, skipped = false) => ({
+        success: true,
+        skipped,
+        version: state.version,
+        status: state.status,
+        checked: Number(state.checked || 0),
+        renamed_count: Number(state.renamed_count || 0),
+        recategorized_count: Number(state.recategorized_count || 0),
+        conflict_count: Number(state.conflict_count || 0),
+        invalid_count: Number(state.invalid_count || 0),
+        finished_at: state.finished_at || null,
+      });
+      return step.do("normalize-existing-work-sections-v144", async () => {
+        await ensureSchema(this.env.DB, now());
+        const saved = await this.env.DB.prepare("SELECT value FROM settings WHERE key = ?")
+          .bind(maintenanceKey).first();
+        if (saved?.value) {
+          try {
+            const parsed = JSON.parse(saved.value);
+            if (parsed.version === maintenanceVersion && parsed.status === "complete") {
+              return summary(parsed, true);
+            }
+          } catch { /* 舊值格式不符時重新執行本版維護 */ }
+        }
+        const result = await normalizeExistingWorkSections(this.env.DB, { timestamp: now, logHistory });
+        const state = { version: maintenanceVersion, status: "complete", ...result };
+        await this.env.DB.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind(maintenanceKey, JSON.stringify(state), now()).run();
+        // 公開部署 log 只列數量；含原名稱的完整明細只保存在 D1 settings。
         return summary(state);
       });
     }
@@ -835,12 +876,12 @@ async function handleApi(request, env, url, identity = {}) {
       ).bind("工作週報").first();
       if (existing) {
         await db.prepare("UPDATE folders SET role = ?, type = ?, category = ? WHERE id = ?")
-          .bind(WEEKLY_REPORT_FOLDER_ROLE, "週報", "admin", existing.id).run();
+          .bind(WEEKLY_REPORT_FOLDER_ROLE, "週報", "routine_report", existing.id).run();
         folder = existing;
       } else {
         const created = await db.prepare(
           "INSERT INTO folders (name, type, category, parent_id, role, created_at) VALUES (?, ?, ?, NULL, ?, ?)"
-        ).bind("工作週報", "週報", "admin", WEEKLY_REPORT_FOLDER_ROLE, now()).run();
+        ).bind("工作週報", "週報", "routine_report", WEEKLY_REPORT_FOLDER_ROLE, now()).run();
         folder = { id: created.meta.last_row_id, name: "工作週報" };
         await logHistory(db, null, folder.id, "建立資料夾", "工作週報（每週獨立檔案）");
       }
@@ -979,12 +1020,26 @@ async function handleApi(request, env, url, identity = {}) {
     if (!requestedName) return bad("name 為必填");
     const type = (body.type || "其他").trim() || "其他";
     const parentId = body.parent_id ? Number(body.parent_id) : null;
+    const requestedCategory = String(body.category || (parentId ? "" : "project")).trim();
+    if (requestedCategory && !FOLDER_CATEGORIES.includes(requestedCategory)) {
+      return bad(`category 只能是 ${FOLDER_CATEGORIES.join("／")} 其中之一`);
+    }
     // 四層知識架構：第 1 層產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
     // 再深下去分類就失去意義（也會讓匯出與麵包屑難讀），所以擋在第 4 層。
     let depth = 1;
+    let category = requestedCategory || "misc";
     if (parentId) {
-      const parent = await db.prepare("SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(parentId).first();
+      let parent = await db.prepare(
+        "SELECT id, parent_id, category FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+      ).bind(parentId).first();
       if (!parent) return bad("找不到上層資料夾", 404);
+      while (parent.parent_id) {
+        parent = await db.prepare(
+          "SELECT id, parent_id, category FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+        ).bind(parent.parent_id).first();
+        if (!parent) return bad("找不到上層資料夾", 404);
+      }
+      category = FOLDER_CATEGORIES.includes(parent.category) ? parent.category : "misc";
       const parentDepth = await folderDepth(db, parentId);
       if (!parentDepth) return bad("找不到上層資料夾", 404);
       if (parentDepth >= MAX_FOLDER_DEPTH) {
@@ -995,10 +1050,10 @@ async function handleApi(request, env, url, identity = {}) {
     // 根資料夾可以保留「專案｜檢體針」這類分類名稱；子資料夾只存本層名稱。
     const name = parentId ? canonicalFolderLocalName(requestedName) : requestedName.slice(0, 80);
     if (!name) return bad("name 為必填");
-    const siblingConflict = await findSiblingFolderNameConflict(db, { parentId, name });
+    const siblingConflict = await findSiblingFolderNameConflict(db, { parentId, name, category });
     if (siblingConflict) return bad(`同一層已經有「${name}」資料夾`, 409);
-    const r = await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
-      .bind(name, type.slice(0, 60), parentId, now()).run();
+    const r = await db.prepare("INSERT INTO folders (name, type, category, parent_id, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(name, type.slice(0, 60), category, parentId, now()).run();
     await logHistory(db, null, r.meta.last_row_id, "建立資料夾", `${name}（${type}，第 ${depth} 層）`);
     return json({ id: r.meta.last_row_id, ok: true, depth, max_depth: MAX_FOLDER_DEPTH });
   }
@@ -1074,7 +1129,12 @@ async function handleApi(request, env, url, identity = {}) {
     }
     const name = nextParent ? canonicalFolderLocalName(requestedName) : requestedName.slice(0, 80);
     if (!name) return bad("name 不可為空");
-    const siblingConflict = await findSiblingFolderNameConflict(db, { parentId: nextParent, name, excludeId: id });
+    const siblingConflict = await findSiblingFolderNameConflict(db, {
+      parentId: nextParent,
+      name,
+      excludeId: id,
+      category: category || "misc",
+    });
     if (siblingConflict) return bad(`同一層已經有「${name}」資料夾`, 409);
     if (body.parent_id !== undefined && nextParent !== (old.parent_id ? Number(old.parent_id) : null)) {
       await db.prepare("UPDATE folders SET parent_id = ? WHERE id = ?").bind(nextParent, id).run();
