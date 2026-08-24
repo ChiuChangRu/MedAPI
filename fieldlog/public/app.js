@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "136";
+const APP_VERSION = "137";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1873,7 +1873,11 @@ function bindRecordGroupCards() {
     if (manage) manage.onclick = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      openRecordingActions(Number(card.dataset.id)).catch((error) => showToast("開啟錄音操作失敗：" + error.message));
+      const entryId = Number(card.dataset.id);
+      const open = PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches
+        ? openRecordingEditor(entryId)
+        : openRecordingActions(entryId);
+      open.catch((error) => showToast("開啟錄音操作失敗：" + error.message));
     };
     const del = card.querySelector(".record-group-del");
     if (del) del.onclick = async (ev) => {
@@ -2028,8 +2032,12 @@ function bindFileRows() {
       manage.onclick = (event) => {
         event.preventDefault();
         event.stopPropagation();
-        openFileDetail(Number(manage.dataset.entryId), Number(manage.dataset.attId))
-          .catch((error) => showToast("開啟檔案失敗：" + error.message));
+        const entryId = Number(manage.dataset.entryId);
+        const attachmentId = Number(manage.dataset.attId);
+        const open = PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches
+          ? showFileEditor(entryId, attachmentId)
+          : openFileDetail(entryId, attachmentId);
+        open.catch((error) => showToast("開啟檔案失敗：" + error.message));
       };
     }
     const deleteButton = row.querySelector(".folder-file-delete");
@@ -2136,7 +2144,8 @@ async function showEntryPreview(entryId) {
   $("folder-preview-edit").textContent = "編輯";
   $("folder-preview-edit").onclick = () => showEntryEditor(entryId).catch((error) => showToast("開啟編輯失敗：" + error.message));
   $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => openEntry(entryId);
+  $("folder-preview-manage").onclick = () => showEntryEditor(entryId)
+    .catch((error) => showToast("開啟編輯失敗：" + error.message));
 }
 
 async function showEntryEditor(entryId) {
@@ -2153,7 +2162,7 @@ async function showEntryEditor(entryId) {
     <label for="preview-entry-title">名稱</label>
     <input id="preview-entry-title" maxlength="160" value="${esc(entry.title || "")}" ${isWeeklyReport ? "disabled" : ""} />
     ${!isWeeklyReport && !hasLegacyRichBody ? `<label for="preview-entry-body">內容</label><textarea id="preview-entry-body">${esc(plainEntryBody(entry))}</textarea>` : ""}
-    ${hasLegacyRichBody ? '<p class="sub">這是舊版富文字資料。為避免破壞原排版，本頁可修改名稱與欄位；富文字內文請由「⋯」開啟相容工具。</p>' : ""}
+    ${hasLegacyRichBody ? '<p class="sub">這是舊版富文字資料。為避免破壞原排版，舊內文維持唯讀；名稱與欄位仍只在右欄修改，不再開啟第二套編輯框。</p>' : ""}
     ${fields.map(([key, value], index) => `<label for="preview-entry-field-${index}">${esc(key)}</label>
       <textarea id="preview-entry-field-${index}" data-field="${esc(key)}">${esc(String(value || ""))}</textarea>`).join("")}
     <div class="preview-editor-actions"><button class="btn primary" id="preview-entry-save" type="submit">儲存</button><button class="btn" id="preview-entry-cancel" type="button">取消</button></div>
@@ -2163,8 +2172,8 @@ async function showEntryEditor(entryId) {
   $("folder-preview-edit").hidden = false;
   $("folder-preview-edit").textContent = "取消";
   $("folder-preview-edit").onclick = returnToPreview;
-  $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => openEntry(entryId);
+  $("folder-preview-manage").disabled = true;
+  $("folder-preview-manage").onclick = null;
   $("preview-entry-cancel").onclick = returnToPreview;
   $("entry-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
@@ -2251,8 +2260,8 @@ async function showRecordingPreview(entryId) {
   $("folder-preview-edit").onclick = () => openRecordingEditor(entryId)
     .catch((error) => showToast("開啟錄音編輯失敗：" + error.message));
   $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => openRecordingActions(entryId)
-    .catch((error) => showToast("開啟錄音操作失敗：" + error.message));
+  $("folder-preview-manage").onclick = () => openRecordingEditor(entryId)
+    .catch((error) => showToast("開啟錄音編輯失敗：" + error.message));
 }
 
 function parseCsvPreviewRow(line) {
@@ -2417,8 +2426,8 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
   $("folder-preview-edit").onclick = () => showFileEditor(entryId, attachmentId)
     .catch((error) => showToast("開啟檔案編輯失敗：" + error.message));
   $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => openFileDetail(entryId, attachmentId)
-    .catch((error) => showToast("開啟檔案失敗：" + error.message));
+  $("folder-preview-manage").onclick = () => showFileEditor(entryId, attachmentId)
+    .catch((error) => showToast("開啟檔案編輯失敗：" + error.message));
 }
 
 async function showFileEditor(entryId, attachmentId) {
@@ -2427,8 +2436,18 @@ async function showFileEditor(entryId, attachmentId) {
   const title = $("folder-preview-title");
   const { entry, attachment } = await attachmentWithText(entryId, attachmentId);
   const sourceAttachments = (entry.attachments || []).filter((item) => !item.source_pdf_id);
+  const deepPages = (entry.attachments || [])
+    .filter((item) => Number(item.source_pdf_id) === Number(attachmentId))
+    .sort((left, right) => Number(left.page_no || 0) - Number(right.page_no || 0));
+  const deepText = deepPages.map((item) => String(item.ocr_text || "").trim()).filter(Boolean).join("\n\n");
+  const initialIndexText = String(attachment.ocr_text || "").trim() || deepText;
   const legacyNote = sourceAttachments.length === 1 ? String(entry.body || "").trim() : "";
   const note = String(attachment.note || "").trim() || legacyNote;
+  const canExtract = TRANSCRIBE_ENABLED && (attachment.kind === "photo" || isPdfAtt(attachment) || isNativeDocAtt(attachment));
+  const extractStatus = initialIndexText
+    ? `已擷取 ${initialIndexText.length.toLocaleString()} 字${!attachment.ocr_text && deepText ? "（逐頁結果）" : ""}`
+    : attachment.ocr_at === "skipped" ? "已設定略過"
+      : attachment.ocr_at ? "已擷取，但未找到文字" : "尚未擷取";
   title.textContent = `編輯｜${attachment.filename}`;
   body.innerHTML = `<form class="preview-editor" id="file-preview-editor">
     <label for="preview-file-name">檔案名稱</label>
@@ -2437,9 +2456,27 @@ async function showFileEditor(entryId, attachmentId) {
     <textarea id="preview-file-note" placeholder="這份檔案的摘要、用途或待辦">${esc(note)}</textarea>
     <label for="preview-file-category">醫療器材分類</label>
     <select id="preview-file-category"><option value="">讀取分類中…</option></select>
-    ${String(attachment.ocr_text || "").trim() ? `<label for="preview-file-index">索引文字</label>
-      <p class="sub">這是搜尋與 AI 使用的文字；修正它不會改動原始檔案。</p>
-      <textarea id="preview-file-index" class="preview-index-text">${esc(attachment.ocr_text)}</textarea>` : ""}
+    <section class="preview-processing-panel">
+      <div class="preview-processing-head"><div><strong>擷取／索引文字</strong><p class="sub" id="preview-file-ocr-status">${esc(extractStatus)}</p></div>
+        <div class="preview-processing-actions">
+          ${canExtract ? `<button class="btn small" id="preview-file-ocr" type="button">${initialIndexText ? "重新擷取" : "擷取文字"}</button>` : ""}
+          ${isPdfAtt(attachment) && TRANSCRIBE_ENABLED ? '<button class="btn small" id="preview-file-deep" type="button">逐頁深度擷取</button>' : ""}
+          <button class="btn small" id="preview-file-copy" type="button">複製文字</button>
+        </div>
+      </div>
+      <p class="sub">供搜尋與 AI 使用；可直接修正，不會改動原始檔案。</p>
+      <textarea id="preview-file-index" class="preview-index-text" placeholder="尚無文字。可按「擷取文字」，或自行貼上摘要與關鍵字。">${esc(initialIndexText)}</textarea>
+    </section>
+    <section class="preview-management-panel">
+      <strong>檔案管理</strong>
+      <div class="preview-management-actions">
+        <button class="btn small" id="preview-file-normalize" type="button">整理中文檔名</button>
+        <button class="btn small" id="preview-file-move" type="button">移動</button>
+        <button class="btn small" id="preview-file-share" type="button">唯讀分享</button>
+        ${isPdfAtt(attachment) ? '<button class="btn small" id="preview-file-doodle" type="button">PDF 塗鴉</button>' : ""}
+        <button class="btn small danger" id="preview-file-delete" type="button">刪除檔案</button>
+      </div>
+    </section>
     <div class="preview-editor-actions"><button class="btn primary" id="preview-file-save" type="submit">儲存</button><button class="btn" id="preview-file-cancel" type="button">取消</button></div>
   </form>`;
   const categorySelect = $("preview-file-category");
@@ -2461,10 +2498,83 @@ async function showFileEditor(entryId, attachmentId) {
   $("folder-preview-edit").hidden = false;
   $("folder-preview-edit").textContent = "取消";
   $("folder-preview-edit").onclick = returnToPreview;
-  $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => openFileDetail(entryId, attachmentId)
-    .catch((error) => showToast("開啟檔案管理失敗：" + error.message));
+  $("folder-preview-manage").disabled = true;
+  $("folder-preview-manage").onclick = null;
   $("preview-file-cancel").onclick = returnToPreview;
+  $("preview-file-copy").onclick = async () => {
+    const text = $("preview-file-index").value;
+    if (!text.trim()) return showToast("目前沒有可複製的文字");
+    try { await navigator.clipboard.writeText(text); showToast("索引文字已複製"); }
+    catch { showToast("瀏覽器無法自動複製，請在文字框內全選複製"); }
+  };
+  if ($("preview-file-ocr")) $("preview-file-ocr").onclick = async () => {
+    const button = $("preview-file-ocr");
+    if (initialIndexText && !confirm("重新擷取會覆蓋目前文字框的內容，確定繼續？")) return;
+    button.disabled = true;
+    button.textContent = "擷取中…";
+    $("preview-file-ocr-status").textContent = "AI 正在擷取文字，請稍候…";
+    try {
+      const result = await api(`/attachments/${attachmentId}/ocr`, { method: "POST", body: "{}" });
+      const text = String(result.ocr_text || "").trim();
+      $("preview-file-index").value = text;
+      $("preview-file-ocr-status").textContent = text ? `已擷取 ${text.length.toLocaleString()} 字` : "已擷取，但未找到文字";
+      button.textContent = "重新擷取";
+      showToast(text ? "文字擷取完成，可修正後儲存" : "擷取完成，但未找到文字");
+    } catch (error) {
+      $("preview-file-ocr-status").textContent = `擷取失敗：${error.message}`;
+      button.textContent = initialIndexText ? "重新擷取" : "擷取文字";
+      showToast("擷取失敗：" + error.message);
+    } finally { button.disabled = false; }
+  };
+  if ($("preview-file-deep")) $("preview-file-deep").onclick = () => {
+    deepProcessPdf(entryId, attachment, $("preview-file-deep"), deepPages,
+      () => showFileEditor(entryId, attachmentId));
+  };
+  $("preview-file-normalize").onclick = async () => {
+    const button = $("preview-file-normalize");
+    button.disabled = true;
+    button.textContent = "整理中…";
+    try {
+      const result = await api(`/attachments/${attachmentId}/normalize-name`, { method: "POST", body: "{}" });
+      showToast(result.renamed ? "已更新中文檔名" : result.incomplete_year ? "尚未確認年份，請先擷取文字" : "檔名已是目前可確認的格式");
+      await refreshFolderView();
+      await showFileEditor(entryId, attachmentId);
+    } catch (error) {
+      showToast("整理檔名失敗：" + error.message);
+      button.disabled = false;
+      button.textContent = "整理中文檔名";
+    }
+  };
+  $("preview-file-move").onclick = async () => {
+    const picked = await openFolderPicker({
+      title: "移動檔案",
+      desc: `把「${attachment.filename}」移到哪個資料夾？`,
+      currentId: entry.folder_id || null,
+      allowInbox: false,
+    });
+    if (!picked?.id) return;
+    try {
+      const result = await api(`/attachments/${attachmentId}/move`, { method: "POST", body: JSON.stringify({ folder_id: picked.id }) });
+      showToast(result.moved ? `已移到「${FOLDERS.find((folder) => folder.id === picked.id)?.name || "資料夾"}」` : "已經在這個資料夾了");
+      await refreshFolderView();
+      clearFilePreview("檔案已移動，請從左側資料夾重新選取。");
+    } catch (error) { showToast("移動失敗：" + error.message); }
+  };
+  $("preview-file-share").onclick = () => createReadOnlyShare(entryId, attachmentId)
+    .catch((error) => showToast("分享失敗：" + error.message));
+  if ($("preview-file-doodle")) $("preview-file-doodle").onclick = () => {
+    if (typeof window.fieldlogOpenPdfEditor !== "function") return showToast("PDF 塗鴉程式還在載入，請稍後再試");
+    window.fieldlogOpenPdfEditor(entryId, attachment).catch((error) => showToast("開啟塗鴉失敗：" + error.message));
+  };
+  $("preview-file-delete").onclick = async () => {
+    if (!confirm(`確定刪除「${attachment.filename}」？只會刪除這一份檔案。`)) return;
+    try {
+      await api(`/attachments/${attachmentId}`, { method: "DELETE" });
+      showToast("檔案已刪除");
+      await refreshFolderView();
+      clearFilePreview("檔案已刪除。");
+    } catch (error) { showToast("刪除失敗：" + error.message); }
+  };
   $("file-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
     const save = $("preview-file-save");
@@ -2478,7 +2588,7 @@ async function showFileEditor(entryId, attachmentId) {
       if (nextNote !== note) await api(`/attachments/${attachmentId}/note`, { method: "PUT", body: JSON.stringify({ note: nextNote }) });
       if (!categorySelect.disabled) await api(`/attachments/${attachmentId}/category`, { method: "PUT", body: JSON.stringify({ category: categorySelect.value }) });
       const index = $("preview-file-index");
-      if (index && index.value.trim() !== String(attachment.ocr_text || "").trim()) {
+      if (index.value.trim() !== initialIndexText) {
         await api(`/attachments/${attachmentId}`, { method: "PUT", body: JSON.stringify({ ocr_text: index.value.trim() }) });
       }
       showToast("檔案資料已儲存");
@@ -3676,11 +3786,15 @@ async function processEntryAttachments(id, btn) {
 // Cloudflare Worker 沒有 PDF 渲染能力，這步只能在瀏覽器端用 pdf.js 把每一頁畫成圖片，
 // 再把每張頁面圖丟進既有的照片 OCR 流程——向量圖表跟排版化的技術參數文字都變成看得見
 // 的像素，Llama Vision 抄得到，也自動進搜尋索引，不用另外蓋一套 Tier 2 儲存/搜尋機制。
-async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
+async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = [], onComplete = null) {
   if (!window.pdfjsLib) { showToast("PDF 渲染程式庫載入失敗，請檢查網路連線後重新整理頁面再試"); return; }
   if (btn.disabled) return;
   btn.disabled = true;
   const label = btn.textContent;
+  const finish = async () => {
+    if (typeof onComplete === "function") await onComplete();
+    else await openEntry(entryId);
+  };
   try {
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
@@ -3700,7 +3814,7 @@ async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
     const pendingCount = Math.max(0, total - completedPageNos.size);
     if (!pendingCount) {
       showToast(`深度處理已完成：${total} 頁都已有結果，不會重複扣額度`);
-      openEntry(entryId); // total_pages 可能剛補上，重繪才會秀出節錄版偵測結果
+      await finish(); // total_pages 可能剛補上，重繪才會秀出節錄版偵測結果
       return;
     }
     if (total > 40 && !confirm(`這份 PDF 有 ${total} 頁，已有 ${completedPageNos.size} 頁完成，尚有 ${pendingCount} 頁。接續處理只會執行未完成頁面，確定繼續嗎？`)) {
@@ -3746,7 +3860,7 @@ async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
       }
     }
     showToast(`接續處理完成：新完成 ${done} 頁、跳過 ${skipped} 頁${failed ? `、失敗 ${failed} 頁` : ""}`);
-    openEntry(entryId);
+    await finish();
   } catch (err) {
     showToast("深度處理失敗：" + err.message);
   } finally {
@@ -3905,6 +4019,16 @@ async function openRecordingEditor(entryId) {
           <textarea class="recording-transcript-input" data-audio-id="${item.id}" placeholder="尚無逐字稿">${esc(item.transcript || "")}</textarea>
         </section>`).join("")}
       </div>
+      <section class="preview-management-panel recording-editor-management">
+        <strong>錄音資料包管理</strong>
+        <p class="sub">音訊、逐字稿與照片仍保留在同一資料包。</p>
+        <div class="preview-management-actions">
+          <button class="btn small" id="recording-edit-transcribe" type="button">重新轉錄全部</button>
+          <button class="btn small" id="recording-edit-move" type="button">移動資料包</button>
+          <button class="btn small danger" id="recording-edit-delete" type="button">刪除資料包</button>
+        </div>
+        <div class="recording-editor-downloads">${audio.map((item, index) => `<a href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">下載${audio.length > 1 ? `第 ${index + 1} 段` : "錄音"}｜${esc(item.filename)}</a>`).join("")}</div>
+      </section>
       <div class="preview-editor-actions"><button class="btn primary" id="recording-edit-save" type="submit">儲存</button><button class="btn" id="recording-edit-cancel" type="button">取消</button></div>
     </form>`;
   const returnToPreview = () => showRecordingPreview(entryId).catch((error) => showToast("預覽失敗：" + error.message));
@@ -3915,10 +4039,55 @@ async function openRecordingEditor(entryId) {
   $("folder-preview-edit").hidden = false;
   $("folder-preview-edit").textContent = "取消";
   $("folder-preview-edit").onclick = returnToPreview;
-  $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => openRecordingActions(entryId)
-    .catch((error) => showToast("開啟錄音操作失敗：" + error.message));
+  $("folder-preview-manage").disabled = true;
+  $("folder-preview-manage").onclick = null;
   $("recording-edit-cancel").onclick = returnToPreview;
+  $("recording-edit-transcribe").onclick = async () => {
+    if (!confirm(`重新轉錄 ${audio.length} 段錄音？\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。`)) return;
+    const button = $("recording-edit-transcribe");
+    button.disabled = true;
+    try {
+      for (let index = 0; index < audio.length; index++) {
+        button.textContent = `轉錄中 ${index + 1}/${audio.length}`;
+        await api(`/attachments/${audio[index].id}/transcribe`, { method: "POST", body: "{}" });
+      }
+      showToast("錄音已重新轉錄");
+      await refreshFolderView();
+      await openRecordingEditor(entryId);
+    } catch (error) {
+      showToast("重新轉錄失敗：" + error.message);
+      button.disabled = false;
+      button.textContent = "重新轉錄全部";
+    }
+  };
+  $("recording-edit-move").onclick = async () => {
+    const picked = await openFolderPicker({
+      title: "移動錄音資料包",
+      desc: `把「${entry.title || "錄音"}」連同音訊、逐字稿及照片一起移到哪裡？`,
+      currentId: entry.folder_id || null,
+      allowInbox: true,
+    });
+    if (!picked) return;
+    try {
+      if (picked.id === null) {
+        await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: null }) });
+        showToast("錄音資料包已移回待分類");
+      } else {
+        await moveInboxEntry(entryId, picked.id, entry.folder_id || null);
+      }
+      await refreshFolderView();
+      clearFilePreview("錄音資料包已移動，請從左側資料夾重新選取。");
+    } catch (error) { showToast("移動失敗：" + error.message); }
+  };
+  $("recording-edit-delete").onclick = async () => {
+    if (!confirm(`將「${entry.title || "錄音"}」整個資料包移到垃圾桶？\n\n音訊、逐字稿與照片會一起移入，保留 60 天。`)) return;
+    try {
+      await api(`/entries/${entryId}`, { method: "DELETE" });
+      showToast("錄音資料包已移到垃圾桶");
+      await refreshFolderView();
+      clearFilePreview("錄音資料包已移到垃圾桶。");
+    } catch (error) { showToast("刪除失敗：" + error.message); }
+  };
   $("recording-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
     const button = $("recording-edit-save");

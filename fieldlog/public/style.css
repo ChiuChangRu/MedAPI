@@ -996,6 +996,20 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .preview-editor textarea { min-height: 120px; line-height: 1.6; resize: vertical; }
   .preview-editor textarea.preview-index-text { min-height: 260px; font-family: Consolas, "Microsoft JhengHei", sans-serif; }
   .preview-editor .sub { margin: -4px 0 0; }
+  .preview-processing-panel, .preview-management-panel {
+    margin-top: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #f8faf9;
+  }
+  .preview-processing-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .preview-processing-head > div:first-child { min-width: 0; }
+  .preview-processing-head .sub { margin: 3px 0 0; overflow-wrap: anywhere; }
+  .preview-processing-actions, .preview-management-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+  .preview-processing-panel > .sub { margin: 8px 0; }
+  .preview-processing-panel textarea.preview-index-text { width: 100%; margin-top: 8px; background: #fff; }
+  .preview-management-panel > strong { display: block; margin-bottom: 8px; }
+  .recording-editor-management > .sub { margin: 0 0 8px; }
+  .recording-editor-downloads { display: grid; gap: 6px; margin-top: 10px; }
+  .recording-editor-downloads a { padding: 7px 0; overflow-wrap: anywhere; }
+  .recording-editor-downloads a + a { border-top: 1px solid var(--border); }
   .preview-editor-actions {
     position: sticky; bottom: -16px; display: flex; justify-content: flex-end; gap: 8px;
     margin: 8px -16px -16px; padding: 12px 16px; border-top: 1px solid var(--border); background: #fff;
@@ -1082,6 +1096,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 @media (max-width: 719px) {
   .folder-content-list { margin-top: 10px; }
   .folder-content-list.grid-view { display: flex; }
+}
+
+@media (min-width: 1000px) and (max-width: 1250px) {
+  .preview-processing-head { display: block; }
+  .preview-processing-actions { margin-top: 9px; }
 }
 
 /* 舊版區塊標籤只留給其他畫面；資料夾內頁已不再產生這些標籤。 */
