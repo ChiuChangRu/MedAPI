@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=137" />
+<link rel="stylesheet" href="style.css?v=134" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -21,7 +21,7 @@
 <!-- 桌機檔案總管式側欄；手機仍沿用原本的單欄清單。待分類與垃圾桶是快捷入口，
      不屬於第一～第四階資料夾樹。 -->
 <aside class="desktop-explorer-nav" id="desktop-explorer-nav" aria-label="MyWiki 資料夾">
-  <div class="desktop-explorer-title"><span>🎒 MyWiki</span><button class="desktop-sidebar-toggle" id="desktop-sidebar-close" type="button" aria-label="收合資料夾側欄" title="收合側欄">‹</button></div>
+  <div class="desktop-explorer-title">🎒 MyWiki</div>
   <button class="desktop-shortcut active" id="desktop-pending" type="button">⏳ <span>待分類</span></button>
   <div class="desktop-nav-divider"></div>
   <div class="desktop-folder-tree" id="desktop-folder-tree"></div>
@@ -31,7 +31,6 @@
   <!-- 拖曳調整側欄寬度，見 app.js 的 initDesktopSidebarResize() -->
   <div class="desktop-explorer-resize" id="desktop-explorer-resize" role="separator" aria-orientation="vertical" aria-label="調整側欄寬度" tabindex="0"></div>
 </aside>
-<button class="desktop-sidebar-open" id="desktop-sidebar-open" type="button" aria-label="展開資料夾側欄" title="展開資料夾側欄">☰</button>
 <div class="container">
   <div id="view-home">
     <header class="home-app-head">
@@ -188,10 +187,8 @@
         <div class="folder-preview-head">
           <strong id="folder-preview-title">預覽</strong>
           <div class="folder-preview-actions">
-            <a class="btn small ghost" id="folder-preview-open" href="#" target="_blank" rel="noopener" hidden>開啟原檔</a>
-            <button class="btn small" id="folder-preview-edit" type="button" disabled>編輯</button>
-            <button class="btn small" id="folder-preview-expand" type="button" aria-pressed="false" title="全欄寬閱讀" disabled>⤢</button>
-            <button class="btn small ghost" id="folder-preview-close" type="button" title="關閉閱讀">✕</button>
+            <a class="btn small ghost" id="folder-preview-open" href="#" target="_blank" rel="noopener">開啟原檔</a>
+            <button class="btn small" id="folder-preview-manage" type="button" title="管理與移動" disabled>⋯</button>
           </div>
         </div>
         <div class="folder-preview-body" id="folder-preview-body"><p class="folder-preview-empty">選取一份檔案以預覽</p></div>
@@ -441,11 +438,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=137"></script>
+<script src="app.js?v=134"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=137"></script>
+<script src="pdf-editor.js?v=134"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=137"></script>
+<script src="richtext-editor.js?v=134"></script>
 </body>
 </html>
