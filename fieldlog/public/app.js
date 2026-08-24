@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "134";
+const APP_VERSION = "135";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -337,6 +337,32 @@ function openEditModal({ title, value, onSave }) {
 
 function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** R2 key 可能含資料夾斜線；逐段編碼，避免把整條 key 編成一個路徑段。 */
+function fileUrlForKey(key) {
+  return `/api/file/${String(key || "").split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function fmtBytes(size) {
+  const bytes = Math.max(0, Number(size) || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function recordingStatus(audioAttachments) {
+  const audio = audioAttachments || [];
+  if (!audio.length) return { tone: "failed", label: "找不到錄音附件" };
+  if (audio.some((item) => item.transcribed_at === "processing")) return { tone: "working", label: "轉錄中" };
+  if (audio.some((item) => item.transcribed_at === "auto_failed")) return { tone: "failed", label: "部分轉錄失敗" };
+  if (audio.every((item) => item.transcribed_at === "skipped")) return { tone: "muted", label: "已設為不轉錄" };
+  if (audio.every((item) => item.transcribed_at)) {
+    return audio.some((item) => String(item.transcript || "").trim())
+      ? { tone: "done", label: "轉錄完成" }
+      : { tone: "done", label: "已轉錄，沒有可辨識語音" };
+  }
+  return { tone: "pending", label: "等待轉錄" };
 }
 
 function fmtUsageNumber(n) {
@@ -1614,7 +1640,7 @@ function bindChildFolderCards(wrap) {
 }
 
 function folderFileHtml(a, entryId) {
-  const url = `/api/file/${encodeURIComponent(a.key)}`;
+  const url = fileUrlForKey(a.key);
   const ext = (a.filename || "").split(".").pop().toLowerCase();
   const icon = isPdfAtt(a) ? "📕" : a.kind === "photo" ? "🖼️" : a.kind === "audio" ? "🎙️"
     : ["doc", "docx"].includes(ext) ? "📘" : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
@@ -1785,21 +1811,32 @@ function recordGroupCardHtml(e, atts) {
   // application/x-fieldlog-entry payload 與 openMoveEntryDialog()，這樣多檔案
   // 記事（分段錄音一類）才能跟純文字筆記一樣在分類後繼續移動，不用先
   // 刪掉重建（entry 266：之前這裡只有刪除鍵，完全搬不動）。
-  return `<div class="record-group-card explorer-item" data-id="${e.id}">
+  return `<div class="record-group-card explorer-item" data-id="${e.id}" data-recording="${counts.audio ? "1" : "0"}">
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
     <small>${esc(localDateTimeShort(e.created_at))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
-    <button class="record-group-rename" type="button" data-id="${e.id}" title="重新命名資料包" aria-label="重新命名這筆紀錄">✏️</button>
-    <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
-    <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>
+    ${counts.audio
+      ? `<button class="record-group-manage" type="button" data-id="${e.id}" title="錄音操作" aria-label="錄音操作">⋯</button>`
+      : `<button class="record-group-rename" type="button" data-id="${e.id}" title="重新命名資料包" aria-label="重新命名這筆紀錄">✏️</button>
+         <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
+         <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>`}
   </div>`;
 }
 
 function bindRecordGroupCards() {
   document.querySelectorAll(".record-group-card[data-id]").forEach((card) => {
     card.onclick = (ev) => {
-      if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-rename") || ev.target.closest(".record-group-drag")) return;
-      openEntry(Number(card.dataset.id));
+      if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-rename") || ev.target.closest(".record-group-manage") || ev.target.closest(".record-group-drag")) return;
+      const entryId = Number(card.dataset.id);
+      if (card.dataset.recording === "1") {
+        if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+          showRecordingPreview(entryId).catch((error) => showToast("錄音預覽失敗：" + error.message));
+        } else {
+          openRecordingEditor(entryId).catch((error) => showToast("開啟錄音失敗：" + error.message));
+        }
+        return;
+      }
+      openEntry(entryId);
     };
     card.ondragover = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
@@ -1821,8 +1858,14 @@ function bindRecordGroupCards() {
       const targetId = Number(card.dataset.id);
       if (sourceId && sourceId !== targetId) nestEntry(sourceId, targetId);
     };
+    const manage = card.querySelector(".record-group-manage");
+    if (manage) manage.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openRecordingActions(Number(card.dataset.id)).catch((error) => showToast("開啟錄音操作失敗：" + error.message));
+    };
     const del = card.querySelector(".record-group-del");
-    del.onclick = async (ev) => {
+    if (del) del.onclick = async (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       if (!confirm("將這筆紀錄資料包及其中全部內容移到垃圾桶？垃圾桶保留 60 天。")) return;
@@ -1833,7 +1876,7 @@ function bindRecordGroupCards() {
       } catch (err) { showToast("刪除失敗：" + err.message); }
     };
     const move = card.querySelector(".record-group-move");
-    move.onclick = (ev) => {
+    if (move) move.onclick = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       const title = card.querySelector("strong")?.textContent || "這筆記事";
@@ -1841,7 +1884,7 @@ function bindRecordGroupCards() {
         .catch((err) => showToast("移動失敗：" + err.message));
     };
     const rename = card.querySelector(".record-group-rename");
-    rename.onclick = (ev) => {
+    if (rename) rename.onclick = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       renameEntry(Number(card.dataset.id), card.querySelector("strong")?.textContent || "")
@@ -2011,17 +2054,143 @@ function clearFilePreview(message = "選取一份檔案以預覽") {
   const body = $("folder-preview-body");
   if (!pane || !body) return;
   pane.dataset.attachmentId = "";
+  pane.dataset.entryId = "";
   if ($("folder-preview-title")) $("folder-preview-title").textContent = "預覽";
   if ($("folder-preview-open")) {
+    $("folder-preview-open").hidden = false;
+    $("folder-preview-open").textContent = "開啟原檔";
     $("folder-preview-open").href = "#";
     $("folder-preview-open").onclick = (event) => event.preventDefault();
+  }
+  if ($("folder-preview-edit")) {
+    $("folder-preview-edit").hidden = true;
+    $("folder-preview-edit").onclick = null;
   }
   if ($("folder-preview-manage")) {
     $("folder-preview-manage").disabled = true;
     $("folder-preview-manage").onclick = null;
   }
   body.innerHTML = `<p class="folder-preview-empty">${esc(message)}</p>`;
-  document.querySelectorAll(".folder-file-row.preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+  document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+}
+
+function recordingPreviewTranscript(audioAttachments) {
+  return (audioAttachments || [])
+    .filter((item) => String(item.transcript || "").trim())
+    .sort((a, b) => Number(a.offset_secs || 0) - Number(b.offset_secs || 0) || Number(a.id) - Number(b.id))
+    .map((item) => (audioAttachments.length > 1
+      ? `【${fmtSecs(item.offset_secs || 0)}｜${item.filename}】\n${String(item.transcript).trim()}`
+      : String(item.transcript).trim()))
+    .join("\n\n");
+}
+
+async function showRecordingPreview(entryId) {
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
+  const pane = $("folder-preview");
+  const body = $("folder-preview-body");
+  const title = $("folder-preview-title");
+  if (!pane || !body || !title) return;
+  const entry = await api(`/entries/${entryId}`);
+  const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+  if (!audio.length) {
+    // 不是錄音資料包或舊資料已缺錄音附件時才退回舊詳情，避免新介面硬猜。
+    return openEntry(entryId);
+  }
+  document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+  document.querySelector(`.record-group-card[data-id="${entryId}"]`)?.classList.add("preview-selected");
+  pane.dataset.attachmentId = "";
+  pane.dataset.entryId = String(entryId);
+  title.textContent = entry.title || "錄音";
+
+  const totalSize = audio.reduce((sum, item) => sum + (Number(item.size) || 0), 0);
+  const knownDuration = audio.filter((item) => Number(item.duration_secs) > 0);
+  const totalDuration = knownDuration.reduce((sum, item) => sum + Number(item.duration_secs), 0);
+  const status = recordingStatus(audio);
+  const transcript = recordingPreviewTranscript(audio);
+  const note = String(entry.body || "").trim();
+  body.innerHTML = `<div class="recording-preview">
+    <div class="recording-preview-summary">
+      <span class="recording-status ${status.tone}">${esc(status.label)}</span>
+      <dl>
+        <div><dt>錄音時間</dt><dd>${esc(localDateTime(entry.created_at))}</dd></div>
+        <div><dt>長度</dt><dd>${knownDuration.length === audio.length ? esc(fmtSecs(totalDuration)) : "部分檔案未記錄"}</dd></div>
+        <div><dt>檔案大小</dt><dd>${esc(fmtBytes(totalSize))}</dd></div>
+        <div><dt>錄音段數</dt><dd>${audio.length}</dd></div>
+      </dl>
+    </div>
+    <div class="recording-segments">${audio.map((item, index) => `<section class="recording-segment">
+      <div><strong>${audio.length > 1 ? `第 ${index + 1} 段` : "錄音檔"}</strong><span>${esc(fmtBytes(item.size))}${Number(item.duration_secs) > 0 ? `｜${esc(fmtSecs(item.duration_secs))}` : ""}</span></div>
+      <audio controls preload="metadata" src="${fileUrlForKey(item.key)}"></audio>
+      <a class="recording-download" href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">下載 ${esc(item.filename)}</a>
+    </section>`).join("")}</div>
+    <section class="recording-preview-section"><h3>逐字稿</h3>
+      ${transcript ? `<pre>${esc(transcript)}</pre>` : `<p class="folder-preview-empty compact">${esc(status.label)}</p>`}
+    </section>
+    ${note ? `<section class="recording-preview-section"><h3>速記</h3><pre>${esc(note)}</pre></section>` : ""}
+  </div>`;
+
+  const firstUrl = fileUrlForKey(audio[0].key);
+  $("folder-preview-open").hidden = false;
+  $("folder-preview-open").textContent = audio.length === 1 ? "下載錄音" : "下載第 1 段";
+  $("folder-preview-open").href = firstUrl;
+  $("folder-preview-open").setAttribute("download", audio[0].filename || "recording");
+  $("folder-preview-open").onclick = null;
+  $("folder-preview-edit").hidden = false;
+  $("folder-preview-edit").onclick = () => openRecordingEditor(entryId)
+    .catch((error) => showToast("開啟錄音編輯失敗：" + error.message));
+  $("folder-preview-manage").disabled = false;
+  $("folder-preview-manage").onclick = () => openRecordingActions(entryId)
+    .catch((error) => showToast("開啟錄音操作失敗：" + error.message));
+}
+
+async function renderPdfPreview(url, body, filename) {
+  if (!window.pdfjsLib?.getDocument) {
+    body.innerHTML = `<p class="folder-preview-empty">PDF 預覽程式尚未載入。可先按「開啟原檔」。</p>`;
+    return;
+  }
+  if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  }
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`PDF 讀取失敗（HTTP ${response.status}）`);
+  const pdf = await window.pdfjsLib.getDocument({ data: await response.arrayBuffer() }).promise;
+  body.innerHTML = `<div class="pdf-sidebar-preview">
+    <div class="pdf-sidebar-toolbar"><button class="btn small" type="button" data-dir="-1">‹ 上一頁</button><span>第 <b>1</b> / ${pdf.numPages} 頁</span><button class="btn small" type="button" data-dir="1">下一頁 ›</button></div>
+    <div class="pdf-sidebar-canvas-wrap"><canvas aria-label="${esc(filename)} PDF 預覽"></canvas></div>
+  </div>`;
+  const canvas = body.querySelector("canvas");
+  const pageLabel = body.querySelector(".pdf-sidebar-toolbar b");
+  const buttons = [...body.querySelectorAll(".pdf-sidebar-toolbar button")];
+  let pageNo = 1;
+  let rendering = false;
+  const render = async () => {
+    if (rendering) return;
+    rendering = true;
+    buttons.forEach((button) => { button.disabled = true; });
+    try {
+      const page = await pdf.getPage(pageNo);
+      const base = page.getViewport({ scale: 1 });
+      const available = Math.max(260, body.clientWidth - 28);
+      const viewport = page.getViewport({ scale: Math.min(2, available / base.width) });
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      pageLabel.textContent = String(pageNo);
+    } finally {
+      rendering = false;
+      buttons[0].disabled = pageNo <= 1;
+      buttons[1].disabled = pageNo >= pdf.numPages;
+    }
+  };
+  buttons.forEach((button) => {
+    button.onclick = async () => {
+      const next = pageNo + Number(button.dataset.dir || 0);
+      if (next < 1 || next > pdf.numPages || rendering) return;
+      pageNo = next;
+      await render();
+    };
+  });
+  await render();
 }
 
 async function showFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
@@ -2030,12 +2199,12 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
   const body = $("folder-preview-body");
   const title = $("folder-preview-title");
   if (!pane || !body || !title) return;
-  document.querySelectorAll(".folder-file-row.preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+  document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
   document.querySelector(`.folder-file-row[data-att-id="${attachmentId}"]`)?.classList.add("preview-selected");
   pane.dataset.attachmentId = String(attachmentId);
   title.textContent = filename;
   body.innerHTML = `<p class="folder-preview-empty">載入預覽中…</p>`;
-  const url = `/api/file/${encodeURIComponent(key)}`;
+  const url = fileUrlForKey(key);
   const ext = String(filename).split(".").pop().toLowerCase();
   const image = kind === "photo" || /^image\//i.test(mime);
   const audio = kind === "audio" || /^audio\//i.test(mime);
@@ -2046,7 +2215,7 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
   if (image) body.innerHTML = `<img class="folder-preview-image" src="${url}" alt="${esc(filename)}" />`;
   else if (audio) body.innerHTML = `<audio class="folder-preview-media" controls preload="metadata" src="${url}"></audio>`;
   else if (video) body.innerHTML = `<video class="folder-preview-media" controls preload="metadata" src="${url}"></video>`;
-  else if (pdf) body.innerHTML = `<iframe class="folder-preview-frame" src="${url}#view=FitH" title="${esc(filename)}"></iframe>`;
+  else if (pdf) await renderPdfPreview(url, body, filename);
   else if (html) body.innerHTML = `<iframe class="folder-preview-frame" sandbox src="${url}" title="${esc(filename)}"></iframe>`;
   else if (plain) {
     const { text, truncated } = await fetchTextPreview(url, 200000);
@@ -2060,7 +2229,11 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
       : `<p class="folder-preview-empty">這份 Word 尚無可顯示的解析文字。可按「開啟原檔」查看完整排版。</p>`;
   } else body.innerHTML = `<p class="folder-preview-empty">此格式目前無法在側欄預覽，可開啟原檔。</p>`;
   $("folder-preview-open").href = url;
+  $("folder-preview-open").removeAttribute("download");
+  $("folder-preview-open").textContent = "開啟原檔";
   $("folder-preview-open").onclick = null;
+  $("folder-preview-edit").hidden = true;
+  $("folder-preview-edit").onclick = null;
   $("folder-preview-manage").disabled = false;
   $("folder-preview-manage").onclick = () => openFileDetail(entryId, attachmentId)
     .catch((error) => showToast("開啟檔案失敗：" + error.message));
@@ -3258,7 +3431,7 @@ async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
     }
     btn.textContent = "下載 PDF…";
-    const fileRes = await fetch(`/api/file/${encodeURIComponent(pdfAtt.key)}`);
+    const fileRes = await fetch(fileUrlForKey(pdfAtt.key));
     if (!fileRes.ok) throw new Error(`下載 PDF 失敗（HTTP ${fileRes.status}）`);
     const pdf = await pdfjsLib.getDocument({ data: await fileRes.arrayBuffer() }).promise;
     const total = pdf.numPages;
@@ -3437,6 +3610,158 @@ function closeEntry() {
   unlockBodyScroll();
 }
 
+function plainEntryBody(entry) {
+  const value = String(entry?.body || "");
+  if (entry?.body_format !== "html") return value;
+  const holder = document.createElement("div");
+  holder.innerHTML = value;
+  return holder.textContent || "";
+}
+
+function hasLegacyRecordingFields(entry) {
+  let fields = {};
+  try { fields = JSON.parse(entry?.fields_json || "{}"); } catch { return true; }
+  return entry?.body_format === "html" || Object.entries(fields)
+    .some(([key, value]) => !key.startsWith("_") && String(value || "").trim());
+}
+
+async function openRecordingEditor(entryId) {
+  entryId = Number(entryId || 0);
+  if (!entryId) return;
+  FOCUSED_FILE = null;
+  const entry = await api(`/entries/${entryId}`);
+  const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+  if (!audio.length) return openEntry(entryId);
+  const modal = $("entry-modal");
+  modal.innerHTML = `
+    <div class="modal-close-float"><button class="btn small ghost" id="recording-edit-close" type="button" aria-label="關閉錄音編輯">✕</button></div>
+    <div class="detail-head"><div><h2 style="margin:0">🎙️ 編輯錄音</h2><p class="sub">只編輯名稱、速記與逐字稿；音訊、照片及其他附件仍留在同一資料包。</p></div></div>
+    <div class="recording-editor">
+      <label for="recording-edit-title">名稱</label>
+      <input id="recording-edit-title" maxlength="160" value="${esc(entry.title || "")}" />
+      <label for="recording-edit-note">速記</label>
+      <textarea id="recording-edit-note" placeholder="會議重點、待辦或錄音備註">${esc(plainEntryBody(entry))}</textarea>
+      <div class="recording-editor-transcripts">
+        <h3>逐字稿</h3>
+        ${audio.map((item, index) => `<section>
+          <div class="recording-editor-segment-head"><strong>${audio.length > 1 ? `第 ${index + 1} 段` : "錄音逐字稿"}</strong><span>${esc(item.filename)}｜${esc(fmtBytes(item.size))}${Number(item.duration_secs) > 0 ? `｜${esc(fmtSecs(item.duration_secs))}` : ""}</span></div>
+          <audio controls preload="metadata" src="${fileUrlForKey(item.key)}"></audio>
+          <textarea class="recording-transcript-input" data-audio-id="${item.id}" placeholder="尚無逐字稿">${esc(item.transcript || "")}</textarea>
+        </section>`).join("")}
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn primary" id="recording-edit-save" type="button">儲存</button><button class="btn" id="recording-edit-cancel" type="button">取消</button></div>`;
+  $("entry-overlay").classList.add("open");
+  lockBodyScroll();
+  $("recording-edit-close").onclick = closeEntry;
+  $("recording-edit-cancel").onclick = closeEntry;
+  $("recording-edit-save").onclick = async () => {
+    const button = $("recording-edit-save");
+    const title = $("recording-edit-title").value.trim();
+    if (!title) { showToast("名稱不可空白"); return; }
+    button.disabled = true;
+    button.textContent = "儲存中…";
+    try {
+      await api(`/entries/${entryId}`, {
+        method: "PUT",
+        body: JSON.stringify({ title, body: $("recording-edit-note").value.trim(), body_format: "text" }),
+      });
+      for (const textarea of modal.querySelectorAll(".recording-transcript-input")) {
+        await api(`/attachments/${textarea.dataset.audioId}`, {
+          method: "PUT",
+          body: JSON.stringify({ transcript: textarea.value.trim() }),
+        });
+      }
+      showToast("錄音名稱、速記與逐字稿已儲存");
+      closeEntry();
+      await refreshFolderView();
+      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) await showRecordingPreview(entryId);
+    } catch (error) {
+      showToast("錄音儲存失敗：" + error.message);
+      button.disabled = false;
+      button.textContent = "儲存";
+    }
+  };
+}
+
+async function openRecordingActions(entryId) {
+  entryId = Number(entryId || 0);
+  if (!entryId) return;
+  FOCUSED_FILE = null;
+  const entry = await api(`/entries/${entryId}`);
+  const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+  if (!audio.length) return openEntry(entryId);
+  const status = recordingStatus(audio);
+  const legacy = hasLegacyRecordingFields(entry);
+  const modal = $("entry-modal");
+  modal.innerHTML = `
+    <div class="modal-close-float"><button class="btn small ghost" id="recording-actions-close" type="button" aria-label="關閉錄音操作">✕</button></div>
+    <div class="detail-head"><div><h2 style="margin:0;overflow-wrap:anywhere">${esc(entry.title || "錄音")}</h2><p class="sub">錄音資料包｜${audio.length} 段｜${esc(status.label)}</p></div></div>
+    <div class="recording-action-list">
+      <button class="recording-action" id="recording-action-edit" type="button"><span>✏️</span><strong>編輯</strong><small>名稱、速記與逐字稿</small></button>
+      <button class="recording-action" id="recording-action-transcribe" type="button"><span>📝</span><strong>重新轉錄</strong><small>覆蓋目前逐字稿，會使用 AI 額度</small></button>
+      <button class="recording-action" id="recording-action-rename" type="button"><span>🏷️</span><strong>重新命名</strong><small>只改資料包名稱</small></button>
+      <button class="recording-action" id="recording-action-move" type="button"><span>📂</span><strong>移動</strong><small>音訊、逐字稿及照片一起移動</small></button>
+      <section class="recording-download-list"><h3>⬇️ 下載錄音</h3>${audio.map((item, index) => `<a href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">${audio.length > 1 ? `第 ${index + 1} 段｜` : ""}${esc(item.filename)} <small>${esc(fmtBytes(item.size))}</small></a>`).join("")}</section>
+      <button class="recording-action danger" id="recording-action-delete" type="button"><span>🗑️</span><strong>刪除</strong><small>整個資料包移到垃圾桶，保留 60 天</small></button>
+    </div>
+    ${legacy ? `<details class="recording-legacy-fallback"><summary>舊資料相容工具</summary><p class="sub">只有這筆帶有舊欄位，因此保留舊版資料框供核對。</p><button class="btn small" id="recording-open-legacy" type="button">開啟舊版資料框</button></details>` : ""}`;
+  $("entry-overlay").classList.add("open");
+  lockBodyScroll();
+  $("recording-actions-close").onclick = closeEntry;
+  $("recording-action-edit").onclick = () => openRecordingEditor(entryId).catch((error) => showToast("開啟編輯失敗：" + error.message));
+  $("recording-action-rename").onclick = async () => {
+    const next = prompt("輸入新的錄音名稱", entry.title || "");
+    if (next === null) return;
+    const title = next.trim();
+    if (!title) { showToast("名稱不可空白"); return; }
+    try {
+      await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ title }) });
+      showToast("錄音名稱已更新");
+      await refreshFolderView();
+      await openRecordingActions(entryId);
+    } catch (error) { showToast("重新命名失敗：" + error.message); }
+  };
+  $("recording-action-move").onclick = async () => {
+    closeEntry();
+    await openMoveEntryDialog(entryId, { currentFolderId: entry.folder_id || null, title: entry.title || "錄音" });
+  };
+  $("recording-action-transcribe").onclick = async () => {
+    if (!confirm(`重新轉錄 ${audio.length} 段錄音？\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。`)) return;
+    const button = $("recording-action-transcribe");
+    button.disabled = true;
+    button.querySelector("strong").textContent = "轉錄中…";
+    try {
+      for (let index = 0; index < audio.length; index++) {
+        button.querySelector("small").textContent = `正在處理第 ${index + 1} / ${audio.length} 段`;
+        await api(`/attachments/${audio[index].id}/transcribe`, { method: "POST", body: "{}" });
+      }
+      showToast("錄音已重新轉錄");
+      closeEntry();
+      await refreshFolderView();
+      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) await showRecordingPreview(entryId);
+    } catch (error) {
+      showToast("重新轉錄失敗：" + error.message);
+      button.disabled = false;
+      button.querySelector("strong").textContent = "重新轉錄";
+      button.querySelector("small").textContent = "覆蓋目前逐字稿，會使用 AI 額度";
+    }
+  };
+  $("recording-action-delete").onclick = async () => {
+    if (!confirm(`將「${entry.title || "錄音"}」整個資料包移到垃圾桶？\n\n音訊、逐字稿與照片會一起移入，保留 60 天。`)) return;
+    try {
+      await api(`/entries/${entryId}`, { method: "DELETE" });
+      showToast("錄音資料包已移到垃圾桶");
+      closeEntry();
+      await refreshFolderView();
+    } catch (error) { showToast("刪除失敗：" + error.message); }
+  };
+  if (legacy) $("recording-open-legacy").onclick = () => {
+    closeEntry();
+    openEntry(entryId).catch((error) => showToast("舊資料框開啟失敗：" + error.message));
+  };
+}
+
 /**
  * 單一檔案的詳情頁。
  *
@@ -3464,7 +3789,7 @@ async function openFileDetail(entryId, attachmentId) {
   // 只有一份檔案時才把舊的 body 當成這份檔案的記事顯示，避免多檔案時張冠李戴。
   const legacyNote = sourceAttachments.length === 1 ? String(entry.body || "").trim() : "";
   const noteValue = String(attachment.note || "").trim() || legacyNote;
-  const fileUrl = `/api/file/${encodeURIComponent(attachment.key)}`;
+  const fileUrl = fileUrlForKey(attachment.key);
   const canDoodle = isPdfAtt(attachment) && typeof window.fieldlogOpenPdfEditor === "function";
   const originalName = attachment.original_filename && attachment.original_filename !== attachment.filename
     ? `<p class="sub">原始檔名：${esc(attachment.original_filename)}</p>` : "";
@@ -3648,7 +3973,7 @@ async function openFileDetail(entryId, attachmentId) {
 }
 
 function attHtml(a, siblings) {
-  const url = `/api/file/${encodeURIComponent(a.key)}`;
+  const url = fileUrlForKey(a.key);
   const originalName = a.original_filename && a.original_filename !== a.filename
     ? `<div class="att-original">原始名稱：${esc(a.original_filename)}</div>` : "";
   const docIcon = (a.filename || "").toLowerCase();
@@ -3953,7 +4278,7 @@ async function insertFilesIntoRichEditor(entryId, editorEl, files) {
     try {
       const uploaded = await putFile(entryId, f, f.name, null);
       if (uploaded.duplicate) { showToast(`${f.name} 是重複檔案，已略過`); continue; }
-      const url = `/api/file/${encodeURIComponent(uploaded.key)}`;
+      const url = fileUrlForKey(uploaded.key);
       window.fieldlogRichEditor?.insertImage(editorEl, url, uploaded.id);
       await refreshEntryAttachmentsPanel(entryId);
     } catch (err) { showToast(`${f.name} 上傳失敗：${err.message}`); }
