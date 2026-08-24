@@ -410,6 +410,7 @@ export async function runBaselineFilingReview(env, {
   runAi,
   logHistory,
   limit = AUTOFILING_DAILY_LIMIT,
+  maxEntryId = Number.MAX_SAFE_INTEGER,
 } = {}) {
   if (!env?.DB) throw new Error("缺少 D1 DB binding");
   const stamp = typeof timestamp === "function" ? timestamp : () => String(timestamp || new Date().toISOString());
@@ -422,6 +423,7 @@ export async function runBaselineFilingReview(env, {
   const hints = resultRows(await env.DB.prepare(
     "SELECT folder_id, keyword FROM autofile_hints WHERE status = 'active'"
   ).all()).filter((hint) => allowedFolderIds.has(Number(hint.folder_id)));
+  const frozenMaxEntryId = Math.max(0, Number(maxEntryId) || 0);
   const candidates = resultRows(await env.DB.prepare(
     `SELECT e.id, e.folder_id, e.title, e.fields_json, e.body, e.body_format,
             COALESCE(NULLIF(e.updated_at, ''), e.created_at) || ':' || COALESCE((
@@ -434,8 +436,9 @@ export async function runBaselineFilingReview(env, {
      WHERE e.parent_entry_id IS NULL AND COALESCE(e.deleted_at, '') = ''
        AND COALESCE(f.deleted_at, '') = '' AND COALESCE(f.role, '') = ''
        AND COALESCE(e.auto_filed_at, '') = '' AND s.entry_id IS NULL
+       AND e.id <= ?
      ORDER BY e.id ASC LIMIT ?`
-  ).bind(Math.min(100, Math.max(1, Number(limit) || AUTOFILING_DAILY_LIMIT))).all());
+  ).bind(frozenMaxEntryId, Math.min(100, Math.max(1, Number(limit) || AUTOFILING_DAILY_LIMIT))).all());
   const attachmentsByEntry = new Map();
   if (candidates.length) {
     const ids = candidates.map((entry) => Number(entry.id));
@@ -500,8 +503,9 @@ export async function runBaselineFilingReview(env, {
      LEFT JOIN filing_suggestions s ON s.entry_id = e.id
      WHERE e.parent_entry_id IS NULL AND COALESCE(e.deleted_at, '') = ''
        AND COALESCE(f.deleted_at, '') = '' AND COALESCE(f.role, '') = ''
-       AND COALESCE(e.auto_filed_at, '') = '' AND s.entry_id IS NULL`
-  ).first();
+       AND COALESCE(e.auto_filed_at, '') = '' AND s.entry_id IS NULL
+       AND e.id <= ?`
+  ).bind(frozenMaxEntryId).first();
   outcome.remaining = Number(remaining?.count || 0);
   return outcome;
 }
