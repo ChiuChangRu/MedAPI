@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=128" />
+<link rel="stylesheet" href="style.css?v=138" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -59,6 +59,7 @@
           <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
           <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
           <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
+          <button class="cap-tile cap-weekly" id="btn-weekly-report">📋<span>本週周報</span></button>
         </div>
       </section>
     </div>
@@ -163,6 +164,7 @@
           <button class="btn small" id="btn-inner-details" type="button" title="詳細資料模式">☰ 詳細</button>
         </div>
         <button class="btn small" id="btn-file-sort" type="button">🆕 新到舊</button>
+        <button class="btn small preview-toggle" id="btn-toggle-preview" type="button" aria-pressed="true" hidden>▣ 預覽：開</button>
         <button class="btn small" id="btn-folder-sort-inner" type="button" hidden>🔤 名稱排序</button>
         <button class="btn small" id="btn-new-subfolder">＋ 子資料夾</button>
         <button class="btn small" id="btn-video-f">🎥 錄影</button>
@@ -175,8 +177,24 @@
         <button class="btn small primary" id="btn-folder-export">📄 匯出給 AI</button>
       </div>
     </div>
-    <div id="folder-children"></div>
-    <div id="folder-entries" class="entry-list"></div>
+    <div class="folder-workspace">
+      <div class="folder-workspace-main">
+        <div id="folder-children"></div>
+        <div id="folder-entries" class="entry-list"></div>
+      </div>
+      <div class="folder-preview-resize" id="folder-preview-resize" role="separator" aria-orientation="vertical" aria-label="調整預覽寬度" tabindex="0"></div>
+      <aside class="folder-preview" id="folder-preview" aria-label="檔案預覽">
+        <div class="folder-preview-head">
+          <strong id="folder-preview-title">預覽</strong>
+          <div class="folder-preview-actions">
+            <button class="btn small ghost" id="folder-preview-edit" type="button" hidden>編輯</button>
+            <a class="btn small ghost" id="folder-preview-open" href="#" target="_blank" rel="noopener">開啟原檔</a>
+            <button class="btn small" id="folder-preview-manage" type="button" title="管理與移動" disabled>⋯</button>
+          </div>
+        </div>
+        <div class="folder-preview-body" id="folder-preview-body"><p class="folder-preview-empty">選取一份檔案以預覽</p></div>
+      </aside>
+    </div>
   </div>
 </div>
 
@@ -311,11 +329,16 @@
 
 <!-- 開啟 App 時的載入進度：資料夾／記事／附件變多，boot() 要打的 API 陸續
      跑完前畫面會空白一段時間，容易讓人以為當機。用百分比讓使用者知道還在動。 -->
-<div class="overlay boot-loading-overlay" id="boot-loading-overlay">
+<div class="overlay boot-loading-overlay open" id="boot-loading-overlay" role="status" aria-live="polite" aria-busy="true">
   <div class="modal narrow boot-loading-box">
-    <div class="boot-loading-title">🎒 載入中…</div>
-    <div class="usage-bar boot-loading-bar"><i id="boot-loading-bar-fill" style="width:0%"></i></div>
-    <p class="sub" id="boot-loading-pct">0%</p>
+    <div class="boot-loading-title">🎒 正在開啟 MyWiki</div>
+    <p class="boot-loading-stage" id="boot-loading-stage">準備載入程式…</p>
+    <div class="usage-bar boot-loading-bar" role="progressbar" aria-label="MyWiki 載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="3">
+      <i id="boot-loading-bar-fill" style="width:3%"></i>
+    </div>
+    <p class="sub" id="boot-loading-pct">3%</p>
+    <p class="sub boot-loading-hint" id="boot-loading-hint">第一次通過安全驗證時可能需要稍等。</p>
+    <button class="btn ghost boot-loading-retry" id="boot-loading-retry" type="button" hidden onclick="location.reload()">重新載入</button>
   </div>
 </div>
 
@@ -425,11 +448,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=128"></script>
+<script src="app.js?v=138"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=128"></script>
+<script src="pdf-editor.js?v=138"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=128"></script>
+<script src="richtext-editor.js?v=138"></script>
 </body>
 </html>

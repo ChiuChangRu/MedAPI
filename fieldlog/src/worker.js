@@ -57,6 +57,7 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import { ensureStagingFolder } from "./lib/autofile.js";
+import { createLegacySession, securityHeaders, verifyAccessRequest, verifyLegacySession } from "./lib/access-auth.js";
 import { ensurePatrolFolder, formatPatrolReport } from "./lib/patrol.js";
 import {
   entrySubtreeIds,
@@ -123,7 +124,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "128";
+const UI_VERSION = "138";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -140,6 +141,58 @@ const INLINE_RAW_MAX_BYTES = 4 * 1024 * 1024;
 
 function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
+}
+
+const WEEKLY_REPORT_FOLDER_ROLE = "weekly_reports";
+const WEEKLY_REPORT_FIXED_PLAN = [
+  "- 宜科廠高壓攝影導管用注射筒套組－功能性驗證",
+  "- 醫用塗層與親水性導管開發",
+  "- 檢體針開發",
+  "- Laborie 29種壓管代工，與 Laborie 關注物質（毒物）資料更新",
+].join("\n");
+
+function taipeiIsoWeek(date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(date).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
+  const local = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  const weekday = local.getUTCDay() || 7;
+  const thursday = new Date(local);
+  thursday.setUTCDate(local.getUTCDate() + 4 - weekday);
+  const year = thursday.getUTCFullYear();
+  const first = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil((((thursday - first) / 86400000) + 1) / 7);
+  const monday = new Date(local);
+  monday.setUTCDate(local.getUTCDate() - weekday + 1);
+  const friday = new Date(monday);
+  friday.setUTCDate(monday.getUTCDate() + 4);
+  const isoDate = (value) => value.toISOString().slice(0, 10);
+  return { year, week, key: `${year}-W${String(week).padStart(2, "0")}`, start: isoDate(monday), end: isoDate(friday) };
+}
+
+function weeklyReportText(fields) {
+  return [
+    `週次：${fields["週次"] || ""}`,
+    `期間：${fields["期間"] || ""}`,
+    "",
+    "一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）",
+    fields["中長期規劃"] || WEEKLY_REPORT_FIXED_PLAN,
+    "",
+    "二、本週工作報告",
+    fields["本週工作報告"] || "",
+    "",
+    "三、下週重要工作計畫",
+    fields["下週重要工作計畫"] || "",
+  ].join("\n").trim();
+}
+
+// 週報的權威資料只有 fields_json。body 是為搜尋、分享與匯出保留的衍生文字，
+// 舊版本或中途失敗的寫入可能讓兩者暫時不同步；讀取時一律由欄位即時重建，
+// 才不會出現「點進編輯器是一版，外部預覽又是另一版」。一般記事仍使用原 body。
+function canonicalEntryBody(entry) {
+  let fields = {};
+  try { fields = JSON.parse(entry?.fields_json || "{}"); } catch { return entry?.body || ""; }
+  return fields._kind === "weekly_report" ? weeklyReportText(fields) : (entry?.body || "");
 }
 
 // ========== 語意搜尋（Vectorize）==========
@@ -423,6 +476,16 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+function randomShareToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 // 帶時效的檔案簽名。origin 要帶進來組完整網址——呼叫端（MCP server）拿到是直接
 // 當連結用的，只給相對路徑會是死連結。key 逐段編碼，中文檔名才不會壞。
 // 注意：這不是「免驗證的對外分享連結」——/api/* 的 FIELD_PIN 閘門在簽名檢查
@@ -583,7 +646,7 @@ function parseNotionPageId(input) {
   return `${id32.slice(0, 8)}-${id32.slice(8, 12)}-${id32.slice(12, 16)}-${id32.slice(16, 20)}-${id32.slice(20)}`;
 }
 
-async function handleApi(request, env, url) {
+async function handleApi(request, env, url, identity = {}) {
   const db = env.DB;
   await ensureSchema(db, now());
   const path = url.pathname.replace(/^\/api/, "");
@@ -632,6 +695,51 @@ async function handleApi(request, env, url) {
     const folder = await ensureStagingFolder(db, now());
     return json({ ok: true, id: Number(folder.id), name: folder.name });
   }
+
+  // 週報由人或 Claude 整理，不做排程自動覆寫。這個入口只保證「一週一檔」：
+  // 同一 ISO 週重複按按鈕會開啟既有檔案，不會產生兩份互相衝突的週報。
+  if (path === "/weekly-reports/current" && method === "POST") {
+    const report = taipeiIsoWeek();
+    let folder = await db.prepare(
+      "SELECT id, name FROM folders WHERE role = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
+    ).bind(WEEKLY_REPORT_FOLDER_ROLE).first();
+    if (!folder) {
+      const existing = await db.prepare(
+        "SELECT id, name FROM folders WHERE parent_id IS NULL AND name = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
+      ).bind("工作週報").first();
+      if (existing) {
+        await db.prepare("UPDATE folders SET role = ?, type = ?, category = ? WHERE id = ?")
+          .bind(WEEKLY_REPORT_FOLDER_ROLE, "週報", "admin", existing.id).run();
+        folder = existing;
+      } else {
+        const created = await db.prepare(
+          "INSERT INTO folders (name, type, category, parent_id, role, created_at) VALUES (?, ?, ?, NULL, ?, ?)"
+        ).bind("工作週報", "週報", "admin", WEEKLY_REPORT_FOLDER_ROLE, now()).run();
+        folder = { id: created.meta.last_row_id, name: "工作週報" };
+        await logHistory(db, null, folder.id, "建立資料夾", "工作週報（每週獨立檔案）");
+      }
+    }
+    const title = `${report.key} 工作週報（${report.start.slice(5).replace("-", "/")}–${report.end.slice(5).replace("-", "/")}）`;
+    let entry = await db.prepare(
+      "SELECT id, title FROM entries WHERE folder_id = ? AND json_extract(fields_json, '$._kind') = 'weekly_report' AND json_extract(fields_json, '$.週次') = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
+    ).bind(folder.id, report.key).first();
+    if (!entry) {
+      const fields = {
+        _kind: "weekly_report",
+        "週次": report.key,
+        "期間": `${report.start}–${report.end}`,
+        "中長期規劃": WEEKLY_REPORT_FIXED_PLAN,
+        "本週工作報告": "",
+        "下週重要工作計畫": "",
+      };
+      const created = await db.prepare(
+        "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'text', ?)"
+      ).bind(folder.id, title, JSON.stringify(fields), weeklyReportText(fields), now()).run();
+      entry = { id: created.meta.last_row_id, title };
+      await logHistory(db, entry.id, folder.id, "建立週報模板", report.key);
+    }
+    return json({ ok: true, id: Number(entry.id), folder_id: Number(folder.id), title: entry.title, week: report.key });
+  }
   // 使用者確認「分類正確」或自己改過位置之後，把 🤖 標記清掉
   // （舊資料可能還留著歷史上 AI 自動歸類時打的標記，這個入口保留給它們用）
   const confirmFiledMatch = path.match(/^\/entries\/(\d+)\/confirm-filing$/);
@@ -648,9 +756,18 @@ async function handleApi(request, env, url) {
   if (path === "/folders" && method === "GET") {
     const { results } = await db.prepare(
       `SELECT f.*,
-        (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id AND e.parent_entry_id IS NULL AND COALESCE(e.deleted_at, '') = '') AS entry_count,
-        (SELECT COUNT(*) FROM folders c WHERE c.parent_id = f.id AND COALESCE(c.deleted_at, '') = '') AS child_count
-       FROM folders f WHERE COALESCE(f.deleted_at, '') = ''
+        COALESCE(ec.entry_count, 0) AS entry_count,
+        COALESCE(cc.child_count, 0) AS child_count
+       FROM folders f
+       LEFT JOIN (
+         SELECT folder_id, COUNT(*) AS entry_count FROM entries
+         WHERE parent_entry_id IS NULL AND COALESCE(deleted_at, '') = '' GROUP BY folder_id
+       ) ec ON ec.folder_id = f.id
+       LEFT JOIN (
+         SELECT parent_id, COUNT(*) AS child_count FROM folders
+         WHERE COALESCE(deleted_at, '') = '' GROUP BY parent_id
+       ) cc ON cc.parent_id = f.id
+       WHERE COALESCE(f.deleted_at, '') = ''
        ORDER BY ${FOLDER_CATEGORY_RANK_SQL}, f.status = '進行中' DESC, f.sort_order, f.id DESC`
     ).all();
     return json(results);
@@ -965,13 +1082,19 @@ async function handleApi(request, env, url) {
     let q;
     if (inbox) {
       q = db.prepare(
-        `SELECT e.*, (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
+        `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                COALESCE(e.auto_filed_at, '') AS auto_filed_at,
+                COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
+                (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
          FROM entries e WHERE e.folder_id IS NULL AND e.parent_entry_id IS NULL
            AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`
       );
     } else if (folderId) {
       q = db.prepare(
-        `SELECT e.*, (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
+        `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                COALESCE(e.auto_filed_at, '') AS auto_filed_at,
+                COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
+                (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
          FROM entries e WHERE e.folder_id = ? AND e.parent_entry_id IS NULL
            AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`
       ).bind(Number(folderId));
@@ -985,7 +1108,9 @@ async function handleApi(request, env, url) {
     if (url.searchParams.get("include") === "attachments" && results.length) {
       const ids = results.map((e) => e.id);
       const { results: atts } = await db.prepare(
-        `SELECT * FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
+        `SELECT id, entry_id, kind, filename, key, mime, created_at, offset_secs,
+                source_pdf_id, rotation
+         FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
       ).bind(...ids).all();
       const byEntry = new Map();
       for (const a of atts || []) {
@@ -1031,6 +1156,57 @@ async function handleApi(request, env, url) {
     });
     return json({ id: r.meta.last_row_id, ok: true });
   }
+  if (path === "/shares" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const entryId = Number(body.entry_id || 0);
+    const attachmentId = body.attachment_id ? Number(body.attachment_id) : null;
+    const expiresDays = Math.min(Math.max(Number(body.expires_days) || 7, 1), 30);
+    const entry = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(entryId).first();
+    if (!entry) return bad("找不到要分享的資料", 404);
+    const { results: allAttachments } = await db.prepare(
+      "SELECT id, kind, filename, key, size, mime, created_at FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY id"
+    ).bind(entryId).all();
+    const attachments = attachmentId
+      ? (allAttachments || []).filter((item) => Number(item.id) === attachmentId)
+      : (allAttachments || []);
+    if (attachmentId && !attachments.length) return bad("找不到要分享的附件", 404);
+    const allowAttachments = body.allow_attachments !== false;
+    const allowDownload = body.allow_download === true;
+    const snapshot = {
+      version: 1,
+      entry: { id: entry.id, title: entry.title, body: canonicalEntryBody(entry), body_format: entry.body_format, created_at: entry.created_at, updated_at: entry.updated_at },
+      attachments: allowAttachments ? attachments : [],
+    };
+    const token = randomShareToken();
+    const tokenHash = await sha256Hex(token);
+    const expiresAt = new Date(Date.now() + expiresDays * 86400000).toISOString();
+    const createdAt = now();
+    const result = await db.prepare(
+      `INSERT INTO share_links (token_hash, entry_id, attachment_id, snapshot_json, expires_at, allow_attachments, allow_download, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(tokenHash, entryId, attachmentId, JSON.stringify(snapshot), expiresAt, allowAttachments ? 1 : 0, allowDownload ? 1 : 0, identity.email || "legacy-pin", createdAt).run();
+    await logHistory(db, entryId, entry.folder_id, "建立分享", `到期：${expiresAt}；附件：${allowAttachments ? "是" : "否"}；下載：${allowDownload ? "是" : "否"}`);
+    const origin = String(env.SHARE_ORIGIN || "https://share.gogoyankee.workers.dev").replace(/\/$/, "");
+    return json({ id: result.meta.last_row_id, url: `${origin}/s/${token}`, expires_at: expiresAt, allow_download: allowDownload });
+  }
+  if (path === "/shares" && method === "GET") {
+    const entryId = Number(url.searchParams.get("entry_id") || 0);
+    const query = entryId
+      ? db.prepare("SELECT id, entry_id, attachment_id, expires_at, revoked_at, allow_attachments, allow_download, created_by, created_at, access_count, last_accessed_at FROM share_links WHERE entry_id = ? ORDER BY id DESC").bind(entryId)
+      : db.prepare("SELECT id, entry_id, attachment_id, expires_at, revoked_at, allow_attachments, allow_download, created_by, created_at, access_count, last_accessed_at FROM share_links ORDER BY id DESC LIMIT 100");
+    const { results } = await query.all();
+    return json({ shares: results || [] });
+  }
+  const shareRevokeMatch = path.match(/^\/shares\/(\d+)$/);
+  if (shareRevokeMatch && method === "DELETE") {
+    const id = Number(shareRevokeMatch[1]);
+    const share = await db.prepare("SELECT entry_id FROM share_links WHERE id = ?").bind(id).first();
+    if (!share) return bad("找不到分享連結", 404);
+    await db.prepare("UPDATE share_links SET revoked_at = ? WHERE id = ?").bind(now(), id).run();
+    await logHistory(db, share.entry_id, null, "撤銷分享", `分享編號 ${id}`);
+    return json({ ok: true });
+  }
+
   const entryMatch = path.match(/^\/entries\/(\d+)$/);
   if (entryMatch && method === "GET") {
     const id = Number(entryMatch[1]);
@@ -1042,7 +1218,7 @@ async function handleApi(request, env, url) {
                   (SELECT COUNT(*) FROM entries c WHERE c.parent_entry_id = e.id AND COALESCE(c.deleted_at, '') = '') AS child_count
                   FROM entries e WHERE e.parent_entry_id = ? AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`).bind(id).all(),
     ]);
-    return json({ ...entry, attachments: atts, children });
+    return json({ ...entry, body: canonicalEntryBody(entry), attachments: atts, children });
   }
   // 一筆記事的操作履歷（history 表是 append-only 的稽核軌跡）。
   // 這張表從第一版就在寫，但一直沒有任何地方讀得到——等於白記。前台的
@@ -1064,15 +1240,23 @@ async function handleApi(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const old = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!old) return bad("找不到紀錄", 404);
-    const title = body.title !== undefined ? (body.title || "").trim() : old.title;
+    let oldFields = {};
+    try { oldFields = JSON.parse(old.fields_json || "{}"); } catch { /* 壞 JSON 當空 */ }
+    const isWeeklyReport = oldFields._kind === "weekly_report";
+    // 週報檔名同時是「一週一檔」的識別資訊，固定由系統管理；一般記事仍可自由改名。
+    const title = isWeeklyReport ? old.title : (body.title !== undefined ? (body.title || "").trim() : old.title);
     // fields 用合併不用取代：前端只送「模板欄位」，取代會把沒顯示在表單上的鍵
     // 全部抹掉——包括同步機制的 _sid／_content_hash／litdb_id。那些鍵一被抹掉，
     // 每天的來源同步就認不得這筆記事，整批重複匯入。要清空某個欄位送空字串即可。
     let fields = old.fields_json;
     if (body.fields !== undefined && body.fields && typeof body.fields === "object") {
-      let oldFields = {};
-      try { oldFields = JSON.parse(old.fields_json || "{}"); } catch { /* 壞 JSON 當空 */ }
-      fields = JSON.stringify({ ...oldFields, ...body.fields });
+      fields = JSON.stringify(isWeeklyReport ? {
+        ...oldFields,
+        _kind: "weekly_report",
+        "中長期規劃": WEEKLY_REPORT_FIXED_PLAN,
+        "本週工作報告": String(body.fields["本週工作報告"] ?? oldFields["本週工作報告"] ?? "").trim(),
+        "下週重要工作計畫": String(body.fields["下週重要工作計畫"] ?? oldFields["下週重要工作計畫"] ?? "").trim(),
+      } : { ...oldFields, ...body.fields });
     }
     let folderId = body.folder_id !== undefined ? (body.folder_id ? Number(body.folder_id) : null) : old.folder_id;
     let parentEntryId = body.parent_entry_id !== undefined
@@ -1096,7 +1280,7 @@ async function handleApi(request, env, url) {
         if (!folder) return bad("找不到目標資料夾", 404);
       }
     }
-    let bodyFormat = old.body_format || "text";
+    let bodyFormat = isWeeklyReport ? "text" : (old.body_format || "text");
     if (body.body_format !== undefined) {
       const requested = String(body.body_format || "text");
       if (requested === "html") {
@@ -1111,9 +1295,15 @@ async function handleApi(request, env, url) {
           return bad("這筆記事由外部來源同步管理，無法升級為富文字");
         }
       }
-      bodyFormat = requested === "html" ? "html" : "text";
+      bodyFormat = isWeeklyReport ? "text" : (requested === "html" ? "html" : "text");
     }
-    const bodyRaw = body.body !== undefined ? (body.body || "").trim() : old.body;
+    let weeklyFields = null;
+    if (isWeeklyReport) {
+      try { weeklyFields = JSON.parse(fields || "{}"); } catch { weeklyFields = oldFields; }
+    }
+    const bodyRaw = isWeeklyReport
+      ? weeklyReportText(weeklyFields)
+      : body.body !== undefined ? (body.body || "").trim() : old.body;
     // 存進資料庫前統一過一次白名單式清理：Quill 正常操作不會產生危險標籤，
     // 但前端可以被繞過，資料庫裡不能留 <script> 之類的東西
     const bodyText = bodyFormat === "html" ? sanitizeEntryHtml(bodyRaw) : bodyRaw;
@@ -1560,7 +1750,10 @@ async function handleApi(request, env, url) {
     if (!entry) return bad("找不到附件所屬記事", 404);
     // 新檔直接比 SHA-256；舊檔尚無 hash 時，只針對同檔名同大小者讀 R2 補算一次，
     // 避免誤判不同內容。一般附件在同一資料夾內去重；PDF 拆頁仍只在同一記事內比對。
-    const candidateQuery = sourcePdfId
+    // 錄音是一次事件的原始資料，即使兩段都是靜音、位元完全相同，也不能跨
+    // 記事去重，否則新記事會留下空殼、附件卻仍掛在舊記事。錄音只在同一資料包
+    // 內去重（防止補傳重試重複建立）；一般文件才維持資料夾層級去重。
+    const candidateQuery = sourcePdfId || kind === "audio"
       ? db.prepare(
         `SELECT id, key, filename, size, content_hash FROM attachments
          WHERE entry_id = ? AND (content_hash = ? OR (COALESCE(content_hash, '') = '' AND filename = ? AND size = ?))`
@@ -1611,7 +1804,7 @@ async function handleApi(request, env, url) {
     if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
     const key = decodeURIComponent(fileMatch[1]);
     const activeFile = await db.prepare(
-      `SELECT a.id FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
+      `SELECT a.id, a.mime, a.filename FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
        WHERE a.key = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
     ).bind(key).first();
     if (!activeFile) return bad("找不到檔案", 404);
@@ -1625,12 +1818,29 @@ async function handleApi(request, env, url) {
     }
     const obj = await env.FILES.get(key);
     if (!obj) return bad("找不到檔案", 404);
-    return new Response(obj.body, {
-      headers: {
-        "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
-        "cache-control": "private, max-age=3600",
-      },
-    });
+    // 舊檔案的 R2 httpMetadata 曾經只存 application/octet-stream；如果直接把
+    // 這個值送給 Chrome，PDF 在 iframe／預覽欄會顯示破損圖示。資料庫的 mime
+    // 是上傳時保存的實際類型，優先使用；再以副檔名補救更早期的舊資料。
+    const storedMime = String(activeFile.mime || "").trim();
+    let contentType = storedMime && storedMime !== "application/octet-stream"
+      ? storedMime
+      : (obj.httpMetadata?.contentType || storedMime || "application/octet-stream");
+    const displayName = activeFile.filename || key;
+    if ((!contentType || contentType === "application/octet-stream") && /\.pdf$/i.test(displayName)) {
+      contentType = "application/pdf";
+    }
+    const headers = {
+      "content-type": contentType,
+      "cache-control": "private, max-age=3600",
+      "x-content-type-options": "nosniff",
+    };
+    // 使用者上傳的 HTML 屬於不可信內容。即使另開原檔也套 CSP sandbox，避免它
+    // 在 MyWiki 同網域執行腳本、讀 localStorage/PIN 或送出表單。預覽 iframe 本身
+    // 還有 sandbox 屬性，這裡是伺服器端第二道防線。
+    if (/^text\/html(?:;|$)/i.test(contentType) || /\.(?:html?|xhtml)$/i.test(key)) {
+      headers["content-security-policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+    }
+    return new Response(obj.body, { headers });
   }
   // 手動整理既有附件名稱：只用已入庫的 OCR／逐字稿與記事脈絡，不重新呼叫 AI。
   if (path === "/attachments/rename-existing" && method === "POST") {
@@ -1729,6 +1939,36 @@ async function handleApi(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const old = await activeAttachment(db, id);
     if (!old) return bad("找不到附件", 404);
+    if (body.filename !== undefined) {
+      let filename = String(body.filename || "").trim();
+      if (!filename) return bad("檔名不可空白");
+      if (filename.length > 240) return bad("檔名不可超過 240 個字元");
+      if (/[\\/\u0000-\u001f\u007f]/.test(filename) || filename === "." || filename === "..") {
+        return bad("檔名不可包含路徑符號或控制字元");
+      }
+      const oldExt = String(old.filename || "").match(/(\.[^./\\]+)$/)?.[1] || "";
+      const newExt = filename.match(/(\.[^./\\]+)$/)?.[1] || "";
+      // UI 會自動補副檔名；API 仍做第二道防線，避免直接呼叫 API 把檔案類型改壞。
+      if (oldExt && !newExt) filename += oldExt;
+      else if (oldExt && newExt.toLowerCase() !== oldExt.toLowerCase()) return bad(`副檔名必須保留為 ${oldExt}`);
+      if (filename === old.filename) return json({ ok: true, filename });
+      await db.prepare(
+        "UPDATE attachments SET original_filename = CASE WHEN COALESCE(original_filename, '') = '' THEN filename ELSE original_filename END, filename = ? WHERE id = ?"
+      ).bind(filename, id).run();
+      await logHistory(db, old.entry_id, null, "重新命名附件", `${old.filename} → ${filename}`);
+      return json({ ok: true, filename });
+    }
+    if (body.transcript !== undefined) {
+      // 人工校正逐字稿屬於正式內容，不應被「編輯後又自動排隊轉錄」覆蓋；
+      // 以 manual_edit 標記已處理。使用者若真的要重跑 AI，仍可從 ⋯ 明確選擇
+      // 重新轉錄，該流程會覆寫 transcript 與 transcribed_at。
+      const transcript = String(body.transcript || "").trim().slice(0, 500000);
+      await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = 'manual_edit' WHERE id = ?")
+        .bind(transcript, id).run();
+      await logHistory(db, old.entry_id, null, "編輯錄音逐字稿", `${old.filename}（${transcript.length} 字）`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: transcript });
+      return json({ ok: true, transcript, transcribed_at: "manual_edit" });
+    }
     if (body.ocr_text !== undefined) {
       const ocrText = (body.ocr_text || "").trim();
       await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(ocrText, id).run();
@@ -2046,7 +2286,7 @@ async function handleApi(request, env, url) {
     if (!env.AI || !env.FILES) return bad("尚未啟用自動轉錄", 501);
     const entryId = Number(autoTranscribeMatch[1]);
     const { results: candidates } = await db.prepare(
-      "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND duration_secs > 0 ORDER BY offset_secs, id"
+      "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND (duration_secs > 0 OR (duration_secs IS NULL AND size > 0)) ORDER BY offset_secs, id"
     ).bind(entryId).all();
     if (!candidates.length) return json({ processed: 0, reason: "沒有可安全自動轉錄的新錄音" });
     let usage;
@@ -2061,7 +2301,10 @@ async function handleApi(request, env, url) {
     const transcripts = [];
     const failed = [];
     for (const audio of candidates) {
-      const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
+      // v133 以前的離線佇列補傳時會遺失 duration_secs。這些 R2 音檔仍是真實資料，
+      // 不能因此永遠排除在轉錄之外；未知長度以單段上限 10 分鐘保守預留額度。
+      const estimateDurationSecs = Number(audio.duration_secs) > 0 ? Number(audio.duration_secs) : 10 * 60;
+      const estimate = Math.ceil(estimateDurationSecs / 60 * 46.63);
       // 門檻一律讀 AI_AUTO_SAFE_NEURONS，不要再寫死數字：上次把常數從 7000 調到
       // 10000 時只改了下面的訊息，這行的比較值卻留在 7000，變成畫面說「超過
       // 10,000」、實際上 7,000 就停——白白少用 30% 的免費額度，而且從訊息完全
@@ -2199,12 +2442,18 @@ async function handleApi(request, env, url) {
       const { results: atts } = await db.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(e.id).all();
       lines.push(`---`, ``, `## ${e.title || "（未命名紀錄）"}`, ``, `建立：${e.created_at}${e.updated_at ? `｜更新：${e.updated_at}` : ""}`);
       const fields = JSON.parse(e.fields_json || "{}");
-      const filled = Object.entries(fields).filter(([, v]) => v && String(v).trim());
+      const isWeeklyReport = fields._kind === "weekly_report";
+      // 一般記事保留欄位列表；週報欄位本身就是完整文件，若再列一次欄位、
+      // 接著又輸出 body，會把整份週報重複兩遍，而且可能把舊 body 一併帶出。
+      const filled = isWeeklyReport
+        ? []
+        : Object.entries(fields).filter(([key, v]) => !key.startsWith("_") && v && String(v).trim());
       if (filled.length) {
         lines.push(``);
         for (const [k, v] of filled) lines.push(`- **${k}**：${v}`);
       }
-      const bodyOut = e.body_format === "html" ? htmlToPlainText(e.body) : e.body;
+      const canonicalBody = canonicalEntryBody(e);
+      const bodyOut = e.body_format === "html" ? htmlToPlainText(canonicalBody) : canonicalBody;
       if (bodyOut) lines.push(``, bodyOut);
       const audios = atts.filter((a) => a.kind === "audio");
       const photos = atts.filter((a) => a.kind === "photo");
@@ -2234,7 +2483,9 @@ async function handleApi(request, env, url) {
       }
       lines.push(``);
     }
-    return new Response(lines.join("\n"), {
+    // UTF-8 BOM：部分 Windows 瀏覽器／文字工具即使看到 charset=utf-8，仍會
+    // 把直接開啟的 .md 猜成 ANSI/Big5。BOM 不改內容，只讓解碼器明確使用 UTF-8。
+    return new Response(`\uFEFF${lines.join("\n")}`, {
       headers: {
         "content-type": "text/markdown; charset=utf-8",
         "content-disposition": `attachment; filename="fieldlog-folder-${id}.md"`,
@@ -2264,34 +2515,77 @@ async function noStoreAsset(request, env) {
   return new Response(response.body, { status: response.status, headers });
 }
 
+function secureResponse(response) {
+  const headers = securityHeaders(new Headers(response.headers));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+async function privateIdentity(request, env, url) {
+  const access = await verifyAccessRequest(request, env);
+  if (access.configured) return access;
+  const pin = (env.FIELD_PIN || "").trim();
+  if (!pin) return { ok: false, error: "尚未設定 FIELD_PIN 或 Cloudflare Access" };
+  if (await verifyLegacySession(request, pin)) return { ok: true, email: "legacy-session" };
+  const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
+  return given === pin ? { ok: true, email: "legacy-pin" } : { ok: false, error: "PIN 錯誤或未提供" };
+}
+
+async function handleSession(request, env) {
+  if (env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD) return bad("已啟用 Cloudflare Access，不接受 PIN Session", 404);
+  await ensureSchema(env.DB, now());
+  const headers = new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  if (request.method === "DELETE") {
+    headers.set("set-cookie", "__Host-myw_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+    return new Response(JSON.stringify({ ok: true }), { headers });
+  }
+  if (request.method !== "POST") return bad("只接受 POST", 405);
+  const fieldPin = String(env.FIELD_PIN || "").trim();
+  if (!fieldPin) return bad("尚未設定登入方式", 401);
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  const clientKey = await sha256Hex(`${ip}:${fieldPin}`);
+  const attempt = await env.DB.prepare("SELECT * FROM auth_attempts WHERE client_key = ?").bind(clientKey).first();
+  if (attempt?.blocked_until && Date.parse(attempt.blocked_until) > Date.now()) return bad("登入嘗試過多，請稍後再試", 429);
+  const body = await request.json().catch(() => ({}));
+  if (String(body.pin || "").trim() !== fieldPin) {
+    const activeWindow = attempt && Date.now() - Date.parse(attempt.window_started_at) < 10 * 60 * 1000;
+    const failures = activeWindow ? Number(attempt.failures || 0) + 1 : 1;
+    const blockedUntil = failures >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : "";
+    await env.DB.prepare(
+      `INSERT INTO auth_attempts (client_key, failures, window_started_at, blocked_until) VALUES (?, ?, ?, ?)
+       ON CONFLICT(client_key) DO UPDATE SET failures = excluded.failures, window_started_at = excluded.window_started_at, blocked_until = excluded.blocked_until`
+    ).bind(clientKey, failures, activeWindow ? attempt.window_started_at : new Date().toISOString(), blockedUntil).run();
+    return bad(failures >= 5 ? "登入嘗試過多，已暫時鎖定" : "PIN 錯誤", failures >= 5 ? 429 : 401);
+  }
+  await env.DB.prepare("DELETE FROM auth_attempts WHERE client_key = ?").bind(clientKey).run();
+  const session = await createLegacySession(fieldPin);
+  headers.set("set-cookie", `__Host-myw_session=${session}; Path=/; Max-Age=43200; HttpOnly; Secure; SameSite=Strict`);
+  return new Response(JSON.stringify({ ok: true, expires_in: 43200 }), { headers });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/session") return secureResponse(await handleSession(request, env));
     // /wiki/* 是個人知識庫內容（wrangler run_worker_first 導進來的），
     // 與 API 同一套 PIN 驗證，通過才放行到靜態資產
     if (url.pathname.startsWith("/wiki/")) {
-      const pin = (env.FIELD_PIN || "").trim();
-      if (!pin) return bad("尚未設定 FIELD_PIN：請至 Worker Settings → Variables and Secrets 新增", 401);
-      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
-      if (given !== pin) return bad("PIN 錯誤或未提供", 401);
-      return env.ASSETS.fetch(new Request(new URL(url.pathname, url.origin), request));
+      const identity = await privateIdentity(request, env, url);
+      if (!identity.ok) return secureResponse(bad(identity.error, 401));
+      return secureResponse(await env.ASSETS.fetch(new Request(new URL(url.pathname, url.origin), request)));
     }
     if (NO_CACHE_SHELL_PATHS.has(url.pathname)) {
-      return noStoreAsset(request, env);
+      return secureResponse(await noStoreAsset(request, env));
     }
     if (url.pathname.startsWith("/api/")) {
-      // fail-closed：FIELD_PIN 未設定時全部拒絕
-      const pin = (env.FIELD_PIN || "").trim();
-      if (!pin) return bad("尚未設定 FIELD_PIN：請至 Worker Settings → Variables and Secrets 新增", 401);
-      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
-      if (given !== pin) return bad("PIN 錯誤或未提供", 401);
+      const identity = await privateIdentity(request, env, url);
+      if (!identity.ok) return secureResponse(bad(identity.error, 401));
       try {
-        return await handleApi(request, env, url);
+        return secureResponse(await handleApi(request, env, url, identity));
       } catch (err) {
-        return bad(`伺服器錯誤：${err.message}`, 500);
+        return secureResponse(bad(`伺服器錯誤：${err.message}`, 500));
       }
     }
-    return env.ASSETS.fetch(request);
+    return secureResponse(await env.ASSETS.fetch(request));
   },
 
   // 每天自動同步 sources 表裡的外部來源（cron 排程見 wrangler.jsonc 的 triggers；

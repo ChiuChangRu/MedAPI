@@ -38,3 +38,16 @@ test("app.js：initDesktopSidebarResize 有讀寫 localStorage、有夾住最小
   // 真的有掛上去，不是只定義了沒人呼叫
   assert.match(app, /\binitDesktopSidebarResize\(\);/);
 });
+
+test("桌機資料夾側欄可像 ChatGPT 收合並記住狀態", async () => {
+  const [app, html, css] = await Promise.all([
+    read("../fieldlog/public/app.js"), read("../fieldlog/public/index.html"), read("../fieldlog/public/style.css"),
+  ]);
+  assert.match(html, /id="desktop-sidebar-close"/);
+  assert.match(html, /id="desktop-sidebar-open"/);
+  assert.match(app, /const SIDEBAR_COLLAPSED_KEY = "fieldlog_sidebar_collapsed"/);
+  assert.match(app, /function initDesktopSidebarCollapse\(\)/);
+  assert.match(app, /\binitDesktopSidebarCollapse\(\);/);
+  assert.match(css, /body\.sidebar-collapsed \.desktop-explorer-nav/);
+  assert.match(css, /body\.sidebar-collapsed \.container/);
+});

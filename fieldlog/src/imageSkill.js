@@ -277,20 +277,29 @@ function extractSheetText(xml, sharedStrings) {
   const lines = [];
   for (const rowMatch of rows) {
     const cellChunks = rowMatch[1].split(/<c\b/).slice(1);
-    const values = cellChunks.map((chunk) => {
+    const values = [];
+    for (const chunk of cellChunks) {
       const closeIdx = chunk.indexOf(">");
       const attrs = chunk.slice(0, closeIdx);
       const inner = chunk.slice(closeIdx + 1);
       const type = attrs.match(/\bt="([^"]*)"/)?.[1] || "";
+      const columnLetters = attrs.match(/\br="([A-Z]+)\d+"/)?.[1] || "";
+      let columnIndex = values.length;
+      if (columnLetters) {
+        columnIndex = 0;
+        for (const letter of columnLetters) columnIndex = columnIndex * 26 + letter.charCodeAt(0) - 64;
+        columnIndex -= 1;
+      }
+      let value = "";
       if (type === "s") {
         const idx = inner.match(/<v>([\s\S]*?)<\/v>/)?.[1];
-        return idx !== undefined ? (sharedStrings[Number(idx)] || "") : "";
-      }
-      if (type === "inlineStr") {
-        return decodeXmlEntities(inner.match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] || "");
-      }
-      return decodeXmlEntities(inner.match(/<v>([\s\S]*?)<\/v>/)?.[1] || "");
-    });
+        value = idx !== undefined ? (sharedStrings[Number(idx)] || "") : "";
+      } else if (type === "inlineStr") {
+        value = decodeXmlEntities(inner.match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] || "");
+      } else value = decodeXmlEntities(inner.match(/<v>([\s\S]*?)<\/v>/)?.[1] || "");
+      while (values.length <= columnIndex) values.push("");
+      values[columnIndex] = value;
+    }
     if (values.some((v) => v !== "")) lines.push(values.join("\t"));
   }
   return lines.join("\n");

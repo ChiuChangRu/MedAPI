@@ -40,6 +40,53 @@
     window.Quill.register(SizeClass, true);
     const AlignClass = window.Quill.import("attributors/class/align");
     window.Quill.register(AlignClass, true);
+
+    // 圖片沿用 Quill 內建 image；錄音與一般檔案使用一個 block embed。
+    // 內容只保存 R2 附件網址與 attachment id，不把檔案本體塞進 D1 的 body。
+    const BlockEmbed = window.Quill.import("blots/block/embed");
+    class FieldlogAttachmentBlot extends BlockEmbed {
+      static create(value = {}) {
+        const node = super.create();
+        const kind = value.kind === "audio" ? "audio" : "file";
+        const filename = String(value.filename || "附件");
+        const url = String(value.url || "");
+        node.setAttribute("contenteditable", "false");
+        node.setAttribute("data-att-id", String(value.attId || ""));
+        node.setAttribute("data-kind", kind);
+        node.setAttribute("data-filename", filename);
+        node.setAttribute("data-url", url);
+        if (kind === "audio") {
+          const label = document.createElement("strong");
+          label.textContent = `🎙️ ${filename}`;
+          const audio = document.createElement("audio");
+          audio.setAttribute("controls", "controls");
+          audio.setAttribute("preload", "metadata");
+          audio.setAttribute("src", url);
+          node.append(label, audio);
+        } else {
+          const link = document.createElement("a");
+          link.href = url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = `📎 ${filename}`;
+          node.appendChild(link);
+        }
+        return node;
+      }
+
+      static value(node) {
+        return {
+          attId: node.getAttribute("data-att-id") || "",
+          kind: node.getAttribute("data-kind") || "file",
+          filename: node.getAttribute("data-filename") || "附件",
+          url: node.getAttribute("data-url") || "",
+        };
+      }
+    }
+    FieldlogAttachmentBlot.blotName = "fieldlogAttachment";
+    FieldlogAttachmentBlot.tagName = "figure";
+    FieldlogAttachmentBlot.className = "fieldlog-attachment-card";
+    window.Quill.register(FieldlogAttachmentBlot, true);
     formatsReady = true;
   }
 
@@ -254,7 +301,8 @@
     const quill = container?.__fieldlogQuill;
     if (!quill) return "";
     // Quill 完全清空時 root 是 <p><br></p>，視為空字串；只要有文字或圖片就算有內容
-    const hasContent = quill.getText().trim().length > 0 || !!quill.root.querySelector("img");
+    const hasContent = quill.getText().trim().length > 0
+      || !!quill.root.querySelector("img, .fieldlog-attachment-card");
     return hasContent ? quill.root.innerHTML : "";
   }
 
@@ -269,5 +317,15 @@
     if (leaf && leaf.domNode) leaf.domNode.setAttribute("data-att-id", String(attId));
   }
 
-  window.fieldlogRichEditor = { init, getHtml, insertImage, mdToHtml, looksLikeMarkdown };
+  /** 在目前游標位置插入錄音播放器或一般檔案卡片。 */
+  function insertAttachment(container, attachment) {
+    const quill = container?.__fieldlogQuill;
+    if (!quill) return;
+    const range = quill.getSelection(true) || { index: quill.getLength() };
+    quill.insertEmbed(range.index, "fieldlogAttachment", attachment, "user");
+    quill.insertText(range.index + 1, "\n", "user");
+    quill.setSelection(range.index + 2, 0, "user");
+  }
+
+  window.fieldlogRichEditor = { init, getHtml, insertImage, insertAttachment, mdToHtml, looksLikeMarkdown };
 })();

@@ -13,6 +13,7 @@ const CODE_TTL_SECONDS = 5 * 60;
 const ACCESS_TTL_SECONDS = 60 * 60;
 const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
 const CONSENT_COOKIE = "__Host-MYWIKI_OAUTH_CSRF";
+const CHATGPT_CIMD_PATTERN = /^https:\/\/chatgpt\.com\/oauth\/(?:client\.json|[A-Za-z0-9_-]+\/client\.json)$/;
 
 // ChatGPT may open the OAuth consent page inside a partitioned browser context.
 // SameSite=Lax cookies are then omitted from the form POST, which makes the
@@ -164,6 +165,11 @@ function cookieValue(request, name) {
   return "";
 }
 
+function isSameOriginFormPost(request) {
+  const origin = request.headers.get("origin") || "";
+  return origin === new URL(request.url).origin;
+}
+
 function securityHeaders(setCookie) {
   return {
     "content-type": "text/html; charset=utf-8",
@@ -176,10 +182,39 @@ function securityHeaders(setCookie) {
   };
 }
 
-async function clientMetadata(clientId, secret) {
+async function clientMetadata(clientId, secret, env) {
   const client = await verifyPayload(clientId, secret, "client");
-  if (!client || !Array.isArray(client.redirect_uris) || client.redirect_uris.length === 0) return null;
-  return client;
+  if (client && Array.isArray(client.redirect_uris) && client.redirect_uris.length > 0) return client;
+
+  // ChatGPT now prefers Client ID Metadata Documents (CIMD). Only fetch the
+  // exact official ChatGPT metadata URL shapes so client_id can never become
+  // an arbitrary SSRF target. DCR remains available for older clients.
+  if (!CHATGPT_CIMD_PATTERN.test(clientId)) return null;
+  try {
+    const fetchMetadata = env?.OAUTH_CLIENT_METADATA_FETCH || fetch;
+    const response = await fetchMetadata(clientId, {
+      headers: { accept: "application/json" },
+      cf: { cacheTtl: 300, cacheEverything: true },
+    });
+    if (!response.ok) return null;
+    const metadata = await response.json();
+    const redirectUris = Array.isArray(metadata.redirect_uris)
+      ? metadata.redirect_uris.filter(validRedirectUri)
+      : [];
+    const authMethods = Array.isArray(metadata.token_endpoint_auth_methods_supported)
+      ? metadata.token_endpoint_auth_methods_supported
+      : [metadata.token_endpoint_auth_method].filter(Boolean);
+    if (redirectUris.length === 0 || !authMethods.includes("none")) return null;
+    return {
+      client_id: clientId,
+      client_name: String(metadata.client_name || "ChatGPT").slice(0, 120),
+      redirect_uris: redirectUris,
+      cimd: true,
+    };
+  } catch (error) {
+    console.error("OAuth CIMD fetch failed", error?.message || error);
+    return null;
+  }
 }
 
 async function ensureOAuthTables(env) {
@@ -271,7 +306,7 @@ async function authorizationGet(request, env) {
   const url = new URL(request.url);
   const info = serverInfo(request);
   const clientId = url.searchParams.get("client_id") || "";
-  const client = await clientMetadata(clientId, secret);
+  const client = await clientMetadata(clientId, secret, env);
   const redirectUri = url.searchParams.get("redirect_uri") || "";
   const scopes = normalizeScopes(url.searchParams.get("scope"));
   const resource = url.searchParams.get("resource") || "";
@@ -294,6 +329,7 @@ async function authorizationGet(request, env) {
     code_challenge: codeChallenge,
     resource,
     scope: scopes.join(" "),
+    csrf_hash: await sha256(csrf),
   }, secret);
   const clientName = escapeHtml(client.client_name || "MCP client");
   const scopeText = escapeHtml(scopes.join("、"));
@@ -316,13 +352,20 @@ async function authorizationPost(request, env) {
   const authRequest = await verifyPayload(requestToken, secret, "request");
   if (!authRequest) return oauthError("invalid_request", "authorization request expired; start again");
   const csrf = String(form.get("csrf_token") || "");
-  if (!csrf || !constantTimeEqual(csrf, cookieValue(request, CONSENT_COOKIE))) {
+  const csrfSigned = csrf && authRequest.csrf_hash
+    && constantTimeEqual(await sha256(csrf), authRequest.csrf_hash);
+  const csrfCookie = csrf && constantTimeEqual(csrf, cookieValue(request, CONSENT_COOKIE));
+  // Some embedded browsers discard even Partitioned cookies. A genuine form
+  // submission from this authorization page still carries a same-origin
+  // Origin header, so accept either proof while rejecting cross-site posts.
+  if (!csrfSigned || (!csrfCookie && !isSameOriginFormPost(request))) {
     return oauthError("invalid_request", "CSRF validation failed");
   }
   const redirect = new URL(authRequest.redirect_uri);
   if (form.get("decision") !== "allow") {
     redirect.searchParams.set("error", "access_denied");
     if (authRequest.state) redirect.searchParams.set("state", authRequest.state);
+    redirect.searchParams.set("iss", serverInfo(request).origin);
     return Response.redirect(redirect.toString(), 302);
   }
   if (await isRateLimited(request, env)) return oauthError("temporarily_unavailable", "too many attempts; try again later", 429);
@@ -352,6 +395,7 @@ async function authorizationPost(request, env) {
   }, secret);
   redirect.searchParams.set("code", code);
   if (authRequest.state) redirect.searchParams.set("state", authRequest.state);
+  redirect.searchParams.set("iss", serverInfo(request).origin);
   return new Response(null, {
     status: 302,
     headers: {
@@ -386,7 +430,7 @@ async function tokenEndpoint(request, env) {
   }
   const grantType = String(form.get("grant_type") || "");
   const clientId = String(form.get("client_id") || "");
-  const client = await clientMetadata(clientId, secret);
+  const client = await clientMetadata(clientId, secret, env);
   if (!client) return oauthError("invalid_client", "unknown or expired client_id", 401);
   const info = serverInfo(request);
   const resource = String(form.get("resource") || "");
@@ -443,6 +487,8 @@ export async function handleOAuthRoute(request, env) {
       token_endpoint_auth_methods_supported: ["none"],
       code_challenge_methods_supported: ["S256"],
       scopes_supported: SCOPES,
+      client_id_metadata_document_supported: true,
+      authorization_response_iss_parameter_supported: true,
     });
   }
   if (url.pathname === "/register") {

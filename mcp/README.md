@@ -31,7 +31,7 @@
 > AI 沒有「看得見架上有什麼」的工具，只能反覆猜詞，猜不中就誤判成「沒有資料」。
 > `list_fieldlog_entries`／`list_attachments`／`list_exhibitor_files` 就是為此而加。
 
-**鐵律：對記事的實際內容預設唯讀，例外分兩組。** 其餘 20 個工具程式碼裡
+**鐵律：對記事的實際內容預設唯讀，例外分三組。** 其餘 20 個工具程式碼裡
 只有 SELECT 與 fetch。
 
 第一組（**只能新增**）：`create_fieldlog_entry`／`create_fieldlog_attachment`／
@@ -41,7 +41,11 @@ INSERT D1），這四支程式碼裡沒有任何 `UPDATE`／`DELETE` 語句碰�
 的內容／attachments／relations／synonyms——只會加新的，不會改掉或刪掉
 既有的任何一筆資料。
 
-第二組（**限定資料夾結構整理，2026-08-08 新增**）：`update_folder`／
+第二組（**僅限週報模板**）：`update_weekly_report` 只接受
+`fields_json._kind = 'weekly_report'` 的記事，只能更新「本週工作報告」與選填的
+「下週重要工作計畫」。週次、期間、固定中長期規劃與其他記事都不在其權限內。
+
+第三組（**限定資料夾結構整理，2026-08-08 新增**）：`update_folder`／
 `move_folder`／`move_entry`／`delete_folder`。這四支會造成真正的
 UPDATE／DELETE 效果，但範圍鎖死在「資料夾的名稱／色系分類／排序／
 巢狀位置」與「一筆記事歸檔在哪個資料夾」，不會動到任何記事或附件的

@@ -23,6 +23,12 @@ test("htmlToPlainText: 沒有 alt 的 <img> 轉成通用標註", () => {
   assert.equal(htmlToPlainText(html), "[圖片]");
 });
 
+test("htmlToPlainText: 內文附件卡轉成可檢索的附件標註", () => {
+  const file = '<figure class="fieldlog-attachment-card" data-att-id="7" data-kind="file" data-filename="規格書.pdf" data-url="/api/file/7/a.pdf"><a href="/api/file/7/a.pdf">📎 規格書.pdf</a></figure>';
+  const audio = '<figure class="fieldlog-attachment-card" data-att-id="8" data-kind="audio" data-filename="會議錄音.webm" data-url="/api/file/8/a.webm"><strong>錄音</strong><audio controls="controls" preload="metadata" src="/api/file/8/a.webm"></audio></figure>';
+  assert.equal(htmlToPlainText(`${file}${audio}`), "[附件：規格書.pdf]\n\n[錄音：會議錄音.webm]");
+});
+
 test("htmlToPlainText: 不合法/危險標籤被整個拿掉（含內容）", () => {
   const html = "<p>正文</p><script>alert(1)</script><style>.x{}</style>";
   assert.equal(htmlToPlainText(html), "正文");
@@ -41,6 +47,19 @@ test("htmlToPlainText: 空白輸入回傳空字串", () => {
 test("sanitizeEntryHtml: 允許的標籤與屬性保留", () => {
   const html = '<p>文字<strong>粗體</strong></p><img src="/api/file/x" alt="a" data-att-id="5">';
   assert.equal(sanitizeEntryHtml(html), '<p>文字<strong>粗體</strong></p><img src="/api/file/x" alt="a" data-att-id="5">');
+});
+
+test("sanitizeEntryHtml: 保留 MyWiki 內文附件卡與錄音播放器", () => {
+  const html = '<figure class="fieldlog-attachment-card" data-att-id="8" data-kind="audio" data-filename="會議錄音.webm" data-url="/api/file/8/a.webm"><strong>🎙️ 會議錄音.webm</strong><audio controls="controls" preload="metadata" src="/api/file/8/a.webm"></audio></figure>';
+  assert.equal(sanitizeEntryHtml(html), html);
+});
+
+test("sanitizeEntryHtml: 內文附件卡不可引用任意外部檔案網址", () => {
+  const html = '<figure class="fieldlog-attachment-card" data-att-id="8" data-kind="audio" data-filename="x" data-url="https://evil.example/x"><audio controls="controls" src="https://evil.example/x"></audio></figure>';
+  assert.equal(
+    sanitizeEntryHtml(html),
+    '<figure class="fieldlog-attachment-card" data-att-id="8" data-kind="audio" data-filename="x"><audio controls="controls"></audio></figure>'
+  );
 });
 
 test("sanitizeEntryHtml: 不在白名單的標籤被移除但保留文字內容", () => {

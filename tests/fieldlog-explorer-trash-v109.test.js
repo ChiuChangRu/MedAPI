@@ -37,12 +37,16 @@ test("資料夾內頁使用單一內容區，不再拆成檔案、錄音資料�
   assert.match(html, /id="btn-folder-sort-inner"[^>]*hidden/);
 });
 
-test("站內紀錄拖放先辨識自訂 MIME；外部檔案落在既有紀錄會附加", async () => {
+test("站內記事只能拖到資料夾搬移；外部檔案落在既有記事會附加", async () => {
   const app = await read("../fieldlog/public/app.js");
   assert.match(app, /application\/x-fieldlog-entry/);
-  assert.match(app, /types\.includes\("application\/x-fieldlog-entry"\)[\s\S]*nestEntry/);
+  const start = app.indexOf("function bindEntryRows(wrap)");
+  const end = app.indexOf("async function nestEntry", start);
+  const bind = app.slice(start, end);
+  assert.match(bind, /types\.includes\("application\/x-fieldlog-entry"\) \|\| !types\.includes\("Files"\)/);
+  assert.doesNotMatch(bind, /nestEntry/);
   assert.match(app, /types\.includes\("Files"\)[\s\S]*uploadFiles\(Number\(el\.dataset\.id\), files\)/);
-  assert.match(app, /setupFileDropZone\(\$\("desktop-explorer-nav"\), uploadDroppedFilesToPending\)/);
+  assert.match(app, /setupFileDropZone\(\$\("desktop-explorer-nav"\), uploadDroppedFilesToCurrentLocation\)/);
 });
 
 test("資料夾與紀錄刪除走完整子樹垃圾桶，不再安全上移", async () => {

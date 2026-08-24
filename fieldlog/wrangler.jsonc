@@ -8,7 +8,8 @@
   "keep_vars": true,
   "vars": {
     // Account ID 不是機密；放進部署設定，確保分支預覽也能查用量。
-    "CLOUDFLARE_ACCOUNT_ID": "a791952f49fcd61ca18b9a82dda12dd1"
+    "CLOUDFLARE_ACCOUNT_ID": "a791952f49fcd61ca18b9a82dda12dd1",
+    "SHARE_ORIGIN": "https://share.gogoyankee.workers.dev"
   },
   "assets": {
     "directory": "public",
