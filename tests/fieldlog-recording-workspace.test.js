@@ -26,15 +26,59 @@ test("錄音預覽包含播放器、大小、錄音時間、長度、轉錄狀�
   assert.match(preview, /<h3>逐字稿<\/h3>/);
 });
 
-test("錄音編輯只送名稱、速記與逐字稿，不拆資料包", async () => {
+test("錄音編輯固定在桌機右欄，只送名稱、速記與逐字稿，不拆資料包", async () => {
   const app = await read("../fieldlog/public/app.js");
   const editor = app.match(/async function openRecordingEditor\(entryId\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(editor, /folder-preview-body/);
+  assert.match(editor, /recording-preview-editor/);
+  assert.match(editor, /folder-preview-title/);
+  assert.doesNotMatch(editor, /entry-modal/);
+  assert.doesNotMatch(editor, /entry-overlay.*classList\.add\("open"\)/s);
   assert.match(editor, /recording-edit-title/);
   assert.match(editor, /recording-edit-note/);
   assert.match(editor, /recording-transcript-input/);
   assert.match(editor, /body_format: "text"/);
   assert.match(editor, /JSON\.stringify\(\{ transcript:/);
   assert.doesNotMatch(editor, /fields:/, "錄音專用編輯不可再送展場模板欄位");
+});
+
+test("一般檔案也在右欄編輯名稱、Note、分類與索引文字", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const editor = app.match(/async function showFileEditor\(entryId, attachmentId\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(editor, /folder-preview-body/);
+  assert.match(editor, /file-preview-editor/);
+  assert.match(editor, /preview-file-name/);
+  assert.match(editor, /preview-file-note/);
+  assert.match(editor, /preview-file-category/);
+  assert.match(editor, /preview-file-index/);
+  assert.match(editor, /attachments\/\$\{attachmentId\}\/note/);
+  assert.match(editor, /attachments\/\$\{attachmentId\}\/category/);
+});
+
+test("純記事與一般資料包也使用右欄預覽／編輯", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  assert.match(app, /async function showEntryPreview\(entryId\)/);
+  assert.match(app, /async function showEntryEditor\(entryId\)/);
+  assert.match(app, /entry-preview-editor/);
+  assert.match(app, /entry-side-attachments/);
+  const rows = app.match(/function bindEntryRows\(wrap\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(rows, /showEntryPreview\(entryId\)/);
+  const packages = app.match(/function bindRecordGroupCards\(\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(packages, /showEntryPreview\(entryId\)/);
+});
+
+test("Excel 與 CSV 以右欄表格顯示，常用格式有明確降級說明", async () => {
+  const [app, css] = await Promise.all([
+    read("../fieldlog/public/app.js"),
+    read("../fieldlog/public/style.css"),
+  ]);
+  assert.match(app, /function renderDelimitedTable/);
+  assert.match(app, /renderDelimitedTable\(extracted, \{ spreadsheet: true \}\)/);
+  assert.match(app, /\/attachments\/\$\{attachmentId\}\/ocr/);
+  assert.match(app, /舊版 Office 格式無法可靠預覽/);
+  assert.match(app, /OpenDocument／RTF/);
+  assert.match(css, /\.spreadsheet-scroll table/);
+  assert.match(css, /\.preview-editor/);
 });
 
 test("錄音 ⋯ 提供重新轉錄、下載、重新命名、整包移動與整包刪除", async () => {
