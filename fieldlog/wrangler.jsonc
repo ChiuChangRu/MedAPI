@@ -21,7 +21,8 @@
     // （2026-07-25 實際發生過：部署確認是最新版，前台卻還是舊畫面）。
     "run_worker_first": [
       "/wiki/*", "/", "/index.html", "/app.js", "/style.css",
-      "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json", "/help.html"
+      "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json", "/help.html",
+      "/wiki.html", "/patrol.html"
     ]
   },
   "d1_databases": [

@@ -3,7 +3,7 @@ name: 部署 Fieldlog 到 Cloudflare Workers
 on:
   push:
     branches:
-      - codex/kiwi-integration
+      - main
     paths:
       - "fieldlog/**"
       - ".github/workflows/deploy-fieldlog.yml"
