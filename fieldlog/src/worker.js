@@ -250,6 +250,17 @@ export class EmbeddingWorkflow extends WorkflowEntrypoint {
     if (kind === "normalize_folder_names_v143") {
       const maintenanceKey = "maintenance.folder_name_normalization";
       const maintenanceVersion = "2026-08-24-v1";
+      const summary = (state, skipped = false) => ({
+        success: true,
+        skipped,
+        version: state.version,
+        status: state.status,
+        checked: Number(state.checked || 0),
+        renamed_count: Number(state.renamed_count || 0),
+        conflict_count: Number(state.conflict_count || 0),
+        invalid_count: Number(state.invalid_count || 0),
+        finished_at: state.finished_at || null,
+      });
       return step.do("normalize-existing-child-folder-names-v143", async () => {
         await ensureSchema(this.env.DB, now());
         const saved = await this.env.DB.prepare("SELECT value FROM settings WHERE key = ?")
@@ -258,7 +269,7 @@ export class EmbeddingWorkflow extends WorkflowEntrypoint {
           try {
             const parsed = JSON.parse(saved.value);
             if (parsed.version === maintenanceVersion && parsed.status === "complete") {
-              return { success: true, skipped: true, ...parsed };
+              return summary(parsed, true);
             }
           } catch { /* 舊值格式不符時重新執行本版維護 */ }
         }
@@ -268,7 +279,9 @@ export class EmbeddingWorkflow extends WorkflowEntrypoint {
           `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
         ).bind(maintenanceKey, JSON.stringify(state), now()).run();
-        return { success: true, ...state };
+        // Workflow step output 會出現在 GitHub Actions log：只回傳數量，不把
+        // renamed/conflicts 裡的實際資料夾名稱公開；完整明細只留在 D1 settings。
+        return summary(state);
       });
     }
 

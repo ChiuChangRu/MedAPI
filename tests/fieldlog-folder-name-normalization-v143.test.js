@@ -94,4 +94,8 @@ test("v143 前端不在資料夾清單重複顯示目前路徑，後台部署會
   assert.match(worker, /kind === "normalize_folder_names_v143"/);
   assert.match(worker, /canonicalFolderLocalName\(requestedName\)/);
   assert.match(workflow, /"kind":"normalize_folder_names_v143"/);
+  assert.match(workflow, /folder-names-v143[\s\S]*?--step-output=true/);
+  assert.doesNotMatch(workflow, /maintenance\.folder_name_normalization['"]?\s*\n?.*d1 execute/,
+    "部署驗證不能要求目前 Token 沒有的 D1 查詢權限");
+  assert.match(worker, /return summary\(state\)/, "Workflow 公開輸出只回統計，不回資料夾名稱明細");
 });
