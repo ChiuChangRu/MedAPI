@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "138";
+const APP_VERSION = "139";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1020,8 +1020,30 @@ async function moveAttachmentToFolder(payload, targetId) {
 // width 與 .container 的 margin-left，拖曳時只要改這一個變數就好，
 // 不用分別去動兩個元素的 inline style。
 const SIDEBAR_WIDTH_KEY = "fieldlog_sidebar_width";
+const SIDEBAR_COLLAPSED_KEY = "fieldlog_sidebar_collapsed";
 const SIDEBAR_WIDTH_MIN = 220;
 const SIDEBAR_WIDTH_MAX = 480;
+
+function setDesktopSidebarCollapsed(collapsed, persist = true) {
+  const isCollapsed = !!collapsed;
+  document.body.classList.toggle("sidebar-collapsed", isCollapsed);
+  $("desktop-sidebar-close")?.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+  $("desktop-sidebar-open")?.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+  if (persist) localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed ? "1" : "0");
+  window.requestAnimationFrame(() => {
+    const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10);
+    if (current) setPreviewWidth(current);
+  });
+}
+
+function initDesktopSidebarCollapse() {
+  const close = $("desktop-sidebar-close");
+  const open = $("desktop-sidebar-open");
+  if (!close || !open) return;
+  setDesktopSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1", false);
+  close.onclick = () => setDesktopSidebarCollapsed(true);
+  open.onclick = () => setDesktopSidebarCollapsed(false);
+}
 
 function initDesktopSidebarResize() {
   const handle = $("desktop-explorer-resize");
@@ -2140,6 +2162,7 @@ function clearFilePreview(message = "選取一份檔案以預覽") {
     $("folder-preview-manage").disabled = true;
     $("folder-preview-manage").onclick = null;
   }
+  setReaderFullscreen(false);
   body.innerHTML = `<p class="folder-preview-empty">${esc(message)}</p>`;
   document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
 }
@@ -2704,6 +2727,17 @@ const PREVIEW_WIDTH_KEY = "fieldlog_preview_width";
 const PREVIEW_WIDTH_MIN = 280;
 const PREVIEW_MAIN_MIN = 480;
 
+function setReaderFullscreen(enabled) {
+  const isFullscreen = !!enabled;
+  document.body.classList.toggle("reader-fullscreen", isFullscreen);
+  const button = $("folder-preview-expand");
+  if (!button) return;
+  button.textContent = isFullscreen ? "▣" : "⛶";
+  button.title = isFullscreen ? "恢復分欄" : "最寬模式";
+  button.setAttribute("aria-label", isFullscreen ? "恢復三欄模式" : "切換右欄最寬模式");
+  button.setAttribute("aria-pressed", isFullscreen ? "true" : "false");
+}
+
 function syncPreviewLayout() {
   const workspace = document.querySelector(".folder-workspace");
   const button = $("btn-toggle-preview");
@@ -2732,6 +2766,10 @@ function initPreviewLayout() {
   const handle = $("folder-preview-resize");
   const button = $("btn-toggle-preview");
   if (!handle || !button) return;
+  const expand = $("folder-preview-expand");
+  const close = $("folder-preview-close");
+  if (expand) expand.onclick = () => setReaderFullscreen(!document.body.classList.contains("reader-fullscreen"));
+  if (close) close.onclick = () => clearFilePreview();
   localStorage.setItem("fieldlog_preview_enabled", "1");
   button.hidden = true;
   const saved = Number(localStorage.getItem(PREVIEW_WIDTH_KEY));
@@ -5968,6 +6006,7 @@ function init() {
   setupFileDropZone($("view-home"), uploadDroppedFilesToCurrentLocation);
   setupFileDropZone($("view-folder"), uploadDroppedFilesToCurrentLocation);
   setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToCurrentLocation);
+  initDesktopSidebarCollapse();
   initDesktopSidebarResize();
   initPreviewLayout();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
