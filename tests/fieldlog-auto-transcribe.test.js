@@ -28,9 +28,9 @@ function makeDB({ attachments = [] } = {}) {
     const q = sql.replace(/\s+/g, " ").trim();
     const none = { results: [], changes: 0 };
 
-    if (q === "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND duration_secs > 0 ORDER BY offset_secs, id") {
+    if (q === "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND (duration_secs > 0 OR (duration_secs IS NULL AND size > 0)) ORDER BY offset_secs, id") {
       const rows = tables.attachments
-        .filter((a) => a.entry_id === args[0] && a.kind === "audio" && !a.transcript && !a.transcribed_at && a.duration_secs > 0)
+        .filter((a) => a.entry_id === args[0] && a.kind === "audio" && !a.transcript && !a.transcribed_at && (a.duration_secs > 0 || (a.duration_secs == null && a.size > 0)))
         .sort((a, b) => a.offset_secs - b.offset_secs || a.id - b.id);
       return { results: rows.map((a) => ({ ...a })), changes: 0 };
     }
@@ -74,6 +74,10 @@ function makeDB({ attachments = [] } = {}) {
       const row = tables.attachments.find((a) => a.id === args[0]);
       return { results: row ? [{ ...row }] : [], changes: 0 };
     }
+    if (q.startsWith("SELECT a.* FROM attachments a JOIN entries e ON e.id = a.entry_id")) {
+      const row = tables.attachments.find((a) => a.id === args[0]);
+      return { results: row ? [{ ...row }] : [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO history")) {
       tables.history.push({ id: nextHistoryId++, entry_id: args[0], folder_id: args[1], action: args[2], detail: args[3], created_at: args[4] });
       return { results: [], changes: 1 };
@@ -100,7 +104,7 @@ function makeDB({ attachments = [] } = {}) {
 function audioAttachment(overrides = {}) {
   return {
     id: 1, entry_id: 10, kind: "audio", filename: "錄音-段1.webm",
-    key: "k1", transcript: "", transcribed_at: "", offset_secs: 0, duration_secs: 30,
+    key: "k1", size: 32000, transcript: "", transcribed_at: "", offset_secs: 0, duration_secs: 30,
     ...overrides,
   };
 }
@@ -215,6 +219,19 @@ test("沒有可轉錄的候選時，直接回報原因，不呼叫 AI 也不動�
   assert.equal(res.data.processed, 0);
   assert.match(res.data.reason, /沒有可安全自動轉錄/);
   assert.equal(aiCalled, false);
+});
+
+test("舊版離線補傳遺失 duration_secs 的音檔仍可轉錄，並以單段上限保守估算額度", async () => {
+  const db = makeDB({ attachments: [audioAttachment({ id: 11, entry_id: 31, duration_secs: null, size: 64000 })] });
+  const env = makeEnv(db);
+  env.AI = { async run() { return { text: "補傳音檔逐字稿" }; } };
+
+  const res = await callAutoTranscribe(env, 31);
+  assert.equal(res.status, 200);
+  assert.equal(res.data.processed, 1);
+  assert.equal(db.tables.attachments[0].transcript, "補傳音檔逐字稿");
+  assert.ok(db.tables.reservations[0].estimated_neurons >= 466,
+    "未知長度不能用檔案大小低估成本；應以 10 分鐘單段上限保守預留");
 });
 
 // ---------- 手動重試（/attachments/:id/transcribe）：2026-07-27 截圖回報 ----------
