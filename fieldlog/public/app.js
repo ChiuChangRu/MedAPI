@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "142";
+const APP_VERSION = "143";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -1246,12 +1246,15 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   const dateLabel = showRecency
     ? `${e.updated_at ? "動過" : "建立"} ${esc(localDateTimeShort(e.updated_at || e.created_at))}`
     : esc(localDateTimeShort(e.created_at));
+  // 資料夾內頁已由標題／麵包屑清楚標示目前位置，不要在每一筆下面重複一次路徑。
+  // 最近作業與待分類仍要顯示位置，否則使用者看不出記事現在放在哪裡。
+  const location = explorer ? "" : `<span class="entry-where">${esc(entryLocationLabel(e))}</span>`;
   return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span class="entry-main"><span class="entry-title">${esc(e.title || "（未命名）")}</span>
       <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}">✏️</button>
     </span>
-    <span class="entry-secondary"><span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}${filingSuggestion}
+    <span class="entry-secondary">${location}${aiChip}${filingSuggestion}
       <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span></span>
     <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
     <button class="entry-merge" data-id="${e.id}" type="button" title="合併到另一筆記事">合併</button>

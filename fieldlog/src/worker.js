@@ -57,6 +57,11 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
+import {
+  canonicalFolderLocalName,
+  findSiblingFolderNameConflict,
+  normalizeExistingChildFolderNames,
+} from "./lib/folder-names.js";
 import { createLegacySession, securityHeaders, verifyAccessRequest, verifyLegacySession } from "./lib/access-auth.js";
 import { ensurePatrolFolder, formatPatrolReport } from "./lib/patrol.js";
 import {
@@ -124,7 +129,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "142";
+const UI_VERSION = "143";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -238,7 +243,34 @@ function vectorIdsForAttachment(attachmentId) {
 export class EmbeddingWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
     const payload = event.payload || {};
-    const { kind, id, entryId, textContent, title } = payload; // kind: "entry" | "attachment" | "baseline_filing_v142"
+    const { kind, id, entryId, textContent, title } = payload; // kind: "entry" | "attachment" | maintenance kinds
+
+    // v143：既有第二層以下資料夾只保留本層名稱。這個維護工作不使用 AI、
+    // 不搬動、不合併；同層同名會跳過並列入衝突清單。settings 讓部署重試安全。
+    if (kind === "normalize_folder_names_v143") {
+      const maintenanceKey = "maintenance.folder_name_normalization";
+      const maintenanceVersion = "2026-08-24-v1";
+      return step.do("normalize-existing-child-folder-names-v143", async () => {
+        await ensureSchema(this.env.DB, now());
+        const saved = await this.env.DB.prepare("SELECT value FROM settings WHERE key = ?")
+          .bind(maintenanceKey).first();
+        if (saved?.value) {
+          try {
+            const parsed = JSON.parse(saved.value);
+            if (parsed.version === maintenanceVersion && parsed.status === "complete") {
+              return { success: true, skipped: true, ...parsed };
+            }
+          } catch { /* 舊值格式不符時重新執行本版維護 */ }
+        }
+        const result = await normalizeExistingChildFolderNames(this.env.DB, { timestamp: now, logHistory });
+        const state = { version: maintenanceVersion, status: "complete", ...result };
+        await this.env.DB.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind(maintenanceKey, JSON.stringify(state), now()).run();
+        return { success: true, ...state };
+      });
+    }
 
     // Cloudflare Access 會正確阻擋未登入瀏覽器，也因此 ChatGPT Cloud Browser
     // 不能安全呼叫管理端點。母體整理改由既有 Workflow binding 從 Cloudflare
@@ -930,8 +962,8 @@ async function handleApi(request, env, url, identity = {}) {
   }
   if (path === "/folders" && method === "POST") {
     const body = await request.json().catch(() => ({}));
-    const name = (body.name || "").trim();
-    if (!name) return bad("name 為必填");
+    const requestedName = (body.name || "").trim();
+    if (!requestedName) return bad("name 為必填");
     const type = (body.type || "其他").trim() || "其他";
     const parentId = body.parent_id ? Number(body.parent_id) : null;
     // 四層知識架構：第 1 層產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
@@ -947,8 +979,13 @@ async function handleApi(request, env, url, identity = {}) {
       }
       depth = parentDepth + 1;
     }
+    // 根資料夾可以保留「專案｜檢體針」這類分類名稱；子資料夾只存本層名稱。
+    const name = parentId ? canonicalFolderLocalName(requestedName) : requestedName.slice(0, 80);
+    if (!name) return bad("name 為必填");
+    const siblingConflict = await findSiblingFolderNameConflict(db, { parentId, name });
+    if (siblingConflict) return bad(`同一層已經有「${name}」資料夾`, 409);
     const r = await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
-      .bind(name.slice(0, 80), type.slice(0, 60), parentId, now()).run();
+      .bind(name, type.slice(0, 60), parentId, now()).run();
     await logHistory(db, null, r.meta.last_row_id, "建立資料夾", `${name}（${type}，第 ${depth} 層）`);
     return json({ id: r.meta.last_row_id, ok: true, depth, max_depth: MAX_FOLDER_DEPTH });
   }
@@ -984,12 +1021,12 @@ async function handleApi(request, env, url, identity = {}) {
     const body = await request.json().catch(() => ({}));
     const old = await db.prepare("SELECT * FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!old) return bad("找不到資料夾", 404);
-    const name = body.name !== undefined ? (body.name || "").trim() : old.name;
+    const requestedName = body.name !== undefined ? (body.name || "").trim() : old.name;
     const status = body.status !== undefined ? (body.status || "").trim() : old.status;
     // type 也可以改：建立時分類選錯很常見（例如誤選、或舊資料/匯入時類型跟預期不一樣），
     // 之前只能改 name/status，改 type 沒地方修，只能刪掉重建
     const type = body.type !== undefined ? (body.type || "").trim() : old.type;
-    if (!name) return bad("name 不可為空");
+    if (!requestedName) return bad("name 不可為空");
     if (!type) return bad("type 不可為空");
     // category＝色系分組，跟上面的 type（活動性質）是兩個不同的軸，見
     // lib/schema.js MIGRATIONS 裡 FOLDER_CATEGORIES 上方的說明。空字串代表
@@ -1007,8 +1044,10 @@ async function handleApi(request, env, url, identity = {}) {
       : old.sort_order;
     // parent_id 也能改＝資料夾本身可以搬到別的分支（或搬回最上層）。
     // 沒有這個，四層架構一旦建錯就只能刪掉重來，裡面的記事與附件跟著陪葬。
+    const nextParent = body.parent_id !== undefined
+      ? (body.parent_id ? Number(body.parent_id) : null)
+      : (old.parent_id ? Number(old.parent_id) : null);
     if (body.parent_id !== undefined) {
-      const nextParent = body.parent_id ? Number(body.parent_id) : null;
       if (nextParent === id) return bad("不能把資料夾搬到自己底下");
       if (nextParent) {
         const parent = await db.prepare("SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(nextParent).first();
@@ -1019,6 +1058,12 @@ async function handleApi(request, env, url, identity = {}) {
           return bad(`搬過去會變成第 ${parentDepth + height} 層，超過 ${MAX_FOLDER_DEPTH} 層上限（這個資料夾底下還有 ${height - 1} 層）`);
         }
       }
+    }
+    const name = nextParent ? canonicalFolderLocalName(requestedName) : requestedName.slice(0, 80);
+    if (!name) return bad("name 不可為空");
+    const siblingConflict = await findSiblingFolderNameConflict(db, { parentId: nextParent, name, excludeId: id });
+    if (siblingConflict) return bad(`同一層已經有「${name}」資料夾`, 409);
+    if (body.parent_id !== undefined && nextParent !== (old.parent_id ? Number(old.parent_id) : null)) {
       await db.prepare("UPDATE folders SET parent_id = ? WHERE id = ?").bind(nextParent, id).run();
       await logHistory(db, null, id, "移動資料夾", `${name} → ${nextParent ? `folder ${nextParent}` : "最上層"}`);
     }
