@@ -124,7 +124,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "139";
+const UI_VERSION = "140";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1826,8 +1826,20 @@ async function handleApi(request, env, url, identity = {}) {
       ? storedMime
       : (obj.httpMetadata?.contentType || storedMime || "application/octet-stream");
     const displayName = activeFile.filename || key;
-    if ((!contentType || contentType === "application/octet-stream") && /\.pdf$/i.test(displayName)) {
-      contentType = "application/pdf";
+    if (!contentType || /^(?:application|binary)\/octet-stream$/i.test(contentType)) {
+      const ext = displayName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || "";
+      const knownMime = {
+        pdf: "application/pdf", html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", xhtml: "application/xhtml+xml",
+        txt: "text/plain; charset=utf-8", md: "text/markdown; charset=utf-8", csv: "text/csv; charset=utf-8", json: "application/json; charset=utf-8", xml: "application/xml; charset=utf-8",
+        yaml: "text/yaml; charset=utf-8", yml: "text/yaml; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8",
+        jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp", avif: "image/avif",
+        mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", ogg: "audio/ogg", aac: "audio/aac", flac: "audio/flac", opus: "audio/ogg",
+        mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", m4v: "video/x-m4v",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }[ext];
+      if (knownMime) contentType = knownMime;
     }
     const headers = {
       "content-type": contentType,
@@ -1837,7 +1849,9 @@ async function handleApi(request, env, url, identity = {}) {
     // 使用者上傳的 HTML 屬於不可信內容。即使另開原檔也套 CSP sandbox，避免它
     // 在 MyWiki 同網域執行腳本、讀 localStorage/PIN 或送出表單。預覽 iframe 本身
     // 還有 sandbox 屬性，這裡是伺服器端第二道防線。
-    if (/^text\/html(?:;|$)/i.test(contentType) || /\.(?:html?|xhtml)$/i.test(key)) {
+    if (/^(?:text\/html|application\/xhtml\+xml)(?:;|$)/i.test(contentType) || /\.(?:html?|xhtml)$/i.test(key)) {
+      headers["content-security-policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+    } else if (/^image\/svg\+xml(?:;|$)/i.test(contentType) || /\.svg$/i.test(key)) {
       headers["content-security-policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
     }
     return new Response(obj.body, { headers });

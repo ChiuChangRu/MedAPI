@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "139";
+const APP_VERSION = "140";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -2145,6 +2145,7 @@ function clearFilePreview(message = "選取一份檔案以預覽") {
   const pane = $("folder-preview");
   const body = $("folder-preview-body");
   if (!pane || !body) return;
+  if (typeof body._previewCleanup === "function") body._previewCleanup();
   pane.dataset.attachmentId = "";
   pane.dataset.entryId = "";
   if ($("folder-preview-title")) $("folder-preview-title").textContent = "預覽";
@@ -2415,42 +2416,134 @@ async function renderPdfPreview(url, body, filename) {
   if (!response.ok) throw new Error(`PDF 讀取失敗（HTTP ${response.status}）`);
   const pdf = await window.pdfjsLib.getDocument({ data: await response.arrayBuffer() }).promise;
   body.innerHTML = `<div class="pdf-sidebar-preview">
-    <div class="pdf-sidebar-toolbar"><button class="btn small" type="button" data-dir="-1">‹ 上一頁</button><span>第 <b>1</b> / ${pdf.numPages} 頁</span><button class="btn small" type="button" data-dir="1">下一頁 ›</button></div>
+    <div class="pdf-sidebar-toolbar">
+      <div class="pdf-page-controls"><button class="btn small" type="button" data-page="-1">‹ 上一頁</button><span>第 <b data-page-label>1</b> / ${pdf.numPages} 頁</span><button class="btn small" type="button" data-page="1">下一頁 ›</button></div>
+      <div class="pdf-zoom-controls" aria-label="PDF 顯示大小"><button class="btn small" type="button" data-zoom="out" title="縮小">−</button><span data-zoom-label>符合寬度</span><button class="btn small" type="button" data-zoom="in" title="放大">＋</button><button class="btn small" type="button" data-zoom="fit">符合寬度</button></div>
+    </div>
     <div class="pdf-sidebar-canvas-wrap"><canvas aria-label="${esc(filename)} PDF 預覽"></canvas></div>
   </div>`;
   const canvas = body.querySelector("canvas");
-  const pageLabel = body.querySelector(".pdf-sidebar-toolbar b");
-  const buttons = [...body.querySelectorAll(".pdf-sidebar-toolbar button")];
+  const canvasWrap = body.querySelector(".pdf-sidebar-canvas-wrap");
+  const pageLabel = body.querySelector("[data-page-label]");
+  const zoomLabel = body.querySelector("[data-zoom-label]");
+  const pageButtons = [...body.querySelectorAll("[data-page]")];
+  const zoomButtons = [...body.querySelectorAll("[data-zoom]")];
   let pageNo = 1;
+  let zoomMode = "fit";
+  let zoomScale = 1;
   let rendering = false;
+  let rerenderPending = false;
+  let lastFitWidth = 0;
   const render = async () => {
-    if (rendering) return;
+    if (rendering) { rerenderPending = true; return; }
     rendering = true;
-    buttons.forEach((button) => { button.disabled = true; });
+    pageButtons.forEach((button) => { button.disabled = true; });
+    zoomButtons.forEach((button) => { button.disabled = true; });
     try {
       const page = await pdf.getPage(pageNo);
       const base = page.getViewport({ scale: 1 });
-      const available = Math.max(260, body.clientWidth - 28);
-      const viewport = page.getViewport({ scale: Math.min(2, available / base.width) });
-      canvas.width = Math.ceil(viewport.width);
-      canvas.height = Math.ceil(viewport.height);
-      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      const available = Math.max(260, canvasWrap.clientWidth - 24);
+      lastFitWidth = available;
+      const fitScale = available / base.width;
+      const scale = zoomMode === "fit" ? fitScale : zoomScale;
+      const viewport = page.getViewport({ scale });
+      const outputScale = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.ceil(viewport.width * outputScale);
+      canvas.height = Math.ceil(viewport.height * outputScale);
+      canvas.style.width = `${Math.ceil(viewport.width)}px`;
+      canvas.style.height = `${Math.ceil(viewport.height)}px`;
+      await page.render({
+        canvasContext: canvas.getContext("2d"), viewport,
+        transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0],
+      }).promise;
       pageLabel.textContent = String(pageNo);
+      zoomLabel.textContent = zoomMode === "fit" ? "符合寬度" : `${Math.round(scale * 100)}%`;
     } finally {
       rendering = false;
-      buttons[0].disabled = pageNo <= 1;
-      buttons[1].disabled = pageNo >= pdf.numPages;
+      pageButtons[0].disabled = pageNo <= 1;
+      pageButtons[1].disabled = pageNo >= pdf.numPages;
+      zoomButtons.forEach((button) => { button.disabled = false; });
+      if (rerenderPending) { rerenderPending = false; window.requestAnimationFrame(render); }
     }
   };
-  buttons.forEach((button) => {
+  pageButtons.forEach((button) => {
     button.onclick = async () => {
-      const next = pageNo + Number(button.dataset.dir || 0);
+      const next = pageNo + Number(button.dataset.page || 0);
       if (next < 1 || next > pdf.numPages || rendering) return;
       pageNo = next;
       await render();
     };
   });
+  zoomButtons.forEach((button) => {
+    button.onclick = async () => {
+      const action = button.dataset.zoom;
+      if (action === "fit") zoomMode = "fit";
+      else {
+        if (zoomMode === "fit") {
+          const page = await pdf.getPage(pageNo);
+          const base = page.getViewport({ scale: 1 });
+          zoomScale = Math.max(0.5, Math.min(3, lastFitWidth / base.width));
+        }
+        zoomMode = "manual";
+        zoomScale = Math.max(0.5, Math.min(3, zoomScale + (action === "in" ? 0.25 : -0.25)));
+      }
+      await render();
+    };
+  });
+  const resizeObserver = new ResizeObserver(() => {
+    if (zoomMode !== "fit") return;
+    const available = Math.max(260, canvasWrap.clientWidth - 24);
+    if (Math.abs(available - lastFitWidth) > 4) render();
+  });
+  resizeObserver.observe(canvasWrap);
+  body._previewCleanup = () => {
+    resizeObserver.disconnect();
+    if (typeof pdf.destroy === "function") pdf.destroy();
+    body._previewCleanup = null;
+  };
   await render();
+}
+
+function safeHtmlPreviewDocument(source) {
+  const parsed = new DOMParser().parseFromString(String(source || ""), "text/html");
+  const styles = [...parsed.querySelectorAll("style")]
+    .map((node) => String(node.textContent || "")
+      .replace(/@import[\s\S]*?;/gi, "")
+      .replace(/url\([^)]*\)/gi, "none")
+      .replace(/expression\([^)]*\)/gi, ""))
+    .join("\n");
+  parsed.querySelectorAll("script,iframe,frame,frameset,object,embed,form,input,button,textarea,select,link,meta,base,style,foreignObject")
+    .forEach((node) => node.remove());
+  parsed.querySelectorAll("*").forEach((element) => {
+    [...element.attributes].forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = String(attribute.value || "").trim();
+      if (name.startsWith("on") || ["srcset", "action", "formaction", "poster", "ping"].includes(name)) {
+        element.removeAttribute(attribute.name);
+      } else if (["href", "xlink:href"].includes(name)) {
+        element.removeAttribute(attribute.name);
+      } else if (name === "src" && !/^data:image\//i.test(value)) {
+        element.removeAttribute(attribute.name);
+      } else if (name === "style") {
+        element.setAttribute("style", value
+          .replace(/url\([^)]*\)/gi, "none")
+          .replace(/expression\([^)]*\)/gi, "")
+          .replace(/behavior\s*:/gi, "blocked:"));
+      }
+    });
+  });
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><style>html{color:#1b1d1c;background:#fff;font:14px/1.6 system-ui,sans-serif}body{margin:0;padding:18px;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%;border-collapse:collapse}th,td{padding:6px;border:1px solid #ddd}${styles}</style></head><body>${parsed.body.innerHTML}</body></html>`;
+}
+
+async function renderHtmlPreview(url, body, filename) {
+  const { text, truncated } = await fetchTextPreview(url, 500000);
+  body.innerHTML = `<div class="html-safe-preview"><p class="preview-safety-note">安全預覽：已停用腳本、表單與外部資源。${truncated ? " 僅顯示前 500,000 字。" : ""}</p></div>`;
+  const frame = document.createElement("iframe");
+  frame.className = "folder-preview-frame html-safe-frame";
+  frame.setAttribute("sandbox", "");
+  frame.title = `${filename} HTML 安全預覽`;
+  frame.srcdoc = safeHtmlPreviewDocument(text);
+  body.querySelector(".html-safe-preview").append(frame);
 }
 
 async function showFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
@@ -2468,21 +2561,22 @@ async function renderFilePreview({ entryId, attachmentId, filename, key, mime, k
   pane.dataset.attachmentId = String(attachmentId);
   pane.dataset.entryId = String(entryId);
   title.textContent = filename;
+  if (typeof body._previewCleanup === "function") body._previewCleanup();
   body.innerHTML = `<p class="folder-preview-empty">載入預覽中…</p>`;
   const url = fileUrlForKey(key);
   const ext = String(filename).split(".").pop().toLowerCase();
-  const image = kind === "photo" || /^image\//i.test(mime);
-  const audio = kind === "audio" || /^audio\//i.test(mime);
-  const video = kind === "video" || /^video\//i.test(mime);
+  const image = kind === "photo" || /^image\//i.test(mime) || ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "avif"].includes(ext);
+  const audio = kind === "audio" || /^audio\//i.test(mime) || ["mp3", "m4a", "wav", "ogg", "aac", "flac", "opus"].includes(ext);
+  const video = kind === "video" || /^video\//i.test(mime) || ["mp4", "webm", "mov", "m4v"].includes(ext);
   const pdf = mime === "application/pdf" || ext === "pdf";
   const html = /^text\/html/i.test(mime) || ["html", "htm"].includes(ext);
-  const plain = /^text\//i.test(mime) || ["txt", "md", "csv", "json", "xml"].includes(ext);
+  const plain = /^text\//i.test(mime) || ["txt", "md", "csv", "json", "xml", "yaml", "yml", "ini", "cfg", "log", "sql", "js", "ts", "css", "py", "sh"].includes(ext);
   const modernOffice = ["docx", "xlsx", "pptx"].includes(ext);
   if (image) body.innerHTML = `<img class="folder-preview-image" src="${url}" alt="${esc(filename)}" />`;
   else if (audio) body.innerHTML = `<audio class="folder-preview-media" controls preload="metadata" src="${url}"></audio>`;
   else if (video) body.innerHTML = `<video class="folder-preview-media" controls preload="metadata" src="${url}"></video>`;
   else if (pdf) await renderPdfPreview(url, body, filename);
-  else if (html) body.innerHTML = `<iframe class="folder-preview-frame" sandbox src="${url}" title="${esc(filename)}"></iframe>`;
+  else if (html) await renderHtmlPreview(url, body, filename);
   else if (ext === "csv") {
     const { text, truncated } = await fetchTextPreview(url, 200000);
     body.innerHTML = renderDelimitedTable(text) || `<pre class="folder-preview-text">${esc(text)}</pre>`;
