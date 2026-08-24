@@ -1078,6 +1078,99 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
 }
 .record-group-del:hover { opacity: 1; }
+.record-group-manage {
+  position: absolute; right: 8px; top: 8px; width: 40px; height: 36px; padding: 0;
+  border: 1px solid var(--border); border-radius: 7px; background: #fff;
+  color: var(--text); cursor: pointer; font-size: 18px; line-height: 1;
+}
+.record-group-manage:hover { border-color: var(--accent); background: #f0fdfa; }
+.record-group-card[data-recording="1"] { padding-right: 58px; }
+
+@media (min-width: 1000px) {
+  .record-group-card.preview-selected {
+    outline: 2px solid var(--accent); outline-offset: -2px; background: #eaf5f3;
+  }
+}
+
+/* ===== v135 錄音工作區 =====
+   錄音仍是一筆 entry 帶著多個附件；這些樣式只把它呈現成專用播放器與逐字稿
+   工作區，不拆解資料包，也不再把展場欄位當成日常主介面。 */
+.recording-preview { width: 100%; min-width: 0; padding: 14px; overflow: auto; }
+.recording-preview-summary {
+  padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff;
+}
+.recording-status {
+  display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; background: #e2e8f0; color: #334155;
+}
+.recording-status.done { background: #dcfce7; color: #166534; }
+.recording-status.pending { background: #fef3c7; color: #92400e; }
+.recording-status.working { background: #dbeafe; color: #1d4ed8; }
+.recording-status.failed { background: #fee2e2; color: #991b1b; }
+.recording-status.muted { background: #e2e8f0; color: #475569; }
+.recording-preview-summary dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 14px 0 0; }
+.recording-preview-summary dl > div { min-width: 0; }
+.recording-preview-summary dt { color: var(--text-muted); font-size: 11px; }
+.recording-preview-summary dd { margin: 3px 0 0; overflow-wrap: anywhere; font-weight: 650; }
+.recording-segments { display: grid; gap: 10px; margin-top: 12px; }
+.recording-segment { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.recording-segment > div { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.recording-segment > div span { color: var(--text-muted); font-size: 12px; }
+.recording-segment audio { display: block; width: 100%; }
+.recording-download { display: inline-block; margin-top: 8px; font-size: 12px; }
+.recording-preview-section { margin-top: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.recording-preview-section h3 { margin: 0 0 10px; font-size: 14px; }
+.recording-preview-section pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.65; }
+.folder-preview-empty.compact { padding: 10px; }
+
+.pdf-sidebar-preview { display: flex; flex-direction: column; width: 100%; min-width: 0; min-height: 100%; }
+.pdf-sidebar-toolbar {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid var(--border); background: #fff;
+}
+.pdf-sidebar-toolbar span { white-space: nowrap; font-size: 12px; }
+.pdf-sidebar-canvas-wrap { padding: 12px; overflow: auto; text-align: center; }
+.pdf-sidebar-canvas-wrap canvas { display: inline-block; max-width: 100%; height: auto; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+
+.recording-editor { display: grid; gap: 8px; margin-top: 12px; }
+.recording-editor > input,
+.recording-editor > textarea,
+.recording-transcript-input {
+  width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+  font: inherit; line-height: 1.55; resize: vertical;
+}
+.recording-editor > textarea { min-height: 110px; }
+.recording-editor-transcripts { display: grid; gap: 12px; margin-top: 6px; }
+.recording-editor-transcripts > h3 { margin: 4px 0 0; }
+.recording-editor-transcripts section { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #f8faf9; }
+.recording-editor-transcripts audio { width: 100%; margin: 10px 0; }
+.recording-transcript-input { min-height: 220px; background: #fff; }
+.recording-editor-segment-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.recording-editor-segment-head span { min-width: 0; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; text-align: right; }
+
+.recording-action-list { display: grid; gap: 8px; margin-top: 12px; }
+.recording-action {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px 10px; width: 100%;
+  padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: #fff;
+  color: var(--text); text-align: left; cursor: pointer;
+}
+.recording-action > span { grid-row: 1 / 3; align-self: center; font-size: 21px; }
+.recording-action small { color: var(--text-muted); }
+.recording-action:hover { border-color: var(--accent); background: #f0fdfa; }
+.recording-action.danger { color: #991b1b; }
+.recording-download-list { padding: 12px; border: 1px solid var(--border); border-radius: 9px; }
+.recording-download-list h3 { margin: 0 0 8px; font-size: 14px; }
+.recording-download-list a { display: block; padding: 7px 0; overflow-wrap: anywhere; }
+.recording-download-list a + a { border-top: 1px solid var(--border); }
+.recording-download-list small { color: var(--text-muted); }
+.recording-legacy-fallback { margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px; }
+.recording-legacy-fallback summary { cursor: pointer; color: var(--text-muted); font-size: 13px; }
+
+@media (max-width: 719px) {
+  .recording-preview-summary dl { grid-template-columns: 1fr; }
+  .recording-editor-segment-head { display: block; }
+  .recording-editor-segment-head span { display: block; margin-top: 3px; text-align: left; }
+}
 
 @media (min-width: 720px) {
   /* 清單模式讓標題獨佔主要欄；路徑、時間與附件數移到第二行，避免預覽欄
