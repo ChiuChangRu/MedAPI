@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "127";
+const APP_VERSION = "128";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -653,6 +653,41 @@ function setBootProgress(pct) {
 }
 function hideBootProgress() {
   $("boot-loading-overlay")?.classList.remove("open");
+}
+
+// ---------- 分頁／右側內容載入視窗 ----------
+// 首頁啟動已有百分比進度；這一組專門處理之後每次切換資料夾、待分類、垃圾桶、
+// 紀錄／檔案與分類管理。載入層會蓋住舊內容，避免把空白或上一頁誤認成新結果。
+// 計數器讓巢狀載入（例如重新整理資料夾後再開檔案）不會被較早完成的請求提早關掉。
+let VIEW_LOADING_COUNT = 0;
+const VIEW_LOADING_MIN_MS = 180;
+
+function beginViewLoading(label = "正在載入…") {
+  VIEW_LOADING_COUNT += 1;
+  const overlay = $("view-loading-overlay");
+  const title = $("view-loading-title");
+  if (title) title.textContent = label;
+  overlay?.classList.add("open");
+  document.body.setAttribute("aria-busy", "true");
+  return performance.now();
+}
+
+async function endViewLoading(startedAt) {
+  const remaining = VIEW_LOADING_MIN_MS - (performance.now() - startedAt);
+  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  VIEW_LOADING_COUNT = Math.max(0, VIEW_LOADING_COUNT - 1);
+  if (VIEW_LOADING_COUNT > 0) return;
+  $("view-loading-overlay")?.classList.remove("open");
+  document.body.removeAttribute("aria-busy");
+}
+
+async function withViewLoading(label, task) {
+  const startedAt = beginViewLoading(label);
+  try {
+    return await task();
+  } finally {
+    await endViewLoading(startedAt);
+  }
 }
 
 async function boot() {
@@ -1617,6 +1652,7 @@ function syncFolderSortButtons() {
 async function openFolder(id) {
   CURRENT_FOLDER = FOLDERS.find((f) => f.id === id);
   if (!CURRENT_FOLDER) return;
+  return withViewLoading(`正在載入「${CURRENT_FOLDER.name}」…`, async () => {
   $("desktop-pending")?.classList.remove("active");
   $("desktop-trash")?.classList.remove("active");
   $("view-home").style.display = "none";
@@ -1671,6 +1707,7 @@ async function openFolder(id) {
   bindEntryRows($("folder-entries"));
   bindFileRows();
   bindRecordGroupCards();
+  });
 }
 
 // 多檔案記事（分段錄音等）的卡片：跟子資料夾用同一套 .child-folder-card
@@ -1976,30 +2013,34 @@ async function loadTrash() {
 }
 
 async function openTrash() {
+  return withViewLoading("正在載入垃圾桶…", async () => {
   $("desktop-pending")?.classList.remove("active");
   $("desktop-trash")?.classList.add("active");
   $("trash-overlay").classList.add("open");
   await loadTrash().catch((error) => { $("trash-list").innerHTML = `<p class="sub">載入失敗：${esc(error.message)}</p>`; });
+  });
 }
 
-function openPendingFromDesktop() {
-  $("desktop-pending")?.classList.add("active");
-  $("desktop-trash")?.classList.remove("active");
-  CURRENT_FOLDER = null;
-  $("view-folder").style.display = "none";
-  $("view-home").style.display = "block";
-  $("inbox-panel").scrollIntoView({ behavior: "smooth", block: "start" });
-  loadRecent();
-  renderFolders();
+async function openPendingFromDesktop() {
+  return withViewLoading("正在載入待分類…", async () => {
+    await Promise.all([loadFolders(), loadRecent()]);
+    $("desktop-pending")?.classList.add("active");
+    $("desktop-trash")?.classList.remove("active");
+    CURRENT_FOLDER = null;
+    $("view-folder").style.display = "none";
+    $("view-home").style.display = "block";
+    $("inbox-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
-function backHome() {
-  if (CURRENT_FOLDER?.parent_id) { openFolder(CURRENT_FOLDER.parent_id); return; }
-  CURRENT_FOLDER = null;
-  $("view-folder").style.display = "none";
-  $("view-home").style.display = "block";
-  loadFolders();
-  loadRecent();
+async function backHome() {
+  if (CURRENT_FOLDER?.parent_id) return openFolder(CURRENT_FOLDER.parent_id);
+  return withViewLoading("正在載入首頁…", async () => {
+    await Promise.all([loadFolders(), loadRecent()]);
+    CURRENT_FOLDER = null;
+    $("view-folder").style.display = "none";
+    $("view-home").style.display = "block";
+  });
 }
 
 // ---------- 紀錄 ----------
@@ -2052,6 +2093,7 @@ async function openEntry(id) {
   if (FOCUSED_FILE && FOCUSED_FILE.entryId === entryId) {
     return openFileDetail(FOCUSED_FILE.entryId, FOCUSED_FILE.attachmentId);
   }
+  return withViewLoading("正在載入紀錄…", async () => {
   const e = await api(`/entries/${id}`);
   // Tier 2 會把 PDF 每頁轉成圖檔供 OCR 使用；這些是處理用的衍生附件，
   // 不逐張顯示在附件清單，避免數十頁 PDF 產生大量縮圖。處理進度仍顯示在來源 PDF 上。
@@ -2294,6 +2336,7 @@ async function openEntry(id) {
     const status = $("e-auto-status");
     if (status) status.textContent = `自動轉錄未執行：${err.message}`;
   });
+  });
 }
 
 /**
@@ -2401,6 +2444,7 @@ function categoryManagerRows(kind) {
 }
 
 async function renderCategoryManager(kind) {
+  return withViewLoading("正在載入分類…", async () => {
   await loadCategories();
   const body = $("category-manager-body");
   if (!body) return;
@@ -2494,6 +2538,7 @@ async function renderCategoryManager(kind) {
       showToast("新增失敗：" + error.message);
     }
   };
+  });
 }
 
 // 分類改完之後，把正在顯示分類的地方一起更新，不用重新整理頁面
@@ -3043,6 +3088,7 @@ async function openFileDetail(entryId, attachmentId) {
   entryId = Number(entryId || 0);
   attachmentId = Number(attachmentId || 0);
   if (!entryId || !attachmentId) return;
+  return withViewLoading("正在載入檔案…", async () => {
   FOCUSED_FILE = { entryId, attachmentId };
 
   const entry = await api(`/entries/${entryId}`);
@@ -3234,6 +3280,7 @@ async function openFileDetail(entryId, attachmentId) {
     removeOneFile(attachmentId, attachment.filename, true)
       .catch((error) => showToast("刪除失敗：" + error.message));
   };
+  });
 }
 
 function attHtml(a, siblings) {
