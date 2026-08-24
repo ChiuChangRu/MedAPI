@@ -31,6 +31,23 @@ body {
     display: flex; flex-direction: column; padding: 18px 12px;
     background: #f3f5f4; border-right: 1px solid var(--border); overflow: auto;
   }
+  .desktop-explorer-title {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 4px 6px 14px 10px; font-weight: 750; font-size: 17px;
+  }
+  .desktop-sidebar-control, .desktop-sidebar-open {
+    width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 8px; background: transparent; color: var(--text-muted);
+    cursor: pointer; font: inherit;
+  }
+  .desktop-sidebar-control:hover, .desktop-sidebar-open:hover { background: #dfe9e7; color: var(--text); }
+  .desktop-sidebar-open {
+    display: none; position: fixed; z-index: 35; top: 14px; left: 9px;
+    background: #f3f5f4; border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(27,29,28,.08);
+  }
+  body.sidebar-collapsed .desktop-explorer-nav { display: none; }
+  body.sidebar-collapsed .desktop-sidebar-open { display: inline-flex; }
+  body.sidebar-collapsed .container { margin-left: 52px; }
   .container { max-width: none; margin-left: var(--sidebar-width); padding-left: 24px; padding-right: 24px; }
   /* 拖曳調整側欄寬度：疊在右邊界上的一條透明窄條，滑鼠移上去才看得到，
      拖曳中額外加 .dragging 讓視覺回饋不會因為滑鼠移動太快而閃爍消失。
@@ -43,7 +60,6 @@ body {
   .desktop-explorer-resize:hover, .desktop-explorer-resize.dragging { background: var(--accent); opacity: .35; }
   body.sidebar-resizing { cursor: col-resize; user-select: none; }
   body.sidebar-resizing .desktop-explorer-resize { background: var(--accent); opacity: .35; }
-  .desktop-explorer-title { padding: 4px 10px 14px; font-weight: 750; font-size: 17px; }
   .desktop-shortcut, .desktop-tree-row {
     width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px;
     padding: 9px 10px; border: 0; border-radius: 7px; color: var(--text);
@@ -1081,7 +1097,17 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .folder-workspace.preview-off .folder-preview,
   .folder-workspace.preview-off .folder-preview-resize { display: none; }
   .preview-toggle.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+  body.reader-fullscreen .folder-workspace { grid-template-columns: minmax(0, 1fr); }
+  body.reader-fullscreen .folder-workspace-main,
+  body.reader-fullscreen .folder-preview-resize { display: none; }
+  body.reader-fullscreen .folder-preview {
+    grid-column: 1 / -1; width: 100%; min-width: 0;
+  }
+  body.reader-fullscreen #folder-preview-expand {
+    color: #fff; background: var(--accent); border-color: var(--accent);
+  }
 }
+.desktop-sidebar-open { display: none; }
 .preview-toggle { display: none !important; }
 .folder-content-list > .explorer-item { width: 100%; margin: 0; min-width: 0; }
 .folder-content-list.list-view > .explorer-item,
