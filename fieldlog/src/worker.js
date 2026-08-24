@@ -56,7 +56,7 @@ import {
   listCategories,
   updateCategory,
 } from "./lib/categories.js";
-import { ensureStagingFolder } from "./lib/autofile.js";
+import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
 import { createLegacySession, securityHeaders, verifyAccessRequest, verifyLegacySession } from "./lib/access-auth.js";
 import { ensurePatrolFolder, formatPatrolReport } from "./lib/patrol.js";
 import {
@@ -124,7 +124,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "140";
+const UI_VERSION = "142";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -688,9 +688,8 @@ async function handleApi(request, env, url, identity = {}) {
   }
 
   // ---- 暫存區 ----
-  // 「來不及分類就先丟這裡」要有一個真的、看得見的資料夾（不是空了就消失的
-  // 收件匣面板）。純手動：使用者自己找時間搬去該去的資料夾，不再有
-  // AI／天數排程自動歸類（2026-08-09 移除，見該功能被拿掉的說明）。
+  // 「來不及分類就先丟這裡」要有一個真的、看得見的資料夾。B 模式每天只掃
+  // 這個容器裡的新／更新資料；高信心才搬，其他留在這裡等人確認。
   if (path === "/staging" && (method === "GET" || method === "POST")) {
     const folder = await ensureStagingFolder(db, now());
     return json({ ok: true, id: Number(folder.id), name: folder.name });
@@ -748,8 +747,83 @@ async function handleApi(request, env, url, identity = {}) {
     const entry = await db.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!entry) return bad("找不到紀錄", 404);
     await db.prepare("UPDATE entries SET auto_filed_at = '', auto_filed_reason = '' WHERE id = ?").bind(id).run();
+    await db.prepare(
+      `UPDATE filing_suggestions SET status = 'confirmed', reviewed_at = ?, updated_at = ?
+       WHERE entry_id = ? AND status IN ('auto_applied', 'baseline_auto_applied')`
+    ).bind(now(), now(), id).run();
     await logHistory(db, id, null, "確認分類", `${entry.title || "（未命名）"}：使用者確認分類正確`);
     return json({ ok: true });
+  }
+
+  // B 模式的人工覆核。所有端點都用狀態與目前位置雙重檢查，避免舊分頁上的
+  // 按鈕把已經被別人移動過的記事再次搬走。
+  const filingActionMatch = path.match(/^\/filing-suggestions\/(\d+)\/(accept|reject|undo)$/);
+  if (filingActionMatch && method === "POST") {
+    const entryId = Number(filingActionMatch[1]);
+    const action = filingActionMatch[2];
+    const suggestion = await db.prepare(
+      `SELECT s.*, e.title, e.folder_id AS current_folder_id,
+              cf.role AS current_folder_role, sf.name AS suggested_folder_name
+       FROM filing_suggestions s
+       JOIN entries e ON e.id = s.entry_id
+       LEFT JOIN folders cf ON cf.id = e.folder_id
+       LEFT JOIN folders sf ON sf.id = s.suggested_folder_id
+       WHERE s.entry_id = ? AND COALESCE(e.deleted_at, '') = ''
+         AND (sf.id IS NULL OR COALESCE(sf.deleted_at, '') = '')`
+    ).bind(entryId).first();
+    if (!suggestion) return bad("找不到分類建議", 404);
+    const reviewedAt = now();
+    if (action === "accept") {
+      if (suggestion.status !== "pending" || suggestion.current_folder_role !== "staging") {
+        return bad("這筆建議已處理，或記事已不在待分類", 409);
+      }
+      if (!suggestion.suggested_folder_id || !suggestion.suggested_folder_name) return bad("建議的資料夾已不存在", 409);
+      const moved = await db.prepare(
+        `UPDATE entries SET folder_id = ?, parent_entry_id = NULL, auto_filed_at = '',
+           auto_filed_reason = '', updated_at = ? WHERE id = ? AND folder_id = ?`
+      ).bind(suggestion.suggested_folder_id, reviewedAt, entryId, suggestion.current_folder_id).run();
+      if (!moved?.meta?.changes) return bad("記事位置已變更，請重新整理", 409);
+      await db.prepare(
+        "UPDATE filing_suggestions SET status = 'accepted', reviewed_at = ?, updated_at = ? WHERE entry_id = ?"
+      ).bind(reviewedAt, reviewedAt, entryId).run();
+      await logHistory(db, entryId, suggestion.suggested_folder_id, "套用 AI 分類建議", `${suggestion.title || "（未命名）"} → ${suggestion.suggested_folder_name}`);
+      return json({ ok: true, folder_id: Number(suggestion.suggested_folder_id) });
+    }
+    if (action === "reject") {
+      if (suggestion.status !== "pending") return bad("這筆建議已處理", 409);
+      await db.prepare(
+        "UPDATE filing_suggestions SET status = 'rejected', reviewed_at = ?, updated_at = ? WHERE entry_id = ? AND status = 'pending'"
+      ).bind(reviewedAt, reviewedAt, entryId).run();
+      await logHistory(db, entryId, suggestion.current_folder_id, "忽略 AI 分類建議", suggestion.suggested_folder_name || suggestion.reason || "未指定位置");
+      return json({ ok: true });
+    }
+    if (!["auto_applied", "baseline_auto_applied"].includes(suggestion.status)
+        || Number(suggestion.current_folder_id) !== Number(suggestion.suggested_folder_id)) {
+      return bad("這筆自動分類已被確認或位置已變更，不能復原", 409);
+    }
+    const previousFolder = await db.prepare(
+      "SELECT id, COALESCE(role, '') AS role FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+    ).bind(suggestion.previous_folder_id).first();
+    if (!previousFolder) return bad("整理前的原位置已不存在", 409);
+    if (suggestion.status === "auto_applied" && previousFolder.role !== "staging") {
+      return bad("原待分類位置不正確，不能復原", 409);
+    }
+    const restored = await db.prepare(
+      `UPDATE entries SET folder_id = ?, parent_entry_id = NULL, auto_filed_at = '',
+         auto_filed_reason = '', updated_at = ? WHERE id = ? AND folder_id = ?`
+    ).bind(previousFolder.id, reviewedAt, entryId, suggestion.suggested_folder_id).run();
+    if (!restored?.meta?.changes) return bad("記事位置已變更，請重新整理", 409);
+    await db.prepare(
+      `UPDATE filing_suggestions SET status = 'undone', reviewed_at = ?, updated_at = ?,
+         source_updated_at = ? || ':' || COALESCE((
+           SELECT MAX(COALESCE(NULLIF(a.ocr_at, ''), NULLIF(a.transcribed_at, ''), a.created_at))
+           FROM attachments a WHERE a.entry_id = ?
+         ), '')
+       WHERE entry_id = ?`
+    ).bind(reviewedAt, reviewedAt, reviewedAt, entryId, entryId).run();
+    const restoreLabel = suggestion.status === "baseline_auto_applied" ? "原資料夾" : "待分類";
+    await logHistory(db, entryId, previousFolder.id, "復原 AI 自動分類", `${suggestion.suggested_folder_name || "原建議位置"} → ${restoreLabel}`);
+    return json({ ok: true, folder_id: Number(previousFolder.id) });
   }
 
   // ---- folders ----
@@ -1064,8 +1138,15 @@ async function handleApi(request, env, url, identity = {}) {
               COALESCE(e.auto_filed_at, '') AS auto_filed_at,
               COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
               f.name AS folder_name, f.type AS folder_type, COALESCE(f.role, '') AS folder_role,
+              COALESCE(s.status, '') AS suggestion_status,
+              s.suggested_folder_id, sf.name AS suggested_folder_name,
+              COALESCE(s.confidence, 0) AS filing_confidence,
+              COALESCE(s.reason, '') AS filing_reason,
               (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
-       FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+       FROM entries e
+       LEFT JOIN folders f ON f.id = e.folder_id
+       LEFT JOIN filing_suggestions s ON s.entry_id = e.id
+       LEFT JOIN folders sf ON sf.id = s.suggested_folder_id
        WHERE COALESCE(e.deleted_at, '') = '' AND e.parent_entry_id IS NULL
          AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
          AND (e.folder_id IS NULL
@@ -1332,6 +1413,10 @@ async function handleApi(request, env, url, identity = {}) {
       }
     }
     if (folderChanged) {
+      await db.prepare(
+        `UPDATE filing_suggestions SET status = 'overridden', reviewed_at = ?, updated_at = ?
+         WHERE entry_id = ? AND status IN ('pending', 'auto_applied', 'baseline_auto_applied')`
+      ).bind(now(), now(), id).run();
       await logHistory(db, id, folderId, "分類", title);
     } else {
       await logHistory(db, id, folderId, "更新紀錄", title);
@@ -1612,6 +1697,38 @@ async function handleApi(request, env, url, identity = {}) {
     return json(outcome, outcome.ok ? 200 : 502);
   }
 
+  // B 模式平常由每日 cron 執行；保留後臺端點給部署後驗證或需要立刻補跑時使用，
+  // 前臺不放手動按鈕。dailyLimit 在引擎內仍有 100 筆硬上限，避免一次誤掃全庫。
+  if (path === "/admin/run-hybrid-filing" && method === "POST") {
+    if (!env.AI) return bad("Workers AI 未配置", 501);
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    const dailyLimit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 25) || 25));
+    const outcome = await runHybridAutofile(env, {
+      timestamp: now,
+      dailyLimit,
+      runAi: (model, input) => budgetedAi(env).run(model, input),
+      logHistory,
+    });
+    return json({ ok: true, ...outcome });
+  }
+
+  // 既有正式資料的母體整理是「明確下令才跑」的一次性工作，不掛每日 cron。
+  // 每筆只評估一次；高信心才搬，原資料夾記在 filing_suggestions，可逐筆復原。
+  if (path === "/admin/review-existing-filing" && method === "POST") {
+    if (!env.AI) return bad("Workers AI 未配置", 501);
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 25) || 25));
+    const outcome = await runBaselineFilingReview(env, {
+      timestamp: now,
+      limit,
+      runAi: (model, input) => budgetedAi(env).run(model, input),
+      logHistory,
+    });
+    return json({ ok: true, scope: "existing_filing_once", ...outcome });
+  }
+
   // 一次性的資料夾分類重整（2026-08-08）手動觸發端點，跟 /admin/sync-sources
   // 同一個道理：本來掛在 scheduled()，每天台灣時間 02:00 才會自動套用一次，
   // 不想等的話用這支立刻跑。函式自己有標記機制，跑第二次也是安全的無事發生。
@@ -1856,7 +1973,8 @@ async function handleApi(request, env, url, identity = {}) {
     }
     return new Response(obj.body, { headers });
   }
-  // 手動整理既有附件名稱：只用已入庫的 OCR／逐字稿與記事脈絡，不重新呼叫 AI。
+  // 後臺整理既有附件名稱：只用已入庫的 OCR／逐字稿與記事脈絡，不重新呼叫 AI。
+  // 前臺沒有按鈕；這支路由保留給 scheduled() 共用同一套整理邏輯。
   if (path === "/attachments/rename-existing" && method === "POST") {
     await db.prepare(
       "UPDATE attachments SET original_filename = filename WHERE COALESCE(original_filename, '') = ''"
@@ -2576,6 +2694,41 @@ async function handleSession(request, env) {
   return new Response(JSON.stringify({ ok: true, expires_in: 43200 }), { headers });
 }
 
+const FILENAME_MAINTENANCE_KEY = "maintenance.filename_cleanup";
+const FILENAME_MAINTENANCE_VERSION = "2026-08-24-v1";
+
+/**
+ * 舊附件整理屬於一次性資料維護，不是前臺功能。
+ *
+ * 版本存在 D1，只有排程成功完成後才寫入；失敗時隔天可重試。這避免原本以
+ * localStorage 判斷造成每台電腦、每個瀏覽器各自重跑一次全庫掃描。
+ */
+async function runFilenameMaintenanceOnce(env) {
+  const state = await env.DB.prepare("SELECT value FROM settings WHERE key = ?")
+    .bind(FILENAME_MAINTENANCE_KEY).first();
+  if (state?.value === FILENAME_MAINTENANCE_VERSION) {
+    return { ok: true, skipped: true, version: FILENAME_MAINTENANCE_VERSION };
+  }
+
+  // 直接呼叫同一個後端處理器，不經網路，也不需要使用者登入或開啟資料夾。
+  const request = new Request("https://fieldlog.internal/api/attachments/rename-existing", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  const response = await handleApi(request, env, new URL(request.url), { email: "scheduled-maintenance" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) {
+    throw new Error(result.error || `檔名整理回傳 HTTP ${response.status}`);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).bind(FILENAME_MAINTENANCE_KEY, FILENAME_MAINTENANCE_VERSION, now()).run();
+  return { ...result, version: FILENAME_MAINTENANCE_VERSION };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -2621,6 +2774,28 @@ export default {
       await applyFolderReorg20260808(env.DB, now());
     } catch (err) {
       console.error("資料夾分類重整失敗", err);
+    }
+    // 舊附件檔名與完全相同的重複檔只需整理一次。新附件在上傳／文字擷取流程
+    // 已逐檔自動命名與防重，不需要每天全庫掃描。
+    try {
+      const cleanup = await runFilenameMaintenanceOnce(env);
+      if (!cleanup.skipped) console.log(JSON.stringify({ event: "filename_maintenance_complete", ...cleanup }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "filename_maintenance_failed", error: err.message }));
+    }
+    // B 模式分類只讀待分類容器的新／更新資料。使用 Cloudflare 自有綁定的
+    // BGE-M3 與 Llama，不依賴 GPT／Claude；單筆誤判可由前臺復原。
+    try {
+      if (!env.AI) throw new Error("Workers AI 未配置");
+      await enforceAiSoftBudget(env);
+      const filing = await runHybridAutofile(env, {
+        timestamp: now,
+        runAi: (model, input) => budgetedAi(env).run(model, input),
+        logHistory,
+      });
+      console.log(JSON.stringify({ event: "hybrid_autofile_complete", ...filing }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "hybrid_autofile_schedule_failed", error: err.message }));
     }
     try {
       const trash = await purgeExpiredTrash(env.DB, env.FILES, now(), env.VECTOR_INDEX);
