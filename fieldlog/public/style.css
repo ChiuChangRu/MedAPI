@@ -24,7 +24,7 @@ body {
 @media (min-width: 900px) { .container { max-width: 1080px; } }
 
 /* ===== v110 桌機檔案總管：固定資料夾樹＋右側單一內容區；手機完全不套用 ===== */
-.desktop-explorer-nav, .desktop-sidebar-open { display: none; }
+.desktop-explorer-nav { display: none; }
 @media (min-width: 720px) {
   .desktop-explorer-nav {
     position: fixed; z-index: 30; inset: 0 auto 0 0; width: var(--sidebar-width);
@@ -43,20 +43,7 @@ body {
   .desktop-explorer-resize:hover, .desktop-explorer-resize.dragging { background: var(--accent); opacity: .35; }
   body.sidebar-resizing { cursor: col-resize; user-select: none; }
   body.sidebar-resizing .desktop-explorer-resize { background: var(--accent); opacity: .35; }
-  .desktop-explorer-title { display: flex; align-items: center; gap: 8px; padding: 4px 4px 14px 10px; font-weight: 750; font-size: 17px; }
-  .desktop-explorer-title > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .desktop-sidebar-toggle, .desktop-sidebar-open {
-    width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent;
-    color: var(--text); cursor: pointer; font-size: 22px; line-height: 1;
-  }
-  .desktop-sidebar-toggle:hover, .desktop-sidebar-open:hover { background: #dfe9e7; }
-  .desktop-sidebar-open {
-    display: none; position: fixed; z-index: 32; top: 12px; left: 12px;
-    border: 1px solid var(--border); background: rgba(255,255,255,.94); box-shadow: 0 2px 8px rgba(27,29,28,.12);
-  }
-  body.sidebar-collapsed .desktop-explorer-nav { display: none; }
-  body.sidebar-collapsed .desktop-sidebar-open { display: block; }
-  body.sidebar-collapsed .container { margin-left: 0; padding-left: 58px; }
+  .desktop-explorer-title { padding: 4px 10px 14px; font-weight: 750; font-size: 17px; }
   .desktop-shortcut, .desktop-tree-row {
     width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px;
     padding: 9px 10px; border: 0; border-radius: 7px; color: var(--text);
@@ -86,7 +73,7 @@ body {
 .trash-row-main strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trash-row-main small { color: var(--text-muted); }
 .btn.danger { color: #b91c1c; border-color: #fecaca; background: #fff7f7; }
-.details-view .entry-row { border-radius: 0; border-width: 0 0 1px; box-shadow: none; }
+.details-view .entry-row, .details-view .folder-file-row, .details-view .record-group-card { border-radius: 0; border-width: 0 0 1px; box-shadow: none; }
 
 /* ===== 首頁：採集優先。四個獨立入口排 2x2，方型好按、單手拇指範圍內 ===== */
 .capture-grid {
@@ -270,9 +257,10 @@ body {
 .folder-menu button:hover { background: #f1f5f4; }
 .folder-menu .danger { color: #b91c1c; }
 .child-folder-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 8px 0 16px; }
-/* 子資料夾與舊資料內含的子記事沿用同一種緊湊卡片。資料夾主列表只會產生
-   .child-folder-card 與統一的 .entry-row，不再產生第三種「資料包卡」。 */
-.child-folder-card, .entry-child-card {
+/* .record-group-card（多檔案記事卡片）刻意跟 .child-folder-card 共用
+   這組視覺樣式、但不共用 class 名稱——見 recordGroupCardHtml() 的註解，
+   兩者的 data-id 語意不同（資料夾 id vs. 記事 id），拖曳落點判斷不能混淆。 */
+.child-folder-card, .record-group-card {
   display: grid; grid-template-columns: auto 1fr; gap: 3px 9px; align-items: center;
   padding: 13px; border: 1px solid var(--border); border-radius: var(--radius);
   background: #fff; color: var(--text); text-align: left; cursor: pointer;
@@ -283,11 +271,12 @@ body {
   min-width: 0;
   position: relative;
 }
-.child-folder-card:hover, .entry-child-card:hover { border-color: var(--accent); background: #f0fdfa; }
-.child-folder-card > span, .entry-child-card > span { grid-row: 1 / 3; font-size: 24px; }
-.child-folder-card strong, .entry-child-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.child-folder-card small, .entry-child-card small { color: var(--text-muted); }
-/* 子資料夾原本只能點進去看；右上角直接提供改名與移動。 */
+.child-folder-card:hover, .record-group-card:hover { border-color: var(--accent); background: #f0fdfa; }
+.child-folder-card > span, .record-group-card > span { grid-row: 1 / 3; font-size: 24px; }
+.child-folder-card strong, .record-group-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.child-folder-card small, .record-group-card small { color: var(--text-muted); }
+/* 子資料夾原本只能點進去看，改名要先回上層資料夾清單才有選單——右上角補一顆
+   跟 .record-group-del 同樣手法的編輯鈕，直接沿用既有的 renameFolder()。 */
 .child-folder-card { padding-right: 60px; }
 .child-folder-edit, .child-folder-move {
   position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
@@ -297,14 +286,14 @@ body {
 .child-folder-edit:hover, .child-folder-move:hover { opacity: 1; }
 .child-folder-list.list-view { display: flex; flex-direction: column; }
 .child-folder-list.list-view .child-folder-card,
-.child-folder-list.list-view .entry-child-card { min-height: 62px; }
+.child-folder-list.list-view .record-group-card { min-height: 62px; }
 /* 卡片模式：跟首頁採集按鈕（錄影／拍照／錄音／記事）同一套漸層光澤正方形
    磚，子資料夾／已分類的多檔案紀錄看起來像一疊有質感的磚塊。只在夠寬的
    螢幕上套用——手機版本來就沒有卡片／清單切換鈕（見下面的手機 media
    query），會直接落回上面那組緊湊橫向列樣式，不用另外寫「復原」規則。 */
 @media (min-width: 720px) {
   .child-folder-list.grid-view .child-folder-card,
-  .child-folder-list.grid-view .entry-child-card {
+  .child-folder-list.grid-view .record-group-card {
     aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
     justify-content: center; text-align: center; gap: 6px; padding: 16px;
     border: none; border-radius: 14px; color: #fff;
@@ -312,29 +301,40 @@ body {
     box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
   }
   .child-folder-list.grid-view .child-folder-card:hover,
-  .child-folder-list.grid-view .entry-child-card:hover {
+  .child-folder-list.grid-view .record-group-card:hover {
     background: linear-gradient(135deg, var(--accent), #14907f);
     box-shadow: 0 6px 18px rgba(15, 118, 110, 0.45);
   }
   .child-folder-list.grid-view .child-folder-card > span,
-  .child-folder-list.grid-view .entry-child-card > span { font-size: 34px; }
+  .child-folder-list.grid-view .record-group-card > span { font-size: 34px; }
   .child-folder-list.grid-view .child-folder-card strong,
-  .child-folder-list.grid-view .entry-child-card strong {
+  .child-folder-list.grid-view .record-group-card strong {
     font-size: 14px; white-space: normal; word-break: break-all; overflow: hidden;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   }
   .child-folder-list.grid-view .child-folder-card small,
-  .child-folder-list.grid-view .entry-child-card small {
+  .child-folder-list.grid-view .record-group-card small {
     color: rgba(255, 255, 255, 0.85); white-space: normal; word-break: break-all; overflow: hidden;
   }
   .child-folder-list.grid-view .folder-level-chip { background: rgba(255, 255, 255, 0.25); color: #fff; }
-  .child-folder-list.grid-view .entry-child-card,
+  .child-folder-list.grid-view .record-group-card,
   .child-folder-list.grid-view .child-folder-card { padding-right: 16px; padding-left: 16px; }
   .child-folder-list.grid-view .child-folder-move { right: 34px; }
+  .child-folder-list.grid-view .record-group-move { right: 34px; top: 8px; }
+  .child-folder-list.grid-view .record-group-rename { right: 60px; top: 8px; }
+  .child-folder-list.grid-view .record-group-drag { left: 8px; top: 8px; transform: none; }
+  .child-folder-list.grid-view .record-group-del,
+  .child-folder-list.grid-view .record-group-rename,
+  .child-folder-list.grid-view .record-group-move,
+  .child-folder-list.grid-view .record-group-drag,
   .child-folder-list.grid-view .child-folder-edit,
   .child-folder-list.grid-view .child-folder-move {
     color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.15); border-radius: 50%;
   }
+  .child-folder-list.grid-view .record-group-del:hover,
+  .child-folder-list.grid-view .record-group-rename:hover,
+  .child-folder-list.grid-view .record-group-move:hover,
+  .child-folder-list.grid-view .record-group-drag:hover,
   .child-folder-list.grid-view .child-folder-edit:hover,
   .child-folder-list.grid-view .child-folder-move:hover { background: rgba(255, 255, 255, 0.32); opacity: 1; }
 }
@@ -402,19 +402,22 @@ body {
 #inbox-list.grid-view .entry-move,
 #inbox-list.grid-view .entry-merge { padding: 4px 7px; font-size: 11px; }
 .entry-row {
-  position: relative; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: visible; cursor: pointer; background: #fff; font-size: 14px;
+  cursor: pointer; background: #fff; font-size: 14px;
 }
 .entry-row:hover { border-color: var(--accent); }
 .entry-row.dragging { opacity: 0.4; }
 .entry-row.merge-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
 .entry-title { min-width: 0; flex: 1; }
-.entry-kind-icon { flex: none; width: 28px; text-align: center; font-size: 20px; }
 .entry-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px; }
 .entry-main .entry-title { overflow-wrap: anywhere; line-height: 1.45; font-weight: 600; }
 .entry-secondary { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-muted); font-size: 12px; }
-.entry-type-label { white-space: nowrap; }
+.entry-rename {
+  flex: none; border: 0; background: transparent; color: var(--text-muted);
+  cursor: pointer; opacity: .55; padding: 4px;
+}
+.entry-rename:hover { opacity: 1; }
 .entry-drag {
   flex: none; width: 28px; height: 36px; padding: 0;
   border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 18px;
@@ -423,29 +426,37 @@ body {
 /* 原本桌機隱藏、只靠拖曳移動，但視窗夠寬、目標資料夾卻在捲動範圍外時，
    滑鼠根本拖不到、拖曳中也沒有自動捲動——這種時候完全卡住。跟 .entry-merge
    一樣桌機／手機都要看得到，拖曳只是這顆按鈕以外的另一種捷徑，不是唯一路徑。 */
-.entry-actions-menu { position: relative; flex: none; z-index: 4; }
-.entry-actions-menu[open] { z-index: 30; }
-.entry-actions-menu > summary {
-  display: grid; width: 38px; height: 36px; padding: 0; place-items: center;
-  border: 1px solid var(--border); border-radius: 7px; background: #fff;
-  color: var(--text-muted); cursor: pointer; font-size: 18px; list-style: none;
+.entry-move {
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--accent-dark); background: #fff; cursor: pointer; font-size: 12px;
 }
-.entry-actions-menu > summary::-webkit-details-marker { display: none; }
-.entry-actions-menu > summary:hover { border-color: var(--accent); color: var(--accent-dark); }
-.entry-actions-popover {
-  position: absolute; z-index: 40; top: calc(100% + 5px); right: 0; width: 168px;
-  padding: 6px; border: 1px solid var(--border); border-radius: 9px; background: #fff;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, .16);
+.entry-merge {
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--accent-dark); background: #fff; cursor: pointer; font-size: 12px;
 }
-.entry-actions-popover button {
-  display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px;
-  background: transparent; color: var(--text); cursor: pointer; text-align: left; font-size: 13px;
-}
-.entry-actions-popover button:hover { background: #f0fdfa; }
-.entry-actions-popover button.danger { color: #b91c1c; }
-.entry-actions-popover button.danger:hover { background: #fff1f2; }
 .entry-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .att-original { margin-top: 2px; color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }
+.folder-file-list { width: 100%; grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+.folder-file-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; align-items: center; gap: 9px;
+  padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff;
+}
+.folder-file-icon { font-size: 20px; text-align: center; }
+.folder-file-name { min-width: 0; color: var(--accent-dark); font-weight: 600; overflow-wrap: anywhere; text-decoration: none; }
+.folder-file-name:hover { text-decoration: underline; }
+.folder-file-meta { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.folder-file-manage {
+  padding: 5px 9px; border: 1px solid var(--border); border-radius: 7px;
+  background: #fff; color: var(--text-muted); cursor: pointer; font-size: 12px;
+}
+.folder-file-list.grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.folder-file-list.grid-view .folder-file-row {
+  min-height: 130px; grid-template-columns: 1fr auto; align-content: start;
+}
+.folder-file-list.grid-view .folder-file-icon { grid-column: 1 / 3; text-align: left; font-size: 28px; }
+.folder-file-list.grid-view .folder-file-name { grid-column: 1 / 3; }
+.folder-file-list.grid-view .folder-file-meta { align-self: end; margin-top: 14px; }
+.folder-note-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .entry-del {
   background: none; border: none; cursor: pointer; padding: 2px 4px;
   font-size: 14px; opacity: 0.45; line-height: 1;
@@ -453,15 +464,20 @@ body {
 .entry-del:hover { opacity: 1; }
 @media (max-width: 719px) {
   .entry-drag { display: none; }
-  .entry-row {
-    display: grid; grid-template-columns: 30px minmax(0, 1fr) 38px;
-    grid-template-areas: "icon main menu" "secondary secondary secondary";
-    column-gap: 8px; row-gap: 5px;
-  }
-  .entry-kind-icon { grid-area: icon; align-self: center; }
-  .entry-main { grid-area: main; }
-  .entry-secondary { grid-area: secondary; flex-wrap: wrap; padding-left: 0; }
-  .entry-actions-menu { grid-area: menu; }
+  /* 標題現在要跟時間、附件數、移動／合併／刪除三顆按鈕擠在同一行，窄螢幕
+     可用寬度不夠時標題會被壓到只剩幾像素，中文字就會變成一字一行。讓標題
+     自己獨佔一行，時間／按鈕換到下一行 */
+  .entry-row { flex-wrap: wrap; }
+  .entry-main { flex: 1 1 100%; }
+  .entry-secondary { flex: 1 1 100%; flex-wrap: wrap; padding-left: 0; }
+  .folder-file-list.grid-view { display: flex; }
+  .folder-file-list.grid-view .folder-file-row,
+  .folder-file-row { min-height: 0; grid-template-columns: 26px minmax(0, 1fr) auto; }
+  .folder-file-list.grid-view .folder-file-icon,
+  .folder-file-list.grid-view .folder-file-name { grid-column: auto; }
+  .folder-file-list.grid-view .folder-file-icon { font-size: 20px; text-align: center; }
+  .folder-file-list.grid-view .folder-file-meta, .folder-file-meta { display: none; }
+  .folder-file-list.grid-view .folder-file-manage { margin: 0; }
 }
 
 .folder-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -706,21 +722,6 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .rich-editor .ql-container { border: none; font-size: 15px; }
 .rich-editor .ql-editor { min-height: 260px; line-height: 1.6; }
 .rich-editor .ql-editor img { max-width: 100%; border-radius: 6px; }
-.fieldlog-attachment-card {
-  display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 11px 13px;
-  border: 1px solid var(--border); border-radius: 9px; background: #f8fafc;
-  overflow-wrap: anywhere;
-}
-.fieldlog-attachment-card strong { flex: none; }
-.fieldlog-attachment-card a { min-width: 0; color: var(--accent); font-weight: 600; }
-.fieldlog-attachment-card audio { width: min(100%, 420px); min-width: 180px; }
-.editor-upload-progress { width: 150px; height: 8px; accent-color: var(--accent); }
-.editor-upload-progress[hidden] { display: none; }
-.entry-compose-media {
-  position: sticky; top: 0; z-index: 3; margin: 10px 0; padding: 9px;
-  border: 1px solid var(--border); border-radius: 9px; background: rgba(255,255,255,.97);
-}
-.attachment-maintenance { margin-top: 8px; }
 /* 貼進來的 Markdown 結構（標題／清單／程式碼／分隔線）要看得出層次，
    不然「有轉成標題」跟「沒轉」在畫面上長得一樣。 */
 .rich-editor .ql-editor h1 { font-size: 1.5em; margin: 0.7em 0 0.3em; }
@@ -772,6 +773,13 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
 /* ===== 附件 ===== */
 .att-list { display: flex; flex-direction: column; gap: 10px; }
+.pending-upload-notice {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin: 8px 0 12px; padding: 10px 12px;
+  border: 1px solid #f59e0b; border-radius: var(--radius); background: #fffbeb;
+}
+.pending-upload-notice strong { color: #92400e; }
+.pending-upload-notice .sub { flex: 1 1 260px; margin: 0; }
 .att-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .att-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; gap: 8px; }
 .att-delete { color: #b91c1c; }
@@ -963,71 +971,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .folder-preview-frame { width: 100%; height: 100%; border: 0; background: #fff; }
   .folder-preview-image { display: block; max-width: 100%; max-height: 100%; margin: auto; object-fit: contain; }
   .folder-preview-media { width: calc(100% - 24px); max-height: calc(100% - 24px); margin: auto; }
-  .folder-preview-text { width: 100%; min-height: 100%; margin: 0; padding: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.7 Consolas, "Microsoft JhengHei", sans-serif; background: #fff; }
-  .entry-row.preview-selected { outline: 2px solid var(--accent); outline-offset: -2px; background: #eaf5f3; }
+  .folder-preview-text { width: 100%; min-height: 100%; margin: 0; padding: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 Consolas, "Microsoft JhengHei", sans-serif; background: #fff; }
+  .folder-file-row.preview-selected { outline: 2px solid var(--accent); outline-offset: -2px; background: #eaf5f3; }
   .folder-workspace.preview-off { grid-template-columns: minmax(0, 1fr); }
   .folder-workspace.preview-off .folder-preview,
   .folder-workspace.preview-off .folder-preview-resize { display: none; }
   .preview-toggle.active { color: #fff; background: var(--accent); border-color: var(--accent); }
-
-  /* Evernote 式閱讀：點選筆記先在右欄唯讀顯示，只有按「編輯」才開編輯器。 */
-  .entry-reader { width: 100%; min-height: 100%; padding: 20px 22px 36px; background: #fff; overflow-wrap: anywhere; }
-  .entry-reader-meta { margin: 0 0 18px; color: var(--text-muted); font-size: 13px; }
-  .entry-reader-body { font-size: 16px; line-height: 1.75; }
-  .entry-reader-body.plain { white-space: pre-wrap; }
-  .entry-reader-body img { max-width: 100%; height: auto; }
-  .entry-reader-body .fieldlog-attachment-card { margin: 14px 0; }
-  .entry-reader-empty { color: var(--text-muted); }
-  .entry-reader-properties { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 12px; }
-  .entry-reader-properties summary { cursor: pointer; color: var(--text-muted); font-size: 13px; }
-  .entry-reader-properties dl { display: grid; grid-template-columns: minmax(90px, 140px) 1fr; gap: 8px 12px; }
-  .entry-reader-properties dt { color: var(--text-muted); }
-  .entry-reader-properties dd { margin: 0; white-space: pre-wrap; }
-  .entry-reader-attachments { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 14px; }
-  .entry-reader-attachment { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
-  .entry-reader-attachment a { min-width: 0; overflow-wrap: anywhere; }
-
-  /* 一般記事直接在右欄編輯；不再跳回展場時期的大型詳情視窗。 */
-  .entry-inline-editor { width: 100%; min-height: 100%; padding: 18px 20px 36px; background: #fff; overflow-wrap: anywhere; }
-  .entry-inline-title {
-    width: 100%; margin: 0 0 8px; padding: 8px 2px 10px; border: 0; border-bottom: 1px solid var(--border);
-    border-radius: 0; background: transparent; color: var(--text); font-size: 22px; font-weight: 700;
-  }
-  .entry-inline-title:focus { outline: 0; border-bottom-color: var(--accent); box-shadow: 0 1px 0 var(--accent); }
-  .entry-inline-rich { min-height: 340px; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
-  .entry-inline-rich .ql-editor { min-height: 300px; font-size: 16px; line-height: 1.75; }
-  .entry-inline-text {
-    width: 100%; min-height: 360px; margin-top: 12px; padding: 14px; resize: vertical;
-    border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 16px; line-height: 1.75;
-  }
-  .entry-inline-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
-  .entry-inline-tools .sub { margin-left: auto; }
-  .entry-inline-attachments { margin: 12px 0 18px; border-top: 1px solid var(--border); padding-top: 12px; }
-  .entry-inline-attachments summary { cursor: pointer; color: var(--text-muted); font-size: 13px; font-weight: 600; }
-  .entry-inline-attachment { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-  .entry-inline-actions {
-    position: sticky; bottom: 0; display: flex; gap: 8px; justify-content: flex-end;
-    margin: 18px -20px -36px; padding: 12px 20px; border-top: 1px solid var(--border); background: rgba(255, 255, 255, .96);
-  }
-
-  /* 全欄寬閱讀時連資料夾樹與中間清單一起暫時收起，但保留固定縮回按鈕。 */
-  body.reader-fullscreen { overflow: hidden; }
-  body.reader-fullscreen .desktop-explorer-nav,
-  body.reader-fullscreen .desktop-sidebar-open,
-  body.reader-fullscreen .folder-head,
-  body.reader-fullscreen .folder-workspace-main,
-  body.reader-fullscreen .folder-preview-resize { display: none !important; }
-  body.reader-fullscreen .container { margin: 0; padding: 0; }
-  body.reader-fullscreen .folder-workspace { display: block; }
-  body.reader-fullscreen .folder-preview {
-    position: fixed; inset: 0; z-index: 90; width: 100%; height: 100vh; min-height: 0;
-    border: 0; border-radius: 0;
-  }
-  body.reader-fullscreen .folder-preview-head { padding: 12px 18px; background: #fff; }
-  body.reader-fullscreen .folder-preview-body { background: #fff; }
-  body.reader-fullscreen .entry-reader,
-  body.reader-fullscreen .entry-inline-editor { max-width: 980px; margin: 0 auto; padding: 34px 52px 80px; }
-  body.reader-fullscreen .entry-inline-actions { margin: 18px -52px -80px; padding: 12px 52px; }
 }
 @media (max-width: 999px) { .preview-toggle { display: none; } }
 .folder-content-list > .explorer-item { width: 100%; margin: 0; min-width: 0; }
@@ -1047,32 +996,42 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
     border-radius: 10px; background: #fff; color: var(--text);
     box-shadow: 0 1px 3px rgba(27,29,28,.06);
   }
-  .folder-content-list.grid-view > .child-folder-card {
+  .folder-content-list.grid-view > .child-folder-card,
+  .folder-content-list.grid-view > .record-group-card {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; gap: 8px; padding-left: 42px; padding-right: 42px;
   }
-  .folder-content-list.grid-view > .child-folder-card > span { font-size: 36px; }
-  .folder-content-list.grid-view > .child-folder-card strong {
+  .folder-content-list.grid-view > .child-folder-card > span,
+  .folder-content-list.grid-view > .record-group-card > span { font-size: 36px; }
+  .folder-content-list.grid-view > .child-folder-card strong,
+  .folder-content-list.grid-view > .record-group-card strong {
     white-space: normal; overflow-wrap: anywhere; display: -webkit-box;
     -webkit-box-orient: vertical; -webkit-line-clamp: 3;
   }
   .folder-content-list.grid-view > .entry-row {
-    display: grid; grid-template-columns: 28px minmax(0, 1fr) 38px;
-    grid-template-areas: "drag icon menu" "main main main" "secondary secondary secondary";
-    grid-template-rows: 32px minmax(0, 1fr) auto;
-    align-items: start; align-content: stretch; gap: 8px;
+    position: relative; align-items: flex-start; align-content: flex-start; flex-wrap: wrap;
   }
-  .folder-content-list.grid-view > .entry-row .entry-drag { grid-area: drag; height: 30px; }
-  .folder-content-list.grid-view > .entry-row .entry-kind-icon { grid-area: icon; }
-  .folder-content-list.grid-view > .entry-row .entry-main { grid-area: main; align-items: flex-start; }
-  .folder-content-list.grid-view > .entry-row .entry-actions-menu { grid-area: menu; }
-  .folder-content-list.grid-view > .entry-row .entry-secondary { grid-area: secondary; flex-wrap: wrap; align-self: end; }
   .folder-content-list.grid-view > .entry-row .entry-title {
-    display: -webkit-box; overflow: hidden; font-size: 15px; font-weight: 650; line-height: 1.45;
-    -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+    flex-basis: calc(100% - 36px); font-size: 15px; font-weight: 650; line-height: 1.45;
   }
   .folder-content-list.grid-view > .entry-row .entry-meta {
-    width: 100%; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border);
+    order: 3; width: 100%; margin-top: auto; padding-top: 14px;
+  }
+  .folder-content-list.grid-view > .folder-file-row {
+    grid-template-columns: minmax(0, 1fr) 40px 40px;
+    grid-template-rows: 36px minmax(0, 1fr) auto; align-content: stretch; align-items: start;
+  }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-icon {
+    grid-column: 1; grid-row: 1; font-size: 24px; align-self: center;
+  }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-delete { grid-column: 2; grid-row: 1; }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-manage { grid-column: 3; grid-row: 1; }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-name {
+    grid-column: 1 / 4; grid-row: 2; display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4; overflow: hidden; line-height: 1.45;
+  }
+  .folder-content-list.grid-view > .folder-file-row .folder-file-meta {
+    grid-column: 1 / 4; grid-row: 3; padding-top: 8px; border-top: 1px solid var(--border);
   }
 }
 @media (max-width: 719px) {
@@ -1085,32 +1044,121 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   margin: 14px 0 8px; color: var(--text-muted, #64748b);
   font-size: 13px; font-weight: 700; letter-spacing: .04em;
 }
+.archive-note-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+/* 合併／刪除維持只在記事詳情裡做，不放在列表上；拖曳／移動（entry-drag／
+   entry-move）2026-08-09 起重新開放——entry 266：已分類的筆記跟多檔案記事
+   一樣，四層架構建錯／後來才補子資料夾時要搬得動，不能只能刪掉重建。 */
+.archive-note-list .entry-merge,
+.archive-note-list .entry-del { display: none; }
+.archive-note-list .entry-row::before { content: '📝'; font-size: 18px; }
+
+/* 多檔案記事（分段錄音、錄音夾照片…）整筆顯示成一張卡片，跟子資料夾
+   共用 .child-folder-card 樣式（同一套視覺語言：圖示＋標題＋摘要），看起來
+   就是資料夾把附件包在裡面，不是被拆散成一堆各自獨立的檔案列，也不會像
+   借用 note 那組 entry-row 樣式時被 grid-view 的 min-height/flex-wrap
+   撐得歪七扭八。點卡片開整筆記事詳情，右上角保留單獨的刪除鈕。 */
+/* 左邊拖曳把手／右邊 📂 移動＋🗑 刪除都用絕對定位疊在卡片上，不進網格排版，
+   跟 .child-folder-edit／.child-folder-move／.record-group-del 同一手法。 */
+.record-group-card { position: relative; padding-left: 30px; padding-right: 82px; }
+.record-group-drag {
+  position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; color: var(--text-muted); cursor: grab;
+  font-size: 15px; opacity: 0.45; padding: 4px;
+}
+.record-group-drag:hover { opacity: 1; }
+.record-group-drag:active { cursor: grabbing; }
+.record-group-rename, .record-group-move {
+  position: absolute; right: 32px; top: 8px; border: 0; background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
+}
+.record-group-rename { right: 56px; }
+.record-group-move:hover, .record-group-rename:hover { opacity: 1; }
+.record-group-del {
+  position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
+}
+.record-group-del:hover { opacity: 1; }
+
 @media (min-width: 720px) {
-  /* 清單模式只有圖示、標題與 ⋯；所有次要操作收進選單，標題不再被按鈕壓扁。 */
+  /* 清單模式讓標題獨佔主要欄；路徑、時間與附件數移到第二行，避免預覽欄
+     開啟後把長標題擠成一字一行。 */
   .folder-content-list.list-view > .entry-row,
   .folder-content-list.details-view > .entry-row {
     display: grid;
-    grid-template-columns: 28px 30px minmax(220px, 1fr) 38px;
+    grid-template-columns: 28px minmax(220px, 1fr) auto auto auto;
     grid-template-areas:
-      "drag icon main menu"
-      "drag icon secondary menu";
+      "drag main move merge del"
+      "drag secondary secondary secondary secondary";
     column-gap: 8px; row-gap: 4px;
   }
   .folder-content-list.list-view > .entry-row .entry-drag,
   .folder-content-list.details-view > .entry-row .entry-drag { grid-area: drag; }
   .folder-content-list.list-view > .entry-row .entry-main,
   .folder-content-list.details-view > .entry-row .entry-main { grid-area: main; }
-  .folder-content-list.list-view > .entry-row .entry-kind-icon,
-  .folder-content-list.details-view > .entry-row .entry-kind-icon { grid-area: icon; align-self: center; }
   .folder-content-list.list-view > .entry-row .entry-secondary,
   .folder-content-list.details-view > .entry-row .entry-secondary { grid-area: secondary; }
-  .folder-content-list.list-view > .entry-row .entry-actions-menu,
-  .folder-content-list.details-view > .entry-row .entry-actions-menu { grid-area: menu; align-self: center; }
+  .folder-content-list.list-view > .entry-row .entry-move,
+  .folder-content-list.details-view > .entry-row .entry-move { grid-area: move; }
+  .folder-content-list.list-view > .entry-row .entry-merge,
+  .folder-content-list.details-view > .entry-row .entry-merge { grid-area: merge; }
+  .folder-content-list.list-view > .entry-row .entry-del,
+  .folder-content-list.details-view > .entry-row .entry-del { grid-area: del; }
 }
 
+/* ===== 資料夾內的檔案列（一列＝一份檔案，可拖曳搬移）===== */
+.folder-file-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto 40px 40px;
+  align-items: center; gap: 8px;
+}
+.folder-file-row[draggable="true"] { cursor: grab; }
+.folder-file-row.dragging { opacity: .42; }
+.folder-file-icon { grid-column: 1; grid-row: 1; cursor: grab; }
+.folder-file-name { grid-column: 2; grid-row: 1; min-width: 0; overflow-wrap: anywhere; }
+.folder-file-meta { grid-column: 3; grid-row: 1; white-space: nowrap; }
+.folder-file-delete,
+.folder-file-manage {
+  width: 40px; height: 36px; padding: 0;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: #fff; cursor: pointer;
+}
+.folder-file-delete { grid-column: 4; grid-row: 1; color: #b91c1c; }
+.folder-file-manage { grid-column: 5; grid-row: 1; justify-self: end; white-space: nowrap; }
 /* 拖曳中的放置目標提示 */
 .child-folder-card.file-drop-target {
   outline: 3px solid #0f766e; outline-offset: 2px; background: #ecfdf9;
+}
+@media (max-width: 719px) {
+  .folder-file-row { grid-template-columns: 26px minmax(0, 1fr) 38px 38px; gap: 6px; }
+  .folder-file-meta { display: none; }
+  .folder-file-delete { grid-column: 3; }
+  .folder-file-manage { grid-column: 4; }
+}
+@media (min-width: 720px) {
+  .folder-file-list.grid-view {
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    align-items: stretch;
+  }
+  .folder-file-list.grid-view .folder-file-row {
+    min-height: 180px;
+    grid-template-columns: minmax(0, 1fr) 40px 40px;
+    grid-template-rows: 36px minmax(0, 1fr) auto;
+    align-content: stretch; align-items: start;
+    gap: 8px; padding: 14px; overflow: hidden;
+  }
+  .folder-file-list.grid-view .folder-file-icon {
+    grid-column: 1; grid-row: 1; text-align: left; font-size: 24px; align-self: center;
+  }
+  .folder-file-list.grid-view .folder-file-delete { grid-column: 2; grid-row: 1; justify-self: end; }
+  .folder-file-list.grid-view .folder-file-manage { grid-column: 3; grid-row: 1; justify-self: end; }
+  .folder-file-list.grid-view .folder-file-name {
+    grid-column: 1 / 4; grid-row: 2;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+    overflow: hidden; line-height: 1.45; max-height: 5.8em; align-self: start;
+  }
+  .folder-file-list.grid-view .folder-file-meta {
+    grid-column: 1 / 4; grid-row: 3; align-self: end;
+    margin: 0; padding-top: 8px; border-top: 1px solid var(--border);
+  }
 }
 
 /* ===== 單一檔案詳情 ===== */
@@ -1226,7 +1274,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .image-viewer-body img[data-rotation="180"] { transform: rotate(180deg); }
 .image-viewer-body img[data-rotation="270"] { transform: rotate(270deg); }
 /* 照片縮圖／檔案列的照片可點，游標要看得出來 */
-.att-photo-link { cursor: zoom-in; }
+.att-photo-link, .folder-file-row .folder-file-name.is-photo { cursor: zoom-in; }
 
 /* ===== 版本印記與舊版警示 ===== */
 /* 曾經發生「Cloudflare 部署是最新版，但瀏覽器跑的是快取住的舊 app.js」，
