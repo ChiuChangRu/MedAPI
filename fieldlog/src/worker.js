@@ -124,7 +124,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "134";
+const UI_VERSION = "135";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1804,7 +1804,7 @@ async function handleApi(request, env, url, identity = {}) {
     if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
     const key = decodeURIComponent(fileMatch[1]);
     const activeFile = await db.prepare(
-      `SELECT a.id FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
+      `SELECT a.id, a.mime, a.filename FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
        WHERE a.key = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
     ).bind(key).first();
     if (!activeFile) return bad("找不到檔案", 404);
@@ -1818,7 +1818,17 @@ async function handleApi(request, env, url, identity = {}) {
     }
     const obj = await env.FILES.get(key);
     if (!obj) return bad("找不到檔案", 404);
-    const contentType = obj.httpMetadata?.contentType || "application/octet-stream";
+    // 舊檔案的 R2 httpMetadata 曾經只存 application/octet-stream；如果直接把
+    // 這個值送給 Chrome，PDF 在 iframe／預覽欄會顯示破損圖示。資料庫的 mime
+    // 是上傳時保存的實際類型，優先使用；再以副檔名補救更早期的舊資料。
+    const storedMime = String(activeFile.mime || "").trim();
+    let contentType = storedMime && storedMime !== "application/octet-stream"
+      ? storedMime
+      : (obj.httpMetadata?.contentType || storedMime || "application/octet-stream");
+    const displayName = activeFile.filename || key;
+    if ((!contentType || contentType === "application/octet-stream") && /\.pdf$/i.test(displayName)) {
+      contentType = "application/pdf";
+    }
     const headers = {
       "content-type": contentType,
       "cache-control": "private, max-age=3600",
@@ -1947,6 +1957,17 @@ async function handleApi(request, env, url, identity = {}) {
       ).bind(filename, id).run();
       await logHistory(db, old.entry_id, null, "重新命名附件", `${old.filename} → ${filename}`);
       return json({ ok: true, filename });
+    }
+    if (body.transcript !== undefined) {
+      // 人工校正逐字稿屬於正式內容，不應被「編輯後又自動排隊轉錄」覆蓋；
+      // 以 manual_edit 標記已處理。使用者若真的要重跑 AI，仍可從 ⋯ 明確選擇
+      // 重新轉錄，該流程會覆寫 transcript 與 transcribed_at。
+      const transcript = String(body.transcript || "").trim().slice(0, 500000);
+      await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = 'manual_edit' WHERE id = ?")
+        .bind(transcript, id).run();
+      await logHistory(db, old.entry_id, null, "編輯錄音逐字稿", `${old.filename}（${transcript.length} 字）`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: transcript });
+      return json({ ok: true, transcript, transcribed_at: "manual_edit" });
     }
     if (body.ocr_text !== undefined) {
       const ocrText = (body.ocr_text || "").trim();
