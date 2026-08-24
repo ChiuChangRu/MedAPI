@@ -120,9 +120,37 @@
     main { padding: 16px 14px 24px; }
     .portfolio-grid { grid-template-columns: 1fr; }
   }
+
+  .page-loading-overlay {
+    position: fixed; inset: 0; z-index: 200; display: none;
+    align-items: center; justify-content: center; padding: 16px;
+    background: rgba(20,22,21,.58); cursor: wait;
+  }
+  .page-loading-overlay.open { display: flex; }
+  .page-loading-box {
+    width: min(320px, 100%); padding: 22px; border-radius: 12px;
+    background: #fff; text-align: center; box-shadow: 0 18px 50px rgba(15,23,42,.24);
+  }
+  .page-loading-spinner {
+    display: inline-block; width: 34px; height: 34px; margin-bottom: 12px;
+    border: 4px solid #d7e7e4; border-top-color: #0f766e; border-radius: 50%;
+    animation: page-loading-spin .75s linear infinite;
+  }
+  .page-loading-title { font-weight: 700; }
+  @keyframes page-loading-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .page-loading-spinner { animation-duration: 1.5s; } }
+
 </style>
 </head>
-<body>
+<body aria-busy="true">
+
+<div class="page-loading-overlay open" id="page-loading-overlay" role="status" aria-live="polite" aria-modal="true">
+  <div class="page-loading-box">
+    <span class="page-loading-spinner" aria-hidden="true"></span>
+    <div class="page-loading-title" id="page-loading-title">正在載入頁面…</div>
+  </div>
+</div>
+
 
 <header>
   <a href="/">‹ 🎒 隨身記</a>
@@ -151,6 +179,21 @@
   const $ = (id) => document.getElementById(id);
   const pin = () => localStorage.getItem("fieldlog_pin") || "";
   let pages = [];
+  let pageLoadingStarted = performance.now();
+
+  function showPageLoading(label = "正在載入頁面…") {
+    pageLoadingStarted = performance.now();
+    $("page-loading-title").textContent = label;
+    $("page-loading-overlay").classList.add("open");
+    document.body.setAttribute("aria-busy", "true");
+  }
+
+  async function hidePageLoading() {
+    const remaining = 180 - (performance.now() - pageLoadingStarted);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+    $("page-loading-overlay").classList.remove("open");
+    document.body.removeAttribute("aria-busy");
+  }
 
   // ---- 取受 PIN 保護的 wiki 檔案 ----
   async function fetchWiki(path) {
@@ -161,10 +204,12 @@
   }
 
   function showPin() {
+    hidePageLoading();
     $("pin-overlay").style.display = "flex";
     $("pin-input").focus();
   }
   $("pin-go").onclick = async () => {
+    showPageLoading("正在驗證並載入 Wiki…");
     localStorage.setItem("fieldlog_pin", $("pin-input").value.trim());
     try {
       await fetchWiki("/wiki/pages.json");
@@ -380,6 +425,7 @@
 
   async function renderPage() {
     const key = currentKey();
+    showPageLoading(key === "home" ? "正在載入 Wiki 總覽…" : "正在載入 Wiki 條目…");
     renderNav();
     $("content").innerHTML = '<div class="loading">載入中…</div>';
     try {
@@ -395,17 +441,21 @@
     } catch (e) {
       if (e.message !== "unauthorized")
         $("content").innerHTML = `<div class="loading">載入失敗：${esc(e.message)}</div>`;
+    } finally {
+      await hidePageLoading();
     }
   }
   window.addEventListener("hashchange", renderPage);
 
   async function boot() {
+    showPageLoading("正在載入 Wiki…");
     try {
       pages = (await (await fetchWiki("/wiki/pages.json")).json()).pages;
-      renderPage();
+      await renderPage();
     } catch (e) {
       if (e.message !== "unauthorized")
         $("content").innerHTML = `<div class="loading">載入失敗：${esc(e.message)}</div>`;
+      await hidePageLoading();
     }
   }
   boot();
