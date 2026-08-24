@@ -32,7 +32,7 @@ test("HTML 改為抓取後安全清理，不直接執行上傳內容", async () 
 
 test("舊檔 MIME 依副檔名補正，涵蓋 HTML、圖片、影音與 Office", async () => {
   const worker = await read("../fieldlog/src/worker.js");
-  const fileRoute = worker.match(/const fileMatch = path\.match[\s\S]*?\/\/ 手動整理既有附件名稱/)?.[0] || "";
+  const fileRoute = worker.match(/const fileMatch = path\.match[\s\S]*?\/\/ 後臺整理既有附件名稱/)?.[0] || "";
   for (const mime of [
     "text/html; charset=utf-8", "image/jpeg", "image/png", "image/svg+xml",
     "audio/mpeg", "video/mp4",

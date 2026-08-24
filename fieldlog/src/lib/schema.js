@@ -142,10 +142,9 @@ export const SCHEMA = [
     errors TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
-  // 2026-08-09 前：使用者自己在前台可調整的行為參數（key-value），當時只有
-  // 「暫存區放幾天後 AI 自動歸類」這一個 key。AI 自動歸類整個拿掉之後這張表
-  // 沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE；沒有新設定需求前
-  // 不用重新接上。
+  // 系統層 key-value。早期曾存「暫存區放幾天後 AI 自動歸類」；該功能移除後，
+  // 現在改用於後臺維護版本標記。版本標記存在 D1，而不是 localStorage，才能確保
+  // 換瀏覽器或換電腦時不會再次掃描整個資料庫。
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -166,8 +165,9 @@ export const SCHEMA = [
     purge_started_at TEXT DEFAULT '',
     UNIQUE(item_type, item_id)
   )`,
-  // 2026-08-09 前：AI 自動歸類的判斷規則（keyword → folder_id）。AI 自動歸類
-  // 整個拿掉之後這兩張表沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE。
+  // 人工核准過的固定分類規則（keyword → folder_id）與歷史修正紀錄。
+  // 2026-08-09 曾停用，v142 B 模式只重新啟用 status='active' 的人工規則；
+  // suggested 規則與舊修正資料不會自行生效。
   `CREATE TABLE IF NOT EXISTS autofile_hints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     folder_id INTEGER NOT NULL,
@@ -184,6 +184,27 @@ export const SCHEMA = [
     keyword_guess TEXT DEFAULT '',
     reviewed_at TEXT DEFAULT '',
     created_at TEXT NOT NULL
+  )`,
+  // v142 B 模式：AI 只處理待分類中的新／已更新資料。建議、已自動套用、
+  // 已接受、已拒絕、已復原各自有明確狀態，不能只靠 entries.auto_filed_at
+  // 一個欄位猜現在走到哪一步。entry_id 唯一＝同一筆只保留最新判斷；
+  // source_updated_at 改變才允許重算，避免每天對同一內容重複扣 AI 額度。
+  `CREATE TABLE IF NOT EXISTS filing_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER NOT NULL UNIQUE,
+    suggested_folder_id INTEGER,
+    previous_folder_id INTEGER,
+    ai_folder_id INTEGER,
+    vector_folder_id INTEGER,
+    confidence REAL DEFAULT 0,
+    vector_score REAL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    basis TEXT DEFAULT '',
+    reason TEXT DEFAULT '',
+    source_updated_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    reviewed_at TEXT DEFAULT ''
   )`,
   // 搜尋同義詞表（mcp/src/search.js 的 setSynonymGroups 用）。原本只由 medapi-mcp
   // 那支 Worker 在第一次搜尋時建立（見 mcp/src/worker.js 的 ensureSynonyms），
@@ -202,6 +223,7 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_trash_purge ON trash_items(purge_after)`,
+  `CREATE INDEX IF NOT EXISTS idx_filing_suggestions_status ON filing_suggestions(status, updated_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique ON categories(kind, level, name)`,
 ];
 
@@ -212,8 +234,7 @@ export const MIGRATIONS = [
   // 的東西先丟這裡。用欄位而不是靠名字認，是因為名字可以被使用者改掉，改完
   // 之後自動歸類就再也找不到那個資料夾（而且不會有任何錯誤訊息）。
   `ALTER TABLE folders ADD COLUMN role TEXT DEFAULT ''`,
-  // AI 自動歸類的標記（該功能已於 2026-08-09 移除，欄位保留給歷史資料與
-  // /entries/:id/confirm-filing 用，不會再有新資料寫入）：
+  // AI 自動歸類的標記。v142 B 模式重新寫入，供待分類清單顯示、確認與復原：
   // ''＝沒被自動歸類過；ISO 時間＝AI 歸的；'failed'＝跑過但 AI 判斷不出來。
   `ALTER TABLE entries ADD COLUMN auto_filed_at TEXT DEFAULT ''`,
   `ALTER TABLE entries ADD COLUMN auto_filed_reason TEXT DEFAULT ''`,

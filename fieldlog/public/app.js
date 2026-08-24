@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "140";
+const APP_VERSION = "142";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -139,7 +139,7 @@ let MERGE_ENTRY_SOURCE_ID = null;
 let CREATE_FOLDER_RESOLVE = null;
 // 開啟「單一檔案」詳情時記住是哪一份，這樣整理完重新開啟仍停在同一個檔案上
 let FOCUSED_FILE = null;
-// 待分類系統容器的 id，由 /api/staging 帶回來。純手動整理，不做自動分類。
+// 待分類系統容器的 id，由 /api/staging 帶回來；B 模式每天在後臺處理新／更新資料。
 let STAGING_FOLDER_ID = null;
 
 // 資料夾排序模式：套用在每一層——首頁根層、每一層子資料夾、搬移選擇器、
@@ -1235,10 +1235,14 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   // 🤖＝這個位置是 AI 挑的，不是人放的。這個區別對法規／專利場景很重要：
   // 引用之前要知道哪些判斷出自機器。點一下可以確認或改掉。
   const aiChip = e.auto_filed_at && e.auto_filed_at !== "failed"
-    ? `<button class="entry-ai-chip" type="button" data-id="${e.id}" title="歷史 AI 分類：${esc(e.auto_filed_reason || "未說明理由")}。點一下確認或改位置">🤖 AI 分類</button>`
+    ? `<span class="entry-ai-actions"><button class="entry-ai-chip" type="button" data-id="${e.id}" title="AI 分類：${esc(e.auto_filed_reason || "未說明理由")}。點一下確認或改位置">🤖 AI 分類</button>${["auto_applied", "baseline_auto_applied"].includes(e.suggestion_status) ? `<button class="entry-filing-undo" type="button" data-id="${e.id}" title="復原到整理前的位置">復原</button>` : ""}</span>`
     : e.auto_filed_at === "failed"
       ? `<span class="entry-ai-chip failed" title="${esc(e.auto_filed_reason || "AI 判斷不出來")}">🤖 待人工</span>`
       : "";
+  const confidence = Math.round(Math.max(0, Math.min(1, Number(e.filing_confidence || 0))) * 100);
+  const filingSuggestion = e.suggestion_status === "pending" && e.suggested_folder_id
+    ? `<span class="entry-filing-suggestion" title="${esc(e.filing_reason || "等待人工確認")}"><span>🤖 建議：${esc(e.suggested_folder_name || "資料夾")} ${confidence}%</span><button class="entry-filing-accept" type="button" data-id="${e.id}">套用</button><button class="entry-filing-reject" type="button" data-id="${e.id}">忽略</button></span>`
+    : "";
   const dateLabel = showRecency
     ? `${e.updated_at ? "動過" : "建立"} ${esc(localDateTimeShort(e.updated_at || e.created_at))}`
     : esc(localDateTimeShort(e.created_at));
@@ -1247,7 +1251,7 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
     <span class="entry-main"><span class="entry-title">${esc(e.title || "（未命名）")}</span>
       <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}">✏️</button>
     </span>
-    <span class="entry-secondary"><span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}
+    <span class="entry-secondary"><span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}${filingSuggestion}
       <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span></span>
     <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
     <button class="entry-merge" data-id="${e.id}" type="button" title="合併到另一筆記事">合併</button>
@@ -1336,6 +1340,37 @@ function bindEntryRows(wrap) {
         return;
       }
       openMoveEntryDialog(id).catch((err) => showToast("移動失敗：" + err.message));
+    };
+  });
+  wrap.querySelectorAll(".entry-filing-accept").forEach((btn) => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      try {
+        await api(`/filing-suggestions/${Number(btn.dataset.id)}/accept`, { method: "POST", body: "{}" });
+        showToast("已套用分類建議");
+        await refreshFolderView();
+      } catch (err) { showToast("套用失敗：" + err.message); }
+    };
+  });
+  wrap.querySelectorAll(".entry-filing-reject").forEach((btn) => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      try {
+        await api(`/filing-suggestions/${Number(btn.dataset.id)}/reject`, { method: "POST", body: "{}" });
+        showToast("已忽略建議，記事仍留在待分類");
+        await refreshFolderView();
+      } catch (err) { showToast("忽略失敗：" + err.message); }
+    };
+  });
+  wrap.querySelectorAll(".entry-filing-undo").forEach((btn) => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      if (!confirm("復原這次 AI 自動分類，將記事移回待分類？")) return;
+      try {
+        await api(`/filing-suggestions/${Number(btn.dataset.id)}/undo`, { method: "POST", body: "{}" });
+        showToast("已復原並移回待分類");
+        await refreshFolderView();
+      } catch (err) { showToast("復原失敗：" + err.message); }
     };
   });
   wrap.querySelectorAll(".entry-drag").forEach((drag) => {
@@ -1829,7 +1864,6 @@ async function openFolder(id) {
   syncSubfolderButton();
   $("folder-children").innerHTML = "";
   clearFilePreview();
-  await runLegacyCleanupOnce();
   // 一次帶附件回來，不要每筆有附件的記事各發一支 /entries/:id——資料夾裡
   // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
   const entries = await api(`/entries?folder_id=${id}&include=attachments`);
@@ -1994,43 +2028,6 @@ function bindRecordGroupCards() {
       document.body.classList.remove("entry-dragging");
     };
   });
-}
-
-/**
- * 既有附件的一次性整理：統一檔名、移除內容完全相同的重複檔。
- * 只用已入庫的 OCR／逐字稿，不呼叫 AI（不花額度）；整個瀏覽器只跑一次。
- */
-async function runLegacyCleanupOnce() {
-  if (localStorage.getItem("fieldlog_legacy_cleanup") === "done") return;
-  localStorage.setItem("fieldlog_legacy_cleanup", "running");
-  try {
-    const result = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
-    localStorage.setItem("fieldlog_legacy_cleanup", "done");
-    if (result.renamed || result.duplicates_removed) {
-      showToast(`已整理 ${result.renamed || 0} 個檔名，移除 ${result.duplicates_removed || 0} 個重複檔`);
-    }
-  } catch (err) {
-    localStorage.removeItem("fieldlog_legacy_cleanup");
-    console.error("舊檔名自動整理失敗", err);
-  }
-}
-
-/** 手動整理檔名（資料夾工具列的 🏷 按鈕） */
-async function cleanupFilenames(button) {
-  if (!confirm("整理全部檔名？會統一成「標準編號_年份_中文標題」，並移除內容完全相同的重複檔。不會呼叫 AI。")) return;
-  button.disabled = true;
-  const label = button.textContent;
-  button.textContent = "整理中…";
-  try {
-    const result = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
-    showToast(`檔名整理完成：更新 ${result.renamed || 0} 個，移除重複檔 ${result.duplicates_removed || 0} 個`);
-    if (CURRENT_FOLDER) await openFolder(CURRENT_FOLDER.id);
-  } catch (err) {
-    showToast("整理失敗：" + err.message);
-  } finally {
-    button.disabled = false;
-    button.textContent = label;
-  }
 }
 
 // ---------- 檔案列：拖曳搬移、單檔刪除、單檔詳情 ----------
@@ -3223,7 +3220,6 @@ async function openEntry(id) {
       <button class="btn small capture-btn" id="e-audio">🎙 錄音</button>
       <label class="btn small upload-btn">📁 上傳<input type="file" id="e-file" accept="image/*,video/*,audio/*,application/pdf,.docx,.xlsx,.pptx,.txt,.md,.csv" multiple hidden /></label>
       <button class="btn small" id="e-process" type="button" title="用 Cloudflare AI 把還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取（已處理過的不會重跑）">🪄 Cloudflare AI 整理</button>
-      <button class="btn small" id="e-rename-files" type="button" title="利用既有 OCR、逐字稿與記事資訊整理全部舊附件名稱，不會重新呼叫 AI">🏷 整理舊檔名</button>
       <span id="e-upload-status" class="sub"></span>
     </div>
     ${pendingUploads.length ? `<div class="pending-upload-notice">
@@ -3389,21 +3385,6 @@ async function openEntry(id) {
     showToast(result.error ? `補傳失敗：${result.error}` : "目前仍無法補傳，檔案繼續保存在本機");
     syncPendingBtn.disabled = false;
     syncPendingBtn.textContent = "立即補傳";
-  };
-  const renameBtn = $("e-rename-files");
-  if (renameBtn) renameBtn.onclick = async () => {
-    if (!confirm("確定整理全部舊附件的檔名？只會改能安全判定的名稱，原始檔名仍會保留。")) return;
-    renameBtn.disabled = true;
-    renameBtn.textContent = "整理中…";
-    try {
-      const result = await api("/attachments/rename-existing", { method: "POST", body: "{}" });
-      showToast(`已檢查 ${result.checked} 個舊附件，重新命名 ${result.renamed} 個`);
-      openEntry(id);
-    } catch (err) {
-      showToast("整理舊檔名失敗：" + err.message);
-      renameBtn.disabled = false;
-      renameBtn.textContent = "🏷 整理舊檔名";
-    }
   };
   bindAttActions(id);
   loadRelations(id);
@@ -6084,7 +6065,6 @@ function init() {
   $("category-manager-overlay").addEventListener("click", (e) => {
     if (e.target === $("category-manager-overlay")) closeCategoryManager();
   });
-  $("btn-cleanup-filenames").onclick = (e) => cleanupFilenames(e.currentTarget);
   // 資料夾工具列與資料夾頁拖放都代表已指定目前資料夾；首頁拖放才進待分類。
   // 每個檔案自成一筆記事（標題＝去掉副檔名的檔名）
   const folderUploadInput = $("folder-upload-file-input");

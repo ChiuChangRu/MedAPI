@@ -748,6 +748,18 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
   background: #fff7ed; color: #9a3412; cursor: pointer;
 }
 .entry-ai-chip.failed { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; cursor: default; }
+.entry-ai-actions, .entry-filing-suggestion { display: inline-flex; align-items: center; gap: 4px; }
+.entry-filing-undo, .entry-filing-accept, .entry-filing-reject {
+  min-height: 24px; padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px;
+  background: #fff; color: var(--text); font: inherit; font-size: 11px; cursor: pointer;
+}
+.entry-filing-suggestion {
+  max-width: 100%; padding: 2px 5px 2px 8px; border: 1px solid #93c5fd;
+  border-radius: 999px; background: #eff6ff; color: #1e3a8a; font-size: 11px;
+}
+.entry-filing-suggestion > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry-filing-accept { border-color: #0f766e; background: #0f766e; color: #fff; }
+.entry-filing-reject { color: var(--text-muted); }
 .cfp-item.cfp-staging { font-weight: 700; color: #9a3412; }
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
