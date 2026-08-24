@@ -124,7 +124,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "137";
+const UI_VERSION = "134";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1750,7 +1750,10 @@ async function handleApi(request, env, url, identity = {}) {
     if (!entry) return bad("找不到附件所屬記事", 404);
     // 新檔直接比 SHA-256；舊檔尚無 hash 時，只針對同檔名同大小者讀 R2 補算一次，
     // 避免誤判不同內容。一般附件在同一資料夾內去重；PDF 拆頁仍只在同一記事內比對。
-    const candidateQuery = sourcePdfId
+    // 錄音是一次事件的原始資料，即使兩段都是靜音、位元完全相同，也不能跨
+    // 記事去重，否則新記事會留下空殼、附件卻仍掛在舊記事。錄音只在同一資料包
+    // 內去重（防止補傳重試重複建立）；一般文件才維持資料夾層級去重。
+    const candidateQuery = sourcePdfId || kind === "audio"
       ? db.prepare(
         `SELECT id, key, filename, size, content_hash FROM attachments
          WHERE entry_id = ? AND (content_hash = ? OR (COALESCE(content_hash, '') = '' AND filename = ? AND size = ?))`
@@ -2262,7 +2265,7 @@ async function handleApi(request, env, url, identity = {}) {
     if (!env.AI || !env.FILES) return bad("尚未啟用自動轉錄", 501);
     const entryId = Number(autoTranscribeMatch[1]);
     const { results: candidates } = await db.prepare(
-      "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND duration_secs > 0 ORDER BY offset_secs, id"
+      "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND (duration_secs > 0 OR (duration_secs IS NULL AND size > 0)) ORDER BY offset_secs, id"
     ).bind(entryId).all();
     if (!candidates.length) return json({ processed: 0, reason: "沒有可安全自動轉錄的新錄音" });
     let usage;
@@ -2277,7 +2280,10 @@ async function handleApi(request, env, url, identity = {}) {
     const transcripts = [];
     const failed = [];
     for (const audio of candidates) {
-      const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
+      // v133 以前的離線佇列補傳時會遺失 duration_secs。這些 R2 音檔仍是真實資料，
+      // 不能因此永遠排除在轉錄之外；未知長度以單段上限 10 分鐘保守預留額度。
+      const estimateDurationSecs = Number(audio.duration_secs) > 0 ? Number(audio.duration_secs) : 10 * 60;
+      const estimate = Math.ceil(estimateDurationSecs / 60 * 46.63);
       // 門檻一律讀 AI_AUTO_SAFE_NEURONS，不要再寫死數字：上次把常數從 7000 調到
       // 10000 時只改了下面的訊息，這行的比較值卻留在 7000，變成畫面說「超過
       // 10,000」、實際上 7,000 就停——白白少用 30% 的免費額度，而且從訊息完全
