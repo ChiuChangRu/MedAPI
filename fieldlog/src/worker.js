@@ -237,7 +237,89 @@ function vectorIdsForAttachment(attachmentId) {
 
 export class EmbeddingWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
-    const { kind, id, entryId, textContent, title } = event.payload; // kind: "entry" | "attachment"
+    const payload = event.payload || {};
+    const { kind, id, entryId, textContent, title } = payload; // kind: "entry" | "attachment" | "baseline_filing_v142"
+
+    // Cloudflare Access 會正確阻擋未登入瀏覽器，也因此 ChatGPT Cloud Browser
+    // 不能安全呼叫管理端點。母體整理改由既有 Workflow binding 從 Cloudflare
+    // 後台直接執行：第一次先凍結當下最大 entry id，後續批次永遠只掃這個母體，
+    // 不會把部署後新增的正式資料一起搬動。settings 標記讓重複觸發只會回報 skipped。
+    if (kind === "baseline_filing_v142") {
+      const maintenanceKey = "maintenance.baseline_filing";
+      const maintenanceVersion = "2026-08-24-v1";
+      const batchLimit = Math.min(100, Math.max(1, Number(payload.batch_limit || 25) || 25));
+      const maxBatches = Math.min(100, Math.max(1, Number(payload.max_batches || 40) || 40));
+      const initial = await step.do("freeze-existing-filing-corpus", async () => {
+        await ensureSchema(this.env.DB, now());
+        const saved = await this.env.DB.prepare("SELECT value FROM settings WHERE key = ?")
+          .bind(maintenanceKey).first();
+        if (saved?.value) {
+          try {
+            const parsed = JSON.parse(saved.value);
+            if (parsed.version === maintenanceVersion) {
+              if (parsed.status !== "complete") await enforceAiSoftBudget(this.env);
+              return parsed;
+            }
+          } catch { /* 舊值格式不符時重新建立本版狀態 */ }
+        }
+        await enforceAiSoftBudget(this.env);
+        const row = await this.env.DB.prepare(
+          "SELECT COALESCE(MAX(id), 0) AS max_entry_id FROM entries WHERE COALESCE(deleted_at, '') = ''"
+        ).first();
+        const state = {
+          version: maintenanceVersion,
+          status: "running",
+          max_entry_id: Number(row?.max_entry_id || 0),
+          started_at: now(),
+        };
+        await this.env.DB.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind(maintenanceKey, JSON.stringify(state), now()).run();
+        return state;
+      });
+      if (initial.status === "complete") return { success: true, skipped: true, ...initial };
+
+      const totals = {
+        checked: Number(initial.totals?.checked || 0),
+        moved: Number(initial.totals?.moved || 0),
+        kept: Number(initial.totals?.kept || 0),
+        suggested: Number(initial.totals?.suggested || 0),
+        unresolved: Number(initial.totals?.unresolved || 0),
+        errors: Number(initial.totals?.errors || 0),
+        remaining: Number(initial.totals?.remaining || 0),
+      };
+      for (let batch = 1; batch <= maxBatches; batch++) {
+        const outcome = await step.do(`baseline-filing-batch-${batch}`, async () => runBaselineFilingReview(this.env, {
+          timestamp: now,
+          limit: batchLimit,
+          maxEntryId: Number(initial.max_entry_id || 0),
+          runAi: (model, input) => budgetedAi(this.env).run(model, input),
+          logHistory,
+        }));
+        for (const key of ["checked", "moved", "kept", "suggested", "unresolved", "errors"]) {
+          totals[key] += Number(outcome[key] || 0);
+        }
+        totals.remaining = Number(outcome.remaining || 0);
+        if (!totals.remaining) break;
+        if (Number(outcome.checked || 0) === 0 || Number(outcome.errors || 0) === Number(outcome.checked || 0)) break;
+      }
+
+      const finished = {
+        ...initial,
+        status: totals.remaining ? "partial" : "complete",
+        finished_at: totals.remaining ? null : now(),
+        totals,
+      };
+      await step.do("save-baseline-filing-result", async () => {
+        await this.env.DB.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind(maintenanceKey, JSON.stringify(finished), now()).run();
+      });
+      if (totals.remaining) throw new Error(`母體整理尚有 ${totals.remaining} 筆未完成`);
+      return { success: true, ...finished };
+    }
 
     const combined = kind === "entry" ? `${title || ""}\n${textContent || ""}` : (textContent || "");
     if (!combined.trim()) {

@@ -140,6 +140,39 @@ test("分類模型只使用 Cloudflare Workers AI 的 BGE-M3 與 Llama", () => {
   assert.doesNotMatch(`${AUTOFILING_EMBED_MODEL} ${AUTOFILING_DECISION_MODEL}`, /gpt|claude|anthropic|openai/i);
 });
 
+test("母體整理會凍結最大記事 ID，部署後新增的已分類資料不納入", async (t) => {
+  const { sqlite, DB } = makeRealSqliteD1();
+  t.after(() => sqlite.close());
+  sqlite.prepare("INSERT INTO folders (id, name, type, parent_id, role, created_at) VALUES (2, '檢體針專案', '專案', NULL, '', '2026-08-24 00:00:00Z')").run();
+  sqlite.prepare("INSERT INTO folders (id, name, type, parent_id, role, created_at) VALUES (3, '法規文件', '法規', NULL, '', '2026-08-24 00:00:00Z')").run();
+  sqlite.prepare("INSERT INTO autofile_hints (folder_id, keyword, status, created_at) VALUES (2, '檢體針', 'active', '2026-08-24 00:00:00Z')").run();
+  sqlite.prepare("INSERT INTO entries (id, folder_id, title, fields_json, body, body_format, created_at) VALUES (12, 3, '檢體針既有母體', '{}', '', 'text', '2026-08-24 01:00:00Z')").run();
+  sqlite.prepare("INSERT INTO entries (id, folder_id, title, fields_json, body, body_format, created_at) VALUES (13, 3, '檢體針部署後新增', '{}', '', 'text', '2026-08-24 02:00:00Z')").run();
+
+  const result = await runBaselineFilingReview({ DB }, {
+    timestamp: () => "2026-08-24 03:00:00Z",
+    maxEntryId: 12,
+    runAi: async () => { throw new Error("人工規則命中不應呼叫 AI"); },
+  });
+  assert.deepEqual(result, { checked: 1, moved: 1, kept: 0, suggested: 0, unresolved: 0, errors: 0, remaining: 0 });
+  assert.equal(sqlite.prepare("SELECT folder_id FROM entries WHERE id = 12").get().folder_id, 2);
+  assert.equal(sqlite.prepare("SELECT folder_id FROM entries WHERE id = 13").get().folder_id, 3,
+    "凍結母體後新增的正式記事不可被這次整理搬動");
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM filing_suggestions WHERE entry_id = 13").get().count, 0);
+});
+
+test("母體整理由 Cloudflare Workflow 後台觸發，不依賴 Cloud Browser", async () => {
+  const [worker, workflow] = await Promise.all([
+    read("../fieldlog/src/worker.js"),
+    read("../.github/workflows/deploy-fieldlog.yml"),
+  ]);
+  assert.match(worker, /kind === "baseline_filing_v142"/);
+  assert.match(worker, /freeze-existing-filing-corpus/);
+  assert.match(worker, /maintenance\.baseline_filing/);
+  assert.match(workflow, /workflows trigger fieldlog-embedding-workflow/);
+  assert.match(workflow, /"kind":"baseline_filing_v142"/);
+});
+
 test("每日排程、狀態表與人工套用／忽略／復原路由完整存在", async () => {
   const [worker, schema, app] = await Promise.all([
     read("../fieldlog/src/worker.js"),
