@@ -75,12 +75,9 @@ jobs:
             --id "$instance_id"
           for attempt in $(seq 1 30); do
             output="$(npx --yes wrangler@4.113.0 workflows instances describe \
-              fieldlog-embedding-workflow "$instance_id" --step-output=false 2>&1)"
+              fieldlog-embedding-workflow "$instance_id" --step-output=true 2>&1)"
             echo "$output"
             if echo "$output" | grep -qi "complete"; then
-              # 只輸出統計，不把資料夾名稱寫進公開的 Actions log。
-              npx --yes wrangler@4.113.0 d1 execute fieldlog --remote --json --command \
-                "SELECT json_extract(value, '$.checked') AS checked, json_extract(value, '$.renamed_count') AS renamed, json_extract(value, '$.conflict_count') AS conflicts, json_extract(value, '$.invalid_count') AS invalid FROM settings WHERE key = 'maintenance.folder_name_normalization'"
               exit 0
             fi
             if echo "$output" | grep -Eqi "errored|terminated"; then
