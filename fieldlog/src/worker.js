@@ -2253,7 +2253,7 @@ async function handleApi(request, env, url) {
 const NO_CACHE_SHELL_PATHS = new Set([
   "/", "/index.html", "/app.js", "/style.css",
   "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json",
-  "/help.html",
+  "/help.html", "/wiki.html", "/patrol.html",
 ]);
 
 async function noStoreAsset(request, env) {
