@@ -17,7 +17,7 @@
 // ——存檔那一刻標籤就被這支函式吃掉了，畫面上看起來像「排版自己跑掉」。
 const ALLOWED_TAGS = new Set([
   "p", "br", "strong", "em", "u", "s", "b", "i",
-  "ul", "ol", "li", "blockquote", "a", "img", "span",
+  "ul", "ol", "li", "blockquote", "a", "img", "span", "figure", "audio",
   "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code", "hr",
 ]);
 
@@ -28,6 +28,8 @@ const ALLOWED_TAGS = new Set([
 const ALLOWED_ATTRS = {
   a: new Set(["href", "target", "rel"]),
   img: new Set(["src", "alt", "data-att-id"]),
+  figure: new Set(["class", "data-att-id", "data-kind", "data-filename", "data-url"]),
+  audio: new Set(["src", "controls", "preload"]),
   li: new Set(["class", "data-list"]),
   p: new Set(["class"]),
   h1: new Set(["class"]),
@@ -49,7 +51,9 @@ const ALLOWED_ATTRS = {
 const ALLOWED_LIST_VALUES = new Set(["ordered", "bullet", "checked", "unchecked"]);
 function sanitizeAttrValue(name, value) {
   if (name === "class") {
-    const kept = String(value).split(/\s+/).filter((token) => /^ql-[a-z0-9-]+$/i.test(token));
+    const kept = String(value).split(/\s+/).filter((token) =>
+      /^ql-[a-z0-9-]+$/i.test(token) || token === "fieldlog-attachment-card"
+    );
     return kept.length ? kept.join(" ") : null;
   }
   if (name === "data-list") return ALLOWED_LIST_VALUES.has(value) ? value : null;
@@ -78,6 +82,12 @@ export function htmlToPlainText(html) {
   text = text.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "");
   text = text.replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/gi, (_, alt) => `[圖片：${decodeEntities(alt) || "未命名"}]`);
   text = text.replace(/<img\b[^>]*>/gi, "[圖片]");
+  text = text.replace(/<figure\b([^>]*)class="[^"]*fieldlog-attachment-card[^"]*"([^>]*)>[\s\S]*?<\/figure>/gi, (full, before, after) => {
+    const attrs = `${before} ${after}`;
+    const filename = attrs.match(/data-filename="([^"]*)"/i)?.[1] || "未命名";
+    const kind = attrs.match(/data-kind="([^"]*)"/i)?.[1] || "file";
+    return `\n[${kind === "audio" ? "錄音" : "附件"}：${decodeEntities(filename)}]\n`;
+  });
   text = text.replace(/<\/(p|div|li|blockquote|h[1-6]|pre)>/gi, "\n");
   text = text.replace(/<br\s*\/?>/gi, "\n");
   text = text.replace(/<hr\s*\/?>/gi, "\n---\n");
@@ -112,6 +122,10 @@ export function sanitizeEntryHtml(html) {
       const key = name.toLowerCase();
       if (!allowed.has(key)) continue;
       if (/^\s*javascript:/i.test(value)) continue; // href="javascript:..." 擋掉
+      // 內文附件卡只能引用本系統已經過權限檢查的檔案端點，不能把任意外部
+      // 網址偽裝成 MyWiki 附件。一般超連結仍由 a[href] 使用 http(s)。
+      if (tag === "figure" && key === "data-url" && !/^\/api\/file\//.test(value)) continue;
+      if (tag === "audio" && key === "src" && !/^\/api\/file\//.test(value)) continue;
       const safeValue = sanitizeAttrValue(key, value);
       if (safeValue === null) continue;
       kept.push(`${key}="${safeValue.replace(/"/g, "&quot;")}"`);

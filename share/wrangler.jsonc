@@ -1,0 +1,11 @@
+{
+  "name": "share",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-01",
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "fieldlog",
+    "database_id": "41483c93-9398-4be6-a670-a3120c880781"
+  }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "fieldlog-files" }]
+}

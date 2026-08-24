@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "128";
+const APP_VERSION = "138";
 
 // 資料夾採四層知識架構：1 產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
 const MAX_FOLDER_DEPTH = 4;
@@ -127,6 +127,13 @@ let INBOX_VIEW = localStorage.getItem("fieldlog_inbox_view") || "list";
 // 是剛剛丟進來的那一份，它不該被排在幾十個舊檔案後面。想按檔名找（同一系列的
 // 標準編號連號排在一起）再切到 name。
 let FILE_SORT = localStorage.getItem("fieldlog_file_sort") || "new";
+// 桌機右欄是唯一的閱讀／編輯表面，不再允許用舊偏好把它關掉後退回置中 modal。
+// 手機沒有三欄空間，才使用原本的單頁詳情流程。
+let PREVIEW_ENABLED = true;
+
+function usesDesktopRightPane() {
+  return !!CURRENT_FOLDER && matchMedia("(min-width: 1000px)").matches;
+}
 let MERGE_SOURCE_ID = null;
 let MERGE_ENTRY_SOURCE_ID = null;
 let CREATE_FOLDER_RESOLVE = null;
@@ -338,6 +345,32 @@ function fmtSecs(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** R2 key 可能含資料夾斜線；逐段編碼，避免把整條 key 編成一個路徑段。 */
+function fileUrlForKey(key) {
+  return `/api/file/${String(key || "").split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function fmtBytes(size) {
+  const bytes = Math.max(0, Number(size) || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function recordingStatus(audioAttachments) {
+  const audio = audioAttachments || [];
+  if (!audio.length) return { tone: "failed", label: "找不到錄音附件" };
+  if (audio.some((item) => item.transcribed_at === "processing")) return { tone: "working", label: "轉錄中" };
+  if (audio.some((item) => item.transcribed_at === "auto_failed")) return { tone: "failed", label: "部分轉錄失敗" };
+  if (audio.every((item) => item.transcribed_at === "skipped")) return { tone: "muted", label: "已設為不轉錄" };
+  if (audio.every((item) => item.transcribed_at)) {
+    return audio.some((item) => String(item.transcript || "").trim())
+      ? { tone: "done", label: "轉錄完成" }
+      : { tone: "done", label: "已轉錄，沒有可辨識語音" };
+  }
+  return { tone: "pending", label: "等待轉錄" };
+}
+
 function fmtUsageNumber(n) {
   return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 }).format(Number(n || 0));
 }
@@ -500,20 +533,40 @@ function initUsageDetails() {
 }
 
 // ---------- 登入 ----------
-function showLogin() { $("login-overlay").classList.add("open"); }
+function showLogin() {
+  hideBootProgress();
+  $("login-overlay").classList.add("open");
+}
 
 async function doLogin() {
-  localStorage.setItem("fieldlog_pin", $("login-pin").value.trim());
   const err = $("login-error");
   err.style.display = "none";
   try {
-    await api("/folders");
+    const response = await fetch("/api/session", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pin: $("login-pin").value.trim() }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    localStorage.removeItem("fieldlog_pin");
+    $("login-pin").value = "";
+    const folders = await api("/folders");
     $("login-overlay").classList.remove("open");
-    boot();
+    boot(folders);
   } catch (e) {
     err.textContent = e.message;
     err.style.display = "block";
   }
+}
+
+async function migrateLegacyPinToSession() {
+  const legacyPin = pin();
+  if (!legacyPin) return;
+  const response = await fetch("/api/session", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ pin: legacyPin }),
+  });
+  if (response.ok) localStorage.removeItem("fieldlog_pin");
 }
 
 // ---------- 版本對版：避免「部署是新的、瀏覽器跑的是舊的」無聲卡住 ----------
@@ -641,17 +694,46 @@ function initHomeSearch() {
 // 開啟 App 到畫面填滿內容之間，要打好幾支 API（設定／分類／資料夾／待分類），
 // 資料夾、記事、附件越多這幾支就越慢；空白畫面撐久了容易被誤會當機，用
 // 百分比讓使用者知道還在跑。
-function showBootProgress() {
-  $("boot-loading-overlay")?.classList.add("open");
-  setBootProgress(0);
+let BOOT_SLOW_TIMER = null;
+let BOOT_RETRY_TIMER = null;
+
+function clearBootTimers() {
+  clearTimeout(BOOT_SLOW_TIMER);
+  clearTimeout(BOOT_RETRY_TIMER);
+  BOOT_SLOW_TIMER = null;
+  BOOT_RETRY_TIMER = null;
 }
-function setBootProgress(pct) {
+
+function showBootProgress(message = "檢查登入狀態…") {
+  clearBootTimers();
+  $("boot-loading-overlay")?.classList.add("open");
+  $("boot-loading-overlay")?.setAttribute("aria-busy", "true");
+  const retry = $("boot-loading-retry");
+  const hint = $("boot-loading-hint");
+  if (retry) retry.hidden = true;
+  if (hint) hint.textContent = "第一次通過安全驗證時可能需要稍等。";
+  setBootProgress(5, message);
+  BOOT_SLOW_TIMER = setTimeout(() => {
+    if (hint) hint.textContent = "資料量較多，系統仍在讀取，請不要關閉頁面。";
+  }, 12000);
+  BOOT_RETRY_TIMER = setTimeout(() => {
+    if (hint) hint.textContent = "載入時間異常偏長，可重新載入後再試。";
+    if (retry) retry.hidden = false;
+  }, 30000);
+}
+function setBootProgress(pct, message = "") {
   const fill = $("boot-loading-bar-fill");
   const label = $("boot-loading-pct");
+  const stage = $("boot-loading-stage");
+  const bar = fill?.parentElement;
   if (fill) fill.style.width = `${pct}%`;
   if (label) label.textContent = `${pct}%`;
+  if (stage && message) stage.textContent = message;
+  bar?.setAttribute("aria-valuenow", String(pct));
 }
 function hideBootProgress() {
+  clearBootTimers();
+  $("boot-loading-overlay")?.setAttribute("aria-busy", "false");
   $("boot-loading-overlay")?.classList.remove("open");
 }
 
@@ -690,8 +772,8 @@ async function withViewLoading(label, task) {
   }
 }
 
-async function boot() {
-  showBootProgress();
+async function boot(preloadedFolders = null) {
+  showBootProgress("讀取系統設定…");
   try {
     const cfg = await api("/config");
     TRANSCRIBE_ENABLED = cfg.transcribe;
@@ -703,21 +785,21 @@ async function boot() {
     TRANSCRIBE_ENABLED = !!JSON.parse(localStorage.getItem("fieldlog_config") || "{}").transcribe;
     showVersion(null);
   }
-  setBootProgress(20);
+  setBootProgress(25, "載入分類設定…");
   initHomeSearch();
   // 分類清單要先載入：建資料夾的對話框、資料夾排序、記事欄位模板都靠它
   await loadCategories();
-  setBootProgress(45);
-  await Promise.all([loadFolders(), loadRecent()]);
-  setBootProgress(90);
+  setBootProgress(50, "建立資料夾與記事清單…");
+  await Promise.all([loadFolders(preloadedFolders), loadRecent()]);
+  setBootProgress(90, "整理畫面與待同步資料…");
   initUsageDetails();
   syncPendingFiles();
-  setBootProgress(100);
-  hideBootProgress();
+  setBootProgress(100, "載入完成");
+  setTimeout(hideBootProgress, 180);
 }
 
-async function loadFolders() {
-  FOLDERS = await api("/folders");
+async function loadFolders(preloadedFolders = null) {
+  FOLDERS = preloadedFolders || await api("/folders");
   renderFolders();
 }
 
@@ -885,20 +967,52 @@ function renderDesktopFolderTree() {
       renderFolders();
     });
     row.ondragover = (event) => {
-      if (!event.dataTransfer.types.includes("application/x-fieldlog-entry") && !event.dataTransfer.types.includes("application/x-fieldlog-folder")) return;
-      event.preventDefault(); event.dataTransfer.dropEffect = "move";
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder") && !types.includes("application/x-fieldlog-attachment")) return;
+      event.preventDefault(); event.dataTransfer.dropEffect = "move"; row.classList.add("drop-target");
     };
+    row.ondragleave = () => row.classList.remove("drop-target");
     row.ondrop = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
-      if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder")) return;
-      event.preventDefault(); event.stopPropagation();
+      if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder") && !types.includes("application/x-fieldlog-attachment")) return;
+      event.preventDefault(); event.stopPropagation(); row.classList.remove("drop-target");
       const targetId = Number(row.dataset.id);
       const entryId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
       const folderId = Number(event.dataTransfer.getData("application/x-fieldlog-folder"));
-      if (entryId) moveInboxEntry(entryId, targetId, Number(event.dataTransfer.getData("application/x-fieldlog-entry-folder")) || null);
+      if (types.includes("application/x-fieldlog-attachment")) {
+        let payload;
+        try { payload = JSON.parse(event.dataTransfer.getData("application/x-fieldlog-attachment")); }
+        catch { showToast("無法讀取拖曳的檔案"); return; }
+        if (payload?.attachmentId) moveAttachmentToFolder(payload, targetId);
+      } else if (entryId) moveInboxEntry(entryId, targetId, Number(event.dataTransfer.getData("application/x-fieldlog-entry-folder")) || null);
       else if (folderId && folderId !== targetId) moveFolderDirect(folderId, targetId);
     };
   });
+}
+
+async function moveAttachmentToFolder(payload, targetId) {
+  const sourceId = Number(payload.sourceFolderId || 0);
+  if (!targetId || targetId === sourceId) { showToast("檔案已經在這個資料夾"); return; }
+  const target = FOLDERS.find((folder) => Number(folder.id) === Number(targetId));
+  try {
+    const result = await api(`/attachments/${payload.attachmentId}/move`, {
+      method: "POST", body: JSON.stringify({ folder_id: targetId }),
+    });
+    if (!result.moved) { showToast("檔案已經在這個資料夾"); return; }
+    showToast(`已移到「${target?.name || "資料夾"}」`, sourceId ? {
+      actionLabel: "復原",
+      onAction: async () => {
+        try {
+          await api(`/attachments/${payload.attachmentId}/move`, {
+            method: "POST", body: JSON.stringify({ folder_id: sourceId }),
+          });
+          showToast("已復原移動");
+          await refreshFolderView();
+        } catch (error) { showToast("復原失敗：" + error.message); }
+      },
+    } : {});
+    await refreshFolderView();
+  } catch (error) { showToast("移動失敗：" + error.message); }
 }
 
 // 側欄寬度：可拖曳調整，記住使用者選的寬度（手機不套用雙欄檔案總管，
@@ -928,6 +1042,8 @@ function initDesktopSidebarResize() {
     const onMove = (moveEvent) => {
       const width = Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, moveEvent.clientX));
       document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
+      const previewWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10);
+      if (previewWidth) setPreviewWidth(previewWidth);
     };
     const onUp = () => {
       handle.classList.remove("dragging");
@@ -1106,9 +1222,11 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
     : esc(localDateTimeShort(e.created_at));
   return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
-    <span class="entry-title">${esc(e.title || "（未命名）")}</span>
-    <span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}
-    <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
+    <span class="entry-main"><span class="entry-title">${esc(e.title || "（未命名）")}</span>
+      <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}">✏️</button>
+    </span>
+    <span class="entry-secondary"><span class="entry-where">${esc(entryLocationLabel(e))}</span>${aiChip}
+      <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span></span>
     <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
     <button class="entry-merge" data-id="${e.id}" type="button" title="合併到另一筆記事">合併</button>
     <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄">🗑</button>
@@ -1117,7 +1235,14 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
 
 function bindEntryRows(wrap) {
   wrap.querySelectorAll(".entry-row").forEach((el) => {
-    el.onclick = () => openEntry(Number(el.dataset.id));
+    el.onclick = () => {
+      const entryId = Number(el.dataset.id);
+      if (CURRENT_FOLDER && PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+        showEntryPreview(entryId).catch((error) => showToast("預覽失敗：" + error.message));
+      } else {
+        openEntry(entryId);
+      }
+    };
     // 拖一筆紀錄資料包到另一筆＝完整放入，不再破壞式合併。
     el.ondragover = (ev) => {
       const types = Array.from(ev.dataTransfer?.types || []);
@@ -1153,6 +1278,18 @@ function bindEntryRows(wrap) {
         showToast("已移到垃圾桶");
         if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
       } catch (err) { showToast("刪除失敗：" + err.message); }
+    };
+  });
+  wrap.querySelectorAll(".entry-rename").forEach((btn) => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      if (usesDesktopRightPane()) {
+        showEntryEditor(Number(btn.dataset.id)).catch((err) => showToast("開啟編輯失敗：" + err.message));
+        return;
+      }
+      const row = btn.closest(".entry-row");
+      renameEntry(Number(btn.dataset.id), row?.querySelector(".entry-title")?.textContent || "")
+        .catch((err) => showToast("重新命名失敗：" + err.message));
     };
   });
   wrap.querySelectorAll(".entry-move").forEach((btn) => {
@@ -1555,7 +1692,7 @@ function bindChildFolderCards(wrap) {
 }
 
 function folderFileHtml(a, entryId) {
-  const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
+  const url = fileUrlForKey(a.key);
   const ext = (a.filename || "").split(".").pop().toLowerCase();
   const icon = isPdfAtt(a) ? "📕" : a.kind === "photo" ? "🖼️" : a.kind === "audio" ? "🎙️"
     : ["doc", "docx"].includes(ext) ? "📘" : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
@@ -1566,12 +1703,12 @@ function folderFileHtml(a, entryId) {
     : `<a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
   // 每一列是「一份檔案」而不是「一筆記事」：可以拖到上方子資料夾搬移，
   // 🗑 只刪這一份，⋯ 開這一份的詳情（附屬記事、分類、AI 整理）
-  return `<div class="folder-file-row explorer-item" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}">
+  return `<div class="folder-file-row explorer-item" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}" data-key="${esc(a.key)}" data-mime="${esc(a.mime || "")}" data-kind="${esc(a.kind || "")}">
     <span class="folder-file-icon" title="拖曳到上方子資料夾">${icon}</span>
     ${nameLink}
     <span class="folder-file-meta">${esc(localDateTimeShort(a.created_at))}</span>
     <button class="folder-file-delete" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="刪除這份檔案" aria-label="刪除這份檔案">🗑</button>
-    <button class="folder-file-manage" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="管理這一份檔案" aria-label="管理這一份檔案">⋯</button>
+    <button class="folder-file-manage" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="管理／重新命名這一份檔案" aria-label="管理或重新命名這一份檔案">⋯</button>
   </div>`;
 }
 
@@ -1669,6 +1806,7 @@ async function openFolder(id) {
   syncFolderSortButtons();
   syncSubfolderButton();
   $("folder-children").innerHTML = "";
+  clearFilePreview();
   await runLegacyCleanupOnce();
   // 一次帶附件回來，不要每筆有附件的記事各發一支 /entries/:id——資料夾裡
   // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
@@ -1727,20 +1865,36 @@ function recordGroupCardHtml(e, atts) {
   // application/x-fieldlog-entry payload 與 openMoveEntryDialog()，這樣多檔案
   // 記事（分段錄音一類）才能跟純文字筆記一樣在分類後繼續移動，不用先
   // 刪掉重建（entry 266：之前這裡只有刪除鍵，完全搬不動）。
-  return `<div class="record-group-card explorer-item" data-id="${e.id}">
+  return `<div class="record-group-card explorer-item" data-id="${e.id}" data-recording="${counts.audio ? "1" : "0"}">
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
     <small>${esc(localDateTimeShort(e.created_at))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
-    <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
-    <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>
+    ${counts.audio
+      ? `<button class="record-group-manage" type="button" data-id="${e.id}" title="錄音操作" aria-label="錄音操作">⋯</button>`
+      : `<button class="record-group-rename" type="button" data-id="${e.id}" title="重新命名資料包" aria-label="重新命名這筆紀錄">✏️</button>
+         <button class="record-group-move" type="button" data-id="${e.id}" title="移動到其他資料夾" aria-label="移動這筆紀錄">📂</button>
+         <button class="record-group-del" type="button" data-id="${e.id}" title="刪除這筆紀錄" aria-label="刪除這筆紀錄">🗑</button>`}
   </div>`;
 }
 
 function bindRecordGroupCards() {
   document.querySelectorAll(".record-group-card[data-id]").forEach((card) => {
     card.onclick = (ev) => {
-      if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-drag")) return;
-      openEntry(Number(card.dataset.id));
+      if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-rename") || ev.target.closest(".record-group-manage") || ev.target.closest(".record-group-drag")) return;
+      const entryId = Number(card.dataset.id);
+      if (card.dataset.recording === "1") {
+        if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+          showRecordingPreview(entryId).catch((error) => showToast("錄音預覽失敗：" + error.message));
+        } else {
+          openRecordingEditor(entryId).catch((error) => showToast("開啟錄音失敗：" + error.message));
+        }
+        return;
+      }
+      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+        showEntryPreview(entryId).catch((error) => showToast("資料包預覽失敗：" + error.message));
+      } else {
+        openEntry(entryId);
+      }
     };
     card.ondragover = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
@@ -1762,8 +1916,18 @@ function bindRecordGroupCards() {
       const targetId = Number(card.dataset.id);
       if (sourceId && sourceId !== targetId) nestEntry(sourceId, targetId);
     };
+    const manage = card.querySelector(".record-group-manage");
+    if (manage) manage.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const entryId = Number(card.dataset.id);
+      const open = PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches
+        ? openRecordingEditor(entryId)
+        : openRecordingActions(entryId);
+      open.catch((error) => showToast("開啟錄音操作失敗：" + error.message));
+    };
     const del = card.querySelector(".record-group-del");
-    del.onclick = async (ev) => {
+    if (del) del.onclick = async (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       if (!confirm("將這筆紀錄資料包及其中全部內容移到垃圾桶？垃圾桶保留 60 天。")) return;
@@ -1774,12 +1938,23 @@ function bindRecordGroupCards() {
       } catch (err) { showToast("刪除失敗：" + err.message); }
     };
     const move = card.querySelector(".record-group-move");
-    move.onclick = (ev) => {
+    if (move) move.onclick = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       const title = card.querySelector("strong")?.textContent || "這筆記事";
       openMoveEntryDialog(Number(card.dataset.id), { currentFolderId: CURRENT_FOLDER?.id ?? null, title })
         .catch((err) => showToast("移動失敗：" + err.message));
+    };
+    const rename = card.querySelector(".record-group-rename");
+    if (rename) rename.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (usesDesktopRightPane()) {
+        showEntryEditor(Number(card.dataset.id)).catch((err) => showToast("開啟編輯失敗：" + err.message));
+        return;
+      }
+      renameEntry(Number(card.dataset.id), card.querySelector("strong")?.textContent || "")
+        .catch((err) => showToast("重新命名失敗：" + err.message));
     };
     const drag = card.querySelector(".record-group-drag");
     drag.onclick = (ev) => ev.stopPropagation();
@@ -1844,6 +2019,37 @@ async function refreshFolderView() {
   else await loadRecent();
 }
 
+async function renameEntry(entryId, currentTitle) {
+  const next = prompt("輸入新的名稱", currentTitle || "");
+  if (next === null) return;
+  const title = next.trim();
+  if (!title) { showToast("名稱不可空白"); return; }
+  if (title === currentTitle) return;
+  await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ title }) });
+  showToast("名稱已更新");
+  await refreshFolderView();
+}
+
+function fileExtension(filename) {
+  const match = String(filename || "").match(/(\.[^./\\]+)$/);
+  return match ? match[1] : "";
+}
+
+async function renameAttachment(attachmentId, currentFilename, { reopenEntryId = null } = {}) {
+  const ext = fileExtension(currentFilename);
+  const base = ext ? currentFilename.slice(0, -ext.length) : currentFilename;
+  const entered = prompt(ext ? `輸入新的檔名（${ext} 會自動保留）` : "輸入新的檔名", base || currentFilename || "");
+  if (entered === null) return;
+  let filename = entered.trim();
+  if (!filename) { showToast("檔名不可空白"); return; }
+  if (ext && !filename.toLowerCase().endsWith(ext.toLowerCase())) filename += ext;
+  if (filename === currentFilename) return;
+  await api(`/attachments/${attachmentId}`, { method: "PUT", body: JSON.stringify({ filename }) });
+  showToast("檔名已更新");
+  await refreshFolderView();
+  if (reopenEntryId) await openEntry(reopenEntryId);
+}
+
 async function removeOneFile(attachmentId, filename, closeDetail) {
   if (!confirm(`確定刪除「${filename}」？只會刪除這一份檔案。`)) return;
   await api(`/attachments/${attachmentId}`, { method: "DELETE" });
@@ -1858,13 +2064,31 @@ async function removeOneFile(attachmentId, filename, closeDetail) {
 
 function bindFileRows() {
   document.querySelectorAll(".folder-file-row[data-att-id]").forEach((row) => {
+    row.onclick = (event) => {
+      if (event.target.closest("button") || !PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
+      event.preventDefault();
+      showFilePreview({
+        entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
+        filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
+        mime: row.dataset.mime || "", kind: row.dataset.kind || "",
+      }).catch((error) => showToast("預覽失敗：" + error.message));
+    };
+    row.ondblclick = (event) => {
+      if (event.target.closest("button")) return;
+      const link = row.querySelector(".folder-file-name");
+      if (link?.href) window.open(link.href, "_blank", "noopener");
+    };
     const manage = row.querySelector(".folder-file-manage");
     if (manage) {
       manage.onclick = (event) => {
         event.preventDefault();
         event.stopPropagation();
-        openFileDetail(Number(manage.dataset.entryId), Number(manage.dataset.attId))
-          .catch((error) => showToast("開啟檔案失敗：" + error.message));
+        const entryId = Number(manage.dataset.entryId);
+        const attachmentId = Number(manage.dataset.attId);
+        const open = PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches
+          ? showFileEditor(entryId, attachmentId)
+          : openFileDetail(entryId, attachmentId);
+        open.catch((error) => showToast("開啟檔案失敗：" + error.message));
       };
     }
     const deleteButton = row.querySelector(".folder-file-delete");
@@ -1883,6 +2107,7 @@ function bindFileRows() {
         attachmentId: Number(row.dataset.attId),
         entryId: Number(row.dataset.entryId),
         filename: row.dataset.filename || "檔案",
+        sourceFolderId: CURRENT_FOLDER?.id || null,
       }));
     };
     row.ondragend = () => {
@@ -1892,6 +2117,658 @@ function bindFileRows() {
     };
   });
   bindImageLinks();
+}
+
+function clearFilePreview(message = "選取一份檔案以預覽") {
+  const pane = $("folder-preview");
+  const body = $("folder-preview-body");
+  if (!pane || !body) return;
+  pane.dataset.attachmentId = "";
+  pane.dataset.entryId = "";
+  if ($("folder-preview-title")) $("folder-preview-title").textContent = "預覽";
+  if ($("folder-preview-open")) {
+    $("folder-preview-open").hidden = false;
+    $("folder-preview-open").textContent = "開啟原檔";
+    $("folder-preview-open").href = "#";
+    $("folder-preview-open").onclick = (event) => event.preventDefault();
+  }
+  if ($("folder-preview-edit")) {
+    $("folder-preview-edit").hidden = true;
+    $("folder-preview-edit").onclick = null;
+  }
+  if ($("folder-preview-manage")) {
+    $("folder-preview-manage").disabled = true;
+    $("folder-preview-manage").onclick = null;
+  }
+  body.innerHTML = `<p class="folder-preview-empty">${esc(message)}</p>`;
+  document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+}
+
+function recordingPreviewTranscript(audioAttachments) {
+  return (audioAttachments || [])
+    .filter((item) => String(item.transcript || "").trim())
+    .sort((a, b) => Number(a.offset_secs || 0) - Number(b.offset_secs || 0) || Number(a.id) - Number(b.id))
+    .map((item) => (audioAttachments.length > 1
+      ? `【${fmtSecs(item.offset_secs || 0)}｜${item.filename}】\n${String(item.transcript).trim()}`
+      : String(item.transcript).trim()))
+    .join("\n\n");
+}
+
+function visibleEntryFields(entry) {
+  try {
+    return Object.entries(JSON.parse(entry.fields_json || "{}"))
+      .filter(([key]) => !key.startsWith("_") && !["litdb_id", "medtec_exhibitor_id"].includes(key));
+  } catch {
+    return [];
+  }
+}
+
+async function showEntryPreview(entryId) {
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openEntry(entryId);
+  return withViewLoading("正在載入紀錄…", () => renderEntryPreview(entryId));
+}
+
+async function renderEntryPreview(entryId) {
+  const entry = await api(`/entries/${entryId}`);
+  const body = $("folder-preview-body");
+  const fields = visibleEntryFields(entry);
+  const attachments = (entry.attachments || []).filter((item) => !item.source_pdf_id);
+  document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+  document.querySelector(`.entry-row[data-id="${entryId}"], .record-group-card[data-id="${entryId}"]`)?.classList.add("preview-selected");
+  $("folder-preview").dataset.entryId = String(entryId);
+  $("folder-preview").dataset.attachmentId = "";
+  $("folder-preview-title").textContent = entry.title || "記事";
+  body.innerHTML = `<article class="entry-side-preview">
+    ${plainEntryBody(entry).trim() ? `<section><h3>內容</h3><pre>${esc(plainEntryBody(entry).trim())}</pre></section>` : ""}
+    ${fields.map(([key, value]) => `<section><h3>${esc(key)}</h3><pre>${esc(String(value || ""))}</pre></section>`).join("")}
+    ${attachments.length ? `<section><h3>附件（${attachments.length}）</h3><div class="entry-side-attachments">${attachments.map((item) =>
+      `<button type="button" data-id="${item.id}">${esc(item.filename || "附件")}<small>${esc(fmtBytes(item.size))}</small></button>`).join("")}</div></section>` : ""}
+    ${!plainEntryBody(entry).trim() && !fields.length && !attachments.length ? '<p class="folder-preview-empty">這筆記事目前沒有內容。</p>' : ""}
+  </article>`;
+  body.querySelectorAll(".entry-side-attachments button").forEach((button) => {
+    button.onclick = () => {
+      const attachment = attachments.find((item) => Number(item.id) === Number(button.dataset.id));
+      if (!attachment) return;
+      showFilePreview({ entryId, attachmentId: attachment.id, filename: attachment.filename,
+        key: attachment.key, mime: attachment.mime, kind: attachment.kind })
+        .catch((error) => showToast("附件預覽失敗：" + error.message));
+    };
+  });
+  $("folder-preview-open").hidden = true;
+  $("folder-preview-edit").hidden = false;
+  $("folder-preview-edit").textContent = "編輯";
+  $("folder-preview-edit").onclick = () => showEntryEditor(entryId).catch((error) => showToast("開啟編輯失敗：" + error.message));
+  $("folder-preview-manage").disabled = false;
+  $("folder-preview-manage").onclick = () => showEntryEditor(entryId)
+    .catch((error) => showToast("開啟編輯失敗：" + error.message));
+}
+
+async function showEntryEditor(entryId) {
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openEntry(entryId);
+  return withViewLoading("正在載入編輯欄…", () => renderEntryEditor(entryId));
+}
+
+async function renderEntryEditor(entryId) {
+  const entry = await api(`/entries/${entryId}`);
+  const body = $("folder-preview-body");
+  const fields = visibleEntryFields(entry);
+  const isWeeklyReport = (() => {
+    try { return JSON.parse(entry.fields_json || "{}")._kind === "weekly_report"; } catch { return false; }
+  })();
+  const hasLegacyRichBody = entry.body_format === "html";
+  $("folder-preview-title").textContent = `編輯｜${entry.title || "記事"}`;
+  body.innerHTML = `<form class="preview-editor" id="entry-preview-editor">
+    <label for="preview-entry-title">名稱</label>
+    <input id="preview-entry-title" maxlength="160" value="${esc(entry.title || "")}" ${isWeeklyReport ? "disabled" : ""} />
+    ${!isWeeklyReport && !hasLegacyRichBody ? `<label for="preview-entry-body">內容</label><textarea id="preview-entry-body">${esc(plainEntryBody(entry))}</textarea>` : ""}
+    ${hasLegacyRichBody ? '<p class="sub">這是舊版富文字資料。為避免破壞原排版，舊內文維持唯讀；名稱與欄位仍只在右欄修改，不再開啟第二套編輯框。</p>' : ""}
+    ${fields.map(([key, value], index) => `<label for="preview-entry-field-${index}">${esc(key)}</label>
+      <textarea id="preview-entry-field-${index}" data-field="${esc(key)}">${esc(String(value || ""))}</textarea>`).join("")}
+    <div class="preview-editor-actions"><button class="btn primary" id="preview-entry-save" type="submit">儲存</button><button class="btn" id="preview-entry-cancel" type="button">取消</button></div>
+  </form>`;
+  const returnToPreview = () => showEntryPreview(entryId).catch((error) => showToast("預覽失敗：" + error.message));
+  $("folder-preview-open").hidden = true;
+  $("folder-preview-edit").hidden = false;
+  $("folder-preview-edit").textContent = "取消";
+  $("folder-preview-edit").onclick = returnToPreview;
+  $("folder-preview-manage").disabled = true;
+  $("folder-preview-manage").onclick = null;
+  $("preview-entry-cancel").onclick = returnToPreview;
+  $("entry-preview-editor").onsubmit = async (event) => {
+    event.preventDefault();
+    const save = $("preview-entry-save");
+    const title = $("preview-entry-title").value.trim();
+    if (!isWeeklyReport && !title) return showToast("名稱不可空白");
+    const patch = { fields: {} };
+    if (!isWeeklyReport) {
+      patch.title = title;
+      if (!hasLegacyRichBody) {
+        patch.body = $("preview-entry-body").value.trim();
+        patch.body_format = "text";
+      }
+    }
+    body.querySelectorAll("textarea[data-field]").forEach((textarea) => { patch.fields[textarea.dataset.field] = textarea.value.trim(); });
+    save.disabled = true;
+    save.textContent = "儲存中…";
+    try {
+      await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify(patch) });
+      showToast("記事已儲存");
+      await refreshFolderView();
+      await showEntryPreview(entryId);
+    } catch (error) {
+      showToast("儲存失敗：" + error.message);
+      save.disabled = false;
+      save.textContent = "儲存";
+    }
+  };
+}
+
+async function showRecordingPreview(entryId) {
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
+  return withViewLoading("正在載入錄音…", () => renderRecordingPreview(entryId));
+}
+
+async function renderRecordingPreview(entryId) {
+  const pane = $("folder-preview");
+  const body = $("folder-preview-body");
+  const title = $("folder-preview-title");
+  if (!pane || !body || !title) return;
+  const entry = await api(`/entries/${entryId}`);
+  const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+  if (!audio.length) {
+    // 不是錄音資料包或舊資料已缺錄音附件時才退回舊詳情，避免新介面硬猜。
+    return openEntry(entryId);
+  }
+  document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+  document.querySelector(`.record-group-card[data-id="${entryId}"]`)?.classList.add("preview-selected");
+  pane.dataset.attachmentId = "";
+  pane.dataset.entryId = String(entryId);
+  title.textContent = entry.title || "錄音";
+
+  const totalSize = audio.reduce((sum, item) => sum + (Number(item.size) || 0), 0);
+  const knownDuration = audio.filter((item) => Number(item.duration_secs) > 0);
+  const totalDuration = knownDuration.reduce((sum, item) => sum + Number(item.duration_secs), 0);
+  const status = recordingStatus(audio);
+  const transcript = recordingPreviewTranscript(audio);
+  const note = String(entry.body || "").trim();
+  body.innerHTML = `<div class="recording-preview">
+    <div class="recording-preview-summary">
+      <span class="recording-status ${status.tone}">${esc(status.label)}</span>
+      <dl>
+        <div><dt>錄音時間</dt><dd>${esc(localDateTime(entry.created_at))}</dd></div>
+        <div><dt>長度</dt><dd>${knownDuration.length === audio.length ? esc(fmtSecs(totalDuration)) : "部分檔案未記錄"}</dd></div>
+        <div><dt>檔案大小</dt><dd>${esc(fmtBytes(totalSize))}</dd></div>
+        <div><dt>錄音段數</dt><dd>${audio.length}</dd></div>
+      </dl>
+    </div>
+    <div class="recording-segments">${audio.map((item, index) => `<section class="recording-segment">
+      <div><strong>${audio.length > 1 ? `第 ${index + 1} 段` : "錄音檔"}</strong><span>${esc(fmtBytes(item.size))}${Number(item.duration_secs) > 0 ? `｜${esc(fmtSecs(item.duration_secs))}` : ""}</span></div>
+      <audio controls preload="metadata" src="${fileUrlForKey(item.key)}"></audio>
+      <a class="recording-download" href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">下載 ${esc(item.filename)}</a>
+    </section>`).join("")}</div>
+    <section class="recording-preview-section"><h3>逐字稿</h3>
+      ${transcript ? `<pre>${esc(transcript)}</pre>` : `<p class="folder-preview-empty compact">${esc(status.label)}</p>`}
+    </section>
+    ${note ? `<section class="recording-preview-section"><h3>速記</h3><pre>${esc(note)}</pre></section>` : ""}
+  </div>`;
+
+  const firstUrl = fileUrlForKey(audio[0].key);
+  $("folder-preview-open").hidden = false;
+  $("folder-preview-open").textContent = audio.length === 1 ? "下載錄音" : "下載第 1 段";
+  $("folder-preview-open").href = firstUrl;
+  $("folder-preview-open").setAttribute("download", audio[0].filename || "recording");
+  $("folder-preview-open").onclick = null;
+  $("folder-preview-edit").hidden = false;
+  $("folder-preview-edit").textContent = "編輯";
+  $("folder-preview-edit").onclick = () => openRecordingEditor(entryId)
+    .catch((error) => showToast("開啟錄音編輯失敗：" + error.message));
+  $("folder-preview-manage").disabled = false;
+  $("folder-preview-manage").onclick = () => openRecordingEditor(entryId)
+    .catch((error) => showToast("開啟錄音編輯失敗：" + error.message));
+}
+
+function parseCsvPreviewRow(line) {
+  const cells = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (char === '"') {
+      if (quoted && line[index + 1] === '"') { value += '"'; index++; }
+      else quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(value); value = "";
+    } else value += char;
+  }
+  cells.push(value);
+  return cells;
+}
+
+function renderDelimitedTable(text, { spreadsheet = false } = {}) {
+  const source = String(text || "").trim();
+  if (!source) return "";
+  const blocks = spreadsheet ? source.split(/^== 工作表 (\d+) ==$/m) : ["", "資料", source];
+  const sheets = [];
+  for (let index = 1; index < blocks.length; index += 2) {
+    const name = spreadsheet ? `工作表 ${blocks[index]}` : "資料";
+    const rows = String(blocks[index + 1] || "").trim().split(/\r?\n/).filter(Boolean)
+      .slice(0, 500).map((line) => (spreadsheet || line.includes("\t") ? line.split("\t") : parseCsvPreviewRow(line)).slice(0, 80));
+    if (rows.length) sheets.push({ name, rows });
+  }
+  if (!sheets.length) return "";
+  return `<div class="spreadsheet-preview">${sheets.map(({ name, rows }) => {
+    const width = Math.max(...rows.map((row) => row.length));
+    const normalized = rows.map((row) => [...row, ...Array(Math.max(0, width - row.length)).fill("")]);
+    return `<section><h3>${esc(name)}</h3><div class="spreadsheet-scroll"><table><tbody>${normalized.map((row, rowIndex) =>
+      `<tr>${row.map((cell) => `<${rowIndex === 0 ? "th" : "td"}>${esc(cell)}</${rowIndex === 0 ? "th" : "td"}>`).join("")}</tr>`
+    ).join("")}</tbody></table></div>${rows.length >= 500 ? '<p class="sub">預覽只顯示前 500 列，完整內容請開啟原檔。</p>' : ""}</section>`;
+  }).join("")}</div>`;
+}
+
+async function attachmentWithText(entryId, attachmentId, { extract = false } = {}) {
+  const entry = await api(`/entries/${entryId}`);
+  let attachment = (entry.attachments || []).find((item) => Number(item.id) === Number(attachmentId));
+  if (!attachment) throw new Error("這份檔案已不存在");
+  if (extract && !String(attachment.ocr_text || "").trim() && !attachment.ocr_at) {
+    try {
+      const result = await api(`/attachments/${attachmentId}/ocr`, { method: "POST", body: "{}" });
+      attachment = { ...attachment, ocr_text: result.ocr_text || "", ocr_at: new Date().toISOString() };
+    } catch (error) {
+      attachment = { ...attachment, preview_error: error.message };
+    }
+  }
+  return { entry, attachment };
+}
+
+async function renderPdfPreview(url, body, filename) {
+  if (!window.pdfjsLib?.getDocument) {
+    body.innerHTML = `<p class="folder-preview-empty">PDF 預覽程式尚未載入。可先按「開啟原檔」。</p>`;
+    return;
+  }
+  if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  }
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`PDF 讀取失敗（HTTP ${response.status}）`);
+  const pdf = await window.pdfjsLib.getDocument({ data: await response.arrayBuffer() }).promise;
+  body.innerHTML = `<div class="pdf-sidebar-preview">
+    <div class="pdf-sidebar-toolbar"><button class="btn small" type="button" data-dir="-1">‹ 上一頁</button><span>第 <b>1</b> / ${pdf.numPages} 頁</span><button class="btn small" type="button" data-dir="1">下一頁 ›</button></div>
+    <div class="pdf-sidebar-canvas-wrap"><canvas aria-label="${esc(filename)} PDF 預覽"></canvas></div>
+  </div>`;
+  const canvas = body.querySelector("canvas");
+  const pageLabel = body.querySelector(".pdf-sidebar-toolbar b");
+  const buttons = [...body.querySelectorAll(".pdf-sidebar-toolbar button")];
+  let pageNo = 1;
+  let rendering = false;
+  const render = async () => {
+    if (rendering) return;
+    rendering = true;
+    buttons.forEach((button) => { button.disabled = true; });
+    try {
+      const page = await pdf.getPage(pageNo);
+      const base = page.getViewport({ scale: 1 });
+      const available = Math.max(260, body.clientWidth - 28);
+      const viewport = page.getViewport({ scale: Math.min(2, available / base.width) });
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      pageLabel.textContent = String(pageNo);
+    } finally {
+      rendering = false;
+      buttons[0].disabled = pageNo <= 1;
+      buttons[1].disabled = pageNo >= pdf.numPages;
+    }
+  };
+  buttons.forEach((button) => {
+    button.onclick = async () => {
+      const next = pageNo + Number(button.dataset.dir || 0);
+      if (next < 1 || next > pdf.numPages || rendering) return;
+      pageNo = next;
+      await render();
+    };
+  });
+  await render();
+}
+
+async function showFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
+  return withViewLoading("正在載入檔案…", () => renderFilePreview({ entryId, attachmentId, filename, key, mime, kind }));
+}
+
+async function renderFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
+  const pane = $("folder-preview");
+  const body = $("folder-preview-body");
+  const title = $("folder-preview-title");
+  if (!pane || !body || !title) return;
+  document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
+  document.querySelector(`.folder-file-row[data-att-id="${attachmentId}"]`)?.classList.add("preview-selected");
+  pane.dataset.attachmentId = String(attachmentId);
+  pane.dataset.entryId = String(entryId);
+  title.textContent = filename;
+  body.innerHTML = `<p class="folder-preview-empty">載入預覽中…</p>`;
+  const url = fileUrlForKey(key);
+  const ext = String(filename).split(".").pop().toLowerCase();
+  const image = kind === "photo" || /^image\//i.test(mime);
+  const audio = kind === "audio" || /^audio\//i.test(mime);
+  const video = kind === "video" || /^video\//i.test(mime);
+  const pdf = mime === "application/pdf" || ext === "pdf";
+  const html = /^text\/html/i.test(mime) || ["html", "htm"].includes(ext);
+  const plain = /^text\//i.test(mime) || ["txt", "md", "csv", "json", "xml"].includes(ext);
+  const modernOffice = ["docx", "xlsx", "pptx"].includes(ext);
+  if (image) body.innerHTML = `<img class="folder-preview-image" src="${url}" alt="${esc(filename)}" />`;
+  else if (audio) body.innerHTML = `<audio class="folder-preview-media" controls preload="metadata" src="${url}"></audio>`;
+  else if (video) body.innerHTML = `<video class="folder-preview-media" controls preload="metadata" src="${url}"></video>`;
+  else if (pdf) await renderPdfPreview(url, body, filename);
+  else if (html) body.innerHTML = `<iframe class="folder-preview-frame" sandbox src="${url}" title="${esc(filename)}"></iframe>`;
+  else if (ext === "csv") {
+    const { text, truncated } = await fetchTextPreview(url, 200000);
+    body.innerHTML = renderDelimitedTable(text) || `<pre class="folder-preview-text">${esc(text)}</pre>`;
+    if (truncated) body.insertAdjacentHTML("beforeend", '<p class="sub preview-limit-note">預覽只顯示前 200,000 字。</p>');
+  } else if (plain) {
+    const { text, truncated } = await fetchTextPreview(url, 200000);
+    body.innerHTML = `<pre class="folder-preview-text">${esc(text)}${truncated ? "\n\n［預覽只顯示前 200,000 字］" : ""}</pre>`;
+  } else if (modernOffice) {
+    const loaded = await attachmentWithText(entryId, attachmentId, { extract: true });
+    const extracted = String(loaded.attachment.ocr_text || "").trim();
+    if (ext === "xlsx") {
+      body.innerHTML = renderDelimitedTable(extracted, { spreadsheet: true }) ||
+        `<p class="folder-preview-empty">${esc(loaded.attachment.preview_error || "這份 Excel 沒有可顯示的儲存格內容。")}</p>`;
+    } else {
+      body.innerHTML = extracted
+        ? `<pre class="folder-preview-text office-text-preview">${esc(extracted.slice(0, 200000))}</pre>`
+        : `<p class="folder-preview-empty">${esc(loaded.attachment.preview_error || `這份 ${ext === "docx" ? "Word" : "PowerPoint"} 沒有可顯示的文字內容。`)}</p>`;
+    }
+  } else if (["doc", "xls", "ppt"].includes(ext)) {
+    body.innerHTML = `<div class="folder-preview-empty"><strong>舊版 Office 格式無法可靠預覽</strong><p>請用 Office 另存為 .${ext}x 後重新上傳；原檔仍可下載。</p></div>`;
+  } else if (["odt", "ods", "odp", "rtf"].includes(ext)) {
+    body.innerHTML = `<div class="folder-preview-empty"><strong>此 OpenDocument／RTF 目前只提供原檔</strong><p>可另存為 docx、xlsx 或 pptx，以取得右欄文字或表格預覽。</p></div>`;
+  } else body.innerHTML = `<p class="folder-preview-empty">此格式目前無法在側欄預覽，可開啟原檔。</p>`;
+  $("folder-preview-open").hidden = false;
+  $("folder-preview-open").href = url;
+  $("folder-preview-open").removeAttribute("download");
+  $("folder-preview-open").textContent = "開啟原檔";
+  $("folder-preview-open").onclick = null;
+  $("folder-preview-edit").hidden = false;
+  $("folder-preview-edit").textContent = "編輯";
+  $("folder-preview-edit").onclick = () => showFileEditor(entryId, attachmentId)
+    .catch((error) => showToast("開啟檔案編輯失敗：" + error.message));
+  $("folder-preview-manage").disabled = false;
+  $("folder-preview-manage").onclick = () => showFileEditor(entryId, attachmentId)
+    .catch((error) => showToast("開啟檔案編輯失敗：" + error.message));
+}
+
+async function showFileEditor(entryId, attachmentId) {
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openFileDetail(entryId, attachmentId);
+  return withViewLoading("正在載入檔案編輯欄…", () => renderFileEditor(entryId, attachmentId));
+}
+
+async function renderFileEditor(entryId, attachmentId) {
+  const body = $("folder-preview-body");
+  const title = $("folder-preview-title");
+  const { entry, attachment } = await attachmentWithText(entryId, attachmentId);
+  const sourceAttachments = (entry.attachments || []).filter((item) => !item.source_pdf_id);
+  const deepPages = (entry.attachments || [])
+    .filter((item) => Number(item.source_pdf_id) === Number(attachmentId))
+    .sort((left, right) => Number(left.page_no || 0) - Number(right.page_no || 0));
+  const deepText = deepPages.map((item) => String(item.ocr_text || "").trim()).filter(Boolean).join("\n\n");
+  const initialIndexText = String(attachment.ocr_text || "").trim() || deepText;
+  const legacyNote = sourceAttachments.length === 1 ? String(entry.body || "").trim() : "";
+  const note = String(attachment.note || "").trim() || legacyNote;
+  const canExtract = TRANSCRIBE_ENABLED && (attachment.kind === "photo" || isPdfAtt(attachment) || isNativeDocAtt(attachment));
+  const extractStatus = initialIndexText
+    ? `已擷取 ${initialIndexText.length.toLocaleString()} 字${!attachment.ocr_text && deepText ? "（逐頁結果）" : ""}`
+    : attachment.ocr_at === "skipped" ? "已設定略過"
+      : attachment.ocr_at ? "已擷取，但未找到文字" : "尚未擷取";
+  title.textContent = `編輯｜${attachment.filename}`;
+  body.innerHTML = `<form class="preview-editor" id="file-preview-editor">
+    <label for="preview-file-name">檔案名稱</label>
+    <input id="preview-file-name" maxlength="240" value="${esc(attachment.filename || "")}" />
+    <label for="preview-file-note">附屬記事</label>
+    <textarea id="preview-file-note" placeholder="這份檔案的摘要、用途或待辦">${esc(note)}</textarea>
+    <label for="preview-file-category">醫療器材分類</label>
+    <select id="preview-file-category"><option value="">讀取分類中…</option></select>
+    <section class="preview-processing-panel">
+      <div class="preview-processing-head"><div><strong>擷取／索引文字</strong><p class="sub" id="preview-file-ocr-status">${esc(extractStatus)}</p></div>
+        <div class="preview-processing-actions">
+          ${canExtract ? `<button class="btn small" id="preview-file-ocr" type="button">${initialIndexText ? "重新擷取" : "擷取文字"}</button>` : ""}
+          ${isPdfAtt(attachment) && TRANSCRIBE_ENABLED ? '<button class="btn small" id="preview-file-deep" type="button">逐頁深度擷取</button>' : ""}
+          <button class="btn small" id="preview-file-copy" type="button">複製文字</button>
+        </div>
+      </div>
+      <p class="sub">供搜尋與 AI 使用；可直接修正，不會改動原始檔案。</p>
+      <textarea id="preview-file-index" class="preview-index-text" placeholder="尚無文字。可按「擷取文字」，或自行貼上摘要與關鍵字。">${esc(initialIndexText)}</textarea>
+    </section>
+    <section class="preview-management-panel">
+      <strong>檔案管理</strong>
+      <div class="preview-management-actions">
+        <button class="btn small" id="preview-file-normalize" type="button">整理中文檔名</button>
+        <button class="btn small" id="preview-file-move" type="button">移動</button>
+        <button class="btn small" id="preview-file-share" type="button">唯讀分享</button>
+        ${isPdfAtt(attachment) ? '<button class="btn small" id="preview-file-doodle" type="button">PDF 塗鴉</button>' : ""}
+        <button class="btn small danger" id="preview-file-delete" type="button">刪除檔案</button>
+      </div>
+    </section>
+    <div class="preview-editor-actions"><button class="btn primary" id="preview-file-save" type="submit">儲存</button><button class="btn" id="preview-file-cancel" type="button">取消</button></div>
+  </form>`;
+  const categorySelect = $("preview-file-category");
+  try {
+    const category = await api(`/attachments/${attachmentId}/category`);
+    categorySelect.innerHTML = `<option value="">未分類</option>${(category.categories || []).map((name) =>
+      `<option value="${esc(name)}" ${name === category.category ? "selected" : ""}>${esc(name)}</option>`).join("")}`;
+  } catch (error) {
+    categorySelect.innerHTML = `<option value="">分類讀取失敗</option>`;
+    categorySelect.disabled = true;
+  }
+  const returnToPreview = () => showFilePreview({
+    entryId, attachmentId, filename: attachment.filename, key: attachment.key, mime: attachment.mime, kind: attachment.kind,
+  }).catch((error) => showToast("預覽失敗：" + error.message));
+  $("folder-preview-open").hidden = false;
+  $("folder-preview-open").href = fileUrlForKey(attachment.key);
+  $("folder-preview-open").textContent = "開啟原檔";
+  $("folder-preview-open").removeAttribute("download");
+  $("folder-preview-edit").hidden = false;
+  $("folder-preview-edit").textContent = "取消";
+  $("folder-preview-edit").onclick = returnToPreview;
+  $("folder-preview-manage").disabled = true;
+  $("folder-preview-manage").onclick = null;
+  $("preview-file-cancel").onclick = returnToPreview;
+  $("preview-file-copy").onclick = async () => {
+    const text = $("preview-file-index").value;
+    if (!text.trim()) return showToast("目前沒有可複製的文字");
+    try { await navigator.clipboard.writeText(text); showToast("索引文字已複製"); }
+    catch { showToast("瀏覽器無法自動複製，請在文字框內全選複製"); }
+  };
+  if ($("preview-file-ocr")) $("preview-file-ocr").onclick = async () => {
+    const button = $("preview-file-ocr");
+    if (initialIndexText && !confirm("重新擷取會覆蓋目前文字框的內容，確定繼續？")) return;
+    button.disabled = true;
+    button.textContent = "擷取中…";
+    $("preview-file-ocr-status").textContent = "AI 正在擷取文字，請稍候…";
+    try {
+      const result = await api(`/attachments/${attachmentId}/ocr`, { method: "POST", body: "{}" });
+      const text = String(result.ocr_text || "").trim();
+      $("preview-file-index").value = text;
+      $("preview-file-ocr-status").textContent = text ? `已擷取 ${text.length.toLocaleString()} 字` : "已擷取，但未找到文字";
+      button.textContent = "重新擷取";
+      showToast(text ? "文字擷取完成，可修正後儲存" : "擷取完成，但未找到文字");
+    } catch (error) {
+      $("preview-file-ocr-status").textContent = `擷取失敗：${error.message}`;
+      button.textContent = initialIndexText ? "重新擷取" : "擷取文字";
+      showToast("擷取失敗：" + error.message);
+    } finally { button.disabled = false; }
+  };
+  if ($("preview-file-deep")) $("preview-file-deep").onclick = () => {
+    deepProcessPdf(entryId, attachment, $("preview-file-deep"), deepPages,
+      () => showFileEditor(entryId, attachmentId));
+  };
+  $("preview-file-normalize").onclick = async () => {
+    const button = $("preview-file-normalize");
+    button.disabled = true;
+    button.textContent = "整理中…";
+    try {
+      const result = await api(`/attachments/${attachmentId}/normalize-name`, { method: "POST", body: "{}" });
+      showToast(result.renamed ? "已更新中文檔名" : result.incomplete_year ? "尚未確認年份，請先擷取文字" : "檔名已是目前可確認的格式");
+      await refreshFolderView();
+      await showFileEditor(entryId, attachmentId);
+    } catch (error) {
+      showToast("整理檔名失敗：" + error.message);
+      button.disabled = false;
+      button.textContent = "整理中文檔名";
+    }
+  };
+  $("preview-file-move").onclick = async () => {
+    const picked = await openFolderPicker({
+      title: "移動檔案",
+      desc: `把「${attachment.filename}」移到哪個資料夾？`,
+      currentId: entry.folder_id || null,
+      allowInbox: false,
+    });
+    if (!picked?.id) return;
+    try {
+      const result = await api(`/attachments/${attachmentId}/move`, { method: "POST", body: JSON.stringify({ folder_id: picked.id }) });
+      showToast(result.moved ? `已移到「${FOLDERS.find((folder) => folder.id === picked.id)?.name || "資料夾"}」` : "已經在這個資料夾了");
+      await refreshFolderView();
+      clearFilePreview("檔案已移動，請從左側資料夾重新選取。");
+    } catch (error) { showToast("移動失敗：" + error.message); }
+  };
+  $("preview-file-share").onclick = () => createReadOnlyShare(entryId, attachmentId)
+    .catch((error) => showToast("分享失敗：" + error.message));
+  if ($("preview-file-doodle")) $("preview-file-doodle").onclick = () => {
+    if (typeof window.fieldlogOpenPdfEditor !== "function") return showToast("PDF 塗鴉程式還在載入，請稍後再試");
+    window.fieldlogOpenPdfEditor(entryId, attachment).catch((error) => showToast("開啟塗鴉失敗：" + error.message));
+  };
+  $("preview-file-delete").onclick = async () => {
+    if (!confirm(`確定刪除「${attachment.filename}」？只會刪除這一份檔案。`)) return;
+    try {
+      await api(`/attachments/${attachmentId}`, { method: "DELETE" });
+      showToast("檔案已刪除");
+      await refreshFolderView();
+      clearFilePreview("檔案已刪除。");
+    } catch (error) { showToast("刪除失敗：" + error.message); }
+  };
+  $("file-preview-editor").onsubmit = async (event) => {
+    event.preventDefault();
+    const save = $("preview-file-save");
+    const nextFilename = $("preview-file-name").value.trim();
+    if (!nextFilename) return showToast("檔案名稱不可空白");
+    save.disabled = true;
+    save.textContent = "儲存中…";
+    try {
+      if (nextFilename !== attachment.filename) await api(`/attachments/${attachmentId}`, { method: "PUT", body: JSON.stringify({ filename: nextFilename }) });
+      const nextNote = $("preview-file-note").value.trim();
+      if (nextNote !== note) await api(`/attachments/${attachmentId}/note`, { method: "PUT", body: JSON.stringify({ note: nextNote }) });
+      if (!categorySelect.disabled) await api(`/attachments/${attachmentId}/category`, { method: "PUT", body: JSON.stringify({ category: categorySelect.value }) });
+      const index = $("preview-file-index");
+      if (index.value.trim() !== initialIndexText) {
+        await api(`/attachments/${attachmentId}`, { method: "PUT", body: JSON.stringify({ ocr_text: index.value.trim() }) });
+      }
+      showToast("檔案資料已儲存");
+      await refreshFolderView();
+      const refreshed = await attachmentWithText(entryId, attachmentId);
+      await showFilePreview({ entryId, attachmentId, filename: refreshed.attachment.filename, key: refreshed.attachment.key,
+        mime: refreshed.attachment.mime, kind: refreshed.attachment.kind });
+    } catch (error) {
+      showToast("儲存失敗：" + error.message);
+      save.disabled = false;
+      save.textContent = "儲存";
+    }
+  };
+}
+
+async function fetchTextPreview(url, maxChars) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.body?.getReader) {
+    const text = await response.text();
+    return { text: text.slice(0, maxChars), truncated: text.length > maxChars };
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let truncated = false;
+  try {
+    while (text.length <= maxChars) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (text.length > maxChars) { truncated = true; break; }
+    }
+    text += decoder.decode();
+  } finally {
+    if (truncated) await reader.cancel();
+  }
+  return { text: text.slice(0, maxChars), truncated };
+}
+
+const PREVIEW_WIDTH_KEY = "fieldlog_preview_width";
+const PREVIEW_WIDTH_MIN = 280;
+const PREVIEW_MAIN_MIN = 480;
+
+function syncPreviewLayout() {
+  const workspace = document.querySelector(".folder-workspace");
+  const button = $("btn-toggle-preview");
+  if (!workspace || !button) return;
+  PREVIEW_ENABLED = true;
+  workspace.classList.remove("preview-off");
+  button.classList.toggle("active", PREVIEW_ENABLED);
+  button.textContent = PREVIEW_ENABLED ? "▣ 預覽：開" : "□ 預覽：關";
+  button.setAttribute("aria-pressed", PREVIEW_ENABLED ? "true" : "false");
+}
+
+function clampPreviewWidth(width) {
+  const workspace = document.querySelector(".folder-workspace");
+  const available = workspace?.getBoundingClientRect().width || window.innerWidth;
+  const max = Math.max(PREVIEW_WIDTH_MIN, available - PREVIEW_MAIN_MIN - 8);
+  return Math.min(max, Math.max(PREVIEW_WIDTH_MIN, width));
+}
+
+function setPreviewWidth(width, persist = false) {
+  const clamped = clampPreviewWidth(width);
+  document.documentElement.style.setProperty("--preview-width", `${clamped}px`);
+  if (persist) localStorage.setItem(PREVIEW_WIDTH_KEY, String(Math.round(clamped)));
+}
+
+function initPreviewLayout() {
+  const handle = $("folder-preview-resize");
+  const button = $("btn-toggle-preview");
+  if (!handle || !button) return;
+  localStorage.setItem("fieldlog_preview_enabled", "1");
+  button.hidden = true;
+  const saved = Number(localStorage.getItem(PREVIEW_WIDTH_KEY));
+  if (saved) setPreviewWidth(saved);
+  syncPreviewLayout();
+  button.onclick = null;
+  handle.addEventListener("pointerdown", (event) => {
+    if (!PREVIEW_ENABLED) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("dragging");
+    document.body.classList.add("preview-resizing");
+    const workspace = document.querySelector(".folder-workspace");
+    const onMove = (moveEvent) => setPreviewWidth(workspace.getBoundingClientRect().right - moveEvent.clientX);
+    const onUp = () => {
+      handle.classList.remove("dragging");
+      document.body.classList.remove("preview-resizing");
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10);
+      if (current) setPreviewWidth(current, true);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  });
+  handle.addEventListener("keydown", (event) => {
+    if (!PREVIEW_ENABLED || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10) || 400;
+    setPreviewWidth(current + (event.key === "ArrowLeft" ? 16 : -16), true);
+  });
+  window.addEventListener("resize", () => {
+    const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10) || 400;
+    setPreviewWidth(current);
+  });
 }
 
 function hasAttachmentDrag(event) {
@@ -2049,6 +2926,24 @@ async function createEntry(folderId, title) {
   return r.id;
 }
 
+async function openCurrentWeeklyReport() {
+  const button = $("btn-weekly-report");
+  button.disabled = true;
+  const original = button.innerHTML;
+  button.innerHTML = "⏳<span>建立中…</span>";
+  try {
+    const report = await api("/weekly-reports/current", { method: "POST" });
+    await loadFolders();
+    CURRENT_FOLDER = FOLDERS.find((folder) => Number(folder.id) === Number(report.folder_id)) || null;
+    await openEntry(report.id);
+  } catch (error) {
+    showToast("開啟週報失敗：" + error.message);
+  } finally {
+    button.disabled = false;
+    button.innerHTML = original;
+  }
+}
+
 // 打字沒有「錄影錄到一半」的時間壓力，所以寫完可以選位置；取消就留在待分類。
 function quickNote() {
   openEditModal({
@@ -2086,21 +2981,41 @@ async function askQuickNoteFolder(entryId) {
   } catch (err) { showToast("分類失敗：" + err.message); }
 }
 
+async function createReadOnlyShare(entryId, attachmentId = null) {
+  const daysRaw = prompt("分享幾天後到期？請輸入 1～30 天", "7");
+  if (daysRaw === null) return;
+  const expiresDays = Math.min(Math.max(Number(daysRaw) || 7, 1), 30);
+  const allowAttachments = attachmentId ? true : confirm("是否包含這筆資料的附件？\n按「取消」只分享文字內容。");
+  const allowDownload = allowAttachments && confirm("是否允許附件下載？\n建議按「取消」，只提供線上預覽。");
+  const result = await api("/shares", {
+    method: "POST",
+    body: JSON.stringify({ entry_id: entryId, attachment_id: attachmentId, expires_days: expiresDays, allow_attachments: allowAttachments, allow_download: allowDownload }),
+  });
+  try { await navigator.clipboard.writeText(result.url); } catch { /* 非安全環境時仍用提示框顯示 */ }
+  prompt(`唯讀分享已建立，${expiresDays} 天後到期。\n連結已嘗試複製；需要時可在這裡再複製：`, result.url);
+}
+
 async function openEntry(id) {
   // 從單一檔案詳情觸發的重新開啟（存檔、AI 整理完成）要停在同一份檔案上，
   // 不要跳回整筆記事——否則使用者每整理一次就被彈回上一層
   const entryId = Number(id || 0);
+  if (usesDesktopRightPane()) return showEntryEditor(entryId);
   if (FOCUSED_FILE && FOCUSED_FILE.entryId === entryId) {
     return openFileDetail(FOCUSED_FILE.entryId, FOCUSED_FILE.attachmentId);
   }
   return withViewLoading("正在載入紀錄…", async () => {
   const e = await api(`/entries/${id}`);
+  // 上傳失敗的錄音會先留在瀏覽器 IndexedDB；以前這批檔案完全不會顯示，
+  // 使用者只看得到空記事，以為錄音已遺失。即使還沒進 R2，也要把待補傳狀態
+  // 顯示在同一筆記事的附件區，才能清楚知道檔案目前在哪裡。
+  const pendingUploads = await pendingFilesForEntry(entryId);
   // Tier 2 會把 PDF 每頁轉成圖檔供 OCR 使用；這些是處理用的衍生附件，
   // 不逐張顯示在附件清單，避免數十頁 PDF 產生大量縮圖。處理進度仍顯示在來源 PDF 上。
   const visibleAttachments = (e.attachments || []).filter((a) => !a.source_pdf_id);
   const folder = e.folder_id ? FOLDERS.find((f) => f.id === e.folder_id) : null;
   const template = templateFor(folder ? folder.type : "其他");
   const fields = JSON.parse(e.fields_json || "{}");
+  const isWeeklyReport = fields._kind === "weekly_report";
   // 來源同步管理的記事（fields_json._sid／litdb_id 有值）永遠鎖在純文字：
   // sync.js 用 <!-- sync:start/end --> 這組純文字標記圈出管理區，換成富文字
   // 編輯器很容易在瀏覽器序列化時弄丟標記，下次同步會整段覆蓋掉使用者手動
@@ -2114,7 +3029,17 @@ async function openEntry(id) {
   // src/lib/sync.js）。那類記事維持純文字編輯框。
   const bodyFormat = isSynced ? "text" : "html";
   const storedAsText = e.body_format !== "html";
-  const bodySection = bodyFormat === "html"
+  const weeklyReportSection = `<section class="weekly-report-editor">
+      <div class="weekly-report-meta"><strong>${esc(fields["週次"] || "週報")}</strong><span>${esc(fields["期間"] || "")}</span></div>
+      <label for="weekly-long-term">一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）</label>
+      <textarea id="weekly-long-term" class="weekly-report-textarea fixed" readonly>${esc(fields["中長期規劃"] || "")}</textarea>
+      <p class="sub">固定範本，不會由 Claude 或一般存檔流程改寫。</p>
+      <label for="weekly-current">二、本週工作報告</label>
+      <textarea id="weekly-current" class="e-field weekly-report-textarea current" data-key="本週工作報告" placeholder="可自行填寫，或請 Claude MCP 整理後寫入。">${esc(fields["本週工作報告"] || "")}</textarea>
+      <label for="weekly-next">三、下週重要工作計畫</label>
+      <textarea id="weekly-next" class="e-field weekly-report-textarea" data-key="下週重要工作計畫" placeholder="保留給你自行填寫。">${esc(fields["下週重要工作計畫"] || "")}</textarea>
+    </section>`;
+  const bodySection = isWeeklyReport ? weeklyReportSection : bodyFormat === "html"
     ? `<div class="field-label-row"><label>內文／速記</label></div>
        <div id="e-body-rich" class="rich-editor"></div>`
     : `<div class="field-label-row">
@@ -2155,9 +3080,9 @@ async function openEntry(id) {
         <span>📁</span><strong>${esc(child.title || "（未命名）")}</strong>
         <small>📎${child.att_count || 0}${child.child_count ? `｜${child.child_count} 個子資料包` : ""}</small>
       </div>`).join("")}</div></section>` : ""}
-    ${template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
+    ${isWeeklyReport ? "" : template.map((k) => `<label>${esc(k)}</label><input class="e-field" data-key="${esc(k)}" value="${esc(fields[k] || "")}" />`).join("")}
     ${bodySection}
-    <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button></div>
+    <div class="modal-actions"><button class="btn primary" id="e-save">儲存</button><button class="btn" id="e-share" type="button">🔗 唯讀分享</button></div>
     <hr/>
     <h3 class="section-title">附件</h3>
     <div class="upload-row">
@@ -2169,7 +3094,12 @@ async function openEntry(id) {
       <button class="btn small" id="e-rename-files" type="button" title="利用既有 OCR、逐字稿與記事資訊整理全部舊附件名稱，不會重新呼叫 AI">🏷 整理舊檔名</button>
       <span id="e-upload-status" class="sub"></span>
     </div>
-    <div id="e-attachments" class="att-list">${visibleAttachments.map((a) => attHtml(a, e.attachments)).join("") || `<p class="sub">尚無附件</p>`}</div>
+    ${pendingUploads.length ? `<div class="pending-upload-notice">
+      <strong>⏳ ${pendingUploads.length} 個檔案暫存在這台電腦，尚未補傳完成</strong>
+      <span class="sub">請保留目前瀏覽器資料；補傳完成前不要清除網站資料。</span>
+      <button class="btn small" id="e-sync-pending" type="button">立即補傳</button>
+    </div>` : ""}
+    <div id="e-attachments" class="att-list">${visibleAttachments.map((a) => attHtml(a, e.attachments)).join("") || (pendingUploads.length ? `<p class="sub">伺服器上尚無附件；上方檔案仍保存在本機。</p>` : `<p class="sub">尚無附件</p>`)}</div>
     <hr/>
     <h3 class="section-title">關聯 <button class="btn small" id="e-add-relation" type="button" title="關聯到另一筆記事，例如這次實驗引用的標準、對照的廠商產品">🔗 新增關聯</button></h3>
     <div id="e-relations"><p class="sub">載入中…</p></div>
@@ -2188,6 +3118,7 @@ async function openEntry(id) {
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("e-close").onclick = closeEntry;
+  $("e-share").onclick = () => createReadOnlyShare(entryId).catch((error) => showToast("分享失敗：" + error.message));
   modal.querySelectorAll(".entry-child-card").forEach((card) => {
     card.onclick = () => openEntry(Number(card.dataset.id));
     card.ondragover = (event) => {
@@ -2230,7 +3161,9 @@ async function openEntry(id) {
       if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
     } catch (err) { showToast("刪除失敗：" + err.message); }
   };
-  if (bodyFormat === "html") {
+  if (isWeeklyReport) {
+    // 週報使用三段固定表單，不載入一般富文字編輯器。
+  } else if (bodyFormat === "html") {
     // 還存成純文字的舊記事：載進編輯器前先轉成 HTML 段落，使用者看到的內容
     // 不變（換行、空行都保留），存檔時才真的寫回 body_format='html'
     const initialHtml = storedAsText ? textToHtmlForEditor(e.body || "") : (e.body || "");
@@ -2264,15 +3197,29 @@ async function openEntry(id) {
       : "⏳ 待分類（按儲存才生效）";
   };
   $("e-save").onclick = async () => {
-    const newFields = {};
+    const newFields = isWeeklyReport ? {
+      _kind: "weekly_report",
+      "週次": fields["週次"] || "",
+      "期間": fields["期間"] || "",
+      "中長期規劃": fields["中長期規劃"] || "",
+    } : {};
     modal.querySelectorAll(".e-field").forEach((i) => { newFields[i.dataset.key] = i.value.trim(); });
-    const bodyValue = bodyFormat === "html"
-      ? stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("e-body-rich")) || "")
-      : $("e-body").value.trim();
+    const bodyValue = isWeeklyReport
+      ? [
+          `週次：${fields["週次"] || ""}`,
+          `期間：${fields["期間"] || ""}`,
+          "", "一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）", newFields["中長期規劃"] || "",
+          "", "二、本週工作報告", newFields["本週工作報告"] || "",
+          "", "三、下週重要工作計畫", newFields["下週重要工作計畫"] || "",
+        ].join("\n").trim()
+      : bodyFormat === "html"
+        ? stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("e-body-rich")) || "")
+        : $("e-body").value.trim();
     const patch = { title: $("e-title").value.trim(), body: bodyValue, fields: newFields };
+    if (isWeeklyReport) patch.body_format = "text";
     // 舊記事第一次存檔時順手把格式定下來，不用使用者自己按升級。
     // 同步管理的記事不送 body_format，維持 text（後端也有第二道防線會擋）。
-    if (bodyFormat === "html" && storedAsText) patch.body_format = "html";
+    if (!isWeeklyReport && bodyFormat === "html" && storedAsText) patch.body_format = "html";
     if (pendingFolderId !== undefined) patch.folder_id = pendingFolderId;
     await api(`/entries/${id}`, { method: "PUT", body: JSON.stringify(patch) });
     showToast("已儲存");
@@ -2294,9 +3241,23 @@ async function openEntry(id) {
     uploadFiles(id, files);
   };
   setupFileDropZone($("entry-modal"), (files) => uploadFiles(id, files));
-  if (bodyFormat === "html") setupRichImageDropZone($("e-body-rich"), id);
+  if (!isWeeklyReport && bodyFormat === "html") setupRichImageDropZone($("e-body-rich"), id);
   const processBtn = $("e-process");
   if (processBtn) processBtn.onclick = () => processEntryAttachments(id, processBtn);
+  const syncPendingBtn = $("e-sync-pending");
+  if (syncPendingBtn) syncPendingBtn.onclick = async () => {
+    syncPendingBtn.disabled = true;
+    syncPendingBtn.textContent = "補傳中…";
+    const result = await syncPendingFiles({ entryId });
+    if (result.synced) {
+      showToast(`已補傳 ${result.synced} 個檔案`);
+      openEntry(entryId);
+      return;
+    }
+    showToast(result.error ? `補傳失敗：${result.error}` : "目前仍無法補傳，檔案繼續保存在本機");
+    syncPendingBtn.disabled = false;
+    syncPendingBtn.textContent = "立即補傳";
+  };
   const renameBtn = $("e-rename-files");
   if (renameBtn) renameBtn.onclick = async () => {
     if (!confirm("確定整理全部舊附件的檔名？只會改能安全判定的名稱，原始檔名仍會保留。")) return;
@@ -2404,8 +3365,14 @@ async function uploadFilesToFolder(files) {
   });
 }
 
-/** 從電腦拖進 App 的獨立檔案一律先進待分類，不受目前頁面位置影響。 */
-async function uploadDroppedFilesToPending(files) {
+/** 外部檔案放在資料夾頁就直接歸入目前資料夾；首頁放下才進待分類。 */
+async function uploadDroppedFilesToCurrentLocation(files) {
+  if (CURRENT_FOLDER) {
+    await uploadStandaloneFiles(files, Number(CURRENT_FOLDER.id), {
+      destination: `「${CURRENT_FOLDER.name}」`,
+    });
+    return;
+  }
   const folderId = await stagingFolderId();
   await uploadStandaloneFiles(files, folderId, { destination: "「待分類」" });
 }
@@ -2897,17 +3864,21 @@ async function processEntryAttachments(id, btn) {
 // Cloudflare Worker 沒有 PDF 渲染能力，這步只能在瀏覽器端用 pdf.js 把每一頁畫成圖片，
 // 再把每張頁面圖丟進既有的照片 OCR 流程——向量圖表跟排版化的技術參數文字都變成看得見
 // 的像素，Llama Vision 抄得到，也自動進搜尋索引，不用另外蓋一套 Tier 2 儲存/搜尋機制。
-async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
+async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = [], onComplete = null) {
   if (!window.pdfjsLib) { showToast("PDF 渲染程式庫載入失敗，請檢查網路連線後重新整理頁面再試"); return; }
   if (btn.disabled) return;
   btn.disabled = true;
   const label = btn.textContent;
+  const finish = async () => {
+    if (typeof onComplete === "function") await onComplete();
+    else await openEntry(entryId);
+  };
   try {
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
     }
     btn.textContent = "下載 PDF…";
-    const fileRes = await fetch(`/api/file/${encodeURIComponent(pdfAtt.key)}?pin=${encodeURIComponent(pin())}`);
+    const fileRes = await fetch(fileUrlForKey(pdfAtt.key));
     if (!fileRes.ok) throw new Error(`下載 PDF 失敗（HTTP ${fileRes.status}）`);
     const pdf = await pdfjsLib.getDocument({ data: await fileRes.arrayBuffer() }).promise;
     const total = pdf.numPages;
@@ -2921,7 +3892,7 @@ async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
     const pendingCount = Math.max(0, total - completedPageNos.size);
     if (!pendingCount) {
       showToast(`深度處理已完成：${total} 頁都已有結果，不會重複扣額度`);
-      openEntry(entryId); // total_pages 可能剛補上，重繪才會秀出節錄版偵測結果
+      await finish(); // total_pages 可能剛補上，重繪才會秀出節錄版偵測結果
       return;
     }
     if (total > 40 && !confirm(`這份 PDF 有 ${total} 頁，已有 ${completedPageNos.size} 頁完成，尚有 ${pendingCount} 頁。接續處理只會執行未完成頁面，確定繼續嗎？`)) {
@@ -2967,7 +3938,7 @@ async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = []) {
       }
     }
     showToast(`接續處理完成：新完成 ${done} 頁、跳過 ${skipped} 頁${failed ? `、失敗 ${failed} 頁` : ""}`);
-    openEntry(entryId);
+    await finish();
   } catch (err) {
     showToast("深度處理失敗：" + err.message);
   } finally {
@@ -3063,6 +4034,15 @@ function bindImageLinks(root = document) {
     link.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      const row = link.closest(".folder-file-row[data-att-id]");
+      if (row && PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
+        showFilePreview({
+          entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
+          filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
+          mime: row.dataset.mime || "", kind: row.dataset.kind || "",
+        }).catch((error) => showToast("預覽失敗：" + error.message));
+        return;
+      }
       openImageViewer(link.dataset.imageUrl, link.dataset.imageName || "", link.dataset.imageId, link.dataset.imageRotation);
     };
   });
@@ -3077,6 +4057,234 @@ function closeEntry() {
   unlockBodyScroll();
 }
 
+function plainEntryBody(entry) {
+  const value = String(entry?.body || "");
+  if (entry?.body_format !== "html") return value;
+  const holder = document.createElement("div");
+  holder.innerHTML = value;
+  return holder.textContent || "";
+}
+
+function hasLegacyRecordingFields(entry) {
+  let fields = {};
+  try { fields = JSON.parse(entry?.fields_json || "{}"); } catch { return true; }
+  return entry?.body_format === "html" || Object.entries(fields)
+    .some(([key, value]) => !key.startsWith("_") && String(value || "").trim());
+}
+
+async function openRecordingEditor(entryId) {
+  entryId = Number(entryId || 0);
+  if (!entryId) return;
+  if (usesDesktopRightPane()) {
+    return withViewLoading("正在載入錄音編輯欄…", () => loadRecordingEditor(entryId));
+  }
+  return loadRecordingEditor(entryId);
+}
+
+async function loadRecordingEditor(entryId) {
+  FOCUSED_FILE = null;
+  const entry = await api(`/entries/${entryId}`);
+  const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+  if (!audio.length) return usesDesktopRightPane() ? showEntryEditor(entryId) : openEntry(entryId);
+  // 桌機的資料夾工作區以右欄作為唯一的閱讀／編輯表面；手機仍沿用既有詳情頁。
+  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openEntry(entryId);
+  return renderRecordingEditor(entryId, entry, audio);
+}
+
+async function renderRecordingEditor(entryId, entry, audio) {
+  if ($("entry-overlay")?.classList.contains("open")) closeEntry();
+  const body = $("folder-preview-body");
+  $("folder-preview-title").textContent = `編輯｜${entry.title || "錄音"}`;
+  body.innerHTML = `<form class="recording-editor preview-editor" id="recording-preview-editor">
+      <label for="recording-edit-title">名稱</label>
+      <input id="recording-edit-title" maxlength="160" value="${esc(entry.title || "")}" />
+      <label for="recording-edit-note">速記</label>
+      <textarea id="recording-edit-note" placeholder="會議重點、待辦或錄音備註">${esc(plainEntryBody(entry))}</textarea>
+      <div class="recording-editor-transcripts">
+        <h3>逐字稿</h3>
+        ${audio.map((item, index) => `<section>
+          <div class="recording-editor-segment-head"><strong>${audio.length > 1 ? `第 ${index + 1} 段` : "錄音逐字稿"}</strong><span>${esc(item.filename)}｜${esc(fmtBytes(item.size))}${Number(item.duration_secs) > 0 ? `｜${esc(fmtSecs(item.duration_secs))}` : ""}</span></div>
+          <audio controls preload="metadata" src="${fileUrlForKey(item.key)}"></audio>
+          <textarea class="recording-transcript-input" data-audio-id="${item.id}" placeholder="尚無逐字稿">${esc(item.transcript || "")}</textarea>
+        </section>`).join("")}
+      </div>
+      <section class="preview-management-panel recording-editor-management">
+        <strong>錄音資料包管理</strong>
+        <p class="sub">音訊、逐字稿與照片仍保留在同一資料包。</p>
+        <div class="preview-management-actions">
+          <button class="btn small" id="recording-edit-transcribe" type="button">重新轉錄全部</button>
+          <button class="btn small" id="recording-edit-move" type="button">移動資料包</button>
+          <button class="btn small danger" id="recording-edit-delete" type="button">刪除資料包</button>
+        </div>
+        <div class="recording-editor-downloads">${audio.map((item, index) => `<a href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">下載${audio.length > 1 ? `第 ${index + 1} 段` : "錄音"}｜${esc(item.filename)}</a>`).join("")}</div>
+      </section>
+      <div class="preview-editor-actions"><button class="btn primary" id="recording-edit-save" type="submit">儲存</button><button class="btn" id="recording-edit-cancel" type="button">取消</button></div>
+    </form>`;
+  const returnToPreview = () => showRecordingPreview(entryId).catch((error) => showToast("預覽失敗：" + error.message));
+  $("folder-preview-open").hidden = false;
+  $("folder-preview-open").textContent = audio.length === 1 ? "下載錄音" : "下載第 1 段";
+  $("folder-preview-open").href = fileUrlForKey(audio[0].key);
+  $("folder-preview-open").setAttribute("download", audio[0].filename || "recording");
+  $("folder-preview-edit").hidden = false;
+  $("folder-preview-edit").textContent = "取消";
+  $("folder-preview-edit").onclick = returnToPreview;
+  $("folder-preview-manage").disabled = true;
+  $("folder-preview-manage").onclick = null;
+  $("recording-edit-cancel").onclick = returnToPreview;
+  $("recording-edit-transcribe").onclick = async () => {
+    if (!confirm(`重新轉錄 ${audio.length} 段錄音？\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。`)) return;
+    const button = $("recording-edit-transcribe");
+    button.disabled = true;
+    try {
+      for (let index = 0; index < audio.length; index++) {
+        button.textContent = `轉錄中 ${index + 1}/${audio.length}`;
+        await api(`/attachments/${audio[index].id}/transcribe`, { method: "POST", body: "{}" });
+      }
+      showToast("錄音已重新轉錄");
+      await refreshFolderView();
+      await openRecordingEditor(entryId);
+    } catch (error) {
+      showToast("重新轉錄失敗：" + error.message);
+      button.disabled = false;
+      button.textContent = "重新轉錄全部";
+    }
+  };
+  $("recording-edit-move").onclick = async () => {
+    const picked = await openFolderPicker({
+      title: "移動錄音資料包",
+      desc: `把「${entry.title || "錄音"}」連同音訊、逐字稿及照片一起移到哪裡？`,
+      currentId: entry.folder_id || null,
+      allowInbox: true,
+    });
+    if (!picked) return;
+    try {
+      if (picked.id === null) {
+        await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ folder_id: null }) });
+        showToast("錄音資料包已移回待分類");
+      } else {
+        await moveInboxEntry(entryId, picked.id, entry.folder_id || null);
+      }
+      await refreshFolderView();
+      clearFilePreview("錄音資料包已移動，請從左側資料夾重新選取。");
+    } catch (error) { showToast("移動失敗：" + error.message); }
+  };
+  $("recording-edit-delete").onclick = async () => {
+    if (!confirm(`將「${entry.title || "錄音"}」整個資料包移到垃圾桶？\n\n音訊、逐字稿與照片會一起移入，保留 60 天。`)) return;
+    try {
+      await api(`/entries/${entryId}`, { method: "DELETE" });
+      showToast("錄音資料包已移到垃圾桶");
+      await refreshFolderView();
+      clearFilePreview("錄音資料包已移到垃圾桶。");
+    } catch (error) { showToast("刪除失敗：" + error.message); }
+  };
+  $("recording-preview-editor").onsubmit = async (event) => {
+    event.preventDefault();
+    const button = $("recording-edit-save");
+    const title = $("recording-edit-title").value.trim();
+    if (!title) { showToast("名稱不可空白"); return; }
+    button.disabled = true;
+    button.textContent = "儲存中…";
+    try {
+      await api(`/entries/${entryId}`, {
+        method: "PUT",
+        body: JSON.stringify({ title, body: $("recording-edit-note").value.trim(), body_format: "text" }),
+      });
+      for (const textarea of body.querySelectorAll(".recording-transcript-input")) {
+        await api(`/attachments/${textarea.dataset.audioId}`, {
+          method: "PUT",
+          body: JSON.stringify({ transcript: textarea.value.trim() }),
+        });
+      }
+      showToast("錄音名稱、速記與逐字稿已儲存");
+      await refreshFolderView();
+      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) await showRecordingPreview(entryId);
+    } catch (error) {
+      showToast("錄音儲存失敗：" + error.message);
+      button.disabled = false;
+      button.textContent = "儲存";
+    }
+  };
+}
+
+async function openRecordingActions(entryId) {
+  entryId = Number(entryId || 0);
+  if (!entryId) return;
+  if (usesDesktopRightPane()) return openRecordingEditor(entryId);
+  FOCUSED_FILE = null;
+  const entry = await api(`/entries/${entryId}`);
+  const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+  if (!audio.length) return openEntry(entryId);
+  const status = recordingStatus(audio);
+  const legacy = hasLegacyRecordingFields(entry);
+  const modal = $("entry-modal");
+  modal.innerHTML = `
+    <div class="modal-close-float"><button class="btn small ghost" id="recording-actions-close" type="button" aria-label="關閉錄音操作">✕</button></div>
+    <div class="detail-head"><div><h2 style="margin:0;overflow-wrap:anywhere">${esc(entry.title || "錄音")}</h2><p class="sub">錄音資料包｜${audio.length} 段｜${esc(status.label)}</p></div></div>
+    <div class="recording-action-list">
+      <button class="recording-action" id="recording-action-edit" type="button"><span>✏️</span><strong>編輯</strong><small>名稱、速記與逐字稿</small></button>
+      <button class="recording-action" id="recording-action-transcribe" type="button"><span>📝</span><strong>重新轉錄</strong><small>覆蓋目前逐字稿，會使用 AI 額度</small></button>
+      <button class="recording-action" id="recording-action-rename" type="button"><span>🏷️</span><strong>重新命名</strong><small>只改資料包名稱</small></button>
+      <button class="recording-action" id="recording-action-move" type="button"><span>📂</span><strong>移動</strong><small>音訊、逐字稿及照片一起移動</small></button>
+      <section class="recording-download-list"><h3>⬇️ 下載錄音</h3>${audio.map((item, index) => `<a href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">${audio.length > 1 ? `第 ${index + 1} 段｜` : ""}${esc(item.filename)} <small>${esc(fmtBytes(item.size))}</small></a>`).join("")}</section>
+      <button class="recording-action danger" id="recording-action-delete" type="button"><span>🗑️</span><strong>刪除</strong><small>整個資料包移到垃圾桶，保留 60 天</small></button>
+    </div>
+    ${legacy ? `<details class="recording-legacy-fallback"><summary>舊資料相容工具</summary><p class="sub">只有這筆帶有舊欄位，因此保留舊版資料框供核對。</p><button class="btn small" id="recording-open-legacy" type="button">開啟舊版資料框</button></details>` : ""}`;
+  $("entry-overlay").classList.add("open");
+  lockBodyScroll();
+  $("recording-actions-close").onclick = closeEntry;
+  $("recording-action-edit").onclick = () => openRecordingEditor(entryId).catch((error) => showToast("開啟編輯失敗：" + error.message));
+  $("recording-action-rename").onclick = async () => {
+    const next = prompt("輸入新的錄音名稱", entry.title || "");
+    if (next === null) return;
+    const title = next.trim();
+    if (!title) { showToast("名稱不可空白"); return; }
+    try {
+      await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ title }) });
+      showToast("錄音名稱已更新");
+      await refreshFolderView();
+      await openRecordingActions(entryId);
+    } catch (error) { showToast("重新命名失敗：" + error.message); }
+  };
+  $("recording-action-move").onclick = async () => {
+    closeEntry();
+    await openMoveEntryDialog(entryId, { currentFolderId: entry.folder_id || null, title: entry.title || "錄音" });
+  };
+  $("recording-action-transcribe").onclick = async () => {
+    if (!confirm(`重新轉錄 ${audio.length} 段錄音？\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。`)) return;
+    const button = $("recording-action-transcribe");
+    button.disabled = true;
+    button.querySelector("strong").textContent = "轉錄中…";
+    try {
+      for (let index = 0; index < audio.length; index++) {
+        button.querySelector("small").textContent = `正在處理第 ${index + 1} / ${audio.length} 段`;
+        await api(`/attachments/${audio[index].id}/transcribe`, { method: "POST", body: "{}" });
+      }
+      showToast("錄音已重新轉錄");
+      closeEntry();
+      await refreshFolderView();
+      if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) await showRecordingPreview(entryId);
+    } catch (error) {
+      showToast("重新轉錄失敗：" + error.message);
+      button.disabled = false;
+      button.querySelector("strong").textContent = "重新轉錄";
+      button.querySelector("small").textContent = "覆蓋目前逐字稿，會使用 AI 額度";
+    }
+  };
+  $("recording-action-delete").onclick = async () => {
+    if (!confirm(`將「${entry.title || "錄音"}」整個資料包移到垃圾桶？\n\n音訊、逐字稿與照片會一起移入，保留 60 天。`)) return;
+    try {
+      await api(`/entries/${entryId}`, { method: "DELETE" });
+      showToast("錄音資料包已移到垃圾桶");
+      closeEntry();
+      await refreshFolderView();
+    } catch (error) { showToast("刪除失敗：" + error.message); }
+  };
+  if (legacy) $("recording-open-legacy").onclick = () => {
+    closeEntry();
+    openEntry(entryId).catch((error) => showToast("舊資料框開啟失敗：" + error.message));
+  };
+}
+
 /**
  * 單一檔案的詳情頁。
  *
@@ -3088,6 +4296,7 @@ async function openFileDetail(entryId, attachmentId) {
   entryId = Number(entryId || 0);
   attachmentId = Number(attachmentId || 0);
   if (!entryId || !attachmentId) return;
+  if (usesDesktopRightPane()) return showFileEditor(entryId, attachmentId);
   return withViewLoading("正在載入檔案…", async () => {
   FOCUSED_FILE = { entryId, attachmentId };
 
@@ -3105,7 +4314,7 @@ async function openFileDetail(entryId, attachmentId) {
   // 只有一份檔案時才把舊的 body 當成這份檔案的記事顯示，避免多檔案時張冠李戴。
   const legacyNote = sourceAttachments.length === 1 ? String(entry.body || "").trim() : "";
   const noteValue = String(attachment.note || "").trim() || legacyNote;
-  const fileUrl = `/api/file/${encodeURIComponent(attachment.key)}?pin=${encodeURIComponent(pin())}`;
+  const fileUrl = fileUrlForKey(attachment.key);
   const canDoodle = isPdfAtt(attachment) && typeof window.fieldlogOpenPdfEditor === "function";
   const originalName = attachment.original_filename && attachment.original_filename !== attachment.filename
     ? `<p class="sub">原始檔名：${esc(attachment.original_filename)}</p>` : "";
@@ -3122,6 +4331,8 @@ async function openFileDetail(entryId, attachmentId) {
       <button id="file-move-action" type="button">📂 移動</button>
       <button id="file-category-action" type="button">🏷 分類</button>
       <button id="file-note-action" type="button">📝 Note</button>
+      <button id="file-rename-action" type="button">✏️ 重新命名</button>
+      <button id="file-share-action" type="button">🔗 分享</button>
     </div>
     <div class="file-category-panel" id="file-category-panel">
       <strong>醫療器材分類</strong>
@@ -3154,6 +4365,10 @@ async function openFileDetail(entryId, attachmentId) {
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("file-detail-close").onclick = closeEntry;
+  $("file-rename-action").onclick = () => renameAttachment(attachmentId, attachment.filename)
+    .then(() => FOCUSED_FILE && openFileDetail(entryId, attachmentId))
+    .catch((error) => showToast("重新命名失敗：" + error.message));
+  $("file-share-action").onclick = () => createReadOnlyShare(entryId, attachmentId).catch((error) => showToast("分享失敗：" + error.message));
   bindAttActions(entryId);
   bindImageLinks(modal);
   setupFileDropZone(modal, (files) => uploadFiles(entryId, files));
@@ -3284,7 +4499,7 @@ async function openFileDetail(entryId, attachmentId) {
 }
 
 function attHtml(a, siblings) {
-  const url = `/api/file/${encodeURIComponent(a.key)}?pin=${encodeURIComponent(pin())}`;
+  const url = fileUrlForKey(a.key);
   const originalName = a.original_filename && a.original_filename !== a.filename
     ? `<div class="att-original">原始名稱：${esc(a.original_filename)}</div>` : "";
   const docIcon = (a.filename || "").toLowerCase();
@@ -3357,13 +4572,21 @@ function attHtml(a, siblings) {
   const doodleBit = isPdfAtt(a) ? `<a href="#" class="att-pdf-doodle" data-id="${a.id}">✍️ 塗鴉</a>` : "";
   return `<div class="att-item" data-id="${a.id}" data-ocr="${esc(a.ocr_text || "")}">
     <div class="att-meta">${esc(localDateTimeShort(a.created_at))} ${offset}
-      ${doodleBit}<a href="#" class="att-delete" data-id="${a.id}">刪除</a>
+      ${doodleBit}<a href="#" class="att-rename" data-id="${a.id}" data-filename="${esc(a.filename)}">重新命名</a>
+      <a href="#" class="att-delete" data-id="${a.id}">刪除</a>
     </div>
     ${preview}${originalName}${ocrBit}${transcribeBit}${tier2Bit}
   </div>`;
 }
 
 function bindAttActions(entryId) {
+  document.querySelectorAll(".att-rename").forEach((el) => {
+    el.onclick = (ev) => {
+      ev.preventDefault();
+      renameAttachment(Number(el.dataset.id), el.dataset.filename || "檔案", { reopenEntryId: entryId })
+        .catch((error) => showToast("重新命名失敗：" + error.message));
+    };
+  });
   document.querySelectorAll(".att-transcribe").forEach((el) => {
     el.onclick = async (ev) => {
       ev.preventDefault();
@@ -3454,9 +4677,7 @@ function bindAttActions(entryId) {
 // 才動態補上，存檔前一定要剝掉。這裡假設檔案網址永遠是 `/api/file/{key}` 後面
 // 最多接一個 `?pin=...`（app.js 全部檔案連結都是這個形狀，見 attHtml 等處）。
 function injectFilePinForDisplay(html) {
-  if (!html) return html;
-  const p = encodeURIComponent(pin());
-  return html.replace(/(<img\b[^>]*\bsrc=")(\/api\/file\/[^"?]+)(")/gi, (m, pre, src, post) => `${pre}${src}?pin=${p}${post}`);
+  return html;
 }
 function stripFilePinForSave(html) {
   if (!html) return html;
@@ -3583,7 +4804,7 @@ async function insertFilesIntoRichEditor(entryId, editorEl, files) {
     try {
       const uploaded = await putFile(entryId, f, f.name, null);
       if (uploaded.duplicate) { showToast(`${f.name} 是重複檔案，已略過`); continue; }
-      const url = `/api/file/${encodeURIComponent(uploaded.key)}?pin=${encodeURIComponent(pin())}`;
+      const url = fileUrlForKey(uploaded.key);
       window.fieldlogRichEditor?.insertImage(editorEl, url, uploaded.id);
       await refreshEntryAttachmentsPanel(entryId);
     } catch (err) { showToast(`${f.name} 上傳失敗：${err.message}`); }
@@ -3614,31 +4835,46 @@ function openFileDB() {
     req.onerror = () => reject(req.error);
   });
 }
-async function queueFile(entryId, blob, filename, offsetSecs) {
+async function queueFile(entryId, blob, filename, offsetSecs, meta = null) {
   const db = await openFileDB();
   await new Promise((resolve, reject) => {
     const tx = db.transaction("pending", "readwrite");
     tx.objectStore("pending").put({
       tmp_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       entry_id: entryId, filename, offset_secs: offsetSecs, blob,
+      // durationSecs 是自動轉錄的安全估算依據；舊版在離線補傳時把它丟掉，
+      // 導致音檔雖然補傳成功，仍永遠不會進入自動轉錄候選。
+      meta: meta || null,
     });
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
 }
-async function syncPendingFiles() {
-  if (!navigator.onLine) return;
+async function pendingFilesForEntry(entryId) {
   let db;
-  try { db = await openFileDB(); } catch { return; }
+  try { db = await openFileDB(); } catch { return []; }
+  return new Promise((resolve) => {
+    const req = db.transaction("pending", "readonly").objectStore("pending").getAll();
+    req.onsuccess = () => resolve((req.result || []).filter((f) => Number(f.entry_id) === Number(entryId)));
+    req.onerror = () => resolve([]);
+  });
+}
+
+async function syncPendingFiles({ entryId = null } = {}) {
+  if (!navigator.onLine) return { synced: 0, pending: 0, error: "目前沒有網路" };
+  let db;
+  try { db = await openFileDB(); } catch (err) { return { synced: 0, pending: 0, error: err.message }; }
   const all = await new Promise((resolve) => {
     const req = db.transaction("pending", "readonly").objectStore("pending").getAll();
     req.onsuccess = () => resolve(req.result || []);
     req.onerror = () => resolve([]);
   });
+  const targets = entryId === null ? all : all.filter((f) => Number(f.entry_id) === Number(entryId));
   let synced = 0;
-  for (const f of all) {
+  let lastError = "";
+  for (const f of targets) {
     try {
-      await putFile(f.entry_id, f.blob, f.filename, f.offset_secs);
+      await putFile(f.entry_id, f.blob, f.filename, f.offset_secs, f.meta || null);
       await new Promise((resolve) => {
         const tx = db.transaction("pending", "readwrite");
         tx.objectStore("pending").delete(f.tmp_id);
@@ -3646,9 +4882,13 @@ async function syncPendingFiles() {
         tx.onerror = resolve;
       });
       synced++;
-    } catch { break; }
+    } catch (err) {
+      lastError = err.message || "上傳失敗";
+      break;
+    }
   }
   if (synced) showToast(`已補傳 ${synced} 個離線檔案`);
+  return { synced, pending: Math.max(0, targets.length - synced), error: lastError };
 }
 
 // ---------- 現場採集：錄影／拍照／錄音是三個獨立入口，不互相綁定 ----------
@@ -4135,7 +5375,7 @@ async function startAudio(entryId) {
   let ref;
   try { ref = await ensureEntryForCapture(entryId, "錄音"); }
   catch (err) { stopStream(stream); showToast("無法建立紀錄：" + err.message); return; }
-  AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0 };
+  AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0, uploadedSegments: 0, pendingSegments: 0, emptySegments: 0 };
   initAudioGraph();
   watchAudioStream(stream);
   startAudioSegRecorder();
@@ -4167,7 +5407,7 @@ function stopAudio() {
 // 收尾：關麥克風、藏浮動列、跳完成提示、重開紀錄。stopAudio 與 onstop 收尾路徑共用
 function finalizeAudioStop() {
   if (!AUDIO) return;
-  const { stream, timerId, recheckTimer, meterTimer, micSource, audioCtx, photos, entryId, segIndex, diagPeakMax } = AUDIO;
+  const { stream, timerId, recheckTimer, meterTimer, micSource, audioCtx, photos, entryId, segIndex, diagPeakMax, uploadedSegments, pendingSegments, emptySegments } = AUDIO;
   clearInterval(timerId);
   clearInterval(meterTimer);
   clearTimeout(recheckTimer);
@@ -4183,7 +5423,10 @@ function finalizeAudioStop() {
         ? ""
         : "　⚠️ 全程量到的最高音量是 0，這段錄音可能整個是靜音，建議先播放確認再離開")
     : "";
-  showToast(`錄音完成：共 ${segIndex} 段${photos ? `＋照片 ${photos} 張` : ""}${diagBit}`);
+  const savedBit = uploadedSegments ? `已上傳 ${uploadedSegments} 段` : "尚無已上傳音檔";
+  const pendingBit = pendingSegments ? `，${pendingSegments} 段暫存在本機待補傳` : "";
+  const emptyBit = emptySegments ? `，${emptySegments} 段未產生音檔` : "";
+  showToast(`錄音結束：${savedBit}${pendingBit}${emptyBit}${photos ? `＋照片 ${photos} 張` : ""}${diagBit}`);
   openEntry(entryId);
 }
 
@@ -4209,9 +5452,20 @@ async function onAudioSegmentStop(recorder, chunks, seg) {
   }
 
   const uploadSeg = async () => {
-    if (!blob.size) return;
-    try { await putFile(seg.entryId, blob, filename, seg.startOffset, { durationSecs }); }
-    catch { await queueFile(seg.entryId, blob, filename, seg.startOffset); return; }
+    if (!blob.size) {
+      if (AUDIO) AUDIO.emptySegments = (AUDIO.emptySegments || 0) + 1;
+      await noteAudioInterruption(seg.entryId, `⛔ 第 ${seg.index} 段未產生錄音檔（0 bytes），無法播放或轉錄。`);
+      return;
+    }
+    try {
+      await putFile(seg.entryId, blob, filename, seg.startOffset, { durationSecs });
+      if (AUDIO) AUDIO.uploadedSegments = (AUDIO.uploadedSegments || 0) + 1;
+    }
+    catch {
+      await queueFile(seg.entryId, blob, filename, seg.startOffset, { durationSecs });
+      if (AUDIO) AUDIO.pendingSegments = (AUDIO.pendingSegments || 0) + 1;
+      return;
+    }
     // 錄音仍持續時才做準即時轉錄；最後一段由記事頁的既有安全流程接手。
     if (AUDIO && !AUDIO.ending && AUDIO.entryId === seg.entryId && !AUDIO.liveTranscriptionStopped && navigator.onLine) {
       try {
@@ -4668,7 +5922,7 @@ function guardRecordingNavigation(event) {
 // ---------- 匯出 ----------
 function exportFolder() {
   if (!CURRENT_FOLDER) return;
-  window.open(`/api/export/folder/${CURRENT_FOLDER.id}?pin=${encodeURIComponent(pin())}`, "_blank");
+  window.open(`/api/export/folder/${CURRENT_FOLDER.id}`, "_blank", "noopener");
 }
 
 // ---------- init ----------
@@ -4681,12 +5935,16 @@ function init() {
   window.addEventListener("drop", (ev) => {
     if (Array.from(ev.dataTransfer?.types || []).includes("Files")) ev.preventDefault();
   });
+  // 離線錄音補傳不能只依賴「重新登入／重開頁面」。網路恢復時主動重試，
+  // 同時保留記事內的待補傳提示，讓使用者在成功前知道檔案仍在本機。
+  window.addEventListener("online", () => { syncPendingFiles(); });
   $("btn-login").onclick = doLogin;
   $("login-pin").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
   $("btn-video").onclick = () => startVideo(null);
   $("btn-photo").onclick = () => startPhoto(null);
   $("btn-audio").onclick = () => startAudio(null);
   $("btn-quick-note").onclick = quickNote;
+  $("btn-weekly-report").onclick = openCurrentWeeklyReport;
   $("btn-new-folder").onclick = newFolder;
   $("btn-new-subfolder").onclick = newSubfolder;
   $("btn-manage-categories").onclick = () => openCategoryManager("folder_type");
@@ -4695,7 +5953,7 @@ function init() {
     if (e.target === $("category-manager-overlay")) closeCategoryManager();
   });
   $("btn-cleanup-filenames").onclick = (e) => cleanupFilenames(e.currentTarget);
-  // 資料夾工具列的「＋ 上傳檔案」是明確指定目前資料夾；外部拖放則一律進待分類。
+  // 資料夾工具列與資料夾頁拖放都代表已指定目前資料夾；首頁拖放才進待分類。
   // 每個檔案自成一筆記事（標題＝去掉副檔名的檔名）
   const folderUploadInput = $("folder-upload-file-input");
   $("btn-folder-upload-file").onclick = () => {
@@ -4707,10 +5965,11 @@ function init() {
     folderUploadInput.value = "";
     uploadFilesToFolder(files);
   };
-  setupFileDropZone($("view-home"), uploadDroppedFilesToPending);
-  setupFileDropZone($("view-folder"), uploadDroppedFilesToPending);
-  setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToPending);
+  setupFileDropZone($("view-home"), uploadDroppedFilesToCurrentLocation);
+  setupFileDropZone($("view-folder"), uploadDroppedFilesToCurrentLocation);
+  setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToCurrentLocation);
   initDesktopSidebarResize();
+  initPreviewLayout();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
@@ -4855,11 +6114,14 @@ function init() {
   window.addEventListener("online", syncPendingFiles);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
-  if (!pin()) { showLogin(); } else {
-    showBootProgress();
-    setBootProgress(8);
-    api("/folders").then(() => boot()).catch(() => { hideBootProgress(); showLogin(); });
-  }
+  showBootProgress("檢查登入狀態…");
+  setBootProgress(8, "連線到 MyWiki…");
+  const startBoot = () => {
+    setBootProgress(12, "讀取資料夾…");
+    return api("/folders").then((folders) => boot(folders))
+      .catch(() => { hideBootProgress(); showLogin(); });
+  };
+  migrateLegacyPinToSession().finally(startBoot);
 }
 
 init();

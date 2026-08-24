@@ -26,11 +26,11 @@ test("資料夾內的錄音不論單段或多段都維持同一筆紀錄，不�
   const app = await read("../fieldlog/public/app.js");
   const openFolder = app.match(/async function openFolder\(id\)[\s\S]*?\n}\n\n\/\/ 多檔案記事/)[0];
   assert.match(openFolder, /const isRecordingEntry = \(e\) => visibleAtts\(e\)\.some\(\(a\) => a\.kind === "audio"\)/);
-  assert.match(openFolder, /visibleAtts\(e\)\.length === 1 && !isRecordingEntry\(e\)/,
+  assert.match(openFolder, /atts\.length === 1 && !isRecordingEntry\(e\)/,
     "只有非錄音的單一附件才能攤成檔案列");
-  assert.match(openFolder, /isRecordingEntry\(e\) \|\| visibleAtts\(e\)\.length > 1/,
+  assert.match(openFolder, /isRecordingEntry\(e\) \|\| atts\.length > 1/,
     "單段錄音與多段錄音都要進紀錄卡");
-  assert.match(openFolder, /groupedEntries\.map\(\(e\) => recordGroupCardHtml/);
+  assert.match(openFolder, /html: recordGroupCardHtml\(e, atts\)/);
 });
 
 test("錄音紀錄卡使用錄音圖示，一般多附件紀錄仍使用資料夾圖示", async () => {

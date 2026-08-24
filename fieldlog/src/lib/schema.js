@@ -45,6 +45,27 @@ export const SCHEMA = [
     detail TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    entry_id INTEGER NOT NULL,
+    attachment_id INTEGER,
+    snapshot_json TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT DEFAULT '',
+    allow_attachments INTEGER DEFAULT 1,
+    allow_download INTEGER DEFAULT 0,
+    created_by TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    access_count INTEGER DEFAULT 0,
+    last_accessed_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_attempts (
+    client_key TEXT PRIMARY KEY,
+    failures INTEGER DEFAULT 0,
+    window_started_at TEXT NOT NULL,
+    blocked_until TEXT DEFAULT ''
+  )`,
   `CREATE TABLE IF NOT EXISTS ai_usage_reservations (
     attachment_id INTEGER PRIMARY KEY,
     usage_date TEXT NOT NULL,
@@ -277,6 +298,11 @@ export const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(parent_entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_entries_deleted ON entries(deleted_at)`,
   `CREATE INDEX IF NOT EXISTS idx_folders_deleted ON folders(deleted_at)`,
+  // 首頁與檔案總管的熱路徑索引。放在 MIGRATIONS（不是 SCHEMA），因為舊資料庫
+  // 要先補 parent_id／parent_entry_id／deleted_at 欄位後才能建立這些索引。
+  `CREATE INDEX IF NOT EXISTS idx_folders_parent_active ON folders(parent_id) WHERE COALESCE(deleted_at, '') = ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_folder_root_active ON entries(folder_id, parent_entry_id) WHERE COALESCE(deleted_at, '') = ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_recent_active ON entries(COALESCE(NULLIF(updated_at, ''), created_at) DESC, id DESC) WHERE COALESCE(deleted_at, '') = '' AND parent_entry_id IS NULL`,
   `ALTER TABLE trash_items ADD COLUMN state TEXT NOT NULL DEFAULT 'trashed'`,
   `ALTER TABLE trash_items ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE trash_items ADD COLUMN last_error TEXT DEFAULT ''`,

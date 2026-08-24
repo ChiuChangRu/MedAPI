@@ -169,3 +169,13 @@ test("xlsx：多個工作表依編號排序", async () => {
   const text = await extractNativeText("xlsx", zip);
   assert.ok(text.indexOf("工作表 1") < text.indexOf("工作表 2"), text);
 });
+
+test("xlsx：保留稀疏儲存格的欄位位置，空白欄不會讓後方資料左移", async () => {
+  const sheet = `<worksheet><sheetData>` +
+    `<row r="1"><c r="A1" t="inlineStr"><is><t>名稱</t></is></c><c r="C1" t="inlineStr"><is><t>狀態</t></is></c></row>` +
+    `<row r="2"><c r="A2" t="inlineStr"><is><t>檢體針</t></is></c><c r="C2" t="inlineStr"><is><t>進行中</t></is></c></row>` +
+    `</sheetData></worksheet>`;
+  const zip = buildZip([{ name: "xl/worksheets/sheet1.xml", content: sheet }]);
+  const text = await extractNativeText("xlsx", zip);
+  assert.equal(text, "== 工作表 1 ==\n名稱\t\t狀態\n檢體針\t\t進行中");
+});

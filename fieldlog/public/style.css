@@ -7,6 +7,7 @@
   --text-muted: #6b706d;
   --radius: 8px;
   --sidebar-width: 276px;   /* 桌機側欄寬度，可拖曳調整，見 app.js 的 initDesktopSidebarResize() */
+  --preview-width: 400px;
 }
 
 * { box-sizing: border-box; }
@@ -49,6 +50,7 @@ body {
     background: transparent; text-align: left; cursor: pointer;
   }
   .desktop-shortcut:hover, .desktop-tree-row:hover, .desktop-shortcut.active, .desktop-tree-row.active { background: #dfe9e7; }
+  .desktop-tree-row.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; background: #d7efeb; }
   .desktop-shortcut span, .desktop-tree-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .desktop-shortcut small { margin-left: auto; color: var(--text-muted); }
   .desktop-nav-divider { height: 1px; margin: 10px 8px; background: var(--border); }
@@ -89,6 +91,7 @@ body {
 .cap-photo { background: linear-gradient(135deg, #1d4ed8, #3b82f6); box-shadow: 0 4px 14px rgba(29, 78, 216, 0.35); }
 .cap-audio { background: linear-gradient(135deg, #b45309, #f59e0b); box-shadow: 0 4px 14px rgba(180, 83, 9, 0.35); }
 .cap-note { background: linear-gradient(135deg, #4b5563, #6b7280); box-shadow: 0 4px 14px rgba(75, 85, 99, 0.35); }
+.cap-weekly { background: linear-gradient(135deg, #5b21b6, #7c3aed); box-shadow: 0 4px 14px rgba(91, 33, 182, 0.3); }
 @media (min-width: 720px) {
   .capture-grid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .cap-tile { aspect-ratio: auto; min-height: 88px; padding: 10px; font-size: 24px; border-radius: 12px; }
@@ -99,6 +102,37 @@ body {
   background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
   padding: 14px 16px; margin-bottom: 14px;
 }
+
+.weekly-report-editor {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+.weekly-report-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f3f0ff;
+  color: #4c1d95;
+}
+.weekly-report-meta span { color: var(--text-muted); }
+.weekly-report-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 150px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.65;
+  resize: vertical;
+}
+.weekly-report-textarea.current { min-height: 360px; }
+.weekly-report-textarea.fixed { background: #f5f6f6; color: #344; }
 .panel h2 { margin: 0 0 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
 .panel h2 .count { color: var(--text-muted); font-size: 13px; font-weight: 400; }
 .panel h2 .btn { margin-left: auto; }
@@ -287,8 +321,10 @@ body {
   .child-folder-list.grid-view .child-folder-card { padding-right: 16px; padding-left: 16px; }
   .child-folder-list.grid-view .child-folder-move { right: 34px; }
   .child-folder-list.grid-view .record-group-move { right: 34px; top: 8px; }
+  .child-folder-list.grid-view .record-group-rename { right: 60px; top: 8px; }
   .child-folder-list.grid-view .record-group-drag { left: 8px; top: 8px; transform: none; }
   .child-folder-list.grid-view .record-group-del,
+  .child-folder-list.grid-view .record-group-rename,
   .child-folder-list.grid-view .record-group-move,
   .child-folder-list.grid-view .record-group-drag,
   .child-folder-list.grid-view .child-folder-edit,
@@ -296,6 +332,7 @@ body {
     color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.15); border-radius: 50%;
   }
   .child-folder-list.grid-view .record-group-del:hover,
+  .child-folder-list.grid-view .record-group-rename:hover,
   .child-folder-list.grid-view .record-group-move:hover,
   .child-folder-list.grid-view .record-group-drag:hover,
   .child-folder-list.grid-view .child-folder-edit:hover,
@@ -373,6 +410,14 @@ body {
 .entry-row.dragging { opacity: 0.4; }
 .entry-row.merge-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
 .entry-title { min-width: 0; flex: 1; }
+.entry-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px; }
+.entry-main .entry-title { overflow-wrap: anywhere; line-height: 1.45; font-weight: 600; }
+.entry-secondary { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-muted); font-size: 12px; }
+.entry-rename {
+  flex: none; border: 0; background: transparent; color: var(--text-muted);
+  cursor: pointer; opacity: .55; padding: 4px;
+}
+.entry-rename:hover { opacity: 1; }
 .entry-drag {
   flex: none; width: 28px; height: 36px; padding: 0;
   border: 0; background: transparent; color: #9ca3af; cursor: grab; font-size: 18px;
@@ -423,7 +468,8 @@ body {
      可用寬度不夠時標題會被壓到只剩幾像素，中文字就會變成一字一行。讓標題
      自己獨佔一行，時間／按鈕換到下一行 */
   .entry-row { flex-wrap: wrap; }
-  .entry-title { flex: 1 1 100%; }
+  .entry-main { flex: 1 1 100%; }
+  .entry-secondary { flex: 1 1 100%; flex-wrap: wrap; padding-left: 0; }
   .folder-file-list.grid-view { display: flex; }
   .folder-file-list.grid-view .folder-file-row,
   .folder-file-row { min-height: 0; grid-template-columns: 26px minmax(0, 1fr) auto; }
@@ -434,9 +480,24 @@ body {
   .folder-file-list.grid-view .folder-file-manage { margin: 0; }
 }
 
-.folder-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-.folder-head h2 { margin: 0; font-size: 16px; flex: 1; }
-.folder-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.folder-head {
+  display: grid; grid-template-columns: auto minmax(240px, 1fr); align-items: center;
+  gap: 10px; margin-bottom: 12px;
+}
+.folder-head h2 {
+  min-width: 0; margin: 0; font-size: 16px; line-height: 1.45;
+  word-break: normal; overflow-wrap: break-word;
+}
+/* 工具列固定另起一列。若跟路徑標題塞在同一列，按鈕多時 flex 會把中文標題
+   壓成一個字寬，形成逐字直排；右側預覽欄開啟時問題會更嚴重。 */
+.folder-actions {
+  grid-column: 1 / -1; min-width: 0; display: flex; gap: 6px; flex-wrap: wrap;
+}
+@media (max-width: 719px) {
+  .folder-head { grid-template-columns: 1fr; }
+  .folder-head > .btn, .folder-head h2, .folder-actions { grid-column: 1; }
+  .folder-head > .btn { justify-self: start; }
+}
 
 /* ===== 按鈕 ===== */
 .btn {
@@ -679,9 +740,12 @@ body.modal-open { position: fixed; left: 0; right: 0; width: 100%; overflow: hid
 .modal.narrow { max-width: 340px; margin-top: 12vh; }
 .boot-loading-box { text-align: center; }
 .boot-loading-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+.boot-loading-stage { min-height: 22px; margin: 0 0 10px; font-size: 14px; color: var(--text); }
 .boot-loading-bar { height: 10px; }
 .boot-loading-bar i { transition: width 0.25s ease; }
 #boot-loading-pct { margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+.boot-loading-hint { min-height: 18px; margin: 8px 0 0; }
+.boot-loading-retry { margin-top: 12px; }
 .modal h2 { margin-top: 0; }
 .modal label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
 .modal input, .modal textarea, .modal select {
@@ -754,6 +818,13 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
 /* ===== 附件 ===== */
 .att-list { display: flex; flex-direction: column; gap: 10px; }
+.pending-upload-notice {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin: 8px 0 12px; padding: 10px 12px;
+  border: 1px solid #f59e0b; border-radius: var(--radius); background: #fffbeb;
+}
+.pending-upload-notice strong { color: #92400e; }
+.pending-upload-notice .sub { flex: 1 1 260px; margin: 0; }
 .att-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .att-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; gap: 8px; }
 .att-delete { color: #b91c1c; }
@@ -926,6 +997,92 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .folder-content-list {
   display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
 }
+.folder-preview, .folder-preview-resize { display: none; }
+@media (min-width: 1000px) {
+  .folder-workspace { display: grid; grid-template-columns: minmax(480px, 1fr) 6px var(--preview-width); gap: 8px; align-items: start; }
+  .folder-workspace-main { min-width: 0; }
+  .folder-preview-resize { display: block; position: sticky; top: 118px; height: calc(100vh - 138px); cursor: col-resize; border-radius: 999px; touch-action: none; }
+  .folder-preview-resize:hover, .folder-preview-resize.dragging { background: var(--accent); opacity: .35; }
+  body.preview-resizing { cursor: col-resize; user-select: none; }
+  .folder-preview {
+    display: flex; position: sticky; top: 118px; height: calc(100vh - 138px); min-height: 420px;
+    flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: #fff;
+  }
+  .folder-preview-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .folder-preview-head > strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folder-preview-actions { display: flex; gap: 6px; flex: none; }
+  .folder-preview-body { min-height: 0; flex: 1; overflow: auto; display: flex; align-items: stretch; justify-content: center; background: #f8faf9; }
+  .folder-preview-empty { margin: auto; padding: 24px; color: var(--text-muted); text-align: center; line-height: 1.6; }
+  .folder-preview-frame { width: 100%; height: 100%; border: 0; background: #fff; }
+  .folder-preview-image { display: block; max-width: 100%; max-height: 100%; margin: auto; object-fit: contain; }
+  .folder-preview-media { width: calc(100% - 24px); max-height: calc(100% - 24px); margin: auto; }
+  .folder-preview-text { width: 100%; min-height: 100%; margin: 0; padding: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 Consolas, "Microsoft JhengHei", sans-serif; background: #fff; }
+  .office-text-preview { font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
+  .spreadsheet-preview { width: 100%; min-width: 0; padding: 12px; background: #fff; }
+  .spreadsheet-preview section + section { margin-top: 18px; }
+  .spreadsheet-preview h3 { margin: 0 0 8px; font-size: 14px; }
+  .spreadsheet-scroll { max-width: 100%; overflow: auto; border: 1px solid var(--border); background: #fff; }
+  .spreadsheet-scroll table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
+  .spreadsheet-scroll th, .spreadsheet-scroll td {
+    min-width: 72px; max-width: 320px; padding: 7px 9px; border: 1px solid var(--border);
+    white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; vertical-align: top;
+  }
+  .spreadsheet-scroll th { position: sticky; top: 0; z-index: 1; background: #eaf5f3; font-weight: 700; }
+  .preview-limit-note { margin: 0; padding: 8px 12px; background: #fff; }
+  .preview-editor {
+    align-self: stretch; width: 100%; min-height: 100%; padding: 16px; overflow: auto;
+    background: #fff; display: flex; flex-direction: column; gap: 8px;
+  }
+  .preview-editor > label { margin-top: 4px; font-size: 13px; font-weight: 700; }
+  .preview-editor input, .preview-editor textarea, .preview-editor select {
+    width: 100%; padding: 10px 11px; border: 1px solid var(--border); border-radius: 8px;
+    background: #fff; color: var(--text); font: inherit;
+  }
+  .preview-editor textarea { min-height: 120px; line-height: 1.6; resize: vertical; }
+  .preview-editor textarea.preview-index-text { min-height: 260px; font-family: Consolas, "Microsoft JhengHei", sans-serif; }
+  .preview-editor .sub { margin: -4px 0 0; }
+  .preview-processing-panel, .preview-management-panel {
+    margin-top: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #f8faf9;
+  }
+  .preview-processing-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .preview-processing-head > div:first-child { min-width: 0; }
+  .preview-processing-head .sub { margin: 3px 0 0; overflow-wrap: anywhere; }
+  .preview-processing-actions, .preview-management-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+  .preview-processing-panel > .sub { margin: 8px 0; }
+  .preview-processing-panel textarea.preview-index-text { width: 100%; margin-top: 8px; background: #fff; }
+  .preview-management-panel > strong { display: block; margin-bottom: 8px; }
+  .recording-editor-management > .sub { margin: 0 0 8px; }
+  .recording-editor-downloads { display: grid; gap: 6px; margin-top: 10px; }
+  .recording-editor-downloads a { padding: 7px 0; overflow-wrap: anywhere; }
+  .recording-editor-downloads a + a { border-top: 1px solid var(--border); }
+  .preview-editor-actions {
+    position: sticky; bottom: -16px; display: flex; justify-content: flex-end; gap: 8px;
+    margin: 8px -16px -16px; padding: 12px 16px; border-top: 1px solid var(--border); background: #fff;
+  }
+  .preview-editor .recording-editor-transcripts section { padding: 10px; }
+  .preview-editor .recording-transcript-input { min-height: 190px; }
+  .entry-side-preview { width: 100%; min-height: 100%; padding: 16px; background: #fff; }
+  .entry-side-preview section + section { margin-top: 18px; }
+  .entry-side-preview h3 { margin: 0 0 8px; font-size: 14px; }
+  .entry-side-preview pre {
+    margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.7 "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+  }
+  .entry-side-attachments { display: grid; gap: 7px; }
+  .entry-side-attachments button {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+    padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; text-align: left; cursor: pointer;
+  }
+  .entry-side-attachments button:hover { border-color: var(--accent); background: #f0fdfa; }
+  .entry-side-attachments small { flex: none; color: var(--text-muted); }
+  .folder-file-row.preview-selected, .entry-row.preview-selected, .record-group-card.preview-selected {
+    outline: 2px solid var(--accent); outline-offset: -2px; background: #eaf5f3;
+  }
+  .folder-workspace.preview-off { grid-template-columns: minmax(0, 1fr); }
+  .folder-workspace.preview-off .folder-preview,
+  .folder-workspace.preview-off .folder-preview-resize { display: none; }
+  .preview-toggle.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+}
+.preview-toggle { display: none !important; }
 .folder-content-list > .explorer-item { width: 100%; margin: 0; min-width: 0; }
 .folder-content-list.list-view > .explorer-item,
 .folder-content-list.details-view > .explorer-item { min-height: 62px; }
@@ -986,6 +1143,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .folder-content-list.grid-view { display: flex; }
 }
 
+@media (min-width: 1000px) and (max-width: 1250px) {
+  .preview-processing-head { display: block; }
+  .preview-processing-actions { margin-top: 9px; }
+}
+
 /* 舊版區塊標籤只留給其他畫面；資料夾內頁已不再產生這些標籤。 */
 .archive-section-label {
   margin: 14px 0 8px; color: var(--text-muted, #64748b);
@@ -1006,7 +1168,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
    撐得歪七扭八。點卡片開整筆記事詳情，右上角保留單獨的刪除鈕。 */
 /* 左邊拖曳把手／右邊 📂 移動＋🗑 刪除都用絕對定位疊在卡片上，不進網格排版，
    跟 .child-folder-edit／.child-folder-move／.record-group-del 同一手法。 */
-.record-group-card { position: relative; padding-left: 30px; padding-right: 58px; }
+.record-group-card { position: relative; padding-left: 30px; padding-right: 82px; }
 .record-group-drag {
   position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
   border: 0; background: transparent; color: var(--text-muted); cursor: grab;
@@ -1014,16 +1176,136 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 }
 .record-group-drag:hover { opacity: 1; }
 .record-group-drag:active { cursor: grabbing; }
-.record-group-move {
+.record-group-rename, .record-group-move {
   position: absolute; right: 32px; top: 8px; border: 0; background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
 }
-.record-group-move:hover { opacity: 1; }
+.record-group-rename { right: 56px; }
+.record-group-move:hover, .record-group-rename:hover { opacity: 1; }
 .record-group-del {
   position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 14px; opacity: 0.45; padding: 4px;
 }
 .record-group-del:hover { opacity: 1; }
+.record-group-manage {
+  position: absolute; right: 8px; top: 8px; width: 40px; height: 36px; padding: 0;
+  border: 1px solid var(--border); border-radius: 7px; background: #fff;
+  color: var(--text); cursor: pointer; font-size: 18px; line-height: 1;
+}
+.record-group-manage:hover { border-color: var(--accent); background: #f0fdfa; }
+.record-group-card[data-recording="1"] { padding-right: 58px; }
+
+@media (min-width: 1000px) {
+  .record-group-card.preview-selected {
+    outline: 2px solid var(--accent); outline-offset: -2px; background: #eaf5f3;
+  }
+}
+
+/* ===== v135 錄音工作區 =====
+   錄音仍是一筆 entry 帶著多個附件；這些樣式只把它呈現成專用播放器與逐字稿
+   工作區，不拆解資料包，也不再把展場欄位當成日常主介面。 */
+.recording-preview { width: 100%; min-width: 0; padding: 14px; overflow: auto; }
+.recording-preview-summary {
+  padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff;
+}
+.recording-status {
+  display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; background: #e2e8f0; color: #334155;
+}
+.recording-status.done { background: #dcfce7; color: #166534; }
+.recording-status.pending { background: #fef3c7; color: #92400e; }
+.recording-status.working { background: #dbeafe; color: #1d4ed8; }
+.recording-status.failed { background: #fee2e2; color: #991b1b; }
+.recording-status.muted { background: #e2e8f0; color: #475569; }
+.recording-preview-summary dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 14px 0 0; }
+.recording-preview-summary dl > div { min-width: 0; }
+.recording-preview-summary dt { color: var(--text-muted); font-size: 11px; }
+.recording-preview-summary dd { margin: 3px 0 0; overflow-wrap: anywhere; font-weight: 650; }
+.recording-segments { display: grid; gap: 10px; margin-top: 12px; }
+.recording-segment { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.recording-segment > div { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.recording-segment > div span { color: var(--text-muted); font-size: 12px; }
+.recording-segment audio { display: block; width: 100%; }
+.recording-download { display: inline-block; margin-top: 8px; font-size: 12px; }
+.recording-preview-section { margin-top: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.recording-preview-section h3 { margin: 0 0 10px; font-size: 14px; }
+.recording-preview-section pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.65; }
+.folder-preview-empty.compact { padding: 10px; }
+
+.pdf-sidebar-preview { display: flex; flex-direction: column; width: 100%; min-width: 0; min-height: 100%; }
+.pdf-sidebar-toolbar {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px; padding: 8px; border-bottom: 1px solid var(--border); background: #fff;
+}
+.pdf-sidebar-toolbar span { white-space: nowrap; font-size: 12px; }
+.pdf-sidebar-canvas-wrap { padding: 12px; overflow: auto; text-align: center; }
+.pdf-sidebar-canvas-wrap canvas { display: inline-block; max-width: 100%; height: auto; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+
+.recording-editor { display: grid; gap: 8px; margin-top: 12px; }
+.recording-editor > input,
+.recording-editor > textarea,
+.recording-transcript-input {
+  width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+  font: inherit; line-height: 1.55; resize: vertical;
+}
+.recording-editor > textarea { min-height: 110px; }
+.recording-editor-transcripts { display: grid; gap: 12px; margin-top: 6px; }
+.recording-editor-transcripts > h3 { margin: 4px 0 0; }
+.recording-editor-transcripts section { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #f8faf9; }
+.recording-editor-transcripts audio { width: 100%; margin: 10px 0; }
+.recording-transcript-input { min-height: 220px; background: #fff; }
+.recording-editor-segment-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.recording-editor-segment-head span { min-width: 0; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; text-align: right; }
+
+.recording-action-list { display: grid; gap: 8px; margin-top: 12px; }
+.recording-action {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px 10px; width: 100%;
+  padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: #fff;
+  color: var(--text); text-align: left; cursor: pointer;
+}
+.recording-action > span { grid-row: 1 / 3; align-self: center; font-size: 21px; }
+.recording-action small { color: var(--text-muted); }
+.recording-action:hover { border-color: var(--accent); background: #f0fdfa; }
+.recording-action.danger { color: #991b1b; }
+.recording-download-list { padding: 12px; border: 1px solid var(--border); border-radius: 9px; }
+.recording-download-list h3 { margin: 0 0 8px; font-size: 14px; }
+.recording-download-list a { display: block; padding: 7px 0; overflow-wrap: anywhere; }
+.recording-download-list a + a { border-top: 1px solid var(--border); }
+.recording-download-list small { color: var(--text-muted); }
+.recording-legacy-fallback { margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px; }
+.recording-legacy-fallback summary { cursor: pointer; color: var(--text-muted); font-size: 13px; }
+
+@media (max-width: 719px) {
+  .recording-preview-summary dl { grid-template-columns: 1fr; }
+  .recording-editor-segment-head { display: block; }
+  .recording-editor-segment-head span { display: block; margin-top: 3px; text-align: left; }
+}
+
+@media (min-width: 720px) {
+  /* 清單模式讓標題獨佔主要欄；路徑、時間與附件數移到第二行，避免預覽欄
+     開啟後把長標題擠成一字一行。 */
+  .folder-content-list.list-view > .entry-row,
+  .folder-content-list.details-view > .entry-row {
+    display: grid;
+    grid-template-columns: 28px minmax(220px, 1fr) auto auto auto;
+    grid-template-areas:
+      "drag main move merge del"
+      "drag secondary secondary secondary secondary";
+    column-gap: 8px; row-gap: 4px;
+  }
+  .folder-content-list.list-view > .entry-row .entry-drag,
+  .folder-content-list.details-view > .entry-row .entry-drag { grid-area: drag; }
+  .folder-content-list.list-view > .entry-row .entry-main,
+  .folder-content-list.details-view > .entry-row .entry-main { grid-area: main; }
+  .folder-content-list.list-view > .entry-row .entry-secondary,
+  .folder-content-list.details-view > .entry-row .entry-secondary { grid-area: secondary; }
+  .folder-content-list.list-view > .entry-row .entry-move,
+  .folder-content-list.details-view > .entry-row .entry-move { grid-area: move; }
+  .folder-content-list.list-view > .entry-row .entry-merge,
+  .folder-content-list.details-view > .entry-row .entry-merge { grid-area: merge; }
+  .folder-content-list.list-view > .entry-row .entry-del,
+  .folder-content-list.details-view > .entry-row .entry-del { grid-area: del; }
+}
 
 /* ===== 資料夾內的檔案列（一列＝一份檔案，可拖曳搬移）===== */
 .folder-file-row {

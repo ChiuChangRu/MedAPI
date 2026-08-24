@@ -56,6 +56,32 @@ test("MediaRecorder 要定期交出資料，並監聽 recorder error", () => {
   assert.match(fn, /recorder\.onerror\s*=.*recorderFailed/s, "MediaRecorder 自己報錯也要觸發接續判斷");
 });
 
+test("錄音上傳失敗要保留 durationSecs，記事內也要顯示本機待補傳檔案", () => {
+  assert.match(app, /async function queueFile\(entryId, blob, filename, offsetSecs, meta = null\)/,
+    "離線佇列要能保存錄音長度等中繼資料");
+  assert.match(app, /meta:\s*meta \|\| null/,
+    "IndexedDB 佇列列必須保存 meta，補傳後才能自動轉錄");
+  assert.match(app, /putFile\(f\.entry_id, f\.blob, f\.filename, f\.offset_secs, f\.meta \|\| null\)/,
+    "補傳時必須把 meta 一起送回 /upload");
+  assert.match(app, /const pendingUploads = await pendingFilesForEntry\(entryId\)/,
+    "開啟記事時要檢查這筆是否有尚未補傳的本機檔案");
+  assert.match(app, /個檔案暫存在這台電腦，尚未補傳完成/,
+    "畫面要明確說明檔案目前在本機，不可顯示成『尚無附件』讓人誤以為遺失");
+});
+
+test("MediaRecorder 產出 0 bytes 時要留下永久失敗記錄，不能仍宣稱錄音完成", () => {
+  assert.match(app, /未產生錄音檔（0 bytes），無法播放或轉錄/,
+    "空 Blob 無法救回，必須把事實寫進記事");
+  assert.match(app, /錄音結束：\$\{savedBit\}/,
+    "完成提示要依實際已上傳／待補傳／空檔段數回報，不可只用預計段數");
+});
+
+test("錄音去重只限同一筆資料包，不可跨記事把新錄音吃掉", async () => {
+  const worker = await readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8");
+  assert.match(worker, /const candidateQuery = sourcePdfId \|\| kind === "audio"/,
+    "一般文件可在資料夾內去重；錄音只能在同一 entry 內去重，否則新記事會變空殼");
+});
+
 test("pagehide 不得停止背景錄音；真正離頁由 beforeunload 先警告", () => {
   const hide = app.match(/function onPageHide\(event\)[\s\S]*?\n\}/)?.[0] || "";
   assert.match(hide, /onPageHidden\(\)/, "pagehide 應先要求錄音資料切片保存");
