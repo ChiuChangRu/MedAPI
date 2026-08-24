@@ -30,7 +30,7 @@ test("週報編輯器保留固定規劃，提供本週／下週欄位與明確�
   assert.match(app, /data-key="本週工作報告"/);
   assert.match(app, /data-key="下週重要工作計畫"/);
   assert.match(app, /id="e-save">儲存<\/button>/);
-  assert.match(app, /if \(isWeeklyReport\) \{[\s\S]*?patch\.fields = newFields;[\s\S]*?patch\.body_format = "text";/);
+  assert.match(app, /const patch = \{ title:[\s\S]*?fields: newFields \};[\s\S]*?if \(isWeeklyReport\) patch\.body_format = "text";/);
   assert.doesNotMatch(app, /class="e-field weekly-report-textarea fixed"/);
 });
 

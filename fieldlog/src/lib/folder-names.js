@@ -21,14 +21,21 @@ function rootNameKey(value) {
 }
 
 /** 建立／改名時擋住同一上層底下正規化後會同名的資料夾。 */
-export async function findSiblingFolderNameConflict(db, { parentId = null, name, excludeId = null } = {}) {
+export async function findSiblingFolderNameConflict(db, {
+  parentId = null,
+  name,
+  excludeId = null,
+  category = "misc",
+} = {}) {
   const condition = parentId
     ? "parent_id = ?"
     : "parent_id IS NULL";
   const values = parentId ? [Number(parentId)] : [];
+  const categoryCondition = parentId ? "" : " AND COALESCE(category, 'misc') = ?";
+  if (!parentId) values.push(category || "misc");
   const { results = [] } = await db.prepare(
     `SELECT id, name FROM folders
-     WHERE ${condition} AND COALESCE(deleted_at, '') = ''`
+     WHERE ${condition}${categoryCondition} AND COALESCE(deleted_at, '') = ''`
   ).bind(...values).all();
   const keyOf = parentId ? nameKey : rootNameKey;
   const wanted = keyOf(name);
