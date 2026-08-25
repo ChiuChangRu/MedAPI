@@ -244,6 +244,44 @@ body.itinerary-view #itinerary-section { display: block; }
 .itin-head h2 { margin: 0 0 4px; font-size: 19px; font-weight: 700; letter-spacing: 0.01em; }
 .itin-sub { margin: 0; font-size: 12px; color: var(--text-muted); }
 
+.pretrip-checklist {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.pretrip-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.pretrip-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.pretrip-progress { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pretrip-list { display: flex; flex-direction: column; gap: 2px; }
+.pretrip-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; border-radius: 4px; cursor: pointer;
+}
+.pretrip-item:hover { background: var(--bg); }
+.pretrip-item input[type="checkbox"] { width: 17px; height: 17px; flex-shrink: 0; accent-color: var(--green); }
+.pretrip-label { flex: 1; font-size: 13.5px; }
+.pretrip-item.is-checked .pretrip-label { color: var(--text-muted); text-decoration: line-through; }
+.pretrip-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.pretrip-remove {
+  border: none; background: none; color: var(--text-muted); cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 4px; opacity: 0; flex-shrink: 0;
+}
+.pretrip-item:hover .pretrip-remove { opacity: 1; }
+.pretrip-remove:hover { color: var(--accent); }
+.pretrip-add { display: flex; gap: 8px; margin-top: 10px; }
+.pretrip-add input {
+  flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 4px;
+  font-size: 13px; background: var(--bg); color: var(--text);
+}
+.pretrip-add button {
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
+  border-radius: 4px; padding: 7px 14px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.pretrip-add button:hover { border-color: var(--accent); color: var(--accent); }
+
 .itin-list { display: flex; flex-direction: column; gap: 12px; }
 
 .itin-day {

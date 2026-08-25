@@ -11,6 +11,7 @@ let API_OK = false;
 let OFFLINE = false;        // 離線模式（用手機快取的資料瀏覽＋紀錄排隊待同步）
 let UPLOADS_ENABLED = false;
 let TRANSCRIBE_ENABLED = false;
+let PRETRIP_CHECKLIST = [];  // 出發前準備清單，團隊共用一份（見 renderPretripChecklist）
 
 // 篩選條件（單位、產品／科別兩個維度可交叉組合）
 let ACTIVE_CATS = new Set();
@@ -1188,6 +1189,7 @@ function setView(view, { scroll = true } = {}) {
     loadSessions();
   } else if (view === "itinerary") {
     renderItinerary();
+    loadPretripChecklist();
   } else if (view === "prep") {
     renderPrepReport();
     loadPrepNotes();
@@ -3059,6 +3061,102 @@ function renderItinerary() {
   wrap.querySelectorAll(".itin-shortcut[data-go]").forEach((a) => {
     a.onclick = (ev) => { ev.preventDefault(); setView(a.dataset.go); };
   });
+}
+
+// ---------- 出發前準備清單（行程總覽最上方；團隊共用一份，見 worker.js pretrip_checklist）----------
+// 種子資料在後端（PRETRIP_CHECKLIST_SEED），前端只負責顯示、勾選、新增——
+// 這樣大家勾的狀態才是同一份，不會各自本機各勾各的。離線時先用快取畫上去。
+function pretripChecklistItemHtml(item) {
+  const meta = item.checked && item.checked_by ? `<span class="pretrip-meta">${esc(item.checked_by)}　${esc(item.checked_at || "")}</span>` : "";
+  return `<label class="pretrip-item${item.checked ? " is-checked" : ""}">
+    <input type="checkbox" data-pretrip-id="${esc(item.id)}" ${item.checked ? "checked" : ""}>
+    <span class="pretrip-label">${esc(item.label)}</span>
+    ${meta}
+    <button type="button" class="pretrip-remove" data-pretrip-remove="${esc(item.id)}" title="刪除項目" aria-label="刪除項目">✕</button>
+  </label>`;
+}
+
+function renderPretripChecklist() {
+  const wrap = $("pretrip-checklist");
+  if (!wrap) return;
+  const done = PRETRIP_CHECKLIST.filter((i) => i.checked).length;
+  wrap.innerHTML = `
+    <div class="pretrip-head">
+      <h3>🧳 出發前準備</h3>
+      <span class="pretrip-progress">${done} / ${PRETRIP_CHECKLIST.length}</span>
+    </div>
+    <div class="pretrip-list">${PRETRIP_CHECKLIST.map(pretripChecklistItemHtml).join("")}</div>
+    <form class="pretrip-add" id="pretrip-add-form">
+      <input type="text" id="pretrip-add-input" placeholder="還想到什麼要準備的，打字加進去…" maxlength="200">
+      <button type="submit">＋ 新增</button>
+    </form>`;
+
+  wrap.querySelectorAll("input[data-pretrip-id]").forEach((cb) => {
+    cb.onchange = () => togglePretripItem(cb.dataset.pretripId, cb.checked);
+  });
+  wrap.querySelectorAll("[data-pretrip-remove]").forEach((btn) => {
+    btn.onclick = () => removePretripItem(btn.dataset.pretripRemove);
+  });
+  const form = $("pretrip-add-form");
+  if (form) form.onsubmit = (ev) => { ev.preventDefault(); addPretripItem(); };
+}
+
+async function loadPretripChecklist() {
+  try { PRETRIP_CHECKLIST = JSON.parse(localStorage.getItem("medtec_pretrip_checklist") || "[]"); } catch { PRETRIP_CHECKLIST = []; }
+  renderPretripChecklist();
+  if (!API_OK) return;
+  try {
+    PRETRIP_CHECKLIST = await api("/pretrip-checklist");
+    localStorage.setItem("medtec_pretrip_checklist", JSON.stringify(PRETRIP_CHECKLIST));
+    renderPretripChecklist();
+  } catch { /* 讀不到就維持快取內容，不擋畫面 */ }
+}
+
+async function togglePretripItem(id, checked) {
+  if (!API_OK) { showToast("共筆後端未連線，無法儲存"); renderPretripChecklist(); return; }
+  try {
+    const saved = await api(`/pretrip-checklist/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ checked, author: me() || "匿名" }),
+    });
+    const idx = PRETRIP_CHECKLIST.findIndex((i) => i.id === id);
+    if (idx >= 0) PRETRIP_CHECKLIST[idx] = { ...PRETRIP_CHECKLIST[idx], ...saved };
+    localStorage.setItem("medtec_pretrip_checklist", JSON.stringify(PRETRIP_CHECKLIST));
+  } catch (err) {
+    showToast("儲存失敗：" + err.message);
+  } finally {
+    renderPretripChecklist();
+  }
+}
+
+async function addPretripItem() {
+  const input = $("pretrip-add-input");
+  const label = (input?.value || "").trim();
+  if (!label) return;
+  if (!API_OK) { showToast("共筆後端未連線，無法新增"); return; }
+  try {
+    const saved = await api("/pretrip-checklist", {
+      method: "POST",
+      body: JSON.stringify({ label, author: me() || "匿名" }),
+    });
+    PRETRIP_CHECKLIST.push(saved);
+    localStorage.setItem("medtec_pretrip_checklist", JSON.stringify(PRETRIP_CHECKLIST));
+    renderPretripChecklist();
+  } catch (err) {
+    showToast("新增失敗：" + err.message);
+  }
+}
+
+async function removePretripItem(id) {
+  if (!API_OK) { showToast("共筆後端未連線，無法刪除"); return; }
+  try {
+    await api(`/pretrip-checklist/${encodeURIComponent(id)}?author=${encodeURIComponent(me() || "匿名")}`, { method: "DELETE" });
+    PRETRIP_CHECKLIST = PRETRIP_CHECKLIST.filter((i) => i.id !== id);
+    localStorage.setItem("medtec_pretrip_checklist", JSON.stringify(PRETRIP_CHECKLIST));
+    renderPretripChecklist();
+  } catch (err) {
+    showToast("刪除失敗：" + err.message);
+  }
 }
 
 // ---------- 參訪前報告（主體＝七人實際指派的廠商）----------

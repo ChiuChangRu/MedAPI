@@ -136,6 +136,18 @@ const SCHEMA = [
     updated_by TEXT DEFAULT '',
     updated_at TEXT
   )`,
+  // 出發前準備清單：團隊共用一份（不分人），行程總覽頁首直接看到還缺什麼。
+  // sort_order 決定顯示順序；checked_by/checked_at 只在勾選時有值，取消勾選就清空。
+  `CREATE TABLE IF NOT EXISTS pretrip_checklist (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    checked INTEGER DEFAULT 0,
+    checked_by TEXT DEFAULT '',
+    checked_at TEXT,
+    sort_order INTEGER DEFAULT 0,
+    created_by TEXT DEFAULT '',
+    created_at TEXT
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_att_ex ON attachments(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_notes_ex ON notes(exhibitor_id)`,
   `CREATE INDEX IF NOT EXISTS idx_hist_ex ON history(exhibitor_id)`,
@@ -180,6 +192,26 @@ const SESSION_SEED = [
     "全球品牌與出海方法",
     "對應優先機會⑦海外市場與供應鏈韌性。邦特連結：台灣與菲律賓製造、全球客戶與 CDMO 合作。官網訊號：全球品牌、醫材出海 0→1→1→N、投融資趨勢與全球資本市場。專案目標：在自有品牌、ODM、CDMO 三種模式中選 1 個優先模式與 1 個目標市場，避免展後名單無法轉成商機。",
     "https://en.medtecchina.com/forum/opportunities/opportunities-2/"],
+];
+
+// 出發前準備清單種子：前五項是團隊已在群組裡確認完成的項目（直接勾選），
+// 其餘是常見的國際團體出差還會漏掉的項目，先列出來讓大家出發前逐項確認。
+// 用 INSERT OR IGNORE，之後團隊自己勾選／新增的內容不會被種子覆蓋。
+const PRETRIP_CHECKLIST_SEED = [
+  ["ticket", "電子機票（7/24 之涵已寄）", 1],
+  ["visa-passport", "台胞證＋護照", 1],
+  ["name-card", "名片", 1],
+  ["esim", "辦理 e-SIM", 1],
+  ["expo-register", "會場入場免費登記", 1],
+  ["hotel", "酒店訂房確認（含入住／退房時間）", 0],
+  ["insurance", "差旅／旅平險投保", 0],
+  ["cny-cash", "兌換人民幣現金＋支付寶或微信支付綁定", 0],
+  ["samples", "樣品／型錄／DM 準備足夠份數", 0],
+  ["visa-expiry", "台胞證效期再確認（回程前仍在有效期內）", 0],
+  ["offline-sync", "出發前用 Wi-Fi 連線同步一次系統，離線版才是最新資料", 0],
+  ["medicine", "個人常備藥品", 0],
+  ["power-bank", "行動電源（容量符合登機規定）與轉接頭", 0],
+  ["return-flight", "回程機票 CI202 再次確認", 0],
 ];
 
 // 後續新增的欄位（既有資料表用 ALTER 補上，新表已含在下方 MIGRATIONS 對既有表無害）
@@ -238,6 +270,15 @@ async function ensureSchema(db) {
   await db.batch(
     SESSION_SEED.map(([id, , , , , , , , outline]) =>
       db.prepare("UPDATE sessions SET outline = ? WHERE id = ?").bind(outline, id)
+    )
+  );
+  await db.batch(
+    PRETRIP_CHECKLIST_SEED.map(([id, label, checked], i) =>
+      db
+        .prepare(
+          "INSERT OR IGNORE INTO pretrip_checklist (id, label, checked, checked_by, checked_at, sort_order, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(id, label, checked, checked ? "團隊" : "", checked ? now() : null, i, "系統", now())
     )
   );
   schemaReady = true;
@@ -1323,6 +1364,62 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     const author = (url.searchParams.get("author") || "").trim() || "匿名";
     await db.prepare("DELETE FROM prep_overrides WHERE member = ?").bind(member).run();
     await logHistory(db, null, author, "還原四階段圖卡", `${member}：改回系統自動分析`);
+    return json({ ok: true });
+  }
+
+  // ---- 出發前準備清單：行程總覽頁首，團隊共用一份（見 PRETRIP_CHECKLIST_SEED）----
+  if (path === "/pretrip-checklist" && method === "GET") {
+    const { results } = await db.prepare("SELECT * FROM pretrip_checklist ORDER BY sort_order, created_at").all();
+    return json(results.map((r) => ({
+      id: r.id,
+      label: r.label,
+      checked: !!r.checked,
+      checked_by: r.checked_by || "",
+      checked_at: r.checked_at || "",
+      sort_order: r.sort_order,
+    })));
+  }
+  if (path === "/pretrip-checklist" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const label = String(body.label || "").trim().slice(0, 200);
+    if (!label) return bad("缺少項目內容");
+    const id = `item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const { results } = await db.prepare("SELECT MAX(sort_order) AS m FROM pretrip_checklist").all();
+    const sortOrder = (results[0]?.m ?? -1) + 1;
+    await db
+      .prepare(
+        "INSERT INTO pretrip_checklist (id, label, checked, checked_by, checked_at, sort_order, created_by, created_at) VALUES (?, ?, 0, '', NULL, ?, ?, ?)"
+      )
+      .bind(id, label, sortOrder, author, now())
+      .run();
+    await logHistory(db, null, author, "新增出發前準備項目", label);
+    return json({ id, label, checked: false, checked_by: "", checked_at: "", sort_order: sortOrder });
+  }
+  const pretripMatch = path.match(/^\/pretrip-checklist\/(.+)$/);
+  if (pretripMatch && method === "PUT") {
+    const id = decodeURIComponent(pretripMatch[1]).trim();
+    if (!id) return bad("缺少項目 id");
+    const old = await db.prepare("SELECT * FROM pretrip_checklist WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到這個項目", 404);
+    const body = await request.json().catch(() => ({}));
+    const author = (body.author || "").trim() || "匿名";
+    const checked = !!body.checked;
+    await db
+      .prepare("UPDATE pretrip_checklist SET checked = ?, checked_by = ?, checked_at = ? WHERE id = ?")
+      .bind(checked ? 1 : 0, checked ? author : "", checked ? now() : null, id)
+      .run();
+    await logHistory(db, null, author, checked ? "勾選出發前準備項目" : "取消勾選出發前準備項目", old.label);
+    return json({ id, label: old.label, checked, checked_by: checked ? author : "", checked_at: checked ? now() : "", sort_order: old.sort_order });
+  }
+  if (pretripMatch && method === "DELETE") {
+    const id = decodeURIComponent(pretripMatch[1]).trim();
+    if (!id) return bad("缺少項目 id");
+    const author = (url.searchParams.get("author") || "").trim() || "匿名";
+    const old = await db.prepare("SELECT * FROM pretrip_checklist WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到這個項目", 404);
+    await db.prepare("DELETE FROM pretrip_checklist WHERE id = ?").bind(id).run();
+    await logHistory(db, null, author, "刪除出發前準備項目", old.label);
     return json({ ok: true });
   }
 
