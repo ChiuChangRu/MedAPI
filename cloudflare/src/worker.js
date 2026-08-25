@@ -1404,6 +1404,17 @@ ${sections || "<p>尚無任何紀錄或指派。</p>"}
     if (!old) return bad("找不到這個項目", 404);
     const body = await request.json().catch(() => ({}));
     const author = (body.author || "").trim() || "匿名";
+
+    // 兩種用途各自獨立：改文字內容不動勾選狀態，勾選/取消也不動文字——
+    // 前端一次只送一種，用欄位有沒有出現在 body 裡判斷要做哪件事。
+    if (typeof body.label === "string") {
+      const label = body.label.trim().slice(0, 200);
+      if (!label) return bad("項目內容不能空白");
+      await db.prepare("UPDATE pretrip_checklist SET label = ? WHERE id = ?").bind(label, id).run();
+      await logHistory(db, null, author, "修改出發前準備項目", `「${old.label}」→「${label}」`);
+      return json({ id, label, checked: !!old.checked, checked_by: old.checked_by || "", checked_at: old.checked_at || "", sort_order: old.sort_order });
+    }
+
     const checked = !!body.checked;
     await db
       .prepare("UPDATE pretrip_checklist SET checked = ?, checked_by = ?, checked_at = ? WHERE id = ?")

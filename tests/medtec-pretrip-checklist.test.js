@@ -22,6 +22,8 @@ test("出發前準備清單：後端有共用資料表、種子資料與勾選/�
   assert.match(worker, /pretripMatch && method === "PUT"/);
   assert.match(worker, /pretripMatch && method === "DELETE"/);
   assert.match(worker, /UPDATE pretrip_checklist SET checked = \?, checked_by = \?, checked_at = \? WHERE id = \?/);
+  assert.match(worker, /typeof body\.label === "string"/, "PUT 要能單獨改文字內容，不動勾選狀態");
+  assert.match(worker, /UPDATE pretrip_checklist SET label = \? WHERE id = \?/);
 });
 
 test("出發前準備清單：畫在行程總覽最上方，離線先用快取、連線後以伺服器版本覆蓋", async () => {
@@ -47,4 +49,25 @@ test("出發前準備清單：畫在行程總覽最上方，離線先用快取�
 
   assert.match(style, /\.pretrip-checklist \{/);
   assert.match(style, /\.pretrip-item\.is-checked \.pretrip-label \{ color: var\(--text-muted\); text-decoration: line-through; \}/);
+});
+
+test("出發前準備清單：整個單元可收合，項目可就地編輯文字", async () => {
+  const [app, style] = await Promise.all([
+    read("cloudflare/public/app.js"),
+    read("cloudflare/public/style.css"),
+  ]);
+
+  // 收合：整個清單包在 <details> 裡，重畫時要保留使用者剛才展開/收合的狀態
+  assert.match(app, /let PRETRIP_OPEN = true/);
+  assert.match(app, /<details class="pretrip-block"\$\{PRETRIP_OPEN \? " open" : ""\}>/);
+  assert.match(app, /details\.ontoggle = \(\) => \{ PRETRIP_OPEN = details\.open; \}/);
+  assert.match(style, /\.pretrip-block\[open\] \.pretrip-toggle-arrow/);
+
+  // 編輯：點 ✎ 進入編輯態，Enter/儲存呼叫 PUT 帶 label，不影響 checked
+  assert.match(app, /let PRETRIP_EDITING = null/);
+  assert.match(app, /data-pretrip-edit="\$\{esc\(item\.id\)\}"/);
+  assert.match(app, /async function savePretripEdit\(id\)/);
+  assert.match(app, /body: JSON\.stringify\(\{ label, author: me\(\) \|\| "匿名" \}\)/);
+  assert.match(app, /if \(ev\.key === "Enter"\) \{ ev\.preventDefault\(\); savePretripEdit\(PRETRIP_EDITING\); \}/);
+  assert.match(app, /if \(ev\.key === "Escape"\)/, "編輯中按 Escape 要能取消，不強迫存檔");
 });

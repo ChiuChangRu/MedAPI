@@ -3064,16 +3064,30 @@ function renderItinerary() {
 }
 
 // ---------- 出發前準備清單（行程總覽最上方；團隊共用一份，見 worker.js pretrip_checklist）----------
-// 種子資料在後端（PRETRIP_CHECKLIST_SEED），前端只負責顯示、勾選、新增——
+// 種子資料在後端（PRETRIP_CHECKLIST_SEED），前端只負責顯示、勾選、新增、編輯文字——
 // 這樣大家勾的狀態才是同一份，不會各自本機各勾各的。離線時先用快取畫上去。
+let PRETRIP_OPEN = true;      // 整個單元收合狀態；每次重畫都要保留，不能重畫就彈回展開
+let PRETRIP_EDITING = null;   // 目前正在編輯文字的項目 id；一次只編一筆
+
 function pretripChecklistItemHtml(item) {
   const meta = item.checked && item.checked_by ? `<span class="pretrip-meta">${esc(item.checked_by)}　${esc(item.checked_at || "")}</span>` : "";
-  return `<label class="pretrip-item${item.checked ? " is-checked" : ""}">
-    <input type="checkbox" data-pretrip-id="${esc(item.id)}" ${item.checked ? "checked" : ""}>
-    <span class="pretrip-label">${esc(item.label)}</span>
-    ${meta}
+  if (item.id === PRETRIP_EDITING) {
+    return `<div class="pretrip-item is-editing">
+      <input type="checkbox" disabled ${item.checked ? "checked" : ""}>
+      <input type="text" class="pretrip-edit-input" id="pretrip-edit-${esc(item.id)}" value="${esc(item.label)}" maxlength="200">
+      <button type="button" class="pretrip-edit-save" data-pretrip-save="${esc(item.id)}">儲存</button>
+      <button type="button" class="pretrip-edit-cancel" data-pretrip-cancel="${esc(item.id)}">取消</button>
+    </div>`;
+  }
+  return `<div class="pretrip-item${item.checked ? " is-checked" : ""}">
+    <label class="pretrip-item-main">
+      <input type="checkbox" data-pretrip-id="${esc(item.id)}" ${item.checked ? "checked" : ""}>
+      <span class="pretrip-label">${esc(item.label)}</span>
+      ${meta}
+    </label>
+    <button type="button" class="pretrip-edit" data-pretrip-edit="${esc(item.id)}" title="編輯項目" aria-label="編輯項目">✎</button>
     <button type="button" class="pretrip-remove" data-pretrip-remove="${esc(item.id)}" title="刪除項目" aria-label="刪除項目">✕</button>
-  </label>`;
+  </div>`;
 }
 
 function renderPretripChecklist() {
@@ -3081,22 +3095,51 @@ function renderPretripChecklist() {
   if (!wrap) return;
   const done = PRETRIP_CHECKLIST.filter((i) => i.checked).length;
   wrap.innerHTML = `
-    <div class="pretrip-head">
-      <h3>🧳 出發前準備</h3>
-      <span class="pretrip-progress">${done} / ${PRETRIP_CHECKLIST.length}</span>
-    </div>
-    <div class="pretrip-list">${PRETRIP_CHECKLIST.map(pretripChecklistItemHtml).join("")}</div>
-    <form class="pretrip-add" id="pretrip-add-form">
-      <input type="text" id="pretrip-add-input" placeholder="還想到什麼要準備的，打字加進去…" maxlength="200">
-      <button type="submit">＋ 新增</button>
-    </form>`;
+    <details class="pretrip-block"${PRETRIP_OPEN ? " open" : ""}>
+      <summary class="pretrip-head">
+        <h3>🧳 出發前準備</h3>
+        <span class="pretrip-progress">${done} / ${PRETRIP_CHECKLIST.length}</span>
+        <span class="pretrip-toggle" aria-hidden="true">
+          <span class="pretrip-toggle-open">收合</span>
+          <span class="pretrip-toggle-closed">展開</span>
+          <span class="pretrip-toggle-arrow">⌄</span>
+        </span>
+      </summary>
+      <div class="pretrip-body">
+        <div class="pretrip-list">${PRETRIP_CHECKLIST.map(pretripChecklistItemHtml).join("")}</div>
+        <form class="pretrip-add" id="pretrip-add-form">
+          <input type="text" id="pretrip-add-input" placeholder="還想到什麼要準備的，打字加進去…" maxlength="200">
+          <button type="submit">＋ 新增</button>
+        </form>
+      </div>
+    </details>`;
 
+  const details = wrap.querySelector(".pretrip-block");
+  if (details) details.ontoggle = () => { PRETRIP_OPEN = details.open; };
   wrap.querySelectorAll("input[data-pretrip-id]").forEach((cb) => {
     cb.onchange = () => togglePretripItem(cb.dataset.pretripId, cb.checked);
+  });
+  wrap.querySelectorAll("[data-pretrip-edit]").forEach((btn) => {
+    btn.onclick = () => { PRETRIP_EDITING = btn.dataset.pretripEdit; renderPretripChecklist(); };
   });
   wrap.querySelectorAll("[data-pretrip-remove]").forEach((btn) => {
     btn.onclick = () => removePretripItem(btn.dataset.pretripRemove);
   });
+  wrap.querySelectorAll("[data-pretrip-save]").forEach((btn) => {
+    btn.onclick = () => savePretripEdit(btn.dataset.pretripSave);
+  });
+  wrap.querySelectorAll("[data-pretrip-cancel]").forEach((btn) => {
+    btn.onclick = () => { PRETRIP_EDITING = null; renderPretripChecklist(); };
+  });
+  const editInput = PRETRIP_EDITING && $(`pretrip-edit-${PRETRIP_EDITING}`);
+  if (editInput) {
+    editInput.focus();
+    editInput.setSelectionRange(editInput.value.length, editInput.value.length);
+    editInput.onkeydown = (ev) => {
+      if (ev.key === "Enter") { ev.preventDefault(); savePretripEdit(PRETRIP_EDITING); }
+      if (ev.key === "Escape") { ev.preventDefault(); PRETRIP_EDITING = null; renderPretripChecklist(); }
+    };
+  }
   const form = $("pretrip-add-form");
   if (form) form.onsubmit = (ev) => { ev.preventDefault(); addPretripItem(); };
 }
@@ -3122,6 +3165,27 @@ async function togglePretripItem(id, checked) {
     const idx = PRETRIP_CHECKLIST.findIndex((i) => i.id === id);
     if (idx >= 0) PRETRIP_CHECKLIST[idx] = { ...PRETRIP_CHECKLIST[idx], ...saved };
     localStorage.setItem("medtec_pretrip_checklist", JSON.stringify(PRETRIP_CHECKLIST));
+  } catch (err) {
+    showToast("儲存失敗：" + err.message);
+  } finally {
+    renderPretripChecklist();
+  }
+}
+
+async function savePretripEdit(id) {
+  const input = $(`pretrip-edit-${id}`);
+  const label = (input?.value || "").trim();
+  if (!label) { showToast("項目內容不能空白"); return; }
+  if (!API_OK) { showToast("共筆後端未連線，無法儲存"); return; }
+  try {
+    const saved = await api(`/pretrip-checklist/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ label, author: me() || "匿名" }),
+    });
+    const idx = PRETRIP_CHECKLIST.findIndex((i) => i.id === id);
+    if (idx >= 0) PRETRIP_CHECKLIST[idx] = { ...PRETRIP_CHECKLIST[idx], ...saved };
+    localStorage.setItem("medtec_pretrip_checklist", JSON.stringify(PRETRIP_CHECKLIST));
+    PRETRIP_EDITING = null;
   } catch (err) {
     showToast("儲存失敗：" + err.message);
   } finally {

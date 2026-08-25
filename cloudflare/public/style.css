@@ -244,33 +244,62 @@ body.itinerary-view #itinerary-section { display: block; }
 .itin-head h2 { margin: 0 0 4px; font-size: 19px; font-weight: 700; letter-spacing: 0.01em; }
 .itin-sub { margin: 0; font-size: 12px; color: var(--text-muted); }
 
-.pretrip-checklist {
+.pretrip-checklist { margin-bottom: 16px; }
+.pretrip-block {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-left: 4px solid var(--accent);
   border-radius: var(--radius);
-  padding: 14px 16px;
-  margin-bottom: 16px;
+  overflow: hidden;
 }
-.pretrip-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.pretrip-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; cursor: pointer; list-style: none;
+}
+.pretrip-head::-webkit-details-marker { display: none; }
+.pretrip-head:hover { background: var(--bg); }
 .pretrip-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
 .pretrip-progress { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pretrip-toggle {
+  margin-left: auto; display: flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--text-muted);
+}
+.pretrip-toggle-open { display: none; }
+.pretrip-block[open] .pretrip-toggle-open { display: inline; }
+.pretrip-block[open] .pretrip-toggle-closed { display: none; }
+.pretrip-toggle-arrow { font-size: 15px; line-height: 1; transform: rotate(0deg); transition: transform 0.16s; }
+.pretrip-block[open] .pretrip-toggle-arrow { transform: rotate(180deg); }
+.pretrip-body { padding: 0 16px 14px; }
 .pretrip-list { display: flex; flex-direction: column; gap: 2px; }
 .pretrip-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 4px; border-radius: 4px; cursor: pointer;
+  display: flex; align-items: center; gap: 4px;
+  padding: 2px 4px; border-radius: 4px;
 }
 .pretrip-item:hover { background: var(--bg); }
+.pretrip-item-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 4px 0; cursor: pointer; }
 .pretrip-item input[type="checkbox"] { width: 17px; height: 17px; flex-shrink: 0; accent-color: var(--green); }
 .pretrip-label { flex: 1; font-size: 13.5px; }
 .pretrip-item.is-checked .pretrip-label { color: var(--text-muted); text-decoration: line-through; }
 .pretrip-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-.pretrip-remove {
+.pretrip-edit, .pretrip-remove {
   border: none; background: none; color: var(--text-muted); cursor: pointer;
   font-size: 13px; line-height: 1; padding: 4px; opacity: 0; flex-shrink: 0;
 }
-.pretrip-item:hover .pretrip-remove { opacity: 1; }
+.pretrip-item:hover .pretrip-edit, .pretrip-item:hover .pretrip-remove { opacity: 1; }
+.pretrip-edit:hover { color: var(--accent-dark); }
 .pretrip-remove:hover { color: var(--accent); }
+.pretrip-item.is-editing { padding: 2px 4px; }
+.pretrip-item.is-editing input[type="checkbox"] { opacity: 0.5; }
+.pretrip-edit-input {
+  flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--accent); border-radius: 4px;
+  font-size: 13.5px; background: var(--card-bg); color: var(--text);
+}
+.pretrip-edit-save, .pretrip-edit-cancel {
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
+  border-radius: 4px; padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.pretrip-edit-save:hover { border-color: var(--green); color: var(--green); }
+.pretrip-edit-cancel:hover { border-color: var(--accent); color: var(--accent); }
 .pretrip-add { display: flex; gap: 8px; margin-top: 10px; }
 .pretrip-add input {
   flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 4px;
