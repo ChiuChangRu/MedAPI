@@ -130,7 +130,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "154";
+const UI_VERSION = "155";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -642,6 +642,25 @@ function bytesToBase64(bytes) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
   return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const normalized = String(value || "").replace(/^data:[^,]+,/, "").replace(/\s+/g, "");
+  if (!normalized || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) throw new Error("PDF 資料格式錯誤");
+  const binary = atob(normalized);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function storeClipAttachment(db, files, entryId, filename, mime, bytes, sourceUrl) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const contentHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const safeName = filename.replace(/[^\w.\-一-鿿]+/g, "_");
+  const key = `${entryId}/${Date.now()}-${safeName}`;
+  await files.put(key, bytes, { httpMetadata: { contentType: mime } });
+  const result = await db.prepare(
+    "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, content_hash, source_url, created_at) VALUES (?, 'file', ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(entryId, filename, filename, key, bytes.byteLength, mime, contentHash, sourceUrl, now()).run();
+  return { id: result.meta.last_row_id, key, filename, mime, size: bytes.byteLength };
 }
 
 function randomShareToken() {
@@ -1450,6 +1469,70 @@ async function handleApi(request, env, url, identity = {}) {
       textContent: asText ? storedBody : htmlToPlainText(storedBody), title,
     });
     return json({ id: r.meta.last_row_id, ok: true });
+  }
+
+  // ---- 瀏覽器一鍵剪藏 ----
+  // Chrome／Edge 擴充功能先用 DevTools 列印目前（含登入狀態）的分頁為 PDF；
+  // 無法列印或檔案過大時改送已移除腳本／表單的 HTML。無論附件是哪一種，正文
+  // 與來源網址都寫進 entries，後續搜尋、AI 整理不必重新解析附件。
+  if (path === "/clips" && method === "POST") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const body = await request.json().catch(() => null);
+    if (!body) return bad("剪藏資料格式錯誤");
+    const sourceUrl = String(body.url || "").trim().slice(0, 2000);
+    let parsedUrl;
+    try { parsedUrl = new URL(sourceUrl); } catch { return bad("來源網址不正確"); }
+    if (!/^https?:$/.test(parsedUrl.protocol)) return bad("只接受 http 或 https 網頁");
+    const title = String(body.title || parsedUrl.hostname || "網頁剪藏").trim().slice(0, 160) || "網頁剪藏";
+    const text = String(body.text || "").trim().slice(0, 300000);
+    const html = String(body.html || "");
+    if (new TextEncoder().encode(html).byteLength > 3 * 1024 * 1024) return bad("HTML 超過 3MB，請縮短頁面後再試", 413);
+    let folderId = body.folder_id ? Number(body.folder_id) : null;
+    if (folderId) {
+      const folder = await db.prepare("SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(folderId).first();
+      if (!folder) return bad("找不到指定資料夾", 404);
+    }
+    const clippedAt = now();
+    const entryBody = textToHtml([`來源：${sourceUrl}`, `剪藏時間：${clippedAt}`, "", text].join("\n"));
+    const fields = { source: "browser_clip", source_url: sourceUrl, clipped_at: clippedAt };
+    const created = await db.prepare(
+      "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'html', ?)"
+    ).bind(folderId, title, JSON.stringify(fields), sanitizeEntryHtml(entryBody), clippedAt).run();
+    const entryId = created.meta.last_row_id;
+    let attachment;
+    let format = "html";
+    try {
+      if (body.pdf_base64) {
+        const pdf = base64ToBytes(body.pdf_base64);
+        if (pdf.byteLength > 15 * 1024 * 1024) throw new Error("PDF 超過剪藏上限 15MB");
+        if (pdf.byteLength < 5 || String.fromCharCode(...pdf.subarray(0, 5)) !== "%PDF-") throw new Error("PDF 檔頭不正確");
+        attachment = await storeClipAttachment(db, env.FILES, entryId, `${title}.pdf`, "application/pdf", pdf, sourceUrl);
+        format = "pdf";
+      } else if (html) {
+        attachment = await storeClipAttachment(db, env.FILES, entryId, `${title}.html`, "text/html; charset=utf-8", new TextEncoder().encode(html), sourceUrl);
+      }
+      await db.prepare("UPDATE entries SET fields_json = ? WHERE id = ?")
+        .bind(JSON.stringify({ ...fields, clip_format: format }), entryId).run();
+      await logHistory(db, entryId, folderId, "網頁剪藏", `${title}｜${format.toUpperCase()}｜${sourceUrl}`);
+      await triggerEmbedding(env, { kind: "entry", id: entryId, entryId, textContent: text, title });
+      return json({ ok: true, entry_id: entryId, attachment, format, destination: folderId ? "folder" : "pending" });
+    } catch (error) {
+      if (html) {
+        try {
+          attachment = await storeClipAttachment(db, env.FILES, entryId, `${title}.html`, "text/html; charset=utf-8", new TextEncoder().encode(html), sourceUrl);
+          await db.prepare("UPDATE entries SET fields_json = ? WHERE id = ?")
+            .bind(JSON.stringify({ ...fields, clip_format: "html", pdf_error: error.message }), entryId).run();
+          await logHistory(db, entryId, folderId, "網頁剪藏", `${title}｜HTML 備援｜${sourceUrl}`);
+          await triggerEmbedding(env, { kind: "entry", id: entryId, entryId, textContent: text, title });
+          return json({ ok: true, entry_id: entryId, attachment, format: "html", fallback: true, pdf_error: error.message, destination: folderId ? "folder" : "pending" });
+        } catch (fallbackError) {
+          await db.prepare("DELETE FROM entries WHERE id = ?").bind(entryId).run().catch(() => {});
+          return bad(`PDF 與 HTML 都無法保存：${fallbackError.message}`, 500);
+        }
+      }
+      await db.prepare("DELETE FROM entries WHERE id = ?").bind(entryId).run().catch(() => {});
+      return bad(error.message, 413);
+    }
   }
   if (path === "/shares" && method === "POST") {
     const body = await request.json().catch(() => ({}));
