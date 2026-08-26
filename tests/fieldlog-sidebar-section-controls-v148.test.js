@@ -22,3 +22,20 @@ test("左欄資料夾可拖曳，整個工作主分類可接收搬移", () => {
   assert.match(css, /\.desktop-tree-section\.drop-target/);
   assert.match(css, /\.desktop-tree-row\[draggable="true"\]/);
 });
+
+test("桌機主分類與實體子資料夾首次載入都預設收合", () => {
+  assert.match(app, /let EXPANDED_FOLDER_IDS = new Set\(\)/);
+  assert.match(app, /let COLLAPSED_FOLDER_SECTIONS = new Set\(WORK_SECTION_ORDER\)/);
+});
+
+test("主分類新增按鈕縮小，不再搶走分類標題空間", () => {
+  assert.match(css, /\.desktop-tree-section-add \{[^}]*width: 24px; height: 24px;[^}]*font-size: 15px/);
+});
+
+test("桌機左欄垃圾桶可接收整個資料夾，且沿用可還原刪除", () => {
+  assert.match(app, /\$\("desktop-trash"\)\.ondragover/);
+  assert.match(app, /\$\("desktop-trash"\)\.ondrop/);
+  assert.match(app, /getData\("application\/x-fieldlog-folder"\)/);
+  assert.match(app, /if \(sourceId\) deleteFolder\(sourceId\)/);
+  assert.match(css, /#desktop-trash\.trash-drop-target/);
+});
