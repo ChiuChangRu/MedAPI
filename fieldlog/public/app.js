@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "144";
+const APP_VERSION = "145";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1017,6 +1017,24 @@ function renderDesktopFolderTree() {
       else COLLAPSED_FOLDER_SECTIONS.add(key);
       renderDesktopFolderTree();
     };
+    head.ondragover = (event) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-folder")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      head.classList.add("drop-target");
+    };
+    head.ondragleave = () => head.classList.remove("drop-target");
+    head.ondrop = (event) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("application/x-fieldlog-folder")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      head.classList.remove("drop-target");
+      const folderId = Number(event.dataTransfer.getData("application/x-fieldlog-folder"));
+      const section = head.closest(".desktop-tree-section")?.dataset.section;
+      if (folderId && section) moveFolderToSection(folderId, section);
+    };
   });
   wrap.querySelectorAll(".desktop-tree-row").forEach((row) => {
     row.onclick = () => openFolder(Number(row.dataset.id));
@@ -1048,6 +1066,39 @@ function renderDesktopFolderTree() {
       else if (folderId && folderId !== targetId) moveFolderDirect(folderId, targetId);
     };
   });
+}
+
+/** 把右欄的整個資料夾搬到左側工作主目錄：成為該分類的根資料夾。 */
+async function moveFolderToSection(folderId, section) {
+  const folder = FOLDERS.find((item) => Number(item.id) === Number(folderId));
+  const meta = FOLDER_CATEGORY_META[section];
+  if (!folder || !meta) return;
+  const previousParentId = folder.parent_id ? Number(folder.parent_id) : null;
+  const previousCategory = folder.category || null;
+  if (!previousParentId && folderSectionKey(folder) === section) {
+    showToast(`「${folder.name}」已經在「${meta.label}」`);
+    return;
+  }
+  try {
+    await api(`/folders/${folderId}`, {
+      method: "PUT",
+      body: JSON.stringify({ parent_id: null, category: section }),
+    });
+    showToast(`已將「${folder.name}」移至「${meta.label}」`, {
+      actionLabel: "復原",
+      onAction: async () => {
+        try {
+          await api(`/folders/${folderId}`, {
+            method: "PUT",
+            body: JSON.stringify({ parent_id: previousParentId, category: previousCategory }),
+          });
+          showToast("已復原資料夾搬移");
+          await loadFolders();
+        } catch (error) { showToast("復原失敗：" + error.message); }
+      },
+    });
+    await loadFolders();
+  } catch (error) { showToast("移動失敗：" + error.message); }
 }
 
 async function moveAttachmentToFolder(payload, targetId) {
@@ -1821,7 +1872,7 @@ function renderChildFolders(parentId) {
 }
 
 function childFolderHtml(f) {
-  return `<div class="child-folder-card explorer-item" data-id="${f.id}"${folderCategoryStyle(f)}>
+  return `<div class="child-folder-card explorer-item" draggable="true" data-id="${f.id}"${folderCategoryStyle(f)}>
     <span>📁</span><strong>${esc(f.name)}</strong><small>${folderCategoryChipHtml(f)}${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
     <button class="child-folder-edit" type="button" data-id="${f.id}" title="編輯資料夾名稱／類型" aria-label="編輯${esc(f.name)}資料夾">✏️</button>
     <button class="child-folder-move" type="button" data-id="${f.id}" title="把這個子資料夾搬到別的地方" aria-label="移動${esc(f.name)}資料夾">📂</button>
@@ -1836,6 +1887,19 @@ function bindChildFolderCards(wrap) {
     };
     el.querySelector(".child-folder-edit").onclick = (ev) => { ev.stopPropagation(); renameFolder(Number(el.dataset.id)); };
     el.querySelector(".child-folder-move").onclick = (ev) => { ev.stopPropagation(); moveFolder(Number(el.dataset.id)); };
+    el.ondragstart = (event) => {
+      const folderId = Number(el.dataset.id);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-fieldlog-folder", String(folderId));
+      event.dataTransfer.setData("text/plain", el.querySelector("strong")?.textContent || "資料夾");
+      el.classList.add("dragging");
+      document.body.classList.add("folder-dragging");
+    };
+    el.ondragend = () => {
+      el.classList.remove("dragging");
+      document.body.classList.remove("folder-dragging");
+      document.querySelectorAll(".drop-target").forEach((target) => target.classList.remove("drop-target"));
+    };
   });
 }
 
