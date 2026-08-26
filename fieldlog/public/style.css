@@ -88,6 +88,10 @@ body {
     box-shadow: inset 3px 0 0 var(--section-accent);
   }
   .desktop-tree-section-head:hover { filter: brightness(.97); }
+  .desktop-tree-section-head.drop-target {
+    outline: 3px solid var(--section-accent); outline-offset: 1px;
+    background: color-mix(in srgb, var(--section-bg) 58%, white);
+  }
   .desktop-tree-section-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
   .desktop-tree-section-head small { min-width: 22px; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
   .desktop-tree-section-caret { color: var(--section-accent); font-weight: 800; text-align: center; }
@@ -271,6 +275,9 @@ body {
 .folder-drag:active { cursor: grabbing; }
 .folder-card.dragging { opacity: 0.35; }
 .folder-card.drop-target { outline: 3px solid #14b8a6; outline-offset: 2px; background: #f0fdfa; }
+.child-folder-card[draggable="true"] { cursor: grab; }
+.child-folder-card[draggable="true"]:active { cursor: grabbing; }
+.child-folder-card.dragging { opacity: .38; }
 /* 展開／收合子資料夾（跟 Notion 側欄同一種互動：預設收合，按箭頭才往下展開
    一層）。沒有子資料夾的列用同寬度的空白佔位，讓所有列的名稱維持對齊，
    不會因為有沒有箭頭而左右跳動。 */
