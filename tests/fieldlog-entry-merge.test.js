@@ -31,9 +31,15 @@ function makeDB() {
 
     if (/^CREATE (TABLE|UNIQUE INDEX|INDEX)/i.test(q) || /^ALTER TABLE/i.test(q) || /^DROP INDEX/i.test(q)) return none;
 
-    if (q === "SELECT * FROM entries WHERE id = ?") {
+    if (q === "SELECT * FROM entries WHERE id = ?" ||
+        q === "SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''") {
       const row = tables.entries.find((e) => e.id === args[0]);
-      return { results: row ? [row] : [], changes: 0 };
+      const active = row && (!q.includes("deleted_at") || !row.deleted_at);
+      return { results: active ? [row] : [], changes: 0 };
+    }
+    if (q === "SELECT COUNT(*) AS count FROM entries WHERE parent_entry_id = ? AND COALESCE(deleted_at, '') = ''") {
+      const count = tables.entries.filter((e) => e.parent_entry_id === args[0] && !e.deleted_at).length;
+      return { results: [{ count }], changes: 0 };
     }
     if (q === "UPDATE entries SET body = ?, fields_json = ?, updated_at = ? WHERE id = ?") {
       const row = tables.entries.find((e) => e.id === args[3]);

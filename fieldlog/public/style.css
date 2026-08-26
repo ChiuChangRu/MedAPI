@@ -1430,6 +1430,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .recording-editor-audio { display: grid; gap: 10px; }
 .recording-editor-audio section { padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
 .recording-editor-audio audio { width: 100%; margin-top: 9px; }
+.recording-audio-delete { margin-top: 8px; }
 
 .recording-action-list { display: grid; gap: 8px; margin-top: 12px; }
 .recording-action {

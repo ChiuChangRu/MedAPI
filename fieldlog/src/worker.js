@@ -130,7 +130,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "153";
+const UI_VERSION = "154";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1164,11 +1164,25 @@ async function handleApi(request, env, url, identity = {}) {
       db.prepare("SELECT * FROM folders WHERE id = ?").bind(targetId).first(),
     ]);
     if (!source || !target) return bad("找不到來源或目標資料夾", 404);
+    if (source.deleted_at || target.deleted_at) return bad("來源或目標資料夾已在垃圾桶，無法合併", 409);
     if (await isDescendantOf(db, targetId, sourceId)) return bad("不能合併到自己的子資料夾");
     const countRow = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE folder_id = ?").bind(sourceId).first();
     const moved = Number(countRow?.count || 0);
     const childRow = await db.prepare("SELECT COUNT(*) AS count FROM folders WHERE parent_id = ?").bind(sourceId).first();
     const childCount = Number(childRow?.count || 0);
+    // 合併會把來源的直屬子資料夾全部改掛到目標；若目標已經有同名子資料夾，
+    // 直接搬會形成同層同名而無法辨認哪一個是哪一個。先擋下，讓使用者先改名
+    // 或逐一合併，不在背後任意挑一邊覆蓋。
+    const childNameConflict = await db.prepare(
+      `SELECT s.name FROM folders s
+       JOIN folders t ON t.parent_id = ? AND LOWER(TRIM(t.name)) = LOWER(TRIM(s.name))
+       WHERE s.parent_id = ?
+         AND COALESCE(s.deleted_at, '') = '' AND COALESCE(t.deleted_at, '') = ''
+       LIMIT 1`
+    ).bind(targetId, sourceId).first();
+    if (childNameConflict) {
+      return bad(`兩邊都有「${childNameConflict.name}」子資料夾；請先重新命名或先合併這兩個子資料夾`, 409);
+    }
     // 子資料夾要跟著進目標資料夾，不能丟回來源的上層。
     // 舊行為（丟上層）會把「記事在 A/B 底下」拆成「記事進了目標、B 卻跑到別的
     // 分支」——同一批資料被劈成兩半，而且畫面上完全看不出發生過這件事。

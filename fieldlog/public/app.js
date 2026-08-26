@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "153";
+const APP_VERSION = "154";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -4524,6 +4524,7 @@ async function renderRecordingEditor(entryId, entry, audio) {
         <div class="recording-edit-fold-body recording-editor-audio">${audio.map((item, index) => `<section>
           <div class="recording-editor-segment-head"><strong>${audio.length > 1 ? `第 ${index + 1} 段` : "錄音"}</strong><span>${esc(item.filename)}｜${esc(fmtBytes(item.size))}${Number(item.duration_secs) > 0 ? `｜${esc(fmtSecs(item.duration_secs))}` : ""}</span></div>
           <audio controls preload="metadata" src="${fileUrlForKey(item.key)}"></audio>
+          <button class="btn small danger recording-audio-delete" type="button" data-audio-id="${item.id}" data-filename="${esc(item.filename)}">刪除這段錄音</button>
         </section>`).join("")}</div>
       </details>
       <details class="recording-edit-fold">
@@ -4556,6 +4557,27 @@ async function renderRecordingEditor(entryId, entry, audio) {
   $("folder-preview-manage").disabled = true;
   $("folder-preview-manage").onclick = null;
   $("recording-edit-cancel").onclick = returnToPreview;
+  body.querySelectorAll(".recording-audio-delete").forEach((button) => {
+    button.onclick = async () => {
+      const filename = button.dataset.filename || "這段錄音";
+      if (!confirm(`確定刪除「${filename}」？\n\n只刪除這一段音訊及其逐字稿；同一資料包的速記、照片和其他錄音不受影響。此操作無法復原。`)) return;
+      button.disabled = true;
+      button.textContent = "刪除中…";
+      try {
+        await api(`/attachments/${button.dataset.audioId}`, { method: "DELETE" });
+        showToast(`已刪除「${filename}」`);
+        await refreshFolderView();
+        const fresh = await api(`/entries/${entryId}`);
+        const remainingAudio = (fresh.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+        if (remainingAudio.length) await renderRecordingEditor(entryId, fresh, remainingAudio);
+        else clearFilePreview("錄音檔已全部刪除；資料包中的速記或其他附件仍保留。");
+      } catch (error) {
+        showToast("刪除錄音失敗：" + error.message);
+        button.disabled = false;
+        button.textContent = "刪除這段錄音";
+      }
+    };
+  });
   $("recording-edit-transcribe").onclick = async () => {
     if (!confirm(`重新轉錄 ${audio.length} 段錄音？\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。`)) return;
     const button = $("recording-edit-transcribe");
@@ -6587,7 +6609,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=153").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=154").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
