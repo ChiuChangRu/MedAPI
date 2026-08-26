@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "149";
+const APP_VERSION = "150";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -6234,6 +6234,7 @@ async function openAudioPhotoPopup() {
     });
   } catch (err) { showToast("無法開啟相機：" + err.message); return; }
   $("audio-photo-video").srcObject = AUDIO_PHOTO_STREAM;
+  $("audio-photo-count").textContent = AUDIO.photos ? `📷 ${AUDIO.photos}` : "";
   $("audio-photo-popup").style.display = "flex";
 }
 
@@ -6254,13 +6255,14 @@ async function audioPhotoSnap() {
   canvas.height = video.videoHeight;
   canvas.getContext("2d").drawImage(video, 0, 0);
   AUDIO.photos++;
+  $("audio-photo-count").textContent = `📷 ${AUDIO.photos}`;
   const { entryId } = AUDIO;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
   const filename = `照片-${fmtSecs(offset).replace(":", "")}.jpg`;
-  closeAudioPhotoPopup();
-  showToast(`已拍照（第 ${AUDIO.photos} 張）`);
-  try { await putFile(entryId, blob, filename, offset); }
-  catch { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); }
+  showToast(`第 ${AUDIO.photos} 張已拍攝，鏡頭保持開啟`);
+  // 不等待上傳完成才允許下一張：每張各自立即上傳，網路不穩則各自進離線佇列。
+  putFile(entryId, blob, filename, offset)
+    .catch(async () => { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); });
 }
 
 // 切到別的分頁/App（頁面隱藏）：錄影要用鏡頭、背景無法運作，維持自動結束存檔；
@@ -6270,7 +6272,7 @@ function onPageHidden() {
   if (VIDEO) { VIDEO.autoStopped = true; stopVideo(); }
   if (AUDIO && !AUDIO.ending) {
     AUDIO.backgroundAt ||= Date.now();
-    setAudioStatus("背景錄音中；請保留 Mywiki 頁籤，手機系統仍可能暫停麥克風");
+    setAudioStatus("背景錄音嘗試中；Android 較可能持續，iPhone 可能暫停，請勿鎖屏或關閉 MyWiki");
     // 先要求瀏覽器交出目前資料，降低稍後遭系統暫停時遺失整段的風險。
     try { if (AUDIO.recorder?.state === "recording") AUDIO.recorder.requestData(); } catch {}
   }
