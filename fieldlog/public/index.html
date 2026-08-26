@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=145" />
+<link rel="stylesheet" href="style.css?v=146" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -343,6 +343,21 @@
   </div>
 </div>
 
+<!-- 從 Windows／Finder 拖入或按「上傳檔案」時顯示。檔案可能很大，不能只在
+     按鈕上改字讓人猜是否仍在處理；逐檔顯示目前檔名、總進度與完成數。 -->
+<div class="overlay upload-loading-overlay" id="upload-loading-overlay" role="status" aria-live="polite" aria-modal="true" aria-busy="true">
+  <div class="modal narrow upload-loading-box">
+    <span class="view-loading-spinner" aria-hidden="true"></span>
+    <div class="view-loading-title">正在上傳檔案</div>
+    <p class="upload-loading-file" id="upload-loading-file">準備中…</p>
+    <div class="usage-bar upload-loading-bar" role="progressbar" aria-label="檔案上傳進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <i id="upload-loading-bar-fill" style="width:0%"></i>
+    </div>
+    <p class="sub" id="upload-loading-count">0 / 0</p>
+    <p class="sub upload-loading-destination" id="upload-loading-destination"></p>
+  </div>
+</div>
+
 <!-- 開啟 App 時的載入進度：資料夾／記事／附件變多，boot() 要打的 API 陸續
      跑完前畫面會空白一段時間，容易讓人以為當機。用百分比讓使用者知道還在動。 -->
 <div class="overlay boot-loading-overlay open" id="boot-loading-overlay" role="status" aria-live="polite" aria-busy="true">
@@ -464,11 +479,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=145"></script>
+<script src="app.js?v=146"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=145"></script>
+<script src="pdf-editor.js?v=146"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=145"></script>
+<script src="richtext-editor.js?v=146"></script>
 </body>
 </html>
