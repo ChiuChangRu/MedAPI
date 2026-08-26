@@ -80,21 +80,26 @@ body {
   .desktop-nav-divider { height: 1px; margin: 10px 8px; background: var(--border); }
   .desktop-nav-spacer { flex: 1; min-height: 18px; }
   .desktop-folder-tree { display: flex; flex-direction: column; gap: 9px; }
-  .desktop-tree-section { min-width: 0; }
+  .desktop-tree-section { min-width: 0; border-radius: 9px; }
+  .desktop-tree-section.drop-target {
+    outline: 3px solid var(--section-accent); outline-offset: 1px;
+    background: color-mix(in srgb, var(--section-bg) 34%, white); border-radius: 9px;
+  }
   .desktop-tree-section-head {
-    width: 100%; min-height: 38px; display: grid; grid-template-columns: 18px 24px minmax(0,1fr) auto;
-    align-items: center; gap: 5px; padding: 7px 9px; border: 0; border-radius: 8px;
+    width: 100%; min-height: 38px; display: flex; align-items: center; border-radius: 8px;
     background: color-mix(in srgb, var(--section-bg) 78%, white); color: var(--text);
-    text-align: left; cursor: pointer; font: inherit;
     box-shadow: inset 3px 0 0 var(--section-accent);
   }
   .desktop-tree-section-head:hover { filter: brightness(.97); }
-  .desktop-tree-section-head.drop-target {
-    outline: 3px solid var(--section-accent); outline-offset: 1px;
-    background: color-mix(in srgb, var(--section-bg) 58%, white);
+  .desktop-tree-section-toggle {
+    min-width: 0; flex: 1; min-height: 38px; display: grid; grid-template-columns: 18px 24px minmax(0,1fr) auto;
+    align-items: center; gap: 5px; padding: 7px 4px 7px 9px; border: 0; background: transparent;
+    color: inherit; text-align: left; cursor: pointer; font: inherit;
   }
-  .desktop-tree-section-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
-  .desktop-tree-section-head small { min-width: 22px; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .desktop-tree-section-toggle strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+  .desktop-tree-section-toggle small { min-width: 22px; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .desktop-tree-section-add { width: 30px; height: 30px; margin-right: 5px; flex: none; border: 0; border-radius: 6px; background: rgba(255,255,255,.72); color: var(--section-accent); font-size: 20px; line-height: 1; cursor: pointer; }
+  .desktop-tree-section-add:hover { background: #fff; }
   .desktop-tree-section-caret { color: var(--section-accent); font-weight: 800; text-align: center; }
   .desktop-tree-section-icon { text-align: center; }
   .desktop-tree-section-body { margin: 4px 0 0 17px; padding-left: 5px; border-left: 2px solid color-mix(in srgb, var(--section-accent) 24%, #e5e7eb); }
@@ -102,6 +107,8 @@ body {
     width: calc(100% - var(--tree-depth) * 15px); margin-left: calc(var(--tree-depth) * 15px);
     min-height: 37px; padding: 8px 8px; position: relative;
   }
+  .desktop-tree-row[draggable="true"] { cursor: grab; }
+  .desktop-tree-row.dragging { opacity: .46; cursor: grabbing; }
   .desktop-tree-row[data-depth]:not([data-depth="0"])::before {
     content: ""; position: absolute; left: -8px; top: 50%; width: 8px;
     border-top: 2px solid color-mix(in srgb, var(--section-accent) 28%, #e5e7eb);

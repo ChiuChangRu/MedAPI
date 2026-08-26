@@ -12,9 +12,9 @@ test("右欄子資料夾卡片可拖曳整棵資料夾", () => {
 });
 
 test("左側工作主目錄可接收整個資料夾", () => {
-  assert.match(app, /head\.ondragover = \(event\) =>/);
+  assert.match(app, /sectionNode\.ondragover = \(event\) =>/);
   assert.match(app, /moveFolderToSection\(folderId, section\)/);
   assert.match(app, /JSON\.stringify\(\{ parent_id: null, category: section \}\)/);
   assert.match(app, /actionLabel: "復原"/);
-  assert.match(css, /\.desktop-tree-section-head\.drop-target/);
+  assert.match(css, /\.desktop-tree-section\.drop-target/);
 });
