@@ -17,9 +17,16 @@ test("錄音中拍照維持取景器，直到使用者按完成", () => {
   assert.match(html, /id="audio-photo-count"/);
 });
 
-test("背景錄音提示誠實區分 Android 與 iPhone 限制", () => {
-  assert.match(app, /背景錄音嘗試中；Android 較可能持續，iPhone 可能暫停/);
+test("iOS 切到背景立即保存，其他平台才嘗試背景續錄", () => {
+  assert.match(app, /if \(isIOSMobile\(\)\)[\s\S]*AUDIO\.autoStopped = true;[\s\S]*stopAudio\(\)/);
+  assert.match(app, /iPhone 不支援可靠背景錄音，已結束並保存/);
+  assert.match(app, /背景錄音嘗試中；請勿鎖屏或關閉 MyWiki/);
   assert.match(app, /AUDIO\.recorder\?\.state === "recording"/);
   assert.match(app, /AUDIO\.recorder\.requestData\(\)/);
   assert.match(app, /resumeAudioOnForeground/);
+});
+
+test("iOS 拍照造成短暫 hidden 不會立刻關掉連拍取景器", () => {
+  assert.match(app, /AUDIO_PHOTO_HIDE_TIMER = setTimeout\([\s\S]*document\.hidden[\s\S]*1500/);
+  assert.match(app, /clearTimeout\(AUDIO_PHOTO_HIDE_TIMER\)/);
 });
