@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "145";
+const APP_VERSION = "146";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -3586,9 +3586,15 @@ async function openEntry(id) {
  */
 async function uploadStandaloneFiles(files, folderId, { button = null, destination = "" } = {}) {
   if (!files || !files.length) return;
+  if (UPLOAD_BATCH_ACTIVE) {
+    showToast("已有一批檔案正在上傳，請等完成後再拖入");
+    return;
+  }
 
   const label = button?.textContent || "";
   if (button) button.disabled = true;
+  UPLOAD_BATCH_ACTIVE = true;
+  showUploadProgress(files.length, destination);
   let uploaded = 0;
   let duplicates = 0;
   let failed = 0;
@@ -3597,6 +3603,7 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
     for (let index = 0; index < files.length; index++) {
       const file = files[index];
       if (button) button.textContent = `上傳中 ${index + 1}/${files.length}`;
+      updateUploadProgress(index, files.length, file.name);
       if (file.size > 50 * 1024 * 1024) {
         failed++;
         showToast(`${file.name} 超過 50MB，已略過`);
@@ -3625,14 +3632,48 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
     if (duplicates) parts.push(`略過 ${duplicates} 個重複檔`);
     if (failed) parts.push(`${failed} 個失敗`);
     showToast(parts.join("，"));
+    updateUploadProgress(files.length, files.length, failed ? "上傳完成（部分失敗）" : "上傳完成");
     await Promise.all([loadFolders(), loadRecent()]);
     if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === Number(folderId)) await openFolder(Number(folderId));
   } finally {
+    UPLOAD_BATCH_ACTIVE = false;
+    hideUploadProgress();
     if (button) {
       button.disabled = false;
       button.textContent = label;
     }
   }
+}
+
+let UPLOAD_BATCH_ACTIVE = false;
+let UPLOAD_PROGRESS_CLOSE_TIMER = 0;
+
+function showUploadProgress(total, destination = "") {
+  clearTimeout(UPLOAD_PROGRESS_CLOSE_TIMER);
+  $("upload-loading-overlay")?.classList.add("open");
+  $("upload-loading-overlay")?.setAttribute("aria-busy", "true");
+  if ($("upload-loading-destination")) {
+    $("upload-loading-destination").textContent = destination ? `存入${destination}` : "";
+  }
+  updateUploadProgress(0, total, "準備上傳…");
+}
+
+function updateUploadProgress(completed, total, filename) {
+  const safeTotal = Math.max(1, Number(total) || 1);
+  const safeCompleted = Math.min(safeTotal, Math.max(0, Number(completed) || 0));
+  const percent = Math.round((safeCompleted / safeTotal) * 100);
+  if ($("upload-loading-file")) $("upload-loading-file").textContent = filename || "正在上傳…";
+  if ($("upload-loading-count")) $("upload-loading-count").textContent = `${safeCompleted} / ${safeTotal}（${percent}%）`;
+  if ($("upload-loading-bar-fill")) $("upload-loading-bar-fill").style.width = `${percent}%`;
+  $("upload-loading-bar-fill")?.closest("[role=progressbar]")?.setAttribute("aria-valuenow", String(percent));
+}
+
+function hideUploadProgress() {
+  clearTimeout(UPLOAD_PROGRESS_CLOSE_TIMER);
+  UPLOAD_PROGRESS_CLOSE_TIMER = setTimeout(() => {
+    $("upload-loading-overlay")?.classList.remove("open");
+    $("upload-loading-overlay")?.setAttribute("aria-busy", "false");
+  }, 350);
 }
 
 /** 按工具列選檔是明確指定目前資料夾，維持直接放入目前位置。 */
