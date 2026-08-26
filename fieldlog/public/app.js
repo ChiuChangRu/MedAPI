@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "147";
+const APP_VERSION = "148";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1010,48 +1010,64 @@ function renderDesktopFolderTree() {
     const collapsed = COLLAPSED_FOLDER_SECTIONS.has(key);
     const body = collapsed ? "" : sectionRows.map(({ folder, depth, childCount }) => {
       const expanded = EXPANDED_FOLDER_IDS.has(Number(folder.id));
-      return `<div class="desktop-tree-row ${Number(CURRENT_FOLDER?.id) === Number(folder.id) ? "active" : ""}" data-id="${folder.id}" data-depth="${depth}" style="--tree-depth:${depth};--section-accent:${meta.accent}">
+      return `<div class="desktop-tree-row ${Number(CURRENT_FOLDER?.id) === Number(folder.id) ? "active" : ""}" data-id="${folder.id}" data-depth="${depth}" draggable="true" style="--tree-depth:${depth};--section-accent:${meta.accent}">
         ${childCount ? `<button class="desktop-tree-toggle" type="button" aria-label="${expanded ? "收合" : "展開"}${esc(folder.name)}">${expanded ? "▾" : "▸"}</button>` : `<span class="desktop-tree-toggle-spacer"></span>`}
         <span class="desktop-tree-folder-icon">${folder.parent_id ? "📁" : "📂"}</span>
         <span class="desktop-tree-name">${esc(folder.name)}</span>
       </div>`;
     }).join("");
     return `<section class="desktop-tree-section" data-section="${key}" style="--section-accent:${meta.accent};--section-bg:${meta.bg}">
-      <button class="desktop-tree-section-head" type="button" aria-expanded="${!collapsed}">
-        <span class="desktop-tree-section-caret">${collapsed ? "▸" : "▾"}</span>
-        <span class="desktop-tree-section-icon">${meta.icon}</span>
-        <strong>${esc(meta.label)}</strong><small>${total}</small>
-      </button>
+      <div class="desktop-tree-section-head">
+        <button class="desktop-tree-section-toggle" type="button" aria-expanded="${!collapsed}" aria-label="${collapsed ? "展開" : "收合"}${esc(meta.label)}">
+          <span class="desktop-tree-section-caret">${collapsed ? "▸" : "▾"}</span>
+          <span class="desktop-tree-section-icon">${meta.icon}</span>
+          <strong>${esc(meta.label)}</strong><small>${total}</small>
+        </button>
+        <button class="desktop-tree-section-add" type="button" data-section="${key}" aria-label="在${esc(meta.label)}新增資料夾" title="在${esc(meta.label)}新增資料夾">＋</button>
+      </div>
       <div class="desktop-tree-section-body">${body || (!collapsed && total === 0 ? `<span class="desktop-tree-empty">尚無資料</span>` : "")}</div>
     </section>`;
   }).join("");
-  wrap.querySelectorAll(".desktop-tree-section-head").forEach((head) => {
-    head.onclick = () => {
-      const key = head.closest(".desktop-tree-section").dataset.section;
+  wrap.querySelectorAll(".desktop-tree-section").forEach((sectionNode) => {
+    sectionNode.querySelector(".desktop-tree-section-toggle").onclick = () => {
+      const key = sectionNode.dataset.section;
       if (COLLAPSED_FOLDER_SECTIONS.has(key)) COLLAPSED_FOLDER_SECTIONS.delete(key);
       else COLLAPSED_FOLDER_SECTIONS.add(key);
       renderDesktopFolderTree();
     };
-    head.ondragover = (event) => {
+    sectionNode.querySelector(".desktop-tree-section-add").onclick = () => newFolderInSection(sectionNode.dataset.section);
+    sectionNode.ondragover = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
-      if (!types.includes("application/x-fieldlog-folder")) return;
+      if (!types.includes("application/x-fieldlog-folder") || event.target.closest(".desktop-tree-row")) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
-      head.classList.add("drop-target");
+      sectionNode.classList.add("drop-target");
     };
-    head.ondragleave = () => head.classList.remove("drop-target");
-    head.ondrop = (event) => {
+    sectionNode.ondragleave = (event) => {
+      if (!sectionNode.contains(event.relatedTarget)) sectionNode.classList.remove("drop-target");
+    };
+    sectionNode.ondrop = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
       if (!types.includes("application/x-fieldlog-folder")) return;
       event.preventDefault();
       event.stopPropagation();
-      head.classList.remove("drop-target");
+      sectionNode.classList.remove("drop-target");
       const folderId = Number(event.dataTransfer.getData("application/x-fieldlog-folder"));
-      const section = head.closest(".desktop-tree-section")?.dataset.section;
+      const section = sectionNode.dataset.section;
       if (folderId && section) moveFolderToSection(folderId, section);
     };
   });
   wrap.querySelectorAll(".desktop-tree-row").forEach((row) => {
+    row.ondragstart = (event) => {
+      event.stopPropagation();
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-fieldlog-folder", row.dataset.id);
+      row.classList.add("dragging");
+    };
+    row.ondragend = () => {
+      row.classList.remove("dragging");
+      wrap.querySelectorAll(".drop-target, .folder-merge-target").forEach((node) => node.classList.remove("drop-target", "folder-merge-target"));
+    };
     row.onclick = () => openFolder(Number(row.dataset.id));
     row.querySelector(".desktop-tree-toggle")?.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1827,6 +1843,23 @@ async function newFolder() {
   await api("/folders", { method: "POST", body: JSON.stringify(details) });
   showToast("資料夾已建立");
   loadFolders();
+}
+
+/** 彩色主分類是虛擬目錄；此入口在該分類建立真正可搬移的第一層資料夾。 */
+async function newFolderInSection(section) {
+  const meta = FOLDER_CATEGORY_META[section];
+  if (!meta) return;
+  const details = await askFolderDetails({
+    title: `在「${meta.label}」新增資料夾`,
+    desc: `建立「${meta.label}」的第一層資料夾`,
+    category: section,
+    parentId: null,
+  });
+  if (!details) return;
+  await api("/folders", { method: "POST", body: JSON.stringify({ ...details, category: section, parent_id: null }) });
+  COLLAPSED_FOLDER_SECTIONS.delete(section);
+  showToast(`已在「${meta.label}」建立資料夾`);
+  await loadFolders();
 }
 
 /**
