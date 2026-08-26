@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "151";
+const APP_VERSION = "152";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1258,7 +1258,42 @@ async function renameFolder(id) {
   if (details.name === folder.name && details.type === folder.type && !categoryChanged) return;
   await api(`/folders/${id}`, { method: "PUT", body: JSON.stringify(details) });
   showToast("資料夾已更新");
-  loadFolders();
+  await loadFolders();
+  // 若改的是目前開啟的資料夾，要同步刷新標題、麵包屑及左欄，不能只改資料庫。
+  if (Number(CURRENT_FOLDER?.id) === Number(id)) await openFolder(id);
+}
+
+function renderFolderBreadcrumb(folder) {
+  const chain = [];
+  let cursor = folder;
+  const visited = new Set();
+  while (cursor && !visited.has(Number(cursor.id))) {
+    visited.add(Number(cursor.id));
+    chain.unshift(cursor);
+    cursor = cursor.parent_id ? FOLDERS.find((item) => Number(item.id) === Number(cursor.parent_id)) : null;
+  }
+  const sectionKey = folderSectionKey(folder);
+  const section = FOLDER_CATEGORY_META[sectionKey] || FOLDER_CATEGORY_META.misc;
+  const parts = [
+    `<button type="button" data-section="${sectionKey}" title="回到${esc(section.label)}根目錄">${esc(section.label)}</button>`,
+    ...chain.map((item, index) => `<button type="button" data-folder-id="${item.id}" ${index === chain.length - 1 ? 'aria-current="page"' : ""}>${esc(item.name)}</button>`),
+  ];
+  const wrap = $("folder-title");
+  wrap.innerHTML = parts.join('<span class="folder-breadcrumb-sep" aria-hidden="true">／</span>');
+  wrap.querySelector("[data-section]").onclick = () => openWorkSectionRoot(sectionKey);
+  wrap.querySelectorAll("[data-folder-id]").forEach((button) => {
+    const targetId = Number(button.dataset.folderId);
+    if (targetId !== Number(folder.id)) button.onclick = () => openFolder(targetId);
+  });
+}
+
+async function openWorkSectionRoot(sectionKey) {
+  await Promise.all([loadFolders(), loadRecent()]);
+  CURRENT_FOLDER = null;
+  COLLAPSED_FOLDER_SECTIONS.delete(sectionKey);
+  renderDesktopFolderTree();
+  $("view-folder").style.display = "none";
+  $("view-home").style.display = "block";
 }
 
 /**
@@ -2069,7 +2104,7 @@ async function openFolder(id) {
   const parent = CURRENT_FOLDER.parent_id ? FOLDERS.find((f) => f.id === CURRENT_FOLDER.parent_id) : null;
   $("btn-back").textContent = parent ? `‹ ${parent.name}` : "‹ 回首頁";
   // 標題顯示完整路徑，四層架構下才看得出「現在在哪一層的哪個分支」
-  $("folder-title").textContent = folderDisplayPath(CURRENT_FOLDER).join(" ／ ");
+  renderFolderBreadcrumb(CURRENT_FOLDER);
   const activeView = matchMedia("(max-width: 719px)").matches ? "list" : INNER_FOLDER_VIEW;
   $("btn-inner-grid").classList.toggle("active", activeView === "grid");
   $("btn-inner-list").classList.toggle("active", activeView === "list");
@@ -3264,8 +3299,8 @@ async function openPendingFromDesktop() {
   });
 }
 
-async function backHome() {
-  if (CURRENT_FOLDER?.parent_id) return openFolder(CURRENT_FOLDER.parent_id);
+async function backHome(forceHome = false) {
+  if (!forceHome && CURRENT_FOLDER?.parent_id) return openFolder(CURRENT_FOLDER.parent_id);
   return withViewLoading("正在載入首頁…", async () => {
     await Promise.all([loadFolders(), loadRecent()]);
     CURRENT_FOLDER = null;
@@ -6381,6 +6416,7 @@ function init() {
   $("btn-inner-list").onclick = () => setInnerFolderView("list");
   $("btn-inner-details").onclick = () => setInnerFolderView("details");
   $("desktop-pending").onclick = openPendingFromDesktop;
+  $("desktop-home-link").onclick = () => backHome(true);
   $("desktop-new-folder").onclick = newFolder;
   $("desktop-trash").onclick = openTrash;
   // 桌機左欄的垃圾桶本身就是固定可見的目標，不必再把資料夾拖到畫面底部的
@@ -6465,6 +6501,7 @@ function init() {
   };
   $("btn-usage-refresh").onclick = loadUsage;
   $("btn-back").onclick = backHome;
+  $("btn-rename-current").onclick = () => { if (CURRENT_FOLDER) renameFolder(CURRENT_FOLDER.id); };
   $("btn-new-subfolder").onclick = newSubfolder;
   $("btn-video-f").onclick = () => startVideo(null);
   $("btn-photo-f").onclick = () => startPhoto(null);
@@ -6540,7 +6577,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=151").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=152").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

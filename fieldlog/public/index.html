@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>隨身記</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎒</text></svg>" />
+<title>MyWiki</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🩷</text></svg>" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 <meta name="theme-color" content="#0f766e" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=151" />
+<meta name="apple-mobile-web-app-title" content="MyWiki" />
+<link rel="stylesheet" href="style.css?v=152" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -22,7 +22,7 @@
      不屬於第一～第四階資料夾樹。 -->
 <aside class="desktop-explorer-nav" id="desktop-explorer-nav" aria-label="MyWiki 資料夾">
   <div class="desktop-explorer-title">
-    <span>🎒 MyWiki</span>
+    <button class="desktop-home-link" id="desktop-home-link" type="button" title="回 MyWiki 首頁"><span aria-hidden="true">🩷</span> MyWiki</button>
     <button class="desktop-sidebar-control" id="desktop-sidebar-close" type="button"
             aria-label="收合資料夾側欄" aria-controls="desktop-explorer-nav"
             aria-expanded="true" title="收合左欄">◀</button>
@@ -42,9 +42,8 @@
 <div class="container">
   <div id="view-home">
     <header class="home-app-head">
-      <h1>隨身記</h1>
       <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      <a class="head-link" href="help.html?v=151">📖 使用說明</a>
+      <a class="head-link" href="help.html?v=152">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
@@ -163,8 +162,9 @@
   <!-- 資料夾內頁 -->
   <div id="view-folder" style="display:none;">
     <div class="folder-head">
-      <button class="btn small ghost" id="btn-back">‹ 回首頁</button>
-      <h2 id="folder-title"></h2>
+      <button class="btn small ghost" id="btn-back" hidden>‹ 回首頁</button>
+      <nav id="folder-title" class="folder-breadcrumb" aria-label="目前資料夾路徑"></nav>
+      <button class="btn small ghost folder-rename-current" id="btn-rename-current" type="button" title="重新命名目前資料夾">✏️ 重新命名</button>
       <div class="folder-actions">
         <div class="folder-view-toggle inner-view-toggle" aria-label="資料夾內容顯示模式">
           <button class="btn small" id="btn-inner-grid" type="button" title="卡片模式">▦ 卡片</button>
@@ -479,11 +479,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=151"></script>
+<script src="app.js?v=152"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=151"></script>
+<script src="pdf-editor.js?v=152"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=151"></script>
+<script src="richtext-editor.js?v=152"></script>
 </body>
 </html>
