@@ -35,6 +35,12 @@ body {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     padding: 4px 6px 14px 10px; font-weight: 750; font-size: 17px;
   }
+  .desktop-home-link {
+    min-width: 0; display: inline-flex; align-items: center; gap: 7px; padding: 4px;
+    border: 0; border-radius: 7px; background: transparent; color: inherit;
+    cursor: pointer; font: inherit; font-weight: inherit;
+  }
+  .desktop-home-link:hover { background: #fff; }
   .desktop-sidebar-control, .desktop-sidebar-open {
     width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
     border: 0; border-radius: 8px; background: transparent; color: var(--text-muted);
@@ -99,7 +105,7 @@ body {
   }
   .desktop-tree-section-toggle strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
   .desktop-tree-section-toggle small { min-width: 22px; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
-  .desktop-tree-section-add { width: 24px; height: 24px; margin-right: 7px; flex: none; border: 0; border-radius: 5px; background: rgba(255,255,255,.72); color: var(--section-accent); font-size: 15px; line-height: 1; cursor: pointer; }
+  .desktop-tree-section-add { width: 20px; height: 20px; margin-right: 7px; flex: none; border: 0; border-radius: 5px; background: rgba(255,255,255,.72); color: var(--section-accent); font-size: 13px; line-height: 1; cursor: pointer; }
   .desktop-tree-section-add:hover { background: #fff; }
   .desktop-tree-section-caret { color: var(--section-accent); font-weight: 800; text-align: center; }
   .desktop-tree-section-icon { text-align: center; }
@@ -564,13 +570,23 @@ body {
 }
 
 .folder-head {
-  display: grid; grid-template-columns: auto minmax(240px, 1fr); align-items: center;
+  display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: center;
   gap: 10px; margin-bottom: 12px;
 }
-.folder-head h2 {
-  min-width: 0; margin: 0; font-size: 16px; line-height: 1.45;
-  word-break: normal; overflow-wrap: break-word;
+.folder-breadcrumb {
+  min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 16px; line-height: 1.45; font-weight: 750;
 }
+.folder-breadcrumb button {
+  min-width: 0; max-width: 100%; padding: 3px 5px; border: 0; border-radius: 5px;
+  background: transparent; color: inherit; cursor: pointer; font: inherit; font-weight: inherit;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.folder-breadcrumb button:hover { background: #e5ecea; color: var(--accent-dark); }
+.folder-breadcrumb button[aria-current="page"] { cursor: default; }
+.folder-breadcrumb button[aria-current="page"]:hover { background: transparent; color: inherit; }
+.folder-breadcrumb-sep { color: var(--text-muted); font-weight: 400; }
+.folder-rename-current { justify-self: end; white-space: nowrap; }
 /* 工具列固定另起一列。若跟路徑標題塞在同一列，按鈕多時 flex 會把中文標題
    壓成一個字寬，形成逐字直排；右側預覽欄開啟時問題會更嚴重。 */
 .folder-actions {
@@ -578,8 +594,9 @@ body {
 }
 @media (max-width: 719px) {
   .folder-head { grid-template-columns: 1fr; }
-  .folder-head > .btn, .folder-head h2, .folder-actions { grid-column: 1; }
+  .folder-head > .btn, .folder-breadcrumb, .folder-actions { grid-column: 1; }
   .folder-head > .btn { justify-self: start; }
+  .folder-rename-current { justify-self: start; }
 }
 
 /* ===== 按鈕 ===== */
