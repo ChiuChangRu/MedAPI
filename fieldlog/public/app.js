@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "148";
+const APP_VERSION = "149";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -842,7 +842,9 @@ async function loadFolders(preloadedFolders = null) {
 // Notion 側欄的頁面樹是同一種互動。EXPANDED_FOLDER_IDS 只存在記憶體裡、
 // 重新整理就重置，符合「預設跟上一版一樣」的要求。
 let EXPANDED_FOLDER_IDS = new Set();
-let COLLAPSED_FOLDER_SECTIONS = new Set();
+// 重新整理或首次開啟時，桌機左欄只顯示八個主分類；使用者主動展開後才顯示
+// 第一層資料夾。實體資料夾本身也沿用上面的 EXPANDED_FOLDER_IDS，預設不展開子層。
+let COLLAPSED_FOLDER_SECTIONS = new Set(WORK_SECTION_ORDER);
 
 /** 只留下「目前看得到」的列：根層一定看得到，其餘要一路往上追到全部祖先都展開才算 */
 function visibleFolderRows() {
@@ -6356,6 +6358,23 @@ function init() {
   $("desktop-pending").onclick = openPendingFromDesktop;
   $("desktop-new-folder").onclick = newFolder;
   $("desktop-trash").onclick = openTrash;
+  // 桌機左欄的垃圾桶本身就是固定可見的目標，不必再把資料夾拖到畫面底部的
+  // 浮動垃圾區。實際刪除仍交給 deleteFolder()，保留確認與 60 天還原機制。
+  $("desktop-trash").ondragover = (event) => {
+    if (!Array.from(event.dataTransfer?.types || []).includes("application/x-fieldlog-folder")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    $("desktop-trash").classList.add("trash-drop-target");
+  };
+  $("desktop-trash").ondragleave = () => $("desktop-trash").classList.remove("trash-drop-target");
+  $("desktop-trash").ondrop = (event) => {
+    if (!Array.from(event.dataTransfer?.types || []).includes("application/x-fieldlog-folder")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    $("desktop-trash").classList.remove("trash-drop-target");
+    const sourceId = Number(event.dataTransfer.getData("application/x-fieldlog-folder"));
+    if (sourceId) deleteFolder(sourceId);
+  };
   const closeTrash = () => { $("trash-overlay").classList.remove("open"); $("desktop-trash").classList.remove("active"); };
   $("trash-close").onclick = closeTrash;
   $("trash-overlay").addEventListener("click", (event) => { if (event.target === $("trash-overlay")) closeTrash(); });
