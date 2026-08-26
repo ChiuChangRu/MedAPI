@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "150";
+const APP_VERSION = "151";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -5597,8 +5597,9 @@ async function photoSnap() {
   const offset = session ? segOffset(session) : null;
   const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.88));
   const filename = `照片-${Date.now()}.jpg`;
-  try { await putFile(entryId, blob, filename, offset); }
-  catch { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); }
+  // 每張各自立即上傳，不等待網路完成；取景器保持開啟，使用者可繼續拍下一張。
+  putFile(entryId, blob, filename, offset)
+    .catch(async () => { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); });
 }
 
 function finishPhoto() {
@@ -6225,6 +6226,12 @@ async function resumeAudioOnForeground() {
 // 錄音中臨時拍照：另外開一個鏡頭串流，看得到畫面才拍，拍完立刻關閉鏡頭
 // （錄音本身走另一條 stream，鏡頭開關不會中斷錄音）
 let AUDIO_PHOTO_STREAM = null;
+let AUDIO_PHOTO_HIDE_TIMER = 0;
+
+function isIOSMobile() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
 
 async function openAudioPhotoPopup() {
   if (!AUDIO || AUDIO_PHOTO_STREAM) return;
@@ -6239,6 +6246,8 @@ async function openAudioPhotoPopup() {
 }
 
 function closeAudioPhotoPopup() {
+  clearTimeout(AUDIO_PHOTO_HIDE_TIMER);
+  AUDIO_PHOTO_HIDE_TIMER = 0;
   if (AUDIO_PHOTO_STREAM) AUDIO_PHOTO_STREAM.getTracks().forEach((t) => t.stop());
   AUDIO_PHOTO_STREAM = null;
   $("audio-photo-video").srcObject = null;
@@ -6265,18 +6274,32 @@ async function audioPhotoSnap() {
     .catch(async () => { await queueFile(entryId, blob, filename, offset); showToast("網路不穩，照片先存手機"); });
 }
 
-// 切到別的分頁/App（頁面隱藏）：錄影要用鏡頭、背景無法運作，維持自動結束存檔；
-// 純錄音則「不結束」，繼續在背景錄——Android 真的會繼續，iOS 系統會暫停但回前台
-// 自動接續、切走前錄的都保住。真正離開頁面前由 beforeunload 警告使用者。
+// 切到別的分頁/App（頁面隱藏）：錄影要用鏡頭，維持自動結束存檔。
+// iOS 無法可靠背景錄音，因此也立即收尾保存；其他平台才採最佳努力續錄。
 function onPageHidden() {
   if (VIDEO) { VIDEO.autoStopped = true; stopVideo(); }
   if (AUDIO && !AUDIO.ending) {
-    AUDIO.backgroundAt ||= Date.now();
-    setAudioStatus("背景錄音嘗試中；Android 較可能持續，iPhone 可能暫停，請勿鎖屏或關閉 MyWiki");
-    // 先要求瀏覽器交出目前資料，降低稍後遭系統暫停時遺失整段的風險。
-    try { if (AUDIO.recorder?.state === "recording") AUDIO.recorder.requestData(); } catch {}
+    // iOS/Safari 切到別的 App 會暫停網頁麥克風，無法做成可靠的背景錄音。
+    // 與其回來後讓使用者誤以為中間有錄到，不如立刻正常收尾保存。
+    if (isIOSMobile()) {
+      AUDIO.autoStopped = true;
+      setAudioStatus("iPhone 不支援可靠背景錄音，已結束並保存");
+      stopAudio();
+    } else {
+      AUDIO.backgroundAt ||= Date.now();
+      setAudioStatus("背景錄音嘗試中；請勿鎖屏或關閉 MyWiki");
+      // 先要求瀏覽器交出目前資料，降低稍後遭系統暫停時遺失整段的風險。
+      try { if (AUDIO.recorder?.state === "recording") AUDIO.recorder.requestData(); } catch {}
+    }
   }
-  if (AUDIO_PHOTO_STREAM) closeAudioPhotoPopup(); // 拍照鏡頭關掉，但錄音續錄
+  // iOS 拍照過程偶爾短暫送出 hidden；延遲確認仍在背景才關鏡頭，避免拍一張
+  // 就被誤判成切換 App。真的切走仍會在 1.5 秒後釋放鏡頭。
+  if (AUDIO_PHOTO_STREAM) {
+    clearTimeout(AUDIO_PHOTO_HIDE_TIMER);
+    AUDIO_PHOTO_HIDE_TIMER = setTimeout(() => {
+      if (document.hidden && AUDIO_PHOTO_STREAM) closeAudioPhotoPopup();
+    }, 1500);
+  }
 }
 
 function stopAnyActiveCapture() {
@@ -6287,7 +6310,7 @@ function stopAnyActiveCapture() {
 
 // pagehide 不是可靠的「真正關頁」訊號：手機切換 App、分頁凍結或記憶體回收前
 // 都可能送出，而且 persisted 在各瀏覽器生命週期中並不一致。這裡只切出目前資料，
-// 不主動 stopAudio；否則使用者只是把 Mywiki 放到背景，錄音就會被網頁自己終止。
+// 交由 onPageHidden 依平台處理：iOS 正常收尾，其他平台才嘗試背景續錄。
 function onPageHide(event) {
   onPageHidden();
 }
@@ -6503,8 +6526,12 @@ function init() {
     if (e.key === "Escape") closeImageViewer();
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) onPageHidden();     // 背景：錄影結束、錄音續錄
-    else resumeAudioOnForeground();          // 回前台：錄音若被系統中斷則接續
+    if (document.hidden) onPageHidden();     // 背景：iOS 收尾；其他平台嘗試續錄
+    else {
+      clearTimeout(AUDIO_PHOTO_HIDE_TIMER);
+      AUDIO_PHOTO_HIDE_TIMER = 0;
+      resumeAudioOnForeground();             // 回前台：非 iOS 錄音若被系統中斷則接續
+    }
   });
   // frozen/bfcache 回復不一定再送一次 visibilitychange，pageshow/resume 也要接。
   window.addEventListener("pageshow", resumeAudioOnForeground);
@@ -6513,7 +6540,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=151").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
