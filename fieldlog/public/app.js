@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "152";
+const APP_VERSION = "153";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -3066,7 +3066,9 @@ async function fetchTextPreview(url, maxChars) {
 
 const PREVIEW_WIDTH_KEY = "fieldlog_preview_width";
 const PREVIEW_WIDTH_MIN = 280;
-const PREVIEW_MAIN_MIN = 480;
+// 內容區原本硬保留 480px，右欄拉寬到一半就會卡住；280px 仍足夠顯示檔名，
+// 同時允許分隔線繼續往左拖，把大部分空間交給預覽／編輯。
+const PREVIEW_MAIN_MIN = 280;
 
 function setReaderFullscreen(enabled) {
   const isFullscreen = !!enabled;
@@ -4513,16 +4515,24 @@ async function renderRecordingEditor(entryId, entry, audio) {
   body.innerHTML = `<form class="recording-editor preview-editor" id="recording-preview-editor">
       <label for="recording-edit-title">名稱</label>
       <input id="recording-edit-title" maxlength="160" value="${esc(entry.title || "")}" />
-      <label for="recording-edit-note">速記</label>
-      <textarea id="recording-edit-note" placeholder="會議重點、待辦或錄音備註">${esc(plainEntryBody(entry))}</textarea>
-      <div class="recording-editor-transcripts">
-        <h3>逐字稿</h3>
-        ${audio.map((item, index) => `<section>
-          <div class="recording-editor-segment-head"><strong>${audio.length > 1 ? `第 ${index + 1} 段` : "錄音逐字稿"}</strong><span>${esc(item.filename)}｜${esc(fmtBytes(item.size))}${Number(item.duration_secs) > 0 ? `｜${esc(fmtSecs(item.duration_secs))}` : ""}</span></div>
+      <details class="recording-edit-fold">
+        <summary>✏️ 速記</summary>
+        <div class="recording-edit-fold-body"><textarea id="recording-edit-note" placeholder="會議重點、待辦或錄音備註">${esc(plainEntryBody(entry))}</textarea></div>
+      </details>
+      <details class="recording-edit-fold">
+        <summary>🎙️ 錄音（${audio.length} 段）</summary>
+        <div class="recording-edit-fold-body recording-editor-audio">${audio.map((item, index) => `<section>
+          <div class="recording-editor-segment-head"><strong>${audio.length > 1 ? `第 ${index + 1} 段` : "錄音"}</strong><span>${esc(item.filename)}｜${esc(fmtBytes(item.size))}${Number(item.duration_secs) > 0 ? `｜${esc(fmtSecs(item.duration_secs))}` : ""}</span></div>
           <audio controls preload="metadata" src="${fileUrlForKey(item.key)}"></audio>
+        </section>`).join("")}</div>
+      </details>
+      <details class="recording-edit-fold">
+        <summary>📝 逐字稿（${audio.length} 段）</summary>
+        <div class="recording-edit-fold-body recording-editor-transcripts">${audio.map((item, index) => `<section>
+          <div class="recording-editor-segment-head"><strong>${audio.length > 1 ? `第 ${index + 1} 段` : "逐字稿"}</strong><span>${esc(item.filename)}</span></div>
           <textarea class="recording-transcript-input" data-audio-id="${item.id}" placeholder="尚無逐字稿">${esc(item.transcript || "")}</textarea>
-        </section>`).join("")}
-      </div>
+        </section>`).join("")}</div>
+      </details>
       <section class="preview-management-panel recording-editor-management">
         <strong>錄音資料包管理</strong>
         <p class="sub">音訊、逐字稿與照片仍保留在同一資料包。</p>
@@ -6577,7 +6587,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=152").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=153").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
