@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="隨身記" />
-<link rel="stylesheet" href="style.css?v=149" />
+<link rel="stylesheet" href="style.css?v=150" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -463,13 +463,13 @@
   <button id="audio-stop-btn" type="button" title="結束">⏹</button>
 </div>
 
-<!-- 錄音中臨時拍照的小彈窗：看得到畫面才拍，拍完自動關閉鏡頭，錄音不中斷 -->
+<!-- 錄音中臨時拍照：保持取景、每張立即上傳，按「完成」才關閉；錄音不中斷 -->
 <div class="capture-overlay" id="audio-photo-popup" style="display:none;">
   <video id="audio-photo-video" autoplay playsinline muted></video>
   <div class="capture-controls">
-    <button id="audio-photo-cancel" class="capture-side-btn" type="button">✕<span>取消</span></button>
+    <button id="audio-photo-cancel" class="capture-side-btn" type="button">✓<span>完成</span></button>
     <button id="audio-photo-snap" class="capture-snap" type="button" title="拍照"></button>
-    <span></span>
+    <span id="audio-photo-count" class="capture-count" aria-live="polite"></span>
   </div>
 </div>
 
@@ -479,11 +479,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=149"></script>
+<script src="app.js?v=150"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=149"></script>
+<script src="pdf-editor.js?v=150"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=149"></script>
+<script src="richtext-editor.js?v=150"></script>
 </body>
 </html>
