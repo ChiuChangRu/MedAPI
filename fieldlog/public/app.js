@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "146";
+const APP_VERSION = "147";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -956,13 +956,18 @@ function renderFolders() {
     drag.ondragend = () => {
       el.classList.remove("dragging");
       document.body.classList.remove("folder-dragging");
-      wrap.querySelectorAll(".drop-target").forEach((x) => x.classList.remove("drop-target"));
+      document.querySelectorAll(".drop-target, .folder-merge-target").forEach((x) => x.classList.remove("drop-target", "folder-merge-target"));
     };
-    el.ondragover = (ev) => { ev.preventDefault(); el.classList.add("drop-target"); ev.dataTransfer.dropEffect = "move"; };
-    el.ondragleave = () => el.classList.remove("drop-target");
+    el.ondragover = (ev) => {
+      ev.preventDefault();
+      const isFolder = Array.from(ev.dataTransfer?.types || []).includes("application/x-fieldlog-folder");
+      el.classList.add(isFolder ? "folder-merge-target" : "drop-target");
+      ev.dataTransfer.dropEffect = "move";
+    };
+    el.ondragleave = () => el.classList.remove("drop-target", "folder-merge-target");
     el.ondrop = (ev) => {
       ev.preventDefault();
-      el.classList.remove("drop-target");
+      el.classList.remove("drop-target", "folder-merge-target");
       const targetId = Number(el.dataset.id);
       const entryId = Number(ev.dataTransfer.getData("application/x-fieldlog-entry"));
       if (entryId) {
@@ -971,17 +976,27 @@ function renderFolders() {
         return;
       }
       const sourceId = Number(ev.dataTransfer.getData("application/x-fieldlog-folder"));
-      if (sourceId && sourceId !== targetId) moveFolderDirect(sourceId, targetId);
+      if (sourceId && sourceId !== targetId) mergeFolderDirect(sourceId, targetId);
     };
   });
 }
 
-async function moveFolderDirect(sourceId, targetId) {
+async function mergeFolderDirect(sourceId, targetId) {
+  const source = FOLDERS.find((folder) => Number(folder.id) === Number(sourceId));
+  const target = FOLDERS.find((folder) => Number(folder.id) === Number(targetId));
+  if (!source || !target || sourceId === targetId) return;
+  const ok = confirm(`將資料夾「${source.name}」合併至「${target.name}」？\n\n「${source.name}」裡的記事與子資料夾會全部移入，完成後來源資料夾會消失。`);
+  if (!ok) return;
   try {
-    await api(`/folders/${sourceId}`, { method: "PUT", body: JSON.stringify({ parent_id: targetId }) });
-    showToast("資料夾已移動");
-    await loadFolders();
-  } catch (error) { showToast("移動失敗：" + error.message); }
+    const result = await api(`/folders/${sourceId}/merge`, {
+      method: "POST",
+      body: JSON.stringify({ target_id: targetId }),
+    });
+    showToast(`已合併至「${target.name}」：${result.moved || 0} 筆記事、${result.moved_children || 0} 個子資料夾`);
+    await Promise.all([loadFolders(), loadRecent()]);
+    if (Number(CURRENT_FOLDER?.id) === Number(sourceId)) await openFolder(targetId);
+    else if (CURRENT_FOLDER) await refreshFolderView();
+  } catch (error) { showToast("合併失敗：" + error.message); }
 }
 
 function renderDesktopFolderTree() {
@@ -1047,13 +1062,14 @@ function renderDesktopFolderTree() {
     row.ondragover = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
       if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder") && !types.includes("application/x-fieldlog-attachment")) return;
-      event.preventDefault(); event.dataTransfer.dropEffect = "move"; row.classList.add("drop-target");
+      event.preventDefault(); event.dataTransfer.dropEffect = "move";
+      row.classList.add(types.includes("application/x-fieldlog-folder") ? "folder-merge-target" : "drop-target");
     };
-    row.ondragleave = () => row.classList.remove("drop-target");
+    row.ondragleave = () => row.classList.remove("drop-target", "folder-merge-target");
     row.ondrop = (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
       if (!types.includes("application/x-fieldlog-entry") && !types.includes("application/x-fieldlog-folder") && !types.includes("application/x-fieldlog-attachment")) return;
-      event.preventDefault(); event.stopPropagation(); row.classList.remove("drop-target");
+      event.preventDefault(); event.stopPropagation(); row.classList.remove("drop-target", "folder-merge-target");
       const targetId = Number(row.dataset.id);
       const entryId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
       const folderId = Number(event.dataTransfer.getData("application/x-fieldlog-folder"));
@@ -1063,7 +1079,7 @@ function renderDesktopFolderTree() {
         catch { showToast("無法讀取拖曳的檔案"); return; }
         if (payload?.attachmentId) moveAttachmentToFolder(payload, targetId);
       } else if (entryId) moveInboxEntry(entryId, targetId, Number(event.dataTransfer.getData("application/x-fieldlog-entry-folder")) || null);
-      else if (folderId && folderId !== targetId) moveFolderDirect(folderId, targetId);
+      else if (folderId && folderId !== targetId) mergeFolderDirect(folderId, targetId);
     };
   });
 }
@@ -1898,7 +1914,7 @@ function bindChildFolderCards(wrap) {
     el.ondragend = () => {
       el.classList.remove("dragging");
       document.body.classList.remove("folder-dragging");
-      document.querySelectorAll(".drop-target").forEach((target) => target.classList.remove("drop-target"));
+      document.querySelectorAll(".drop-target, .folder-merge-target").forEach((target) => target.classList.remove("drop-target", "folder-merge-target"));
     };
   });
 }
@@ -3072,6 +3088,10 @@ function hasEntryDrag(event) {
   return Array.from(event.dataTransfer?.types || []).includes("application/x-fieldlog-entry");
 }
 
+function hasFolderDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("application/x-fieldlog-folder");
+}
+
 /**
  * 子資料夾卡片當放置目標：把檔案或已分類記事拖進去就搬過去。
  *
@@ -3085,21 +3105,26 @@ function hasEntryDrag(event) {
 function bindFolderDropTargets() {
   document.querySelectorAll(".child-folder-card[data-id]").forEach((card) => {
     card.ondragover = (event) => {
-      if (!hasAttachmentDrag(event) && !hasEntryDrag(event)) return;
+      if (!hasAttachmentDrag(event) && !hasEntryDrag(event) && !hasFolderDrag(event)) return;
       event.preventDefault();
       event.stopPropagation();
       event.dataTransfer.dropEffect = "move";
-      card.classList.add("file-drop-target");
+      card.classList.add(hasFolderDrag(event) ? "folder-merge-target" : "file-drop-target");
     };
-    card.ondragleave = () => card.classList.remove("file-drop-target");
+    card.ondragleave = () => card.classList.remove("file-drop-target", "folder-merge-target");
     card.ondrop = async (event) => {
-      if (!hasAttachmentDrag(event) && !hasEntryDrag(event)) return;
+      if (!hasAttachmentDrag(event) && !hasEntryDrag(event) && !hasFolderDrag(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      card.classList.remove("file-drop-target");
+      card.classList.remove("file-drop-target", "folder-merge-target");
       const targetId = Number(card.dataset.id || 0);
       const targetName = card.querySelector("strong")?.textContent?.trim() || "子資料夾";
       if (!targetId) return;
+      if (hasFolderDrag(event)) {
+        const sourceId = Number(event.dataTransfer.getData("application/x-fieldlog-folder"));
+        if (sourceId && sourceId !== targetId) await mergeFolderDirect(sourceId, targetId);
+        return;
+      }
       if (hasEntryDrag(event)) {
         const entryId = Number(event.dataTransfer.getData("application/x-fieldlog-entry"));
         const prevFolder = event.dataTransfer.getData("application/x-fieldlog-entry-folder");
