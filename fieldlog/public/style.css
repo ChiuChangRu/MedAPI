@@ -613,6 +613,12 @@ body {
 }
 .view-loading-title { font-size: 16px; font-weight: 750; overflow-wrap: anywhere; }
 .view-loading-box .sub { margin: 8px 0 0; }
+.upload-loading-overlay { z-index: 125; align-items: center; padding: 14px; cursor: wait; }
+.upload-loading-box { max-width: 360px; margin: 0 !important; text-align: center; box-shadow: 0 18px 50px rgba(15, 23, 42, .24); }
+.upload-loading-file { min-height: 24px; margin: 4px 0 10px; font-weight: 650; overflow-wrap: anywhere; }
+.upload-loading-bar { height: 10px; }
+.upload-loading-bar i { transition: width .2s ease; }
+.upload-loading-destination { min-height: 18px; }
 @keyframes view-loading-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .view-loading-spinner { animation-duration: 1.5s; }
