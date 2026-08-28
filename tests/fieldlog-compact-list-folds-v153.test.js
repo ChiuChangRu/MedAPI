@@ -18,6 +18,12 @@ test("清單模式只保留名稱並使用緊湊列，詳細模式維持完整�
   assert.doesNotMatch(css, /\.folder-content-list\.list-view > \.entry-row,\s*\.folder-content-list\.details-view/);
 });
 
+test("詳細模式的檔名獨佔第一行，日期與操作移到第二行", () => {
+  assert.match(css, /\.folder-content-list\.details-view > \.folder-file-row \{[\s\S]*grid-template-areas:\s*"icon name name name"\s*"icon meta delete manage"/);
+  assert.match(css, /details-view > \.folder-file-row \.folder-file-name \{[\s\S]*-webkit-line-clamp: 2/);
+  assert.match(css, /details-view > \.folder-file-row \.folder-file-meta \{[\s\S]*text-overflow: ellipsis/);
+});
+
 test("錄音編輯的速記、錄音及逐字稿是預設收折的獨立區塊", () => {
   for (const title of ["✏️ 速記", "🎙️ 錄音", "📝 逐字稿"]) assert.ok(app.includes(`<summary>${title}`));
   assert.equal((app.match(/<details class="recording-edit-fold">/g) || []).length, 3);
