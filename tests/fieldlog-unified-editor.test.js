@@ -48,3 +48,15 @@ test("桌機右欄的一般記事統一使用 Word 類富文字編輯器", async
   assert.match(css, /\.word-note-page/);
   assert.match(css, /\.word-rich-editor \.ql-editor/);
 });
+
+test("Word 編輯器不把 1.、-、* 自動轉成清單，工具列清單仍保留", async () => {
+  const editor = await read("../fieldlog/public/richtext-editor.js");
+  assert.match(editor, /"list autofill": \{/,
+    "要用 Quill 的同名 keyboard binding 覆寫內建自動清單");
+  assert.match(editor, /prefix: \/\(\?!\)\//,
+    "自動清單 binding 必須使用不可能匹配的 prefix");
+  assert.match(editor, /keyboard: \{ bindings: KEYBOARD_BINDINGS \}/,
+    "覆寫必須在 Quill 初始化時注入，初始化後新增會晚於內建 binding");
+  assert.match(editor, /\[\{ list: "ordered" \}, \{ list: "bullet" \}\]/,
+    "手動編號與項目符號按鈕仍要保留");
+});
