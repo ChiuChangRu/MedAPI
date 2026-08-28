@@ -23,6 +23,19 @@
     ["clean"],
   ];
 
+  // Quill 2 內建的「list autofill」會在行首輸入 `1.`、`-`、`*` 後按空白時，
+  // 自動把一般文字轉成編號／項目清單。這對日期、試驗步驟與原始紀錄很容易
+  // 誤判。用同名設定覆寫內建 binding，讓一般空白照常輸入；工具列上的兩種
+  // 清單按鈕仍保留，只有使用者主動選擇時才套用清單格式。
+  const KEYBOARD_BINDINGS = {
+    "list autofill": {
+      key: " ",
+      collapsed: true,
+      prefix: /(?!)/,
+      handler() { return true; },
+    },
+  };
+
   /**
    * 蠟筆重點、字體大小、對齊方式都要存成 class（ql-bg-yellow／ql-size-large／
    * ql-align-center）而不是 Quill 預設的行內 style="…"。理由是後端
@@ -233,7 +246,13 @@
   function init(container, initialHtml, opts = {}) {
     if (!container || !window.Quill) return null;
     registerFormats();
-    const quill = new window.Quill(container, { theme: "snow", modules: { toolbar: TOOLBAR } });
+    const quill = new window.Quill(container, {
+      theme: "snow",
+      modules: {
+        toolbar: TOOLBAR,
+        keyboard: { bindings: KEYBOARD_BINDINGS },
+      },
+    });
     // 貼上從別處複製來的內容（例如從附件清單複製了縮圖＋擷取文字那一整段）時，
     // Quill 預設會原樣保留裡面的 <img>——那張圖不是透過這篇記事的附件流程建立
     // 的，src 通常連不到（或連到別筆記事的檔案，甚至帶著舊 PIN），畫面上會變
