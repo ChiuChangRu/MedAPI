@@ -1522,6 +1522,28 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 }
 .folder-file-delete { grid-column: 4; grid-row: 1; color: #b91c1c; }
 .folder-file-manage { grid-column: 5; grid-row: 1; justify-self: end; white-space: nowrap; }
+/* 詳細模式的窄欄也要讓檔名保有完整主欄。日期與操作移到第二行，
+   避免右側預覽拉寬後，長檔名被擠成一個字一行。 */
+.folder-content-list.details-view > .folder-file-row {
+  grid-template-columns: 28px minmax(0, 1fr) 40px 40px;
+  grid-template-areas:
+    "icon name name name"
+    "icon meta delete manage";
+  column-gap: 8px; row-gap: 5px;
+}
+.folder-content-list.details-view > .folder-file-row .folder-file-icon {
+  grid-area: icon;
+}
+.folder-content-list.details-view > .folder-file-row .folder-file-name {
+  grid-area: name; display: -webkit-box; min-width: 0; overflow: hidden;
+  overflow-wrap: anywhere; line-height: 1.45;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.folder-content-list.details-view > .folder-file-row .folder-file-meta {
+  grid-area: meta; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.folder-content-list.details-view > .folder-file-row .folder-file-delete { grid-area: delete; }
+.folder-content-list.details-view > .folder-file-row .folder-file-manage { grid-area: manage; }
 /* 拖曳中的放置目標提示 */
 .child-folder-card.file-drop-target {
   outline: 3px solid #0f766e; outline-offset: 2px; background: #ecfdf9;
