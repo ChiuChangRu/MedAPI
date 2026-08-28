@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "155";
+const APP_VERSION = "156";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2483,20 +2483,45 @@ async function renderEntryEditor(entryId) {
   const entry = await api(`/entries/${entryId}`);
   const body = $("folder-preview-body");
   const fields = visibleEntryFields(entry);
-  const isWeeklyReport = (() => {
-    try { return JSON.parse(entry.fields_json || "{}")._kind === "weekly_report"; } catch { return false; }
+  const rawFields = (() => {
+    try { return JSON.parse(entry.fields_json || "{}"); } catch { return {}; }
   })();
-  const hasLegacyRichBody = entry.body_format === "html";
+  const isWeeklyReport = (() => {
+    try { return rawFields._kind === "weekly_report"; } catch { return false; }
+  })();
+  const isSynced = !!(rawFields._sid || rawFields.litdb_id);
+  const useRichEditor = !isWeeklyReport && !isSynced;
+  const initialHtml = entry.body_format === "html"
+    ? String(entry.body || "")
+    : textToHtmlForEditor(entry.body || "");
   $("folder-preview-title").textContent = `編輯｜${entry.title || "記事"}`;
-  body.innerHTML = `<form class="preview-editor" id="entry-preview-editor">
-    <label for="preview-entry-title">名稱</label>
-    <input id="preview-entry-title" maxlength="160" value="${esc(entry.title || "")}" ${isWeeklyReport ? "disabled" : ""} />
-    ${!isWeeklyReport && !hasLegacyRichBody ? `<label for="preview-entry-body">內容</label><textarea id="preview-entry-body">${esc(plainEntryBody(entry))}</textarea>` : ""}
-    ${hasLegacyRichBody ? '<p class="sub">這是舊版富文字資料。為避免破壞原排版，舊內文維持唯讀；名稱與欄位仍只在右欄修改，不再開啟第二套編輯框。</p>' : ""}
-    ${fields.map(([key, value], index) => `<label for="preview-entry-field-${index}">${esc(key)}</label>
-      <textarea id="preview-entry-field-${index}" data-field="${esc(key)}">${esc(String(value || ""))}</textarea>`).join("")}
+  body.innerHTML = `<form class="preview-editor word-note-editor" id="entry-preview-editor">
+    <main class="word-note-page">
+      <input id="preview-entry-title" class="word-note-title" maxlength="160" value="${esc(entry.title || "")}" aria-label="文件名稱" placeholder="文件名稱" ${isWeeklyReport ? "disabled" : ""} />
+      ${useRichEditor ? `<div id="preview-entry-rich" class="rich-editor word-rich-editor" aria-label="文件內容"></div>` : ""}
+      ${isSynced ? `<div class="word-note-plain">
+        <p class="sub">🔒 此記事由外部來源同步管理，保留純文字以免同步標記遺失。</p>
+        <textarea id="preview-entry-body" aria-label="文件內容">${esc(entry.body || "")}</textarea>
+      </div>` : ""}
+      ${fields.length ? `<details class="word-note-fields" ${isWeeklyReport ? "open" : ""}>
+        <summary>${isWeeklyReport ? "週報內容" : `其他欄位（${fields.length}）`}</summary>
+        <div>${fields.map(([key, value], index) => `<label for="preview-entry-field-${index}">${esc(key)}</label>
+          <textarea id="preview-entry-field-${index}" data-field="${esc(key)}">${esc(String(value || ""))}</textarea>`).join("")}</div>
+      </details>` : ""}
+    </main>
     <div class="preview-editor-actions"><button class="btn primary" id="preview-entry-save" type="submit">儲存</button><button class="btn" id="preview-entry-cancel" type="button">取消</button></div>
   </form>`;
+  let richEditor = null;
+  if (useRichEditor) {
+    const editorElement = $("preview-entry-rich");
+    richEditor = window.fieldlogRichEditor?.init(editorElement, injectFilePinForDisplay(initialHtml), {
+      onImagePaste: (file) => insertFilesIntoRichEditor(entryId, editorElement, [file]),
+    });
+    setupRichImageDropZone(editorElement, entryId);
+    if (!richEditor) {
+      editorElement.innerHTML = `<p class="editor-load-error">文件編輯器載入失敗，請重新整理頁面後再試；本次不會覆寫原內容。</p>`;
+    }
+  }
   const returnToPreview = () => showEntryPreview(entryId).catch((error) => showToast("預覽失敗：" + error.message));
   $("folder-preview-open").hidden = true;
   $("folder-preview-edit").hidden = false;
@@ -2513,7 +2538,11 @@ async function renderEntryEditor(entryId) {
     const patch = { fields: {} };
     if (!isWeeklyReport) {
       patch.title = title;
-      if (!hasLegacyRichBody) {
+      if (useRichEditor) {
+        if (!richEditor) return showToast("文件編輯器尚未載入，原內容未變更");
+        patch.body = stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("preview-entry-rich")) || "");
+        patch.body_format = "html";
+      } else if (isSynced) {
         patch.body = $("preview-entry-body").value.trim();
         patch.body_format = "text";
       }
@@ -6609,7 +6638,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=155").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=156").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

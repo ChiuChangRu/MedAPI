@@ -29,3 +29,22 @@ test("桌機記事與附件只能在右側欄預覽及編輯", async () => {
   assert.match(app, /return withViewLoading\("正在載入編輯欄…"/);
   assert.match(app, /return withViewLoading\("正在載入檔案編輯欄…"/);
 });
+
+test("桌機右欄的一般記事統一使用 Word 類富文字編輯器", async () => {
+  const [app, css] = await Promise.all([
+    read("../fieldlog/public/app.js"),
+    read("../fieldlog/public/style.css"),
+  ]);
+  const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
+  assert.ok(editor, "應能定位桌機右欄記事編輯器");
+  assert.match(editor, /id="preview-entry-rich"/);
+  assert.match(editor, /fieldlogRichEditor\?\.init/);
+  assert.match(editor, /textToHtmlForEditor\(entry\.body \|\| ""\)/,
+    "舊純文字記事要直接載入同一編輯器");
+  assert.match(editor, /patch\.body_format = "html"/,
+    "一般記事儲存後要統一成富文字格式");
+  assert.doesNotMatch(editor, /舊版富文字資料|舊內文維持唯讀/,
+    "富文字記事不能再被錯誤鎖成唯讀");
+  assert.match(css, /\.word-note-page/);
+  assert.match(css, /\.word-rich-editor \.ql-editor/);
+});

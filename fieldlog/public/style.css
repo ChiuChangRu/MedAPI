@@ -1164,6 +1164,35 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .preview-editor textarea { min-height: 120px; line-height: 1.6; resize: vertical; }
   .preview-editor textarea.preview-index-text { min-height: 260px; font-family: Consolas, "Microsoft JhengHei", sans-serif; }
   .preview-editor .sub { margin: -4px 0 0; }
+  .word-note-editor {
+    padding: 18px 18px 0; gap: 0; background: #eef1f4;
+  }
+  .word-note-page {
+    width: min(100%, 860px); min-height: calc(100vh - 245px); margin: 0 auto;
+    padding: clamp(22px, 4vw, 52px); border: 1px solid #d9dee5; background: #fff;
+    box-shadow: 0 3px 14px rgba(15, 23, 42, .08);
+  }
+  .preview-editor input.word-note-title {
+    margin: 0 0 18px; padding: 0 0 12px; border: 0; border-bottom: 1px solid #d9dee5;
+    border-radius: 0; box-shadow: none; font-size: clamp(22px, 2.4vw, 32px); font-weight: 700;
+    line-height: 1.25;
+  }
+  .preview-editor input.word-note-title:focus { border-color: var(--accent); box-shadow: none; }
+  .word-rich-editor { border-color: #d9dee5; border-radius: 4px; overflow: visible; }
+  .word-rich-editor .ql-toolbar {
+    position: sticky; top: 0; z-index: 3; background: #f8fafc; border-bottom-color: #d9dee5;
+  }
+  .word-rich-editor .ql-editor { min-height: 440px; padding: 22px; font-size: 16px; line-height: 1.75; }
+  .word-note-fields { margin-top: 20px; border-top: 1px solid #d9dee5; }
+  .word-note-fields > summary { padding: 13px 0; font-weight: 700; cursor: pointer; }
+  .word-note-fields > div { display: grid; gap: 8px; padding-bottom: 8px; }
+  .word-note-fields label { margin-top: 8px; font-size: 13px; font-weight: 700; }
+  .word-note-plain textarea { min-height: 440px; font-size: 16px; line-height: 1.75; }
+  .editor-load-error { margin: 0; padding: 18px; color: #991b1b; background: #fef2f2; line-height: 1.6; }
+  .word-note-editor > .preview-editor-actions {
+    width: calc(100% + 36px); margin: 0 -18px; padding: 12px 18px;
+    box-shadow: 0 -4px 14px rgba(15, 23, 42, .06);
+  }
   .preview-processing-panel, .preview-management-panel {
     margin-top: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #f8faf9;
   }
