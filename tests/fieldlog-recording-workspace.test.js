@@ -71,12 +71,14 @@ test("一般檔案也在右欄編輯名稱、Note、分類與索引文字", asyn
   assert.match(editor, /attachments\/\$\{attachmentId\}\/category/);
 });
 
-test("純記事與一般資料包也使用右欄預覽／編輯", async () => {
+test("純記事與一般資料包直接使用同一個右欄 Word 畫面", async () => {
   const app = await read("../fieldlog/public/app.js");
   assert.match(app, /async function showEntryPreview\(entryId\)/);
   assert.match(app, /async function showEntryEditor\(entryId\)/);
   assert.match(app, /entry-preview-editor/);
-  assert.match(app, /entry-side-attachments/);
+  const preview = app.match(/async function showEntryPreview\(entryId\)[\s\S]*?\n}/)?.[0] || "";
+  assert.match(preview, /return showEntryEditor\(entryId\)/);
+  assert.doesNotMatch(app, /entry-side-attachments/);
   const rows = app.match(/function bindEntryRows\(wrap\)[\s\S]*?\n}\n/)?.[0] || "";
   assert.match(rows, /showEntryPreview\(entryId\)/);
   const packages = app.match(/function bindRecordGroupCards\(\)[\s\S]*?\n}\n/)?.[0] || "";

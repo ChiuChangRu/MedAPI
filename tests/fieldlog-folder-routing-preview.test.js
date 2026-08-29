@@ -70,7 +70,7 @@ test("預覽可開關、可調欄寬並記住設定", async () => {
   assert.match(css, /\.folder-workspace\.preview-off/);
 });
 
-test("桌機點選筆記先在右欄唯讀閱讀，另有編輯與全欄寬模式", async () => {
+test("桌機點選筆記直接使用同一個 Word 文件畫面", async () => {
   const [app, html, css] = await Promise.all([
     read("../fieldlog/public/app.js"), read("../fieldlog/public/index.html"), read("../fieldlog/public/style.css"),
   ]);
@@ -79,10 +79,12 @@ test("桌機點選筆記先在右欄唯讀閱讀，另有編輯與全欄寬模�
   assert.match(html, /id="folder-preview-close"/);
   assert.match(app, /async function showEntryPreview\(entryId\)/);
   assert.match(app, /function setReaderFullscreen\(enabled\)/);
-  assert.match(app, /entry-side-preview/);
+  const preview = app.match(/async function showEntryPreview\(entryId\)[\s\S]*?\n}/)?.[0] || "";
+  assert.match(preview, /return showEntryEditor\(entryId\)/);
+  assert.doesNotMatch(app, /async function renderEntryPreview/);
+  assert.doesNotMatch(app, /entry-side-preview/);
   assert.match(app, /preview-editor/);
   assert.match(css, /body\.reader-fullscreen/);
-  assert.match(css, /\.entry-side-preview/);
   assert.match(css, /\.preview-editor/);
 });
 
@@ -97,7 +99,8 @@ test("一般記事與週報都統一在右欄編輯，週報欄位由 fields_jso
   assert.match(editor, /fieldlogRichEditor\?\.init/);
   assert.match(html, /id="folder-preview-save"/);
   assert.match(editor, /\$\("folder-preview-save"\)\.onclick = \(\) => \$\("entry-preview-editor"\)\.requestSubmit\(\)/);
-  assert.match(editor, /\$\("folder-preview-edit"\)\.textContent = "取消"/);
-  assert.match(editor, /showEntryPreview\(entryId\)/);
+  assert.match(editor, /\$\("folder-preview-edit"\)\.textContent = "還原"/);
+  assert.match(editor, /showEntryEditor\(entryId\)/);
+  assert.doesNotMatch(editor, /showEntryPreview\(entryId\)/);
   assert.match(css, /\.preview-editor/);
 });

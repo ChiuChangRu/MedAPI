@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "162";
+const APP_VERSION = "163";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2441,44 +2441,9 @@ function visibleEntryFields(entry) {
 }
 
 async function showEntryPreview(entryId) {
-  if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openEntry(entryId);
-  return withViewLoading("正在載入紀錄…", () => renderEntryPreview(entryId));
-}
-
-async function renderEntryPreview(entryId) {
-  const entry = await api(`/entries/${entryId}`);
-  const body = $("folder-preview-body");
-  const fields = visibleEntryFields(entry);
-  const attachments = (entry.attachments || []).filter((item) => !item.source_pdf_id);
-  document.querySelectorAll(".preview-selected").forEach((row) => row.classList.remove("preview-selected"));
-  document.querySelector(`.entry-row[data-id="${entryId}"], .record-group-card[data-id="${entryId}"]`)?.classList.add("preview-selected");
-  $("folder-preview").dataset.entryId = String(entryId);
-  $("folder-preview").dataset.attachmentId = "";
-  $("folder-preview-title").textContent = entry.title || "記事";
-  body.innerHTML = `<article class="entry-side-preview">
-    ${plainEntryBody(entry).trim() ? `<section><h3>內容</h3><pre>${esc(plainEntryBody(entry).trim())}</pre></section>` : ""}
-    ${fields.map(([key, value]) => `<section><h3>${esc(key)}</h3><pre>${esc(String(value || ""))}</pre></section>`).join("")}
-    ${attachments.length ? `<section><h3>附件（${attachments.length}）</h3><div class="entry-side-attachments">${attachments.map((item) =>
-      `<button type="button" data-id="${item.id}">${esc(item.filename || "附件")}<small>${esc(fmtBytes(item.size))}</small></button>`).join("")}</div></section>` : ""}
-    ${!plainEntryBody(entry).trim() && !fields.length && !attachments.length ? '<p class="folder-preview-empty">這筆記事目前沒有內容。</p>' : ""}
-  </article>`;
-  body.querySelectorAll(".entry-side-attachments button").forEach((button) => {
-    button.onclick = () => {
-      const attachment = attachments.find((item) => Number(item.id) === Number(button.dataset.id));
-      if (!attachment) return;
-      showFilePreview({ entryId, attachmentId: attachment.id, filename: attachment.filename,
-        key: attachment.key, mime: attachment.mime, kind: attachment.kind })
-        .catch((error) => showToast("附件預覽失敗：" + error.message));
-    };
-  });
-  $("folder-preview-open").hidden = true;
-  $("folder-preview-save").hidden = true;
-  $("folder-preview-edit").hidden = false;
-  $("folder-preview-edit").textContent = "編輯";
-  $("folder-preview-edit").onclick = () => showEntryEditor(entryId).catch((error) => showToast("開啟編輯失敗：" + error.message));
-  $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => showEntryEditor(entryId)
-    .catch((error) => showToast("開啟編輯失敗：" + error.message));
+  // 記事只有一種 Word 文件畫面。過去的唯讀純文字預覽會把標題、清單與換行
+  // 壓成一整段，且讓使用者在「查看／編輯」之間反覆切換。
+  return showEntryEditor(entryId);
 }
 
 async function showEntryEditor(entryId) {
@@ -2501,7 +2466,7 @@ async function renderEntryEditor(entryId) {
   const initialHtml = entry.body_format === "html"
     ? String(entry.body || "")
     : textToHtmlForEditor(entry.body || "");
-  $("folder-preview-title").textContent = `編輯｜${entry.title || "記事"}`;
+  $("folder-preview-title").textContent = entry.title || "記事";
   body.innerHTML = `<form class="preview-editor word-note-editor" id="entry-preview-editor">
     <main class="word-note-page">
       <input id="preview-entry-title" class="word-note-title" maxlength="160" value="${esc(entry.title || "")}" aria-label="文件名稱" placeholder="文件名稱" ${isWeeklyReport ? "disabled" : ""} />
@@ -2528,11 +2493,11 @@ async function renderEntryEditor(entryId) {
       editorElement.innerHTML = `<p class="editor-load-error">文件編輯器載入失敗，請重新整理頁面後再試；本次不會覆寫原內容。</p>`;
     }
   }
-  const returnToPreview = () => showEntryPreview(entryId).catch((error) => showToast("預覽失敗：" + error.message));
+  const restoreSavedDocument = () => showEntryEditor(entryId).catch((error) => showToast("還原失敗：" + error.message));
   $("folder-preview-open").hidden = true;
   $("folder-preview-edit").hidden = false;
-  $("folder-preview-edit").textContent = "取消";
-  $("folder-preview-edit").onclick = returnToPreview;
+  $("folder-preview-edit").textContent = "還原";
+  $("folder-preview-edit").onclick = restoreSavedDocument;
   $("folder-preview-save").hidden = false;
   $("folder-preview-save").onclick = () => $("entry-preview-editor").requestSubmit();
   $("folder-preview-manage").disabled = true;
@@ -2561,7 +2526,7 @@ async function renderEntryEditor(entryId) {
       await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify(patch) });
       showToast("記事已儲存");
       await refreshFolderView();
-      await showEntryPreview(entryId);
+      await showEntryEditor(entryId);
     } catch (error) {
       showToast("儲存失敗：" + error.message);
       save.disabled = false;
@@ -6710,7 +6675,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=162").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=163").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

@@ -14,13 +14,17 @@ test("一般記事不再依資料夾類型產生上海參展式專用欄位", as
   assert.match(editor, /await api\(`\/entries\/\$\{entryId\}`/);
 });
 
-test("桌機記事與附件只能在右側欄預覽及編輯", async () => {
+test("桌機記事只有同一個右欄 Word 畫面，附件仍使用右欄預覽及編輯", async () => {
   const app = await read("../fieldlog/public/app.js");
   const index = await read("../fieldlog/public/index.html");
 
   assert.match(index, /id="folder-preview"/);
   assert.match(app, /async function showEntryPreview\(entryId\)/);
   assert.match(app, /async function showEntryEditor\(entryId\)/);
+  const preview = app.match(/async function showEntryPreview\(entryId\)[\s\S]*?\n}/)?.[0] || "";
+  assert.match(preview, /return showEntryEditor\(entryId\)/);
+  assert.doesNotMatch(app, /async function renderEntryPreview/);
+  assert.doesNotMatch(app, /entry-side-preview/);
   assert.match(app, /async function showFilePreview\(/);
   assert.match(app, /async function showFileEditor\(entryId, attachmentId\)/);
   assert.match(app, /if \(!PREVIEW_ENABLED \|\| !matchMedia\("\(min-width: 1000px\)"\)\.matches\) return openEntry\(entryId\)/);
