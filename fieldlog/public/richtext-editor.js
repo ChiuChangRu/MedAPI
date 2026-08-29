@@ -19,7 +19,7 @@
     [{ background: HIGHLIGHT_COLORS }],
     [{ align: [] }],
     [{ list: "ordered" }, { list: "bullet" }],
-    ["blockquote", "code-block", "link"],
+    ["blockquote", "code-block", "link", "image"],
     ["clean"],
   ];
 
@@ -253,6 +253,24 @@
         keyboard: { bindings: KEYBOARD_BINDINGS },
       },
     });
+    // Quill 內建的圖片按鈕會把本機圖片轉成 base64 直接塞入 HTML。這會讓 D1
+    // 內容暴增，而且圖片沒有 attachment id，無法預覽、刪除或做 OCR。改成選圖後
+    // 交給 app.js：先上傳 R2，再把有 data-att-id 的圖片插回目前游標位置。
+    const toolbarModule = quill.getModule("toolbar");
+    toolbarModule?.addHandler("image", () => {
+      if (typeof opts.onImagePaste !== "function") return;
+      const picker = document.createElement("input");
+      picker.type = "file";
+      picker.accept = "image/*";
+      picker.multiple = true;
+      picker.hidden = true;
+      picker.addEventListener("change", () => {
+        for (const file of Array.from(picker.files || [])) opts.onImagePaste(file);
+        picker.remove();
+      }, { once: true });
+      document.body.appendChild(picker);
+      picker.click();
+    });
     // 貼上從別處複製來的內容（例如從附件清單複製了縮圖＋擷取文字那一整段）時，
     // Quill 預設會原樣保留裡面的 <img>——那張圖不是透過這篇記事的附件流程建立
     // 的，src 通常連不到（或連到別筆記事的檔案，甚至帶著舊 PIN），畫面上會變
@@ -306,6 +324,7 @@
         ".ql-align": "對齊方式",
         ".ql-blockquote": "引言",
         ".ql-code-block": "程式碼區塊",
+        ".ql-image": "插入圖片（上傳到這篇記事）",
         ".ql-clean": "清除格式",
       };
       for (const [selector, title] of Object.entries(labels)) {
