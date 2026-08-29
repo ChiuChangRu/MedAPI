@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "158";
+const APP_VERSION = "159";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -3811,6 +3811,15 @@ async function uploadFilesToFolder(files) {
   });
 }
 
+/** 首頁選相簿／檔案沒有指定正式資料夾，所以一律先放待分類。 */
+async function uploadFilesFromHome(files) {
+  const folderId = await stagingFolderId();
+  await uploadStandaloneFiles(files, folderId, {
+    button: $("btn-home-upload"),
+    destination: "「待分類」",
+  });
+}
+
 /** 外部檔案放在資料夾頁就直接歸入目前資料夾；首頁放下才進待分類。 */
 async function uploadDroppedFilesToCurrentLocation(files) {
   if (CURRENT_FOLDER) {
@@ -6446,6 +6455,13 @@ function init() {
   $("btn-audio").onclick = () => startAudio(null);
   $("btn-quick-note").onclick = quickNote;
   $("btn-weekly-report").onclick = openCurrentWeeklyReport;
+  const homeUploadInput = $("home-upload-file-input");
+  $("btn-home-upload").onclick = () => homeUploadInput.click();
+  homeUploadInput.onchange = () => {
+    const files = Array.from(homeUploadInput.files || []);
+    homeUploadInput.value = "";
+    if (files.length) uploadFilesFromHome(files);
+  };
   $("btn-new-folder").onclick = newFolder;
   $("btn-new-subfolder").onclick = newSubfolder;
   $("btn-manage-categories").onclick = () => openCategoryManager("folder_type");
@@ -6638,7 +6654,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=158").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=159").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

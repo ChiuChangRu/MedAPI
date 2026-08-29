@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=158" />
+<link rel="stylesheet" href="style.css?v=159" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -43,7 +43,7 @@
   <div id="view-home">
     <header class="home-app-head">
       <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      <a class="head-link" href="help.html?v=158">📖 使用說明</a>
+      <a class="head-link" href="help.html?v=159">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
@@ -67,6 +67,11 @@
           <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
           <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
           <button class="cap-tile cap-weekly" id="btn-weekly-report">📋<span>本週周報</span></button>
+          <button class="cap-tile cap-upload" id="btn-home-upload" type="button">🖼️<span>相簿／檔案</span></button>
+          <!-- 不可加 capture：iPhone／Android 加了就會強制開相機，無法選既有照片。 -->
+          <input id="home-upload-file-input" type="file"
+                 accept="image/*,video/*,audio/*,application/pdf,.docx,.xlsx,.pptx,.txt,.md,.csv"
+                 multiple hidden />
         </div>
       </section>
     </div>
@@ -479,11 +484,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=158"></script>
+<script src="app.js?v=159"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=158"></script>
+<script src="pdf-editor.js?v=159"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=158"></script>
+<script src="richtext-editor.js?v=159"></script>
 </body>
 </html>

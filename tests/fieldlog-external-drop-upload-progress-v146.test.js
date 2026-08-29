@@ -22,3 +22,14 @@ test("整批上傳顯示小型進度視窗並防止重複批次", () => {
   assert.match(app, /hideUploadProgress\(\)/);
   assert.match(css, /\.upload-loading-overlay/);
 });
+
+test("手機首頁可選相簿既有照片與多個檔案，不會被 capture 強制開相機", () => {
+  const input = html.match(/<input id="home-upload-file-input"[\s\S]*?>/)?.[0] || "";
+  assert.ok(input, "首頁要有獨立的選檔輸入");
+  assert.match(input, /accept="[^"]*image\/\*/);
+  assert.match(input, /\bmultiple\b/);
+  assert.doesNotMatch(input, /\bcapture\b/);
+  assert.match(html, /id="btn-home-upload"/);
+  assert.match(app, /async function uploadFilesFromHome\(files\)[\s\S]*stagingFolderId\(\)[\s\S]*destination: "「待分類」"/);
+  assert.match(app, /\$\("btn-home-upload"\)\.onclick = \(\) => homeUploadInput\.click\(\)/);
+});
