@@ -44,8 +44,10 @@ test("index.html：第一列輸入與草稿只有採集按鈕，待處理獨立�
   assert.doesNotMatch(inputSection, /id="inbox-panel"/, "待處理不該還留在第一列裡");
   assert.match(inputSection, /id="btn-video"/);
   assert.match(inputSection, /id="btn-quick-note"/);
-  assert.match(inputSection, /id="btn-home-upload"/);
-  assert.match(inputSection, /id="home-upload-file-input"/);
+  assert.match(inputSection, /id="btn-home-album"/);
+  assert.match(inputSection, /id="home-album-input"/);
+  assert.match(inputSection, /id="btn-home-file"/);
+  assert.match(inputSection, /id="home-file-input"/);
 });
 
 test("index.html：第二列檢索沿用既有 id，app.js 靠這些 id 接線，位置搬動不影響邏輯", async () => {

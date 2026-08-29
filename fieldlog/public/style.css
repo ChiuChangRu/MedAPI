@@ -161,6 +161,7 @@ body {
 .cap-note { background: linear-gradient(135deg, #4b5563, #6b7280); box-shadow: 0 4px 14px rgba(75, 85, 99, 0.35); }
 .cap-weekly { background: linear-gradient(135deg, #5b21b6, #7c3aed); box-shadow: 0 4px 14px rgba(91, 33, 182, 0.3); }
 .cap-upload { background: linear-gradient(135deg, #0369a1, #0284c7); box-shadow: 0 4px 14px rgba(3, 105, 161, 0.3); }
+.cap-file { background: linear-gradient(135deg, #475569, #64748b); box-shadow: 0 4px 14px rgba(71, 85, 105, 0.3); }
 @media (min-width: 720px) {
   .capture-grid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .cap-tile { aspect-ratio: auto; min-height: 88px; padding: 10px; font-size: 24px; border-radius: 12px; }

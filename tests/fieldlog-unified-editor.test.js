@@ -81,6 +81,7 @@ test("Word 工具列有安全插圖按鈕，圖片先上傳附件而不是內嵌
     "要覆寫 Quill 內建的 base64 圖片處理");
   assert.match(editor, /picker\.accept = "image\/\*"/);
   assert.match(editor, /picker\.multiple = true/);
+  assert.match(editor, /從相簿選擇圖片/);
   assert.match(editor, /opts\.onImagePaste\(file\)/,
     "選到的圖片要交給既有 R2 上傳與附件插入流程");
 });

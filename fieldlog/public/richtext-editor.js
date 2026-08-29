@@ -263,6 +263,7 @@
       picker.type = "file";
       picker.accept = "image/*";
       picker.multiple = true;
+      picker.setAttribute("aria-label", "從相簿選擇圖片");
       picker.hidden = true;
       picker.addEventListener("change", () => {
         for (const file of Array.from(picker.files || [])) opts.onImagePaste(file);
@@ -324,7 +325,7 @@
         ".ql-align": "對齊方式",
         ".ql-blockquote": "引言",
         ".ql-code-block": "程式碼區塊",
-        ".ql-image": "插入圖片（上傳到這篇記事）",
+        ".ql-image": "從相簿插入圖片",
         ".ql-clean": "清除格式",
       };
       for (const [selector, title] of Object.entries(labels)) {
