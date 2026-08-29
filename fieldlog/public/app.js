@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "160";
+const APP_VERSION = "161";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -3820,11 +3820,11 @@ async function uploadFilesToFolder(files) {
   });
 }
 
-/** 首頁選相簿／檔案沒有指定正式資料夾，所以一律先放待分類。 */
-async function uploadFilesFromHome(files) {
+/** 首頁相簿與檔案沒有指定正式資料夾，所以都先放待分類，但按鈕必須分開。 */
+async function uploadFilesFromHome(files, buttonId) {
   const folderId = await stagingFolderId();
   await uploadStandaloneFiles(files, folderId, {
-    button: $("btn-home-upload"),
+    button: $(buttonId),
     destination: "「待分類」",
   });
 }
@@ -6464,12 +6464,19 @@ function init() {
   $("btn-audio").onclick = () => startAudio(null);
   $("btn-quick-note").onclick = quickNote;
   $("btn-weekly-report").onclick = openCurrentWeeklyReport;
-  const homeUploadInput = $("home-upload-file-input");
-  $("btn-home-upload").onclick = () => homeUploadInput.click();
-  homeUploadInput.onchange = () => {
-    const files = Array.from(homeUploadInput.files || []);
-    homeUploadInput.value = "";
-    if (files.length) uploadFilesFromHome(files);
+  const homeAlbumInput = $("home-album-input");
+  $("btn-home-album").onclick = () => homeAlbumInput.click();
+  homeAlbumInput.onchange = () => {
+    const files = Array.from(homeAlbumInput.files || []);
+    homeAlbumInput.value = "";
+    if (files.length) uploadFilesFromHome(files, "btn-home-album");
+  };
+  const homeFileInput = $("home-file-input");
+  $("btn-home-file").onclick = () => homeFileInput.click();
+  homeFileInput.onchange = () => {
+    const files = Array.from(homeFileInput.files || []);
+    homeFileInput.value = "";
+    if (files.length) uploadFilesFromHome(files, "btn-home-file");
   };
   $("btn-new-folder").onclick = newFolder;
   $("btn-new-subfolder").onclick = newSubfolder;
@@ -6663,7 +6670,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=160").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=161").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
