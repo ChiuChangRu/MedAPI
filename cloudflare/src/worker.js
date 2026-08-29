@@ -128,6 +128,23 @@ const SCHEMA = [
     updated_by TEXT DEFAULT '',
     updated_at TEXT
   )`,
+  // 廠商協尋看板：同事有需求但沒空自己翻 897 家展商，把問題列成卡片，
+  // AI 從展商目錄挑候選廠商供參考。跟 custom_exhibitors 不同，這張表不需要
+  // 被其他表用 id 外鍵參照，所以刪除直接硬刪，不用軟刪除。
+  `CREATE TABLE IF NOT EXISTS help_requests (
+    id TEXT PRIMARY KEY,
+    question TEXT NOT NULL,
+    created_by TEXT DEFAULT '',
+    status TEXT DEFAULT 'open',
+    matched_exhibitor_id TEXT DEFAULT '',
+    matched_note TEXT DEFAULT '',
+    ai_suggestions TEXT DEFAULT '[]',
+    ai_note TEXT DEFAULT '',
+    ai_checked_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_help_status ON help_requests(status)`,
   // 四階段圖卡的人工覆寫：只保存與自動分析不同的欄位，保留來源資料即時重算能力。
   // content 是 JSON（map／demands／landing 陣列與 vendors 對應文字），一人一列。
   `CREATE TABLE IF NOT EXISTS prep_overrides (
@@ -464,6 +481,130 @@ function toCustomExhibitor(row) {
   };
 }
 
+// ---------- 廠商協尋看板：AI 候選建議（純函式，具名 export 供單元測試） ----------
+
+const HELP_SUGGEST_MODEL = "@cf/meta/llama-3.2-3b-instruct";
+
+// 問題斷詞：英數字詞（≥2 字）直接當關鍵字；中文沒有空白分詞，退而求其次用
+// 2-gram（連續兩字）當關鍵字，對「找OO材質」「找OO製程」這種短問題已經夠用，
+// 不需要引進外部斷詞套件。
+export function tokenizeQuestion(text) {
+  const s = String(text || "").toLowerCase();
+  const words = new Set(s.match(/[a-z0-9]{2,}/g) || []);
+  for (let i = 0; i < s.length - 1; i++) {
+    const bigram = s.slice(i, i + 2);
+    if (/^[一-鿿]{2}$/.test(bigram)) words.add(bigram);
+  }
+  return words;
+}
+
+// 候選廠商跟問題關鍵字的重疊評分：關鍵字出現在名稱/分類/簡介/產品/標籤，
+// 分數累加該關鍵字長度（長詞命中比 2-gram 命中更有鑑別力）。
+export function scoreCandidate(ex, catName, keywords) {
+  const haystack = [ex.name_zh, ex.name_en, catName, ex.description, ...(ex.tags || []), ...(ex.products || [])]
+    .filter(Boolean).join(" ").toLowerCase();
+  if (!haystack) return 0;
+  let score = 0;
+  for (const kw of keywords) if (haystack.includes(kw)) score += kw.length;
+  return score;
+}
+
+// 從展商池挑出跟問題最相關的候選清單（分數為 0 的一律不列入，讓「候選清單
+// 是空的」這個狀態能被誠實呈現，而不是硬塞不相關的公司給 AI 選）。
+export function shortlistCandidates(exhibitors, catMap, question, limit = 25) {
+  const keywords = tokenizeQuestion(question);
+  if (!keywords.size) return [];
+  const scored = exhibitors
+    .map((ex) => {
+      const catName = catMap[ex.category] ? catMap[ex.category].name_zh : "";
+      return { ex, catName, score: scoreCandidate(ex, catName, keywords) };
+    })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+  return scored.map(({ ex, catName }) => ({
+    exhibitor_id: ex.id, name: ex.name_zh || ex.name_en || ex.id,
+    booth_no: ex.booth_no || "", category_name: catName,
+    description: (ex.description || "").slice(0, 80),
+  }));
+}
+
+// 組 prompt：明確要求「只能選候選清單裡列出的編號」防幻覺，格式規定成
+// 「編號: 理由」方便 parseSuggestionLines 解析。
+export function buildSuggestPrompt(question, candidates) {
+  const listText = candidates
+    .map((c, i) => `${i + 1}. ${c.name}｜${c.category_name || "未分類"}｜${c.description || "（無簡介）"}`)
+    .join("\n");
+  return `你是展會現場的廠商協尋助手。以下是「候選廠商清單」與同事提出的「問題」。\n` +
+    `請從候選清單中選出最多 5 家最符合問題需求的廠商，按相關程度排序，每家附一句話說明為什麼相關。\n` +
+    `只能選候選清單裡列出的編號，絕對不要自己編造清單以外的廠商或編號。\n` +
+    `如果候選清單中沒有真正相關的廠商，就只回答「沒有找到明顯相關的廠商」，不要硬湊。\n\n` +
+    `【候選廠商清單】\n${listText}\n\n【問題】\n${String(question || "").slice(0, 500)}\n\n` +
+    `請用以下格式逐行回答，不要加其他說明文字：\n編號: 一句話理由`;
+}
+
+// 解析 AI 回應：只信任「候選清單範圍內的編號」，範圍外/重複/解析不出來的
+// 一律丟棄——不信任模型會乖乖照候選清單編號回答。全部解析不出來時回傳空陣列，
+// 呼叫端會把原始回應摘要存進 ai_note，讓前端能顯示「AI 沒有找到」而不是像壞掉。
+export function parseSuggestionLines(responseText, candidates) {
+  const seen = new Set();
+  const out = [];
+  for (const line of String(responseText || "").split("\n")) {
+    const m = line.match(/^\s*(\d+)\s*[:：]\s*(.+)$/);
+    if (!m) continue;
+    const idx = Number(m[1]) - 1;
+    if (idx < 0 || idx >= candidates.length || seen.has(idx)) continue;
+    seen.add(idx);
+    out.push({ ...candidates[idx], reason: m[2].trim() });
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+// 建候選池並跑一次 AI 協尋，把結果 UPDATE 回 help_requests 那一列。
+// AI 是加分項：!env.AI 或呼叫失敗都不丟錯，只是這次協尋沒有建議。
+async function runAiSuggest(env, db, row) {
+  const checkedAt = now();
+  if (!env.AI) {
+    await db.prepare("UPDATE help_requests SET ai_suggestions = ?, ai_note = ?, ai_checked_at = ?, updated_at = ? WHERE id = ?")
+      .bind("[]", "尚未啟用 Workers AI，無法自動協尋", checkedAt, checkedAt, row.id).run();
+    return { suggestions: [], ai_note: "尚未啟用 Workers AI，無法自動協尋" };
+  }
+  let suggestions = [];
+  let aiNote = "";
+  try {
+    const assetRes = await env.ASSETS.fetch(new Request("https://x/data/exhibitors.json"));
+    const data = await assetRes.json();
+    const catMap = {};
+    for (const c of data.categories || []) catMap[c.id] = c;
+    const { results: customEx } = await db.prepare("SELECT * FROM custom_exhibitors WHERE deleted = 0").all();
+    const pool = [...data.exhibitors, ...customEx.map(toCustomExhibitor)].filter((ex) => ex.in_directory !== false);
+    const candidates = shortlistCandidates(pool, catMap, row.question);
+    if (!candidates.length) {
+      aiNote = "找不到跟問題明顯相關的關鍵字，建議自行以分類/關鍵字搜尋";
+    } else {
+      const prompt = buildSuggestPrompt(row.question, candidates);
+      const result = await env.AI.run(HELP_SUGGEST_MODEL, {
+        messages: [{ role: "user", content: prompt }], max_tokens: 400, temperature: 0,
+      });
+      const text = (result?.response || "").trim();
+      suggestions = parseSuggestionLines(text, candidates);
+      if (!suggestions.length) aiNote = "AI 認為候選清單中沒有明顯相關的廠商";
+    }
+  } catch (err) {
+    aiNote = `AI 協尋失敗：${err.message}`;
+  }
+  await db.prepare("UPDATE help_requests SET ai_suggestions = ?, ai_note = ?, ai_checked_at = ?, updated_at = ? WHERE id = ?")
+    .bind(JSON.stringify(suggestions), aiNote, checkedAt, checkedAt, row.id).run();
+  return { suggestions, ai_note: aiNote };
+}
+
+function toHelpRequest(row) {
+  let suggestions = [];
+  try { suggestions = JSON.parse(row.ai_suggestions || "[]"); } catch { /* 舊資料或壞資料就當沒有建議 */ }
+  return { ...row, ai_suggestions: suggestions };
+}
+
 function fmtSecsRange(s) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
@@ -562,7 +703,7 @@ async function handleApi(request, env, url, ctx) {
 
   // ---- 前端功能開關 ----
   if (path === "/config" && method === "GET") {
-    return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI) });
+    return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI), help_ai: !!env.AI });
   }
 
   // ---- 自訂廠商（官方展商目錄以外，團隊自己追蹤的）----
@@ -607,6 +748,63 @@ async function handleApi(request, env, url, ctx) {
     // 標記 in_directory=false（保留不刪）是同一個顧慮
     await db.prepare("UPDATE custom_exhibitors SET deleted = 1 WHERE id = ?").bind(id).run();
     await logHistory(db, id, author, "刪除自訂廠商", old.name_zh || old.name_en);
+    return json({ ok: true });
+  }
+
+  // ---- 廠商協尋看板（同事有需求但沒空找，列成卡片讓 AI 協助建議候選廠商）----
+  if (path === "/help-requests" && method === "GET") {
+    const { results } = await db
+      .prepare("SELECT * FROM help_requests ORDER BY (status = 'open') DESC, created_at DESC")
+      .all();
+    return json(results.map(toHelpRequest));
+  }
+  if (path === "/help-requests" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const question = (body.question || "").trim();
+    if (!question) return bad("問題內容不能空白");
+    const createdBy = (body.created_by || "").trim() || "匿名";
+    const id = `help-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const ts = now();
+    await db
+      .prepare("INSERT INTO help_requests (id, question, created_by, status, ai_suggestions, created_at, updated_at) VALUES (?, ?, ?, 'open', '[]', ?, ?)")
+      .bind(id, question, createdBy, ts, ts)
+      .run();
+    const row = { id, question, created_by: createdBy, status: "open", matched_exhibitor_id: "", matched_note: "", ai_suggestions: "[]", ai_note: "", ai_checked_at: "", created_at: ts, updated_at: ts };
+    // AI 是加分項：協尋失敗不該讓卡片建立不成功，runAiSuggest 內部已吞掉所有錯誤
+    const { suggestions, ai_note } = await runAiSuggest(env, db, row);
+    return json(toHelpRequest({ ...row, ai_suggestions: JSON.stringify(suggestions), ai_note, ai_checked_at: now() }));
+  }
+  const helpSuggestMatch = path.match(/^\/help-requests\/([\w-]+)\/suggest$/);
+  if (helpSuggestMatch && method === "POST") {
+    const id = helpSuggestMatch[1];
+    const row = await db.prepare("SELECT * FROM help_requests WHERE id = ?").bind(id).first();
+    if (!row) return bad("找不到這則協尋問題", 404);
+    if (!env.AI) return bad("尚未啟用 Workers AI（見 cloudflare/README.md）", 501);
+    await runAiSuggest(env, db, row);
+    const updated = await db.prepare("SELECT * FROM help_requests WHERE id = ?").bind(id).first();
+    return json(toHelpRequest(updated));
+  }
+  const helpMatch = path.match(/^\/help-requests\/([\w-]+)$/);
+  if (helpMatch && method === "PUT") {
+    const id = helpMatch[1];
+    const old = await db.prepare("SELECT * FROM help_requests WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到這則協尋問題", 404);
+    const body = await request.json().catch(() => ({}));
+    const status = body.status === "resolved" ? "resolved" : body.status === "open" ? "open" : old.status;
+    const matchedExhibitorId = body.matched_exhibitor_id !== undefined ? String(body.matched_exhibitor_id).trim() : old.matched_exhibitor_id;
+    const matchedNote = body.matched_note !== undefined ? String(body.matched_note).trim() : old.matched_note;
+    await db
+      .prepare("UPDATE help_requests SET status = ?, matched_exhibitor_id = ?, matched_note = ?, updated_at = ? WHERE id = ?")
+      .bind(status, matchedExhibitorId, matchedNote, now(), id)
+      .run();
+    const updated = await db.prepare("SELECT * FROM help_requests WHERE id = ?").bind(id).first();
+    return json(toHelpRequest(updated));
+  }
+  if (helpMatch && method === "DELETE") {
+    const id = helpMatch[1];
+    const old = await db.prepare("SELECT * FROM help_requests WHERE id = ?").bind(id).first();
+    if (!old) return bad("找不到這則協尋問題", 404);
+    await db.prepare("DELETE FROM help_requests WHERE id = ?").bind(id).run();
     return json({ ok: true });
   }
 

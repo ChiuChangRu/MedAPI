@@ -528,6 +528,193 @@ async function showDataChangelog() {
   `).join("");
 }
 
+// 展館分區導覽：官方展館平面圖轉錄（config.js 的 HALL_GUIDE），純靜態資料不用
+// 連後端。有 cat 的品類點了直接篩出該分類，關掉 overlay 跳到篩選結果——跟
+// buildCategoryChips() 的 chip 是「設成這一個分類」而不是「切換」，行為刻意
+// 一致，只是入口不同。
+function hallGuideItemHtml(item) {
+  if (!item.cat) return `<li>${esc(item.label)}</li>`;
+  return `<li><a href="#" class="hallguide-link" data-cat="${esc(item.cat)}">${esc(item.label)}</a></li>`;
+}
+
+function openHallGuide() {
+  $("hall-guide-overlay").classList.add("open");
+  const wrap = $("hall-guide-body");
+  const g = HALL_GUIDE;
+  wrap.innerHTML = `
+    ${g.image ? `<img class="hallguide-map" src="${esc(g.image)}" alt="Medtec China 2026 展館平面圖">` : ""}
+    <div class="hallguide-zone">
+      <h3>ADTE 高端有源醫療裝備技術展</h3>
+      <p class="sub">物理位置在 N1 館內，跟同館的「醫用材料部件館」是兩個並列分區。</p>
+      <ul class="hallguide-list">${g.adte.map(hallGuideItemHtml).join("")}</ul>
+    </div>
+    ${g.halls.map((h) => `
+      <div class="hallguide-zone">
+        <h3>${esc(h.title)}</h3>
+        <ul class="hallguide-list">${h.items.map(hallGuideItemHtml).join("")}</ul>
+      </div>`).join("")}
+    <div class="hallguide-highlights">
+      ${g.highlights.map((hl) => `
+        <div class="hallguide-highlight">
+          <div class="hallguide-highlight-title">${esc(hl.title)}</div>
+          <p>${esc(hl.desc)}</p>
+        </div>`).join("")}
+    </div>
+  `;
+  wrap.querySelectorAll(".hallguide-link").forEach((a) => {
+    a.onclick = (ev) => {
+      ev.preventDefault();
+      ACTIVE_CATS = new Set([a.dataset.cat]);
+      ACTIVE_DEPT = "";
+      $("hall-guide-overlay").classList.remove("open");
+      setActiveViewTab("search");
+      refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
+      $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+  });
+}
+
+// 廠商協尋看板：同事有需求但沒空自己翻展商名冊，把問題列成卡片，
+// AI 從展商目錄挑候選廠商供參考（找不到明顯相關的會誠實說沒有，不會硬湊）。
+async function openHelpBoard() {
+  if (!API_OK) { showToast("共筆後端未連線，無法使用協尋看板"); return; }
+  $("help-board-overlay").classList.add("open");
+  await refreshHelpBoard();
+}
+
+async function refreshHelpBoard() {
+  const wrap = $("help-board-list");
+  wrap.innerHTML = '<p class="sub">載入中…</p>';
+  try {
+    const rows = await api("/help-requests");
+    renderHelpBoard(rows);
+  } catch (err) {
+    wrap.innerHTML = `<p class="sub">載入失敗：${esc(err.message)}</p>`;
+  }
+}
+
+function renderHelpBoard(rows) {
+  const wrap = $("help-board-list");
+  if (!rows.length) {
+    wrap.innerHTML = '<p class="sub">目前還沒有協尋問題，上面填一筆試試。</p>';
+    return;
+  }
+  wrap.innerHTML = rows.map((r) => {
+    const resolved = r.status === "resolved";
+    const suggestions = r.ai_suggestions || [];
+    const suggestHtml = suggestions.length
+      ? suggestions.map((s) => `
+          <div class="help-suggestion">
+            <div>
+              <strong>${esc(s.name)}</strong>
+              ${s.booth_no ? `<span class="help-suggestion-meta">${esc(s.booth_no)}</span>` : ""}
+              ${s.category_name ? `<span class="help-suggestion-meta">${esc(s.category_name)}</span>` : ""}
+              <div class="help-suggestion-reason">${esc(s.reason || "")}</div>
+            </div>
+            <button class="btn small ghost" data-pick="${esc(r.id)}" data-ex="${esc(s.exhibitor_id)}">✓ 就是這家</button>
+          </div>`).join("")
+      : `<p class="sub">${esc(r.ai_note || "AI 還沒有給出建議")}</p>`;
+    const matched = resolved && r.matched_exhibitor_id
+      ? `<div class="help-matched">✅ 已找到：${esc((EXHIBITORS.find((e) => e.id === r.matched_exhibitor_id) || {}).name_zh || r.matched_exhibitor_id)}${r.matched_note ? `｜${esc(r.matched_note)}` : ""}</div>`
+      : "";
+    return `
+      <div class="help-card${resolved ? " resolved" : ""}" data-id="${esc(r.id)}">
+        <div class="help-card-head">
+          <span class="help-status ${resolved ? "resolved" : "open"}">${resolved ? "已解決" : "待協尋"}</span>
+          <span class="help-card-meta">${esc(r.created_by)}｜${esc(r.created_at)}</span>
+        </div>
+        <div class="help-question">${esc(r.question)}</div>
+        ${matched}
+        <div class="help-suggestions">${suggestHtml}</div>
+        <div class="help-card-actions">
+          <button class="btn small ghost" data-resuggest="${esc(r.id)}">🔄 重新協尋</button>
+          ${resolved
+            ? `<button class="btn small ghost" data-reopen="${esc(r.id)}">↩️ 重新開放</button>`
+            : `<button class="btn small ghost" data-resolve="${esc(r.id)}">✔️ 標記已解決</button>`}
+          <button class="btn small ghost" data-delete="${esc(r.id)}">🗑 刪除</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  wrap.querySelectorAll("[data-pick]").forEach((btn) => {
+    btn.onclick = () => resolveHelpRequest(btn.dataset.pick, btn.dataset.ex);
+  });
+  wrap.querySelectorAll("[data-resuggest]").forEach((btn) => {
+    btn.onclick = () => reSuggestHelpRequest(btn.dataset.resuggest);
+  });
+  wrap.querySelectorAll("[data-resolve]").forEach((btn) => {
+    btn.onclick = () => resolveHelpRequest(btn.dataset.resolve, "");
+  });
+  wrap.querySelectorAll("[data-reopen]").forEach((btn) => {
+    btn.onclick = () => reopenHelpRequest(btn.dataset.reopen);
+  });
+  wrap.querySelectorAll("[data-delete]").forEach((btn) => {
+    btn.onclick = () => deleteHelpRequest(btn.dataset.delete);
+  });
+}
+
+async function submitHelpQuestion() {
+  if (!me()) { showLogin(); return; }
+  const question = $("help-board-question").value.trim();
+  if (!question) { showToast("請先填寫問題內容"); return; }
+  const btn = $("help-board-submit");
+  btn.disabled = true;
+  btn.textContent = "AI 協尋中…";
+  try {
+    await api("/help-requests", { method: "POST", body: JSON.stringify({ question, created_by: me() }) });
+    $("help-board-question").value = "";
+    showToast("已送出協尋問題");
+    await refreshHelpBoard();
+  } catch (err) {
+    showToast("送出失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "送出並請 AI 協尋";
+  }
+}
+
+async function reSuggestHelpRequest(id) {
+  try {
+    await api(`/help-requests/${id}/suggest`, { method: "POST" });
+    await refreshHelpBoard();
+  } catch (err) {
+    showToast("AI 協尋失敗：" + err.message);
+  }
+}
+
+async function resolveHelpRequest(id, exhibitorId) {
+  try {
+    await api(`/help-requests/${id}`, { method: "PUT", body: JSON.stringify({ status: "resolved", matched_exhibitor_id: exhibitorId || "" }) });
+    if (exhibitorId) {
+      $("help-board-overlay").classList.remove("open");
+      openDetail(exhibitorId);
+    } else {
+      await refreshHelpBoard();
+    }
+  } catch (err) {
+    showToast("標記失敗：" + err.message);
+  }
+}
+
+async function reopenHelpRequest(id) {
+  try {
+    await api(`/help-requests/${id}`, { method: "PUT", body: JSON.stringify({ status: "open" }) });
+    await refreshHelpBoard();
+  } catch (err) {
+    showToast("操作失敗：" + err.message);
+  }
+}
+
+async function deleteHelpRequest(id) {
+  if (!confirm("確定要刪除這則協尋問題？")) return;
+  try {
+    await api(`/help-requests/${id}`, { method: "DELETE" });
+    await refreshHelpBoard();
+  } catch (err) {
+    showToast("刪除失敗：" + err.message);
+  }
+}
+
 function forceOffline() {
   if (!me()) { showToast("請先登入再測試離線模式"); return; }
   const snap = JSON.parse(localStorage.getItem("medtec_snapshot") || "{}");
@@ -647,6 +834,16 @@ async function init() {
   closeOnBackdropClick("data-changelog-overlay", () => $("data-changelog-overlay").classList.remove("open"));
   closeOnBackdropClick("prep-override-overlay", closePrepOverrideEditor);
 
+  // 展館分區導覽（官方展館平面圖＋可點擊篩選的品類清單）
+  $("btn-hall-guide").onclick = openHallGuide;
+  $("hall-guide-close").onclick = () => $("hall-guide-overlay").classList.remove("open");
+  closeOnBackdropClick("hall-guide-overlay", () => $("hall-guide-overlay").classList.remove("open"));
+
+  // 廠商協尋看板（同事有需求但沒空找，列成卡片讓 AI 協助建議候選廠商）
+  $("btn-help-board").onclick = openHelpBoard;
+  $("help-board-close").onclick = () => $("help-board-overlay").classList.remove("open");
+  closeOnBackdropClick("help-board-overlay", () => $("help-board-overlay").classList.remove("open"));
+  $("help-board-submit").onclick = submitHelpQuestion;
 
   // 現場採集模式（overlay 全頁只有一份，按鈕綁一次即可）
   $("capture-photo-btn").onclick = openCapturePhotoPopup;
@@ -1156,6 +1353,8 @@ function setActiveViewTab(view) {
   document.body.classList.toggle("itinerary-view", view === "itinerary");
   // 參訪前報告：同理
   document.body.classList.toggle("prep-view", view === "prep");
+  // 資料盤點：同理
+  document.body.classList.toggle("packing-view", view === "packing");
 }
 
 // 設定負責人篩選值；選單裡沒有這個名字就補一個 option，
@@ -1194,6 +1393,8 @@ function setView(view, { scroll = true } = {}) {
     renderPrepReport();
     loadPrepNotes();
     loadPrepOverrides();
+  } else if (view === "packing") {
+    renderPackingChecklist();
   }
   setActiveViewTab(view);
   if (!scroll) return;
@@ -1203,6 +1404,8 @@ function setView(view, { scroll = true } = {}) {
     $("itinerary-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (view === "prep") {
     $("prep-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (view === "packing") {
+    $("pack-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } else {
     $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
   }
@@ -3004,6 +3207,13 @@ function renderItinerary() {
 
   wrap.innerHTML = TRIP_DAYS.map((d, i) => {
     const isToday = d.date === today;
+    const shuttleContact = d.shuttleContact ? `
+      <div class="itin-shuttle-contact">
+        🚐 ${esc(d.shuttleContact.company)}｜${esc(d.shuttleContact.who)}
+        ｜☎️ ${esc(d.shuttleContact.phone)}${d.shuttleContact.phoneIntl ? `（國外專線 ${esc(d.shuttleContact.phoneIntl)}）` : ""}
+        ${d.shuttleContact.lineId ? `｜LINE/微信 ${esc(d.shuttleContact.lineId)}` : ""}
+        ${d.shuttleContact.services ? `<div class="itin-shuttle-contact-services">${esc(d.shuttleContact.services)}</div>` : ""}
+      </div>` : "";
     const shuttle = (d.shuttle || []).length ? `
       <div class="itin-shuttle">
         <div class="itin-half-label">🚐 宜蘭包車接駁</div>
@@ -3013,6 +3223,7 @@ function renderItinerary() {
           </tbody>
         </table>
         ${d.shuttleNote ? `<div class="itin-shuttle-note">${esc(d.shuttleNote)}</div>` : ""}
+        ${shuttleContact}
       </div>` : "";
 
     // 看展日多給兩個捷徑：直接跳論壇議程、跳自己的分派清單
@@ -3803,6 +4014,75 @@ async function savePrepNote(name, btn) {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ---------- 出發前攜帶資料盤點表（PACKING_CHECKLIST，config.js）----------
+// 個人打包檢查表：誰帶了護照沒有不需要跟全隊同步，勾選狀態只存自己裝置的
+// localStorage，不寫共用資料庫（跟拜訪狀態／筆記那種團隊共筆刻意不同）。
+function getPackingState() {
+  try { return JSON.parse(localStorage.getItem("medtec_packing_state") || "{}"); } catch { return {}; }
+}
+
+function setPackingState(state) {
+  try { localStorage.setItem("medtec_packing_state", JSON.stringify(state)); } catch { /* 空間不足時放棄，不影響本次勾選畫面 */ }
+}
+
+function packingItemKey(catIndex, itemIndex) {
+  return `${catIndex}-${itemIndex}`;
+}
+
+function renderPackingChecklist() {
+  const wrap = $("pack-list");
+  if (!wrap) return;
+  const state = getPackingState();
+
+  wrap.innerHTML = PACKING_CHECKLIST.map((cat, ci) => {
+    const rows = cat.items.map((item, ii) => {
+      const key = packingItemKey(ci, ii);
+      const st = state[key] || {};
+      return `<tr class="${st.before ? "pack-done-before" : ""}${st.after ? " pack-done-after" : ""}">
+        <td class="pack-check"><input type="checkbox" data-key="${key}" data-phase="before" ${st.before ? "checked" : ""}></td>
+        <td class="pack-check"><input type="checkbox" data-key="${key}" data-phase="after" ${st.after ? "checked" : ""}></td>
+        <td class="pack-name">${esc(item.name)}</td>
+        <td class="pack-form">${esc(item.form)}</td>
+        <td class="pack-note">${esc(item.note || "")}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="pack-cat">
+      <h3>${esc(cat.category)}</h3>
+      <table class="pack-table">
+        <thead><tr><th>出發前</th><th>返程前</th><th>確認項目</th><th>形式</th><th>備註／核對重點</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join("");
+
+  wrap.querySelectorAll("input[type=checkbox][data-key]").forEach((box) => {
+    box.onchange = () => {
+      const st = getPackingState();
+      const key = box.dataset.key;
+      const phase = box.dataset.phase;
+      st[key] = { ...(st[key] || {}), [phase]: box.checked };
+      setPackingState(st);
+      box.closest("tr").classList.toggle(phase === "before" ? "pack-done-before" : "pack-done-after", box.checked);
+      refreshPackingProgress();
+    };
+  });
+
+  refreshPackingProgress();
+}
+
+function refreshPackingProgress() {
+  const el = $("pack-progress");
+  if (!el) return;
+  const state = getPackingState();
+  const total = PACKING_CHECKLIST.reduce((n, c) => n + c.items.length, 0);
+  let before = 0, after = 0;
+  for (const v of Object.values(state)) {
+    if (v.before) before++;
+    if (v.after) after++;
+  }
+  el.textContent = `出發前已勾選 ${before}/${total}　·　返程前已勾選 ${after}/${total}`;
 }
 
 function prepNormalizeLines(value) {

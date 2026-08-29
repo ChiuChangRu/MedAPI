@@ -31,6 +31,8 @@
         <button class="btn small ghost offline-dim" id="btn-export" title="需要連線">匯出 CSV</button>
         <button class="btn small ghost" id="btn-offline-toggle" title="模擬斷網，確認離線功能是否足夠">離線測試</button>
         <button class="btn small ghost" id="btn-data-changelog" title="展商資料每次更新的異動說明">📋 資料異動記錄</button>
+        <button class="btn small ghost" id="btn-hall-guide" title="官方展館平面圖與品類地圖，點分類可直接篩出該分類">🗺️ 展館分區導覽</button>
+        <button class="btn small ghost offline-dim" id="btn-help-board" title="同事沒空找的廠商需求，列成卡片讓大家協尋，AI 會先給候選建議">🙋 廠商協尋看板</button>
       </div>
     </div>
   </div>
@@ -44,6 +46,33 @@
     <h2>📋 資料異動記錄</h2>
     <p class="sub">展商名冊每次重新匯入的前後差異紀錄，不是團隊拜訪紀錄。</p>
     <div id="data-changelog-body"><p class="sub">載入中…</p></div>
+  </div>
+</div>
+
+<!-- 展館分區導覽：官方展館平面圖（放圖片本身）＋轉錄成可點擊篩選的品類清單。
+     ADTE（高端有源醫療裝備技術展）物理位置在 N1 館內，跟同館的「醫用材料部件館」
+     是兩個並列分區，不是同一個，所以獨立一節不掛在 N1 的品類清單下面。 -->
+<div class="overlay" id="hall-guide-overlay">
+  <div class="modal">
+    <div class="modal-close-float"><button class="btn small ghost" id="hall-guide-close" type="button" aria-label="關閉">✕</button></div>
+    <h2>🗺️ 展館分區導覽</h2>
+    <p class="sub">上海新國際博覽中心 N1–N4 館，點有底線的品類可直接篩出該分類的展商。</p>
+    <div id="hall-guide-body"></div>
+  </div>
+</div>
+
+<!-- 廠商協尋看板：同事有需求但沒空自己翻展商名冊，把問題列成卡片，
+     AI 從展商目錄挑候選廠商供參考（找不到明顯相關的會誠實說沒有，不會硬湊）。 -->
+<div class="overlay" id="help-board-overlay">
+  <div class="modal">
+    <div class="modal-close-float"><button class="btn small ghost" id="help-board-close" type="button" aria-label="關閉">✕</button></div>
+    <h2>🙋 廠商協尋看板</h2>
+    <p class="sub">提出你需要找的廠商需求，AI 會先從展商目錄挑幾家候選給大家參考，找到後記得標記已解決。</p>
+    <div class="help-board-form">
+      <textarea id="help-board-question" rows="2" placeholder="例如：需要找可以做 PTFE 披膜/塗層加工的廠商，最好有醫療器材經驗"></textarea>
+      <button class="btn small" id="help-board-submit">送出並請 AI 協尋</button>
+    </div>
+    <div id="help-board-list"><p class="sub">載入中…</p></div>
   </div>
 </div>
 
@@ -64,6 +93,7 @@
     <button class="view-tab" data-view="visited">✅ 完成拜訪清單<span class="tab-count" id="tab-count-visited"></span></button>
     <button class="view-tab" data-view="agenda">🗣 論壇議程</button>
     <button class="view-tab" data-view="prep">📝 參訪前報告</button>
+    <button class="view-tab" data-view="packing">🧳 資料盤點</button>
     <button class="view-tab pdf-tab" id="btn-mylist-pdf" title="產出可列印的分派清單（存成 PDF 當紙本備援，軟體完全失效也知道要去哪）">🖨 PDF</button>
   </div>
 
@@ -106,6 +136,17 @@
     <div class="prep-overview" id="prep-overview"></div>
     <div class="prep-strategy-deck" id="prep-strategy-deck"></div>
     <div class="prep-list" id="prep-list"></div>
+  </section>
+
+  <!-- 出發前攜帶資料盤點表：轉錄自紙本盤點表（config.js 的 PACKING_CHECKLIST，共 61 項）。
+       勾選狀態存在自己裝置的 localStorage，是個人打包檢查表，不是團隊共筆。 -->
+  <section class="pack-section" id="pack-section">
+    <div class="itin-head">
+      <h2>出發前攜帶資料盤點表</h2>
+      <p class="itin-sub">共 61 項，出發前逐項確認、返程前再次核對　·　勾選狀態只存在你自己的裝置</p>
+    </div>
+    <div class="pack-progress" id="pack-progress"></div>
+    <div class="pack-list" id="pack-list"></div>
   </section>
 
   <!-- 篩選列 -->

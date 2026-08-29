@@ -76,6 +76,41 @@ header.top p { margin: 0; opacity: 0.85; font-size: 13px; }
 .changelog-details { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.7; color: var(--text); }
 .changelog-note { font-size: 13px; color: var(--green, #15803d); margin: 8px 0 0; }
 
+/* 展館分區導覽（官方展館平面圖＋可點擊篩選的品類清單） */
+.hallguide-map { display: block; width: 100%; max-width: 480px; margin: 0 auto 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+.hallguide-zone { padding: 10px 0; border-bottom: 1px solid #e4e4e0; }
+.hallguide-zone:last-of-type { border-bottom: none; }
+.hallguide-zone h3 { margin: 2px 0 6px; font-size: 15px; color: var(--accent-dark); }
+.hallguide-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.9; }
+.hallguide-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
+.hallguide-link:hover { color: var(--accent-dark); }
+.hallguide-highlights { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+.hallguide-highlight { background: #fbfbf9; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.hallguide-highlight-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; color: var(--accent-dark); }
+.hallguide-highlight p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+@media (max-width: 640px) {
+  .hallguide-highlights { grid-template-columns: 1fr; }
+}
+
+/* 廠商協尋看板（同事有需求但沒空找，列成卡片讓 AI 協助建議候選廠商） */
+.help-board-form { display: flex; gap: 8px; align-items: flex-end; margin: 10px 0 16px; }
+.help-board-form textarea { flex: 1; resize: vertical; font: inherit; padding: 8px 10px; border: 1px solid #d4d4d0; border-radius: 6px; }
+.help-card { padding: 12px 0; border-bottom: 1px solid #e4e4e0; }
+.help-card:last-child { border-bottom: none; }
+.help-card.resolved { opacity: 0.75; }
+.help-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.help-status { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px; }
+.help-status.open { color: #a00d24; background: #fbeaec; border: 1px solid #f0c7cc; }
+.help-status.resolved { color: var(--green, #15803d); background: #eafbf0; border: 1px solid #bfe8cc; }
+.help-card-meta { font-size: 12px; color: var(--text-muted); }
+.help-question { font-size: 14px; font-weight: 600; margin: 4px 0 8px; }
+.help-matched { font-size: 13px; color: var(--green, #15803d); margin-bottom: 8px; }
+.help-suggestions { display: flex; flex-direction: column; gap: 6px; }
+.help-suggestion { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #f7f7f5; border: 1px solid #e4e4e0; border-radius: 6px; padding: 8px 10px; }
+.help-suggestion-meta { font-size: 11px; color: var(--text-muted); margin-left: 6px; }
+.help-suggestion-reason { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.help-card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
 /* 攤位分組標題列（依館別・區域，減少展場繞路） */
 tr.group-header-row td {
   background: #fbeaec; color: #a00d24; font-weight: 700; font-size: 13px;
@@ -418,6 +453,8 @@ body.itinerary-view #itinerary-section { display: block; }
 .itin-shuttle-table td.itin-who { width: 1%; white-space: nowrap; padding-right: 16px; }
 .itin-who { font-weight: 600; }
 .itin-shuttle-note { font-size: 12px; color: var(--accent-dark); font-weight: 600; margin-top: 8px; }
+.itin-shuttle-contact { font-size: 12px; color: var(--text); margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.itin-shuttle-contact-services { color: var(--text-muted); margin-top: 2px; }
 
 .itin-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .itin-shortcut {
@@ -713,6 +750,43 @@ body.prep-view #prep-section { display: block; }
   .prep-guidance:not([open]) > :not(summary) { display: block !important; }
   .prep-save, .prep-slide-edit { display: none !important; }
   .prep-textarea { border-color: #ccc; }
+}
+
+/* ===== 出發前攜帶資料盤點表 ===== */
+body.packing-view #entry-section,
+body.packing-view #recommend-bar,
+body.packing-view .controls,
+body.packing-view .active-preset,
+body.packing-view .stats,
+body.packing-view .grid,
+body.packing-view #empty { display: none !important; }
+#pack-section { display: none; }
+body.packing-view #pack-section { display: block; }
+
+.pack-progress {
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+  background: #fbfbf9; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 12px; margin-bottom: 14px;
+}
+.pack-cat { margin-bottom: 18px; }
+.pack-cat h3 { font-size: 14px; margin: 0 0 6px; color: var(--accent-dark); }
+.pack-table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--card-bg); }
+.pack-table th {
+  text-align: left; font-size: 11px; color: var(--text-muted); font-weight: 700;
+  padding: 4px 8px; border-bottom: 1px solid var(--border);
+}
+.pack-table td { padding: 6px 8px; border-bottom: 1px dashed var(--border); vertical-align: top; }
+.pack-table tr:last-child td { border-bottom: none; }
+.pack-check { width: 1%; white-space: nowrap; text-align: center; }
+.pack-check input { width: 16px; height: 16px; cursor: pointer; }
+.pack-form { width: 1%; white-space: nowrap; color: var(--text-muted); }
+.pack-note { color: var(--text-muted); font-size: 12px; }
+tr.pack-done-before .pack-name { color: var(--green, #15803d); }
+tr.pack-done-before.pack-done-after { opacity: 0.6; }
+tr.pack-done-before.pack-done-after .pack-name { text-decoration: line-through; }
+
+@media (max-width: 640px) {
+  .pack-form, .pack-note { display: none; }
 }
 
 @media (max-width: 640px) {
