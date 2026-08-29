@@ -41,6 +41,7 @@ import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFol
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
+import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
 import {
   deleteAttachmentDeep,
   folderDepth,
@@ -130,7 +131,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "164";
+const UI_VERSION = "165";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -739,7 +740,9 @@ async function transcribeAttachment(env, db, old) {
   const hallucinated = looksLikeSilenceHallucination(raw);
   // 判定成幻覺就存成空的：留著只會讓之後的搜尋、命名、向量庫都以為這段有內容。
   const text = hallucinated ? "" : raw;
-  await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
+  const transcriptVtt = hallucinated ? "" : String(result?.vtt || result?.transcription_info?.vtt || "").trim();
+  await db.prepare("UPDATE attachments SET transcript = ?, transcript_vtt = ?, transcribed_at = ? WHERE id = ?")
+    .bind(text, transcriptVtt, now(), old.id).run();
   await autoRenameAttachment(db, old, text);
   await logHistory(db, old.entry_id, null, "錄音轉文字",
     hallucinated
@@ -748,6 +751,44 @@ async function transcribeAttachment(env, db, old) {
       : `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
   await triggerEmbedding(env, { kind: "attachment", id: old.id, entryId: old.entry_id, textContent: text });
   return text;
+}
+
+/**
+ * 自動產生的錄音文件可以隨後續轉錄／拍照安全重建，但人的修改永遠優先：
+ * fields_json 只保存「上次自動產生內容的 hash」。目前 body 若已不同，代表有人
+ * 改過，這裡直接保留，不用看時間戳猜誰比較新。
+ */
+export async function composeRecordingDocument(env, db, entryId) {
+  const entry = await db.prepare(
+    "SELECT id, body, body_format, fields_json FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+  ).bind(entryId).first();
+  if (!entry) return { updated: false, reason: "not_found" };
+  const { results: attachments } = await db.prepare(
+    "SELECT id, kind, filename, original_filename, key, mime, offset_secs, transcript, transcript_vtt FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY offset_secs, id"
+  ).bind(entryId).all();
+  if (!(attachments || []).some((item) => item.kind === "audio")) {
+    return { updated: false, reason: "no_audio" };
+  }
+  const html = sanitizeEntryHtml(buildRecordingDocumentHtml(attachments || []));
+  if (!html) return { updated: false, reason: "empty" };
+
+  let fields = {};
+  try { fields = JSON.parse(entry.fields_json || "{}"); } catch { fields = {}; }
+  const currentBody = String(entry.body || "").trim();
+  const currentHash = await sha256Hex(currentBody);
+  const generatedHash = String(fields._recording_document_hash || "");
+  if (!shouldRegenerateRecordingDocument(currentBody, currentHash, generatedHash)) {
+    return { updated: false, reason: "manual_body" };
+  }
+
+  const nextHash = await sha256Hex(html);
+  fields._recording_document_hash = nextHash;
+  fields._recording_document_at = now();
+  await db.prepare(
+    "UPDATE entries SET body = ?, body_format = 'html', fields_json = ?, updated_at = ? WHERE id = ?"
+  ).bind(html, JSON.stringify(fields), now(), entryId).run();
+  await triggerEmbedding(env, { kind: "entry", id: entryId, entryId, textContent: htmlToPlainText(html) });
+  return { updated: true, body: html };
 }
 
 async function logHistory(db, entryId, folderId, action, detail) {
@@ -2211,7 +2252,10 @@ async function handleApi(request, env, url, identity = {}) {
       }, "");
     }
     await logHistory(db, entryId, null, "上傳附件", `${filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
-    return json({ id: attachmentId, key, ok: true });
+    // 錄音進行中補拍的照片立即回到同一份 Word 時間軸。若使用者已經手動改過
+    // 文件，composeRecordingDocument 會以 hash 判斷並保留人工版本。
+    const document = kind === "photo" ? await composeRecordingDocument(env, db, entryId) : null;
+    return json({ id: attachmentId, key, ok: true, document });
   }
   const fileMatch = path.match(/^\/file\/(.+)$/);
   if (fileMatch && method === "GET") {
@@ -2697,7 +2741,8 @@ async function handleApi(request, env, url, identity = {}) {
     catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
     try {
       const text = await transcribeAttachment(env, db, old);
-      return json({ text });
+      const document = await composeRecordingDocument(env, db, old.entry_id);
+      return json({ text, document });
     } catch (err) {
       // 附件上的「手動重試」／「重抄」連結呼叫的就是這支端點，原本沒有接住
       // transcribeAttachment 的錯誤，會直接洩漏到最外層變成一句不知所云的
@@ -2708,6 +2753,14 @@ async function handleApi(request, env, url, identity = {}) {
       await logHistory(db, old.entry_id, null, "手動轉錄失敗", `${old.filename}：${message}`);
       return bad(message, 502);
     }
+  }
+
+  const composeTimelineMatch = path.match(/^\/entries\/(\d+)\/compose-timeline$/);
+  if (composeTimelineMatch && method === "POST") {
+    const entryId = Number(composeTimelineMatch[1]);
+    const document = await composeRecordingDocument(env, db, entryId);
+    if (document.reason === "not_found") return bad("找不到紀錄", 404);
+    return json(document);
   }
 
   const autoTranscribeMatch = path.match(/^\/entries\/(\d+)\/auto-transcribe$/);
@@ -2739,7 +2792,8 @@ async function handleApi(request, env, url, identity = {}) {
       // 10,000」、實際上 7,000 就停——白白少用 30% 的免費額度，而且從訊息完全
       // 看不出來。訊息與實際門檻必須同一個來源。
       if (cloudUsed + reserved + estimate > AI_AUTO_SAFE_NEURONS) {
-        return json({ processed, stopped: true, reason: `預估將超過安全門檻（${AI_AUTO_SAFE_NEURONS.toLocaleString()} Neurons）`, cloudUsed, reserved, transcripts });
+        const document = await composeRecordingDocument(env, db, entryId);
+        return json({ processed, stopped: true, reason: `預估將超過安全門檻（${AI_AUTO_SAFE_NEURONS.toLocaleString()} Neurons）`, cloudUsed, reserved, transcripts, document });
       }
       const claim = await db.prepare(
         "INSERT OR IGNORE INTO ai_usage_reservations (attachment_id, usage_date, estimated_neurons, status, created_at) VALUES (?, ?, ?, 'reserved', ?)"
@@ -2769,7 +2823,8 @@ async function handleApi(request, env, url, identity = {}) {
         failed.push({ attachmentId: audio.id, reason: message });
       }
     }
-    return json({ processed, stopped: false, cloudUsed, reserved, transcripts, failed });
+    const document = await composeRecordingDocument(env, db, entryId);
+    return json({ processed, stopped: false, cloudUsed, reserved, transcripts, failed, document });
   }
 
   // ---- 照片擷取文字（影像 skill，與 Medtec 共用同一份模組）----

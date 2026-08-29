@@ -65,9 +65,9 @@ function makeDB({ attachments = [] } = {}) {
       if (row) row.transcribed_at = "auto_failed";
       return { results: [], changes: row ? 1 : 0 };
     }
-    if (q === "UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?") {
-      const row = tables.attachments.find((a) => a.id === args[2]);
-      if (row) { row.transcript = args[0]; row.transcribed_at = args[1]; }
+    if (q === "UPDATE attachments SET transcript = ?, transcript_vtt = ?, transcribed_at = ? WHERE id = ?") {
+      const row = tables.attachments.find((a) => a.id === args[3]);
+      if (row) { row.transcript = args[0]; row.transcript_vtt = args[1]; row.transcribed_at = args[2]; }
       return { results: [], changes: row ? 1 : 0 };
     }
     if (q === "SELECT * FROM attachments WHERE id = ?") {

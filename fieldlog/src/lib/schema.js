@@ -32,6 +32,7 @@ export const SCHEMA = [
     size INTEGER DEFAULT 0,
     mime TEXT DEFAULT '',
     transcript TEXT DEFAULT '',
+    transcript_vtt TEXT DEFAULT '',
     offset_secs INTEGER,
     category TEXT DEFAULT '',
     content_hash TEXT DEFAULT '',
@@ -245,6 +246,9 @@ export const MIGRATIONS = [
   // 「處理過但結果是空的」（照片沒文字、錄音無語音）要跟「還沒處理」分開，
   // 否則空結果的附件永遠被當成待整理，每按一次整理就重跑重扣一次費用
   `ALTER TABLE attachments ADD COLUMN transcribed_at TEXT DEFAULT ''`,
+  // Whisper 的時間碼用來把逐字稿和拍照依真實錄音秒數穿插進同一份 Word 內文。
+  // transcript 保留純文字供搜尋；VTT 另外存，不能互相取代。
+  `ALTER TABLE attachments ADD COLUMN transcript_vtt TEXT DEFAULT ''`,
   `ALTER TABLE attachments ADD COLUMN ocr_at TEXT DEFAULT ''`,
   // Tier 2 深度處理（手動指定，見 DATA-MODEL.md）：把來源 PDF 逐頁 render 成圖片，
   // 存成一般照片附件、走既有 OCR 流程。source_pdf_id 指回來源 PDF 的 attachments.id，

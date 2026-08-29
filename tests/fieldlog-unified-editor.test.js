@@ -34,6 +34,17 @@ test("桌機記事只有同一個右欄 Word 畫面，附件仍使用右欄預�
   assert.match(app, /return withViewLoading\("正在載入檔案編輯欄…"/);
 });
 
+test("錄音卡直接開啟同一份 Word 文件，原始資料集中在 ⋯ 管理", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const recordingPreview = app.match(/async function showRecordingPreview\(entryId\)[\s\S]*?\n}/)?.[0] || "";
+  const recordingEditor = app.match(/async function openRecordingEditor\(entryId\)[\s\S]*?\n}/)?.[0] || "";
+  assert.match(recordingPreview, /showEntryEditor\(entryId\)/);
+  assert.match(recordingEditor, /showEntryEditor\(entryId\)/);
+  assert.match(app, /async function openRecordingManager\(entryId\)/);
+  assert.match(app, /依時間軸整理圖文/);
+  assert.match(app, /人工修改過的 Word 文件不會被覆蓋/);
+});
+
 test("桌機右欄的一般記事統一使用 Word 類富文字編輯器", async () => {
   const [app, css] = await Promise.all([
     read("../fieldlog/public/app.js"),
