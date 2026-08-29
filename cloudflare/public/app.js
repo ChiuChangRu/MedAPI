@@ -527,6 +527,52 @@ async function showDataChangelog() {
   `).join("");
 }
 
+// 展館分區導覽：官方展館平面圖轉錄（config.js 的 HALL_GUIDE），純靜態資料不用
+// 連後端。有 cat 的品類點了直接篩出該分類，關掉 overlay 跳到篩選結果——跟
+// buildCategoryChips() 的 chip 是「設成這一個分類」而不是「切換」，行為刻意
+// 一致，只是入口不同。
+function hallGuideItemHtml(item) {
+  if (!item.cat) return `<li>${esc(item.label)}</li>`;
+  return `<li><a href="#" class="hallguide-link" data-cat="${esc(item.cat)}">${esc(item.label)}</a></li>`;
+}
+
+function openHallGuide() {
+  $("hall-guide-overlay").classList.add("open");
+  const wrap = $("hall-guide-body");
+  const g = HALL_GUIDE;
+  wrap.innerHTML = `
+    ${g.image ? `<img class="hallguide-map" src="${esc(g.image)}" alt="Medtec China 2026 展館平面圖">` : ""}
+    <div class="hallguide-zone">
+      <h3>ADTE 高端有源醫療裝備技術展</h3>
+      <p class="sub">物理位置在 N1 館內，跟同館的「醫用材料部件館」是兩個並列分區。</p>
+      <ul class="hallguide-list">${g.adte.map(hallGuideItemHtml).join("")}</ul>
+    </div>
+    ${g.halls.map((h) => `
+      <div class="hallguide-zone">
+        <h3>${esc(h.title)}</h3>
+        <ul class="hallguide-list">${h.items.map(hallGuideItemHtml).join("")}</ul>
+      </div>`).join("")}
+    <div class="hallguide-highlights">
+      ${g.highlights.map((hl) => `
+        <div class="hallguide-highlight">
+          <div class="hallguide-highlight-title">${esc(hl.title)}</div>
+          <p>${esc(hl.desc)}</p>
+        </div>`).join("")}
+    </div>
+  `;
+  wrap.querySelectorAll(".hallguide-link").forEach((a) => {
+    a.onclick = (ev) => {
+      ev.preventDefault();
+      ACTIVE_CATS = new Set([a.dataset.cat]);
+      ACTIVE_DEPT = "";
+      $("hall-guide-overlay").classList.remove("open");
+      setActiveViewTab("search");
+      refreshEntryCards(); refreshChips(); refreshPresetBar(); render();
+      $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+  });
+}
+
 // 廠商協尋看板：同事有需求但沒空自己翻展商名冊，把問題列成卡片，
 // AI 從展商目錄挑候選廠商供參考（找不到明顯相關的會誠實說沒有，不會硬湊）。
 async function openHelpBoard() {
@@ -785,6 +831,11 @@ async function init() {
   $("btn-data-changelog").onclick = showDataChangelog;
   $("data-changelog-close").onclick = () => $("data-changelog-overlay").classList.remove("open");
   closeOnBackdropClick("data-changelog-overlay", () => $("data-changelog-overlay").classList.remove("open"));
+
+  // 展館分區導覽（官方展館平面圖＋可點擊篩選的品類清單）
+  $("btn-hall-guide").onclick = openHallGuide;
+  $("hall-guide-close").onclick = () => $("hall-guide-overlay").classList.remove("open");
+  closeOnBackdropClick("hall-guide-overlay", () => $("hall-guide-overlay").classList.remove("open"));
 
   // 廠商協尋看板（同事有需求但沒空找，列成卡片讓 AI 協助建議候選廠商）
   $("btn-help-board").onclick = openHelpBoard;
