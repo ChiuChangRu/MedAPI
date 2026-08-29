@@ -19,9 +19,22 @@
     [{ background: HIGHLIGHT_COLORS }],
     [{ align: [] }],
     [{ list: "ordered" }, { list: "bullet" }],
-    ["blockquote", "code-block", "link"],
+    ["blockquote", "code-block", "link", "image"],
     ["clean"],
   ];
+
+  // Quill 2 內建的「list autofill」會在行首輸入 `1.`、`-`、`*` 後按空白時，
+  // 自動把一般文字轉成編號／項目清單。這對日期、試驗步驟與原始紀錄很容易
+  // 誤判。用同名設定覆寫內建 binding，讓一般空白照常輸入；工具列上的兩種
+  // 清單按鈕仍保留，只有使用者主動選擇時才套用清單格式。
+  const KEYBOARD_BINDINGS = {
+    "list autofill": {
+      key: " ",
+      collapsed: true,
+      prefix: /(?!)/,
+      handler() { return true; },
+    },
+  };
 
   /**
    * 蠟筆重點、字體大小、對齊方式都要存成 class（ql-bg-yellow／ql-size-large／
@@ -40,6 +53,53 @@
     window.Quill.register(SizeClass, true);
     const AlignClass = window.Quill.import("attributors/class/align");
     window.Quill.register(AlignClass, true);
+
+    // 圖片沿用 Quill 內建 image；錄音與一般檔案使用一個 block embed。
+    // 內容只保存 R2 附件網址與 attachment id，不把檔案本體塞進 D1 的 body。
+    const BlockEmbed = window.Quill.import("blots/block/embed");
+    class FieldlogAttachmentBlot extends BlockEmbed {
+      static create(value = {}) {
+        const node = super.create();
+        const kind = value.kind === "audio" ? "audio" : "file";
+        const filename = String(value.filename || "附件");
+        const url = String(value.url || "");
+        node.setAttribute("contenteditable", "false");
+        node.setAttribute("data-att-id", String(value.attId || ""));
+        node.setAttribute("data-kind", kind);
+        node.setAttribute("data-filename", filename);
+        node.setAttribute("data-url", url);
+        if (kind === "audio") {
+          const label = document.createElement("strong");
+          label.textContent = `🎙️ ${filename}`;
+          const audio = document.createElement("audio");
+          audio.setAttribute("controls", "controls");
+          audio.setAttribute("preload", "metadata");
+          audio.setAttribute("src", url);
+          node.append(label, audio);
+        } else {
+          const link = document.createElement("a");
+          link.href = url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = `📎 ${filename}`;
+          node.appendChild(link);
+        }
+        return node;
+      }
+
+      static value(node) {
+        return {
+          attId: node.getAttribute("data-att-id") || "",
+          kind: node.getAttribute("data-kind") || "file",
+          filename: node.getAttribute("data-filename") || "附件",
+          url: node.getAttribute("data-url") || "",
+        };
+      }
+    }
+    FieldlogAttachmentBlot.blotName = "fieldlogAttachment";
+    FieldlogAttachmentBlot.tagName = "figure";
+    FieldlogAttachmentBlot.className = "fieldlog-attachment-card";
+    window.Quill.register(FieldlogAttachmentBlot, true);
     formatsReady = true;
   }
 
@@ -186,7 +246,32 @@
   function init(container, initialHtml, opts = {}) {
     if (!container || !window.Quill) return null;
     registerFormats();
-    const quill = new window.Quill(container, { theme: "snow", modules: { toolbar: TOOLBAR } });
+    const quill = new window.Quill(container, {
+      theme: "snow",
+      modules: {
+        toolbar: TOOLBAR,
+        keyboard: { bindings: KEYBOARD_BINDINGS },
+      },
+    });
+    // Quill 內建的圖片按鈕會把本機圖片轉成 base64 直接塞入 HTML。這會讓 D1
+    // 內容暴增，而且圖片沒有 attachment id，無法預覽、刪除或做 OCR。改成選圖後
+    // 交給 app.js：先上傳 R2，再把有 data-att-id 的圖片插回目前游標位置。
+    const toolbarModule = quill.getModule("toolbar");
+    toolbarModule?.addHandler("image", () => {
+      if (typeof opts.onImagePaste !== "function") return;
+      const picker = document.createElement("input");
+      picker.type = "file";
+      picker.accept = "image/*";
+      picker.multiple = true;
+      picker.setAttribute("aria-label", "從相簿選擇圖片");
+      picker.hidden = true;
+      picker.addEventListener("change", () => {
+        for (const file of Array.from(picker.files || [])) opts.onImagePaste(file);
+        picker.remove();
+      }, { once: true });
+      document.body.appendChild(picker);
+      picker.click();
+    });
     // 貼上從別處複製來的內容（例如從附件清單複製了縮圖＋擷取文字那一整段）時，
     // Quill 預設會原樣保留裡面的 <img>——那張圖不是透過這篇記事的附件流程建立
     // 的，src 通常連不到（或連到別筆記事的檔案，甚至帶著舊 PIN），畫面上會變
@@ -240,6 +325,7 @@
         ".ql-align": "對齊方式",
         ".ql-blockquote": "引言",
         ".ql-code-block": "程式碼區塊",
+        ".ql-image": "從相簿插入圖片",
         ".ql-clean": "清除格式",
       };
       for (const [selector, title] of Object.entries(labels)) {
@@ -254,7 +340,8 @@
     const quill = container?.__fieldlogQuill;
     if (!quill) return "";
     // Quill 完全清空時 root 是 <p><br></p>，視為空字串；只要有文字或圖片就算有內容
-    const hasContent = quill.getText().trim().length > 0 || !!quill.root.querySelector("img");
+    const hasContent = quill.getText().trim().length > 0
+      || !!quill.root.querySelector("img, .fieldlog-attachment-card");
     return hasContent ? quill.root.innerHTML : "";
   }
 
@@ -269,5 +356,15 @@
     if (leaf && leaf.domNode) leaf.domNode.setAttribute("data-att-id", String(attId));
   }
 
-  window.fieldlogRichEditor = { init, getHtml, insertImage, mdToHtml, looksLikeMarkdown };
+  /** 在目前游標位置插入錄音播放器或一般檔案卡片。 */
+  function insertAttachment(container, attachment) {
+    const quill = container?.__fieldlogQuill;
+    if (!quill) return;
+    const range = quill.getSelection(true) || { index: quill.getLength() };
+    quill.insertEmbed(range.index, "fieldlogAttachment", attachment, "user");
+    quill.insertText(range.index + 1, "\n", "user");
+    quill.setSelection(range.index + 2, 0, "user");
+  }
+
+  window.fieldlogRichEditor = { init, getHtml, insertImage, insertAttachment, mdToHtml, looksLikeMarkdown };
 })();

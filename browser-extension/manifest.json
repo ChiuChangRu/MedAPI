@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "MyWiki Clip",
+  "version": "1.0.0",
+  "description": "把目前網頁優先存成 PDF，失敗時改存安全 HTML 到 MyWiki。",
+  "permissions": ["activeTab", "scripting", "storage", "debugger"],
+  "host_permissions": ["https://fieldlog.gogoyankee.workers.dev/*"],
+  "optional_host_permissions": ["https://*/*"],
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": {
+    "default_title": "Clip 到 MyWiki",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}

@@ -93,13 +93,13 @@ test("(e) 「最近作業」改回只列還沒真正歸檔的：收件匣、暫�
     "AI 剛歸類、使用者還沒確認的也要在裡面，不然 🤖 標記／confirm-filing 那套審查機制會完全沒有入口");
 });
 
-test("(e) 首頁面板改名為「待處理」，不再叫「最近作業」（避免使用者以為它列的是全部最近動作）", async () => {
+test("(e) 首頁面板統一叫「待分類」，不再叫「最近作業」", async () => {
   const html = await read("../fieldlog/public/index.html");
-  assert.match(html, /📥 待處理/);
+  assert.match(html, /⏳ 待分類/);
   assert.doesNotMatch(html, /🕒 最近作業/, "舊名字會讓人誤以為這裡列的是不分歸檔狀態的全部最近動作");
 });
 
-test("(e) 待處理清單全部清空時留白，不印制式訊息（標題旁的數字歸零就是訊號）", async () => {
+test("(e) 待分類清單全部清空時留白，不印制式訊息（標題旁的數字歸零就是訊號）", async () => {
   const app = await read("../fieldlog/public/app.js");
   const loadRecent = app.match(/async function loadRecent\(\)[\s\S]*?\n\}/)[0];
   assert.match(loadRecent, /: ""/, "全部處理完時 inbox-list 應該留白");

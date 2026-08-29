@@ -8,7 +8,8 @@
   "keep_vars": true,
   "vars": {
     // Account ID 不是機密；放進部署設定，確保分支預覽也能查用量。
-    "CLOUDFLARE_ACCOUNT_ID": "a791952f49fcd61ca18b9a82dda12dd1"
+    "CLOUDFLARE_ACCOUNT_ID": "a791952f49fcd61ca18b9a82dda12dd1",
+    "SHARE_ORIGIN": "https://share.gogoyankee.workers.dev"
   },
   "assets": {
     "directory": "public",
@@ -21,7 +22,8 @@
     // （2026-07-25 實際發生過：部署確認是最新版，前台卻還是舊畫面）。
     "run_worker_first": [
       "/wiki/*", "/", "/index.html", "/app.js", "/style.css",
-      "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json", "/help.html"
+      "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json", "/help.html",
+      "/wiki.html", "/patrol.html"
     ]
   },
   "d1_databases": [
@@ -45,8 +47,20 @@
     }
   ],
   "ai": { "binding": "AI" },
-  // 每天 UTC 18:00（台灣 02:00）自動同步 sources 表裡的外部來源（litdb 等）。
-  // 「記得手動跑同步」不是機制；handler 是 src/worker.js 的 scheduled()。
+  // 語意搜尋：附件／記事內容向量化後存在這裡，查詢時算相似度。
+  // fieldlog-embeddings 索引已在 Cloudflare 帳號建好，確認為 1024 維／
+  // cosine，跟 @cf/baai/bge-m3 這個 embedding 模型的輸出維度相符。
+  // 索引裡殘留先前放棄版本留下的舊向量（ID 格式不同，不會被新代碼覆寫），
+  // 對搜尋結果最多只是多幾筆不相關的候選，之後有空可以手動清空重建。
+  "vectorize": [
+    { "binding": "VECTOR_INDEX", "index_name": "fieldlog-embeddings" }
+  ],
+  // 向量化本身跑在背景（EmbeddingWorkflow），失敗不擋主要的寫入/OCR 流程。
+  "workflows": [
+    { "name": "fieldlog-embedding-workflow", "binding": "EMBEDDING_WORKFLOW", "class_name": "EmbeddingWorkflow" }
+  ],
+  // 每天 UTC 18:00（台灣 02:00）自動同步 sources，並執行待分類 B 模式。
+  // B 模式只掃新增／更新資料、高信心才搬；handler 是 src/worker.js 的 scheduled()。
   "triggers": { "crons": ["0 18 * * *"] },
   // 展商主檔（exhibitors.json）是靜態資料、不在 D1 裡，一樣是 Service Binding，
   // 只給匯入用的 admin endpoint 呼叫，跟 mcp/wrangler.jsonc 的作法相同。

@@ -79,7 +79,8 @@
 **`folders`（資料夾）**：`name`、`type`（分類，決定欄位模板；選項來自
 `categories` 表）、`status`、`parent_id`（四層知識架構的上層資料夾）。
 **`entries`（紀錄）**：`folder_id`（空＝收件匣）、`title`、`body`（速記）、
-`fields_json`（模板欄位值）。
+`fields_json`（模板欄位值）；`auto_filed_at`／`auto_filed_reason` 標示 B 模式
+已自動搬動但尚未經人工確認的分類。
 **`attachments`（附件）**：跟參展系統幾乎一樣，差別是用 `entry_id`
 （屬於哪筆紀錄）、`kind`（photo/audio/file），同樣有 `transcript`／
 `ocr_text`／`transcribed_at`／`ocr_at`；另有 `note`（只屬於這一份檔案的
@@ -104,6 +105,15 @@
   的標記列記住。所以使用者刪掉預設分類之後，冷啟動不會又倒回來。
 
 **`history`**：歷程。
+
+**`filing_suggestions`（B 模式分類狀態）**：每筆待分類記事只保留最新判定。
+`suggested_folder_id` 是既有資料夾白名單中的目的地，`confidence`／
+`vector_score` 是判定依據，`source_updated_at` 避免內容未變時每天重跑扣額度；
+`status` 記錄 `pending`、`auto_applied`、`accepted`、`rejected`、`confirmed`、
+`undone`、`overridden` 或 `unresolved`。AI 不會由這張表建立、刪除或改名資料夾。
+既有母體經明確命令進行的一次性整理，另用 `baseline_kept`、
+`baseline_suggested`、`baseline_unresolved`、`baseline_auto_applied` 標示；這些
+狀態不會由每日 cron 建立。`previous_folder_id` 保留整理前位置，供逐筆復原。
 
 ## 四、四種「整理狀態」怎麼由欄位決定
 

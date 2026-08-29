@@ -47,13 +47,21 @@ function makeDB() {
       const row = tables.categories.find((c) => c.kind === "_sources_seeded");
       return { results: row ? [row] : [], changes: 0 };
     }
+    if (q === "SELECT id FROM categories WHERE kind = '_patrol_category_2026_08_09' LIMIT 1") {
+      const row = tables.categories.find((c) => c.kind === "_patrol_category_2026_08_09");
+      return { results: row ? [row] : [], changes: 0 };
+    }
     if (q.startsWith("INSERT INTO categories") || q.startsWith("INSERT OR IGNORE INTO categories")) {
       const [kind, level, name, icon, note, fields_json, sort_order, created_at] =
         q.includes("VALUES ('_seeded'")
           ? ["_seeded", 0, "seeded", "", "", "[]", 0, args[0]]
           : q.includes("VALUES ('_sources_seeded'")
             ? ["_sources_seeded", 0, "seeded", "", "", "[]", 0, args[0]]
-            : args;
+            : q.includes("VALUES ('_patrol_category_2026_08_09'")
+              ? ["_patrol_category_2026_08_09", 0, "applied", "", "", "[]", 0, args[0]]
+              : q.includes("VALUES ('folder_type', 0, '巡廠'")
+                ? ["folder_type", 0, "巡廠", "🚶", "假日巡廠出勤與生產紀錄", "[]", 999, args[0]]
+                : args;
       const clash = tables.categories.some((c) => c.kind === kind && c.level === level && c.name === name);
       if (clash && q.startsWith("INSERT OR IGNORE")) return none;
       const id = insert("categories", { kind, level, name, icon, note, fields_json, sort_order, created_at });
@@ -836,10 +844,10 @@ test("照片一律走站內檢視器，不能用 target=_blank 開原始圖片 U
   assert.match(app, /function closeImageViewer/);
   assert.match(app, /function openImageViewer/);
 
-  // 產生照片連結的三個地方都要帶 data-image-url（＝交給站內檢視器），
+  // 產生照片連結的地方都要帶 data-image-url（＝交給站內檢視器），
   // 而且同一個標籤裡不能同時有 target="_blank"
   const imageLinks = [...app.matchAll(/<a[^>]*data-image-url[^>]*>/g)].map((m) => m[0]);
-  assert.ok(imageLinks.length >= 3, `照片連結應該有三處（縮圖／檔案列／閱讀），實得 ${imageLinks.length}`);
+  assert.ok(imageLinks.length >= 2, `照片連結應該出現在縮圖與閱讀區；獨立檔案列已於 v136 移除，實得 ${imageLinks.length}`);
   for (const tag of imageLinks) {
     assert.doesNotMatch(tag, /target="_blank"/, `照片連結不該另開分頁：${tag.slice(0, 90)}`);
   }
@@ -979,14 +987,22 @@ test("分類種子的內容與程式碼裡的預設清單一致（避免只改�
   }
 });
 
-test("記事詳情頁按🎙錄音不會自動關掉整頁——錄音不需要畫面，只是浮動小工具（2026-07-27 回報）", async () => {
+test("記事編輯頁按🎙錄音會先保存草稿、維持頁面並把錄音插回內文", async () => {
   // 使用者反應「按下錄音鍵後畫面跳走，很亂」：e-audio 原本跟 e-video/e-photo
   // 一樣，onclick 先 closeEntry() 才 startAudio()。但錄影/拍照要開全螢幕鏡頭，
   // 關掉合理；錄音只是背景跑的浮動列（z-index 高於詳情頁），沒有理由把整頁關掉，
   // 而且錄音可能持續好幾分鐘，這段時間畫面全跳走比錄影/拍照的短暫跳走更擾民。
   const { readFile } = await import("node:fs/promises");
   const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
-  assert.match(app, /\$\("e-audio"\)\.onclick = \(\) => startAudio\(id\);/, "錄音鍵不該再呼叫 closeEntry()");
+  const audioHandler = app.match(/if \(\$\("e-audio"\)\)[\s\S]*?\n  \};/u)?.[0] || "";
+  assert.match(audioHandler, /saveEntryModal\(\{ closeAfter: false \}\)/, "開錄前要保存尚未儲存的富文字草稿");
+  assert.doesNotMatch(audioHandler, /closeEntry\(\)/, "錄音鍵不該關掉編輯頁");
+  assert.match(audioHandler, /startAudio\(id, \{ insertIntoBody: bodyFormat === "html" \}\)/, "一般富文字記事的錄音完成後要插回內文");
+
+  const photoHandler = app.match(/if \(\$\("e-photo"\)\)[\s\S]*?\n  \};/u)?.[0] || "";
+  assert.match(photoHandler, /saveEntryModal\(\{ closeAfter: false \}\)/, "拍照前也要先保存草稿，避免插回內文時覆蓋修改");
+  assert.match(photoHandler, /closeEntry\(\)/, "拍照需開全螢幕鏡頭，關閉編輯頁維持不變");
+  assert.match(photoHandler, /startPhoto\(id, \{ insertIntoBody: bodyFormat === "html" \}\)/, "一般富文字記事的照片完成後要插回內文");
+
   assert.match(app, /\$\("e-video"\)\.onclick = \(\) => \{ closeEntry\(\); startVideo\(id\); \};/, "錄影開全螢幕鏡頭，關閉詳情頁維持不變");
-  assert.match(app, /\$\("e-photo"\)\.onclick = \(\) => \{ closeEntry\(\); startPhoto\(id\); \};/, "拍照開全螢幕鏡頭，關閉詳情頁維持不變");
 });

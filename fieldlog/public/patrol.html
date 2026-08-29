@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>巡廠紀錄整理</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏭</text></svg>" />
+<meta name="theme-color" content="#0f766e" />
+<style>
+  :root {
+    --accent: #0f766e; --accent-dark: #0d5f58; --bg: #f4f5f4;
+    --text: #1b1d1c; --text-muted: #6b7280; --border: #e2e4e3; --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.6 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; }
+  header {
+    background: var(--accent); color: #fff; position: sticky; top: 0; z-index: 10;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header a { color: #fff; text-decoration: none; font-size: 13px; background: rgba(255,255,255,.15); border-radius: 8px; padding: 5px 10px; }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  .panel { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .panel h2 { font-size: 14px; color: var(--text-muted); margin-bottom: 10px; font-weight: 700; }
+  .btn {
+    border: 1px solid var(--border); background: #fff; border-radius: 8px; padding: 9px 14px;
+    font-size: 14px; cursor: pointer; font-family: inherit; color: var(--text);
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.primary:hover { background: var(--accent-dark); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .thumb-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; margin-top: 12px; }
+  .thumb {
+    position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+    aspect-ratio: 1; cursor: grab; background: #f6f8f7;
+  }
+  .thumb.dragging { opacity: .4; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb .idx {
+    position: absolute; top: 3px; left: 3px; background: rgba(0,0,0,.55); color: #fff;
+    font-size: 11px; border-radius: 4px; padding: 1px 5px;
+  }
+  .thumb .del {
+    position: absolute; top: 3px; right: 3px; background: rgba(0,0,0,.55); color: #fff;
+    border: 0; border-radius: 4px; width: 20px; height: 20px; cursor: pointer; font-size: 12px;
+  }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .status { font-size: 13px; color: var(--text-muted); min-height: 18px; }
+  .status.error { color: #b91c1c; }
+  textarea#output {
+    width: 100%; min-height: 420px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px; line-height: 1.7; padding: 12px; border: 1px solid var(--border); border-radius: 8px;
+    resize: vertical; white-space: pre;
+  }
+  .file-input-label {
+    display: inline-block; border: 1px dashed var(--border); border-radius: 8px; padding: 9px 14px;
+    font-size: 14px; cursor: pointer; color: var(--accent-dark);
+  }
+  .file-input-label:hover { border-color: var(--accent); }
+  #file-input { display: none; }
+  .login-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none;
+    align-items: center; justify-content: center; z-index: 50;
+  }
+  .login-overlay.open { display: flex; }
+  .login-box { background: #fff; border-radius: 12px; padding: 20px; width: 280px; }
+  .login-box input { width: 100%; padding: 9px; border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; font-size: 15px; }
+
+  .page-loading-overlay {
+    position: fixed; inset: 0; z-index: 200; display: none;
+    align-items: center; justify-content: center; padding: 16px;
+    background: rgba(20,22,21,.58); cursor: wait;
+  }
+  .page-loading-overlay.open { display: flex; }
+  .page-loading-box {
+    width: min(320px, 100%); padding: 22px; border-radius: 12px;
+    background: #fff; text-align: center; box-shadow: 0 18px 50px rgba(15,23,42,.24);
+  }
+  .page-loading-spinner {
+    display: inline-block; width: 34px; height: 34px; margin-bottom: 12px;
+    border: 4px solid #d7e7e4; border-top-color: #0f766e; border-radius: 50%;
+    animation: page-loading-spin .75s linear infinite;
+  }
+  .page-loading-title { font-weight: 700; }
+  @keyframes page-loading-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .page-loading-spinner { animation-duration: 1.5s; } }
+
+</style>
+</head>
+<body aria-busy="true">
+
+<div class="page-loading-overlay open" id="page-loading-overlay" role="status" aria-live="polite" aria-modal="true">
+  <div class="page-loading-box">
+    <span class="page-loading-spinner" aria-hidden="true"></span>
+    <div class="page-loading-title" id="page-loading-title">正在載入頁面…</div>
+  </div>
+</div>
+
+<header>
+  <h1>🏭 巡廠紀錄整理</h1>
+  <span style="flex:1"></span>
+  <a href="index.html">‹ 回首頁</a>
+</header>
+<main>
+  <section class="panel">
+    <h2>視窗一：截圖上傳區</h2>
+    <label class="file-input-label" for="file-input">＋ 新增截圖</label>
+    <input id="file-input" type="file" accept="image/png,image/jpeg" multiple />
+    <div class="thumb-list" id="thumb-list"></div>
+  </section>
+
+  <section class="panel">
+    <div class="actions">
+      <button class="btn primary" id="btn-process" disabled>🔍 辨識並整理</button>
+      <button class="btn" id="btn-copy">📋 複製</button>
+      <button class="btn" id="btn-save">💾 存檔</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="panel">
+    <h2>視窗二：輸出文字（可編輯）</h2>
+    <textarea id="output" placeholder="按「辨識並整理」後，整理好的巡廠紀錄會出現在這裡……"></textarea>
+  </section>
+</main>
+
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <strong>需要 PIN 才能使用</strong>
+    <input id="login-pin" type="password" placeholder="PIN" autocomplete="off" />
+    <button class="btn primary" id="login-submit" style="width:100%">確定</button>
+  </div>
+</div>
+
+<script>
+// ---------- PIN／API（跟 app.js 共用 localStorage key，主 App 登入過這裡不用再登一次）----------
+function pin() { return localStorage.getItem("fieldlog_pin") || ""; }
+function showLogin() { document.getElementById("login-overlay").classList.add("open"); }
+document.getElementById("login-submit").onclick = () => {
+  localStorage.setItem("fieldlog_pin", document.getElementById("login-pin").value.trim());
+  document.getElementById("login-overlay").classList.remove("open");
+};
+
+async function api(path, options = {}) {
+  const res = await fetch("/api" + path, {
+    ...options,
+    headers: { "content-type": "application/json", "x-pin": pin(), ...(options.headers || {}) },
+  });
+  if (res.status === 401) { showLogin(); throw new Error("PIN 錯誤"); }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function uploadRaw(path, file, headers = {}) {
+  const res = await fetch("/api" + path, {
+    method: "POST",
+    body: file,
+    headers: { "content-type": file.type || "application/octet-stream", "x-pin": pin(), ...headers },
+  });
+  if (res.status === 401) { showLogin(); throw new Error("PIN 錯誤"); }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ---------- 狀態 ----------
+let IMAGES = []; // [{ file, url, id }]
+let DRAG_ID = null;
+
+function setStatus(msg, isError) {
+  const el = document.getElementById("status");
+  el.textContent = msg || "";
+  el.classList.toggle("error", !!isError);
+}
+
+function renderThumbs() {
+  const wrap = document.getElementById("thumb-list");
+  wrap.innerHTML = IMAGES.map((img, i) => `
+    <div class="thumb" draggable="true" data-id="${img.id}">
+      <span class="idx">${i + 1}</span>
+      <img src="${img.url}" alt="截圖 ${i + 1}" />
+      <button class="del" type="button" data-id="${img.id}" aria-label="刪除">✕</button>
+    </div>
+  `).join("");
+  document.getElementById("btn-process").disabled = IMAGES.length === 0;
+
+  wrap.querySelectorAll(".del").forEach((btn) => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const id = btn.dataset.id;
+      const removed = IMAGES.find((x) => String(x.id) === id);
+      if (removed) URL.revokeObjectURL(removed.url);
+      IMAGES = IMAGES.filter((x) => String(x.id) !== id);
+      renderThumbs();
+    };
+  });
+  wrap.querySelectorAll(".thumb").forEach((el) => {
+    el.ondragstart = () => { DRAG_ID = el.dataset.id; el.classList.add("dragging"); };
+    el.ondragend = () => el.classList.remove("dragging");
+    el.ondragover = (ev) => ev.preventDefault();
+    el.ondrop = (ev) => {
+      ev.preventDefault();
+      const targetId = el.dataset.id;
+      if (!DRAG_ID || DRAG_ID === targetId) return;
+      const fromIdx = IMAGES.findIndex((x) => String(x.id) === DRAG_ID);
+      const toIdx = IMAGES.findIndex((x) => String(x.id) === targetId);
+      if (fromIdx < 0 || toIdx < 0) return;
+      const [moved] = IMAGES.splice(fromIdx, 1);
+      IMAGES.splice(toIdx, 0, moved);
+      renderThumbs();
+    };
+  });
+}
+
+document.getElementById("file-input").onchange = (ev) => {
+  for (const file of ev.target.files) {
+    IMAGES.push({ file, url: URL.createObjectURL(file), id: Date.now() + Math.random() });
+  }
+  ev.target.value = "";
+  renderThumbs();
+};
+
+// ---------- 按鈕1：辨識並整理 ----------
+document.getElementById("btn-process").onclick = async () => {
+  const btn = document.getElementById("btn-process");
+  btn.disabled = true;
+  try {
+    const items = [];
+    for (let i = 0; i < IMAGES.length; i++) {
+      setStatus(`辨識中 ${i + 1}/${IMAGES.length}……`);
+      const img = IMAGES[i];
+      const r = await uploadRaw("/patrol/ocr", img.file);
+      items.push({ index: i, filename: img.file.name, text: r.text });
+    }
+    setStatus("辨識完成，AI 整理格式中……（可能需要數秒到十幾秒）");
+    const r = await api("/patrol/format", { method: "POST", body: JSON.stringify({ items }) });
+    document.getElementById("output").value = r.formatted_text;
+    setStatus(`整理完成，共處理 ${IMAGES.length} 張截圖。請檢查內容後再存檔。`);
+  } catch (err) {
+    setStatus("失敗：" + err.message, true);
+  } finally {
+    btn.disabled = IMAGES.length === 0;
+  }
+};
+
+// ---------- 按鈕2a：複製 ----------
+document.getElementById("btn-copy").onclick = async () => {
+  const text = document.getElementById("output").value;
+  if (!text) { setStatus("還沒有內容可複製", true); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("已複製到剪貼簿");
+  } catch {
+    setStatus("複製失敗，請手動選取文字複製", true);
+  }
+};
+
+// ---------- 按鈕2b：存檔（建記事＋原始截圖當附件）----------
+function guessTitle(text) {
+  const m = text.match(/(\d{4})年(\d{2})月(\d{2})日/);
+  const date = m ? `${m[1]}-${m[2]}-${m[3]}` : new Date().toISOString().slice(0, 10);
+  return `龍德廠/宜科廠巡廠紀錄 ${date}`;
+}
+
+document.getElementById("btn-save").onclick = async () => {
+  const text = document.getElementById("output").value.trim();
+  if (!text) { setStatus("還沒有內容可存檔", true); return; }
+  const btn = document.getElementById("btn-save");
+  btn.disabled = true;
+  try {
+    setStatus("存檔中……");
+    const { folder_id } = await api("/patrol/folder");
+    const { id: entryId } = await api("/entries", {
+      method: "POST",
+      body: JSON.stringify({ folder_id, title: guessTitle(text), body: text, body_format: "text" }),
+    });
+    for (const img of IMAGES) {
+      await uploadRaw("/upload", img.file, {
+        "x-entry-id": String(entryId),
+        "x-filename": encodeURIComponent(img.file.name),
+      });
+    }
+    setStatus(`已存檔到「行政｜巡廠」資料夾，共附上 ${IMAGES.length} 張原始截圖。`);
+  } catch (err) {
+    setStatus("存檔失敗：" + err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+if (!pin()) showLogin();
+renderThumbs();
+</script>
+
+<script>
+window.setTimeout(() => {
+  document.getElementById("page-loading-overlay")?.classList.remove("open");
+  document.body.removeAttribute("aria-busy");
+}, 180);
+</script>
+
+</body>
+</html>

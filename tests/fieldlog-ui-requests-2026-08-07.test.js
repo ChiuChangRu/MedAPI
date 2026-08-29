@@ -167,14 +167,14 @@ test("(6) 首頁有一個永遠看得到的待處理清單，不會空了就整�
   assert.match(app, /function entryLocationLabel\(/, "每一列要標出現在待在哪裡");
 });
 
-test("(6) 採集時就先分類：資料夾 chip 有暫存區選項，錄音也有歸類鈕", async () => {
+test("(6) 採集時可先放待分類，錄音也有分類鈕", async () => {
   const [app, html] = await Promise.all([
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/index.html"),
   ]);
   assert.match(app, /async function stagingFolderId\(\)/);
-  assert.match(app, /很急，先放暫存區/, "採集畫面上要有一鍵丟暫存區");
-  assert.match(html, /id="audio-folder-btn"/, "錄音沒有全螢幕畫面，浮動列上要有歸類鈕");
+  assert.match(app, /⏳ 待分類（之後再移動）/, "採集畫面上要有一鍵放入待分類");
+  assert.match(html, /id="audio-folder-btn"/, "錄音沒有全螢幕畫面，浮動列上要有分類鈕");
   const ensure = app.match(/async function ensureEntryForCapture[\s\S]*?\n}/)[0];
   assert.match(ensure, /await stagingFolderId\(\)/, "首頁開始的採集要落在看得見的暫存區，不是看不見的收件匣");
 });

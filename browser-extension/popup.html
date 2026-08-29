@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>MyWiki Clip</title>
+</head>
+<body>
+  <main>
+    <header><span>🩷</span><strong>MyWiki Clip</strong></header>
+    <p id="status">優先保存 PDF；失敗時自動改存 HTML。</p>
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="bar"></i></div>
+    <button id="save" type="button">Clip 到待分類</button>
+    <button id="settings" class="secondary" type="button">設定</button>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

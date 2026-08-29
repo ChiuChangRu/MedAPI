@@ -19,11 +19,11 @@ function makeDB() {
     const q = sql.replace(/\s+/g, " ").trim();
     const none = { results: [], changes: 0 };
     if (/^CREATE (TABLE|UNIQUE INDEX|INDEX)/i.test(q) || /^ALTER TABLE/i.test(q) || /^DROP INDEX/i.test(q)) return none;
-    if (q === "SELECT * FROM folders WHERE id = ?") {
+    if (/^SELECT \\* FROM folders WHERE id = \\?/i.test(q)) {
       const row = tables.folders.find((f) => f.id === args[0]);
       return { results: row ? [row] : [] };
     }
-    if (q === "SELECT * FROM entries WHERE folder_id = ? ORDER BY id") {
+    if (/^SELECT \\* FROM entries WHERE folder_id = \\?/i.test(q)) {
       return { results: tables.entries.filter((e) => e.folder_id === args[0]) };
     }
     if (q === "SELECT * FROM attachments WHERE entry_id = ? ORDER BY id") {
@@ -55,7 +55,8 @@ function makeEnv(db) {
 async function exportFolder(env, id) {
   const req = new Request(`https://x/api/export/folder/${id}`, { headers: { "x-pin": "pin" } });
   const res = await fieldlogWorker.fetch(req, env);
-  return { status: res.status, text: await res.text() };
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  return { status: res.status, bytes, text: new TextDecoder().decode(bytes) };
 }
 
 test("匯出資料夾：body_format='text' 的記事原樣輸出（既有行為不變）", async () => {
@@ -85,4 +86,43 @@ test("匯出資料夾：body_format='html' 的記事要剝成純文字，不能�
   assert.match(text, /第二段/);
   assert.match(text, /\[圖片：收據\.jpg\]/);
   assert.doesNotMatch(text, /<p>|<img/, "匯出給 AI 的內容不該帶 HTML 標籤");
+});
+
+test("匯出資料夾：Markdown 以 UTF-8 BOM 開頭，避免 Windows 將中文誤判成 Big5", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  db.tables.folders.push({ id: 1, name: "工作週報", type: "週報" });
+
+  const { status, bytes, text } = await exportFolder(env, 1);
+  assert.equal(status, 200);
+  assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+  assert.match(text, /工作週報/);
+});
+
+test("匯出週報：以 fields_json 即時組合，不能輸出過期 body 或重複整份內容", async () => {
+  const db = makeDB();
+  const env = makeEnv(db);
+  db.tables.folders.push({ id: 1, name: "工作週報", type: "週報" });
+  db.tables.entries.push({
+    id: 34,
+    folder_id: 1,
+    title: "2026-W34 工作週報（08/17–08/21）",
+    body: "這是未同步的舊內文",
+    body_format: "text",
+    fields_json: JSON.stringify({
+      _kind: "weekly_report",
+      "週次": "2026-W34",
+      "期間": "2026-08-17–2026-08-21",
+      "中長期規劃": "固定規劃",
+      "本週工作報告": "正確的新內容",
+      "下週重要工作計畫": "",
+    }),
+    created_at: "x",
+  });
+
+  const { status, text } = await exportFolder(env, 1);
+  assert.equal(status, 200);
+  assert.match(text, /正確的新內容/);
+  assert.doesNotMatch(text, /這是未同步的舊內文/);
+  assert.equal((text.match(/正確的新內容/g) || []).length, 1);
 });

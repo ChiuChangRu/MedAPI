@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><link rel="stylesheet" href="popup.css" /><title>MyWiki Clip 設定</title></head>
+<body style="width:auto;max-width:620px;margin:40px auto">
+  <main>
+    <header><span>🩷</span><strong>MyWiki Clip 設定</strong></header>
+    <p>若 MyWiki 使用 Cloudflare Access，PIN 可以留白；請先在同一個 Chrome 登入 MyWiki。</p>
+    <label>MyWiki 網址<input id="url" type="url" style="display:block;width:100%;box-sizing:border-box;padding:10px;margin:6px 0 14px" /></label>
+    <label>PIN（選填）<input id="pin" type="password" autocomplete="off" style="display:block;width:100%;box-sizing:border-box;padding:10px;margin:6px 0 14px" /></label>
+    <button id="save" type="button">儲存設定</button>
+    <p id="message"></p>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

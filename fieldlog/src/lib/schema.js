@@ -45,6 +45,27 @@ export const SCHEMA = [
     detail TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    entry_id INTEGER NOT NULL,
+    attachment_id INTEGER,
+    snapshot_json TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT DEFAULT '',
+    allow_attachments INTEGER DEFAULT 1,
+    allow_download INTEGER DEFAULT 0,
+    created_by TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    access_count INTEGER DEFAULT 0,
+    last_accessed_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_attempts (
+    client_key TEXT PRIMARY KEY,
+    failures INTEGER DEFAULT 0,
+    window_started_at TEXT NOT NULL,
+    blocked_until TEXT DEFAULT ''
+  )`,
   `CREATE TABLE IF NOT EXISTS ai_usage_reservations (
     attachment_id INTEGER PRIMARY KEY,
     usage_date TEXT NOT NULL,
@@ -121,17 +142,32 @@ export const SCHEMA = [
     errors TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
-  // 2026-08-09 前：使用者自己在前台可調整的行為參數（key-value），當時只有
-  // 「暫存區放幾天後 AI 自動歸類」這一個 key。AI 自動歸類整個拿掉之後這張表
-  // 沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE；沒有新設定需求前
-  // 不用重新接上。
+  // 系統層 key-value。早期曾存「暫存區放幾天後 AI 自動歸類」；該功能移除後，
+  // 現在改用於後臺維護版本標記。版本標記存在 D1，而不是 localStorage，才能確保
+  // 換瀏覽器或換電腦時不會再次掃描整個資料庫。
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  // 2026-08-09 前：AI 自動歸類的判斷規則（keyword → folder_id）。AI 自動歸類
-  // 整個拿掉之後這兩張表沒人寫也沒人讀了，留著純粹是既有資料不做 DROP TABLE。
+  // 垃圾桶只記「被刪除的根項目」。資料夾／紀錄本身仍保留原本的父子關係，
+  // deleted_at 只負責把整棵樹從一般查詢隱藏；還原時才能原封不動回到原位置。
+  `CREATE TABLE IF NOT EXISTS trash_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_type TEXT NOT NULL,
+    item_id INTEGER NOT NULL,
+    title TEXT DEFAULT '',
+    deleted_at TEXT NOT NULL,
+    purge_after TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'trashed',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT DEFAULT '',
+    purge_started_at TEXT DEFAULT '',
+    UNIQUE(item_type, item_id)
+  )`,
+  // 人工核准過的固定分類規則（keyword → folder_id）與歷史修正紀錄。
+  // 2026-08-09 曾停用，v142 B 模式只重新啟用 status='active' 的人工規則；
+  // suggested 規則與舊修正資料不會自行生效。
   `CREATE TABLE IF NOT EXISTS autofile_hints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     folder_id INTEGER NOT NULL,
@@ -149,6 +185,27 @@ export const SCHEMA = [
     reviewed_at TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
+  // v142 B 模式：AI 只處理待分類中的新／已更新資料。建議、已自動套用、
+  // 已接受、已拒絕、已復原各自有明確狀態，不能只靠 entries.auto_filed_at
+  // 一個欄位猜現在走到哪一步。entry_id 唯一＝同一筆只保留最新判斷；
+  // source_updated_at 改變才允許重算，避免每天對同一內容重複扣 AI 額度。
+  `CREATE TABLE IF NOT EXISTS filing_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER NOT NULL UNIQUE,
+    suggested_folder_id INTEGER,
+    previous_folder_id INTEGER,
+    ai_folder_id INTEGER,
+    vector_folder_id INTEGER,
+    confidence REAL DEFAULT 0,
+    vector_score REAL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    basis TEXT DEFAULT '',
+    reason TEXT DEFAULT '',
+    source_updated_at TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    reviewed_at TEXT DEFAULT ''
+  )`,
   // 搜尋同義詞表（mcp/src/search.js 的 setSynonymGroups 用）。原本只由 medapi-mcp
   // 那支 Worker 在第一次搜尋時建立（見 mcp/src/worker.js 的 ensureSynonyms），
   // 是「只有 fieldlog 帶 migration」這個原則下的一個例外；fieldlog 首頁的
@@ -165,6 +222,8 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_att_entry ON attachments(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_trash_purge ON trash_items(purge_after)`,
+  `CREATE INDEX IF NOT EXISTS idx_filing_suggestions_status ON filing_suggestions(status, updated_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique ON categories(kind, level, name)`,
 ];
 
@@ -175,8 +234,7 @@ export const MIGRATIONS = [
   // 的東西先丟這裡。用欄位而不是靠名字認，是因為名字可以被使用者改掉，改完
   // 之後自動歸類就再也找不到那個資料夾（而且不會有任何錯誤訊息）。
   `ALTER TABLE folders ADD COLUMN role TEXT DEFAULT ''`,
-  // AI 自動歸類的標記（該功能已於 2026-08-09 移除，欄位保留給歷史資料與
-  // /entries/:id/confirm-filing 用，不會再有新資料寫入）：
+  // AI 自動歸類的標記。v142 B 模式重新寫入，供待分類清單顯示、確認與復原：
   // ''＝沒被自動歸類過；ISO 時間＝AI 歸的；'failed'＝跑過但 AI 判斷不出來。
   `ALTER TABLE entries ADD COLUMN auto_filed_at TEXT DEFAULT ''`,
   `ALTER TABLE entries ADD COLUMN auto_filed_reason TEXT DEFAULT ''`,
@@ -253,12 +311,47 @@ export const MIGRATIONS = [
   // 同一層級內的手動排序，數字小的排前面；NULL／相同值時退回既有的
   // id／status 排序，不影響原本沒設定過排序的資料夾。
   `ALTER TABLE folders ADD COLUMN sort_order INTEGER`,
+  // v109：紀錄本身也是 Windows 式資料包，可以一層包一層；正式資料夾與
+  // 紀錄刪除都先進垃圾桶，60 天後才永久清除。
+  `ALTER TABLE entries ADD COLUMN parent_entry_id INTEGER`,
+  `ALTER TABLE entries ADD COLUMN deleted_at TEXT DEFAULT ''`,
+  `ALTER TABLE folders ADD COLUMN deleted_at TEXT DEFAULT ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(parent_entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_deleted ON entries(deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_folders_deleted ON folders(deleted_at)`,
+  // 首頁與檔案總管的熱路徑索引。放在 MIGRATIONS（不是 SCHEMA），因為舊資料庫
+  // 要先補 parent_id／parent_entry_id／deleted_at 欄位後才能建立這些索引。
+  `CREATE INDEX IF NOT EXISTS idx_folders_parent_active ON folders(parent_id) WHERE COALESCE(deleted_at, '') = ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_folder_root_active ON entries(folder_id, parent_entry_id) WHERE COALESCE(deleted_at, '') = ''`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_recent_active ON entries(COALESCE(NULLIF(updated_at, ''), created_at) DESC, id DESC) WHERE COALESCE(deleted_at, '') = '' AND parent_entry_id IS NULL`,
+  `ALTER TABLE trash_items ADD COLUMN state TEXT NOT NULL DEFAULT 'trashed'`,
+  `ALTER TABLE trash_items ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE trash_items ADD COLUMN last_error TEXT DEFAULT ''`,
+  `ALTER TABLE trash_items ADD COLUMN purge_started_at TEXT DEFAULT ''`,
+  // 語意搜尋（Vectorize）：附件與記事各自的向量化狀態。vector_id 存的是
+  // Vectorize 那邊的 id（附件可能對應多支分段向量，這裡存主 id 前綴，實際
+  // 分段 id 用 att-{id}-{n} 規則算出來，不用另外存清單）。
+  `ALTER TABLE attachments ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE attachments ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE attachments ADD COLUMN embedding_error TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN vector_id TEXT DEFAULT ''`,
+  `ALTER TABLE entries ADD COLUMN embedding_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE entries ADD COLUMN embedding_error TEXT DEFAULT ''`,
 ];
 
 // folders.category 的合法值——色系分組，見上面 MIGRATIONS 裡的說明。
 // 陣列順序＝顯示優先序（category_rank），不是字母序：越前面代表「預期會長越大」，
 // 不是「現在筆數比較多」，避免之後又要重排一次。
-export const FOLDER_CATEGORIES = ["project", "qa_reg", "literature", "training", "admin", "misc"];
+export const FOLDER_CATEGORIES = [
+  "project",
+  "training",
+  "admin",
+  "literature",
+  "routine_report",
+  "ai_adoption",
+  "qa_reg",
+  "misc",
+];
 
 // 資料夾清單依 category 分組排序用的 SQL 片段（§B5）。放這裡讓 fieldlog／mcp
 // 兩支 worker 的 /folders 查詢共用同一份順序定義，不用各自寫一次、之後
@@ -363,7 +456,31 @@ export async function ensureSchema(db, timestamp) {
   }
   await seedCategories(db, timestamp);
   await seedSources(db, timestamp);
+  await ensurePatrolCategory(db, timestamp);
   schemaReady = true;
+}
+
+/**
+ * 一次性補上「巡廠」資料夾分類（2026-08-09，Jeremy 假日巡廠回報功能規格）。
+ * seedCategories() 只在 categories 表完全空的時候跑一次，那時已經跑過了、
+ * 不會再自動長出新分類，這裡用同一套「標記列」手法補一筆，不放進 cron
+ * （applyFolderReorg20260808 那種），而是掛在 ensureSchema()——它本來就每次
+ * 冷啟動都跑，這樣部署完立刻能用，不用等下一次排程。
+ */
+export async function ensurePatrolCategory(db, timestamp) {
+  const applied = await db
+    .prepare("SELECT id FROM categories WHERE kind = '_patrol_category_2026_08_09' LIMIT 1")
+    .first()
+    .catch(() => null);
+  if (applied) return;
+  await db.batch([
+    db.prepare(
+      "INSERT INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('_patrol_category_2026_08_09', 0, 'applied', '', '', '[]', 0, ?)"
+    ).bind(timestamp),
+    db.prepare(
+      "INSERT OR IGNORE INTO categories (kind, level, name, icon, note, fields_json, sort_order, created_at) VALUES ('folder_type', 0, '巡廠', '🚶', '假日巡廠出勤與生產紀錄', '[]', 999, ?)"
+    ).bind(timestamp),
+  ]);
 }
 
 // 測試用：重置「已初始化」旗標

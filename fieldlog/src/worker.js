@@ -20,6 +20,22 @@
  * app.js 一改就靜默失效。整併後全部落回這裡與 public/ 的正常程式碼。
  */
 
+// "cloudflare:workers" 是 Workers runtime 才有的虛擬模組，node:test 直接
+// import 這支 worker.js 當一般 ES module 執行時（tests/fieldlog-*.test.js
+// 一大票都這樣用）Node 的 ESM loader 解析不到會直接丟
+// ERR_UNSUPPORTED_ESM_URL_SCHEME，整支測試檔案連帶掛掉。用動態 import +
+// try/catch 才攔得住這個錯誤（靜態 import 是在模組連結階段就失敗，try/catch
+// 完全包不住）；測試環境退回一個空殼基底類別，只是讓下面
+// `class EmbeddingWorkflow extends WorkflowEntrypoint` 語法上站得住腳，
+// 反正測試不會真的建立 Workflow 執行個體（那是 Workers runtime 收到
+// binding.create() 呼叫才會做的事）。
+let WorkflowEntrypoint;
+try {
+  ({ WorkflowEntrypoint } = await import("cloudflare:workers"));
+} catch {
+  WorkflowEntrypoint = class {};
+}
+
 import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
 import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFolderReorg20260808, ensureSchema } from "./lib/schema.js";
 import { syncSources } from "./lib/sync.js";
@@ -40,7 +56,24 @@ import {
   listCategories,
   updateCategory,
 } from "./lib/categories.js";
-import { ensureStagingFolder } from "./lib/autofile.js";
+import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
+import {
+  canonicalFolderLocalName,
+  findSiblingFolderNameConflict,
+  normalizeExistingChildFolderNames,
+} from "./lib/folder-names.js";
+import { normalizeExistingWorkSections } from "./lib/work-sections.js";
+import { createLegacySession, securityHeaders, verifyAccessRequest, verifyLegacySession } from "./lib/access-auth.js";
+import { ensurePatrolFolder, formatPatrolReport } from "./lib/patrol.js";
+import {
+  entrySubtreeIds,
+  listTrash,
+  moveEntryTreeToTrash,
+  moveFolderTreeToTrash,
+  permanentlyDeleteTrashItem,
+  purgeExpiredTrash,
+  restoreTrashItem,
+} from "./lib/trash.js";
 // 全文搜尋的比對邏輯（斷詞／同義詞展開／簡繁摺疊）跟 medapi-mcp 的
 // search_fieldlog 共用同一份，不重寫第二套——mcp 是讀 D1 的「智慧查詢層」，
 // fieldlog 是「raw data 存取層」，兩者一直是這個分工；但比對演算法本身是
@@ -97,7 +130,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "101";
+const UI_VERSION = "161";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -114,6 +147,338 @@ const INLINE_RAW_MAX_BYTES = 4 * 1024 * 1024;
 
 function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
+}
+
+const WEEKLY_REPORT_FOLDER_ROLE = "weekly_reports";
+const WEEKLY_REPORT_FIXED_PLAN = [
+  "- 宜科廠高壓攝影導管用注射筒套組－功能性驗證",
+  "- 醫用塗層與親水性導管開發",
+  "- 檢體針開發",
+  "- Laborie 29種壓管代工，與 Laborie 關注物質（毒物）資料更新",
+].join("\n");
+
+function taipeiIsoWeek(date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(date).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
+  const local = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  const weekday = local.getUTCDay() || 7;
+  const thursday = new Date(local);
+  thursday.setUTCDate(local.getUTCDate() + 4 - weekday);
+  const year = thursday.getUTCFullYear();
+  const first = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil((((thursday - first) / 86400000) + 1) / 7);
+  const monday = new Date(local);
+  monday.setUTCDate(local.getUTCDate() - weekday + 1);
+  const friday = new Date(monday);
+  friday.setUTCDate(monday.getUTCDate() + 4);
+  const isoDate = (value) => value.toISOString().slice(0, 10);
+  return { year, week, key: `${year}-W${String(week).padStart(2, "0")}`, start: isoDate(monday), end: isoDate(friday) };
+}
+
+function weeklyReportText(fields) {
+  return [
+    `週次：${fields["週次"] || ""}`,
+    `期間：${fields["期間"] || ""}`,
+    "",
+    "一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）",
+    fields["中長期規劃"] || WEEKLY_REPORT_FIXED_PLAN,
+    "",
+    "二、本週工作報告",
+    fields["本週工作報告"] || "",
+    "",
+    "三、下週重要工作計畫",
+    fields["下週重要工作計畫"] || "",
+  ].join("\n").trim();
+}
+
+// 週報的權威資料只有 fields_json。body 是為搜尋、分享與匯出保留的衍生文字，
+// 舊版本或中途失敗的寫入可能讓兩者暫時不同步；讀取時一律由欄位即時重建，
+// 才不會出現「點進編輯器是一版，外部預覽又是另一版」。一般記事仍使用原 body。
+function canonicalEntryBody(entry) {
+  let fields = {};
+  try { fields = JSON.parse(entry?.fields_json || "{}"); } catch { return entry?.body || ""; }
+  return fields._kind === "weekly_report" ? weeklyReportText(fields) : (entry?.body || "");
+}
+
+// ========== 語意搜尋（Vectorize）==========
+// 2026-08 曾在別的分支做過一版，命中率太差沒上線：根因是完全沒把記事本文
+// （entries.body）向量化——只有附件轉錄/OCR 內容會排入，速記類記事從頭到尾
+// 不在索引裡；而且長文件整篇只取前 2000 字元就丟去 embedding，模型
+// （bge-m3）明明吃得下 8192 token，長文件的核心內容反而沒被向量化到。這次
+// 重做時把這兩點都堵起來：記事一律整篇 embed（通常不長，不用分段），附件
+// 內容真的很長時才切成多段各自 embed（EMBED_CHUNK_SIZE／EMBED_CHUNK_OVERLAP）。
+
+const EMBED_TEXT_CAP = 6000; // 單段最多丟給模型的字元數，留在 bge-m3 8192 token 上限內
+const EMBED_CHUNK_SIZE = 1200; // 附件內容超過這個長度才分段
+const EMBED_CHUNK_OVERLAP = 100; // 段落間重疊，避免語意剛好被切斷點打斷
+const EMBED_MAX_CHUNKS = 20; // 極端長文件的分段數上限，防止失控
+
+// 把長文字切成多段，短文字直接回傳單一元素陣列（不分段）。純函式，方便單元測試。
+export function chunkText(text, {
+  chunkSize = EMBED_CHUNK_SIZE,
+  overlap = EMBED_CHUNK_OVERLAP,
+  maxChunks = EMBED_MAX_CHUNKS,
+  cap = EMBED_TEXT_CAP,
+} = {}) {
+  const t = String(text || "").trim();
+  if (!t) return [];
+  if (t.length <= chunkSize) return [t.slice(0, cap)];
+  const chunks = [];
+  let start = 0;
+  while (start < t.length && chunks.length < maxChunks) {
+    chunks.push(t.slice(start, start + chunkSize).slice(0, cap));
+    if (start + chunkSize >= t.length) break;
+    start += chunkSize - overlap;
+  }
+  return chunks;
+}
+
+// 一份附件／記事在 Vectorize 裡固定佔用 att-{id}-0 ~ att-{id}-(EMBED_MAX_CHUNKS-1)
+// 這個 id 範圍（記事不分段，只用 entry-{id}）。重新 embed 前先整批刪掉這個
+// 範圍再 upsert 新的，不用另外存「上次切了幾段」——刪不存在的 id 是 no-op。
+function vectorIdsForAttachment(attachmentId) {
+  return Array.from({ length: EMBED_MAX_CHUNKS }, (_, i) => `att-${attachmentId}-${i}`);
+}
+
+export class EmbeddingWorkflow extends WorkflowEntrypoint {
+  async run(event, step) {
+    const payload = event.payload || {};
+    const { kind, id, entryId, textContent, title } = payload; // kind: "entry" | "attachment" | maintenance kinds
+
+    // v143：既有第二層以下資料夾只保留本層名稱。這個維護工作不使用 AI、
+    // 不搬動、不合併；同層同名會跳過並列入衝突清單。settings 讓部署重試安全。
+    if (kind === "normalize_folder_names_v143") {
+      const maintenanceKey = "maintenance.folder_name_normalization";
+      const maintenanceVersion = "2026-08-24-v1";
+      const summary = (state, skipped = false) => ({
+        success: true,
+        skipped,
+        version: state.version,
+        status: state.status,
+        checked: Number(state.checked || 0),
+        renamed_count: Number(state.renamed_count || 0),
+        conflict_count: Number(state.conflict_count || 0),
+        invalid_count: Number(state.invalid_count || 0),
+        finished_at: state.finished_at || null,
+      });
+      return step.do("normalize-existing-child-folder-names-v143", async () => {
+        await ensureSchema(this.env.DB, now());
+        const saved = await this.env.DB.prepare("SELECT value FROM settings WHERE key = ?")
+          .bind(maintenanceKey).first();
+        if (saved?.value) {
+          try {
+            const parsed = JSON.parse(saved.value);
+            if (parsed.version === maintenanceVersion && parsed.status === "complete") {
+              return summary(parsed, true);
+            }
+          } catch { /* 舊值格式不符時重新執行本版維護 */ }
+        }
+        const result = await normalizeExistingChildFolderNames(this.env.DB, { timestamp: now, logHistory });
+        const state = { version: maintenanceVersion, status: "complete", ...result };
+        await this.env.DB.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind(maintenanceKey, JSON.stringify(state), now()).run();
+        // Workflow step output 會出現在 GitHub Actions log：只回傳數量，不把
+        // renamed/conflicts 裡的實際資料夾名稱公開；完整明細只留在 D1 settings。
+        return summary(state);
+      });
+    }
+
+    // v144：把既有根資料夾對齊八個虛擬工作分類。只更新根資料夾的
+    // name/category；不改 parent_id，也不移動 entries/attachments。
+    if (kind === "normalize_work_sections_v144") {
+      const maintenanceKey = "maintenance.work_sections_v144";
+      const maintenanceVersion = "2026-08-24-v1";
+      const summary = (state, skipped = false) => ({
+        success: true,
+        skipped,
+        version: state.version,
+        status: state.status,
+        checked: Number(state.checked || 0),
+        renamed_count: Number(state.renamed_count || 0),
+        recategorized_count: Number(state.recategorized_count || 0),
+        conflict_count: Number(state.conflict_count || 0),
+        invalid_count: Number(state.invalid_count || 0),
+        finished_at: state.finished_at || null,
+      });
+      return step.do("normalize-existing-work-sections-v144", async () => {
+        await ensureSchema(this.env.DB, now());
+        const saved = await this.env.DB.prepare("SELECT value FROM settings WHERE key = ?")
+          .bind(maintenanceKey).first();
+        if (saved?.value) {
+          try {
+            const parsed = JSON.parse(saved.value);
+            if (parsed.version === maintenanceVersion && parsed.status === "complete") {
+              return summary(parsed, true);
+            }
+          } catch { /* 舊值格式不符時重新執行本版維護 */ }
+        }
+        const result = await normalizeExistingWorkSections(this.env.DB, { timestamp: now, logHistory });
+        const state = { version: maintenanceVersion, status: "complete", ...result };
+        await this.env.DB.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind(maintenanceKey, JSON.stringify(state), now()).run();
+        // 公開部署 log 只列數量；含原名稱的完整明細只保存在 D1 settings。
+        return summary(state);
+      });
+    }
+
+    // Cloudflare Access 會正確阻擋未登入瀏覽器，也因此 ChatGPT Cloud Browser
+    // 不能安全呼叫管理端點。母體整理改由既有 Workflow binding 從 Cloudflare
+    // 後台直接執行：第一次先凍結當下最大 entry id，後續批次永遠只掃這個母體，
+    // 不會把部署後新增的正式資料一起搬動。settings 標記讓重複觸發只會回報 skipped。
+    if (kind === "baseline_filing_v142") {
+      const maintenanceKey = "maintenance.baseline_filing";
+      const maintenanceVersion = "2026-08-24-v1";
+      const batchLimit = Math.min(100, Math.max(1, Number(payload.batch_limit || 25) || 25));
+      const maxBatches = Math.min(100, Math.max(1, Number(payload.max_batches || 40) || 40));
+      const initial = await step.do("freeze-existing-filing-corpus", async () => {
+        await ensureSchema(this.env.DB, now());
+        const saved = await this.env.DB.prepare("SELECT value FROM settings WHERE key = ?")
+          .bind(maintenanceKey).first();
+        if (saved?.value) {
+          try {
+            const parsed = JSON.parse(saved.value);
+            if (parsed.version === maintenanceVersion) {
+              if (parsed.status !== "complete") await enforceAiSoftBudget(this.env);
+              return parsed;
+            }
+          } catch { /* 舊值格式不符時重新建立本版狀態 */ }
+        }
+        await enforceAiSoftBudget(this.env);
+        const row = await this.env.DB.prepare(
+          "SELECT COALESCE(MAX(id), 0) AS max_entry_id FROM entries WHERE COALESCE(deleted_at, '') = ''"
+        ).first();
+        const state = {
+          version: maintenanceVersion,
+          status: "running",
+          max_entry_id: Number(row?.max_entry_id || 0),
+          started_at: now(),
+        };
+        await this.env.DB.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind(maintenanceKey, JSON.stringify(state), now()).run();
+        return state;
+      });
+      if (initial.status === "complete") return { success: true, skipped: true, ...initial };
+
+      const totals = {
+        checked: Number(initial.totals?.checked || 0),
+        moved: Number(initial.totals?.moved || 0),
+        kept: Number(initial.totals?.kept || 0),
+        suggested: Number(initial.totals?.suggested || 0),
+        unresolved: Number(initial.totals?.unresolved || 0),
+        errors: Number(initial.totals?.errors || 0),
+        remaining: Number(initial.totals?.remaining || 0),
+      };
+      for (let batch = 1; batch <= maxBatches; batch++) {
+        const outcome = await step.do(`baseline-filing-batch-${batch}`, async () => runBaselineFilingReview(this.env, {
+          timestamp: now,
+          limit: batchLimit,
+          maxEntryId: Number(initial.max_entry_id || 0),
+          runAi: (model, input) => budgetedAi(this.env).run(model, input),
+          logHistory,
+        }));
+        for (const key of ["checked", "moved", "kept", "suggested", "unresolved", "errors"]) {
+          totals[key] += Number(outcome[key] || 0);
+        }
+        totals.remaining = Number(outcome.remaining || 0);
+        if (!totals.remaining) break;
+        if (Number(outcome.checked || 0) === 0 || Number(outcome.errors || 0) === Number(outcome.checked || 0)) break;
+      }
+
+      const finished = {
+        ...initial,
+        status: totals.remaining ? "partial" : "complete",
+        finished_at: totals.remaining ? null : now(),
+        totals,
+      };
+      await step.do("save-baseline-filing-result", async () => {
+        await this.env.DB.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind(maintenanceKey, JSON.stringify(finished), now()).run();
+      });
+      if (totals.remaining) throw new Error(`母體整理尚有 ${totals.remaining} 筆未完成`);
+      return { success: true, ...finished };
+    }
+
+    const combined = kind === "entry" ? `${title || ""}\n${textContent || ""}` : (textContent || "");
+    if (!combined.trim()) {
+      return { success: false, reason: "empty_content" };
+    }
+    const chunks = kind === "entry" ? [combined.slice(0, EMBED_TEXT_CAP)] : chunkText(combined);
+    if (!chunks.length) return { success: false, reason: "empty_content" };
+
+    try {
+      const vectors = [];
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const vectorId = kind === "entry" ? `entry-${id}` : `att-${id}-${i}`;
+        const embedded = await step.do(`embed-${vectorId}`, async () => {
+          // 一定要走 budgetedAi()：專案的 AI 費用保護（AI Gateway + spend limit）
+          // 全靠這層，直接呼叫 env.AI.run() 等於整批向量化都在保護範圍外跑，
+          // 量一大就會擠掉錄音轉逐字稿等其他 AI 呼叫的額度。
+          const result = await budgetedAi(this.env).run("@cf/baai/bge-m3", { text: chunk });
+          return result.data[0];
+        });
+        vectors.push({
+          id: vectorId,
+          values: embedded,
+          metadata: {
+            kind,
+            entryId: String(entryId),
+            attachmentId: kind === "attachment" ? String(id) : "",
+            chunkIndex: i,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      await step.do("upsert-vectorize", async () => {
+        if (kind === "attachment") {
+          // 先清掉這份附件全部可能的分段 id 範圍，避免這次分段數比上次少時
+          // 留下幾支指向舊內容的孤兒向量還會被搜到。
+          await this.env.VECTOR_INDEX.deleteByIds(vectorIdsForAttachment(id));
+        }
+        await this.env.VECTOR_INDEX.upsert(vectors);
+      });
+
+      await step.do("update-db-status", async () => {
+        const table = kind === "entry" ? "entries" : "attachments";
+        await this.env.DB.prepare(
+          `UPDATE ${table} SET embedding_status = 'done', vector_id = ?, embedding_error = '' WHERE id = ?`
+        ).bind(kind === "entry" ? `entry-${id}` : `att-${id}`, id).run();
+      });
+
+      return { success: true, id, chunks: chunks.length };
+    } catch (error) {
+      try {
+        const table = kind === "entry" ? "entries" : "attachments";
+        await this.env.DB.prepare(
+          `UPDATE ${table} SET embedding_status = 'failed', embedding_error = ? WHERE id = ?`
+        ).bind(String(error.message || error), id).run();
+      } catch { /* 連狀態都寫不進去就放棄，下次 backfill 還會再試 */ }
+      return { success: false, id, error: String(error.message || error) };
+    }
+  }
+}
+
+// 有文字內容且 workflow binding 存在時，非同步排入向量化；排隊失敗不擋主流程
+// （呼叫端一律用 await 但吞掉例外，語意搜尋是加值功能，不能因為它掛掉就讓
+// 使用者存不了記事、傳不了 OCR 結果）。
+async function triggerEmbedding(env, { kind, id, entryId, textContent, title }) {
+  if (!env.EMBEDDING_WORKFLOW) return;
+  if (!textContent || !String(textContent).trim()) return;
+  try {
+    await env.EMBEDDING_WORKFLOW.create({ params: { kind, id, entryId, textContent, title } });
+  } catch (err) {
+    console.error(`[Embedding] 排隊失敗 ${kind} ${id}:`, err.message);
+  }
 }
 
 function json(data, status = 200) {
@@ -279,6 +644,35 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+function base64ToBytes(value) {
+  const normalized = String(value || "").replace(/^data:[^,]+,/, "").replace(/\s+/g, "");
+  if (!normalized || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) throw new Error("PDF 資料格式錯誤");
+  const binary = atob(normalized);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function storeClipAttachment(db, files, entryId, filename, mime, bytes, sourceUrl) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const contentHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const safeName = filename.replace(/[^\w.\-一-鿿]+/g, "_");
+  const key = `${entryId}/${Date.now()}-${safeName}`;
+  await files.put(key, bytes, { httpMetadata: { contentType: mime } });
+  const result = await db.prepare(
+    "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, content_hash, source_url, created_at) VALUES (?, 'file', ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(entryId, filename, filename, key, bytes.byteLength, mime, contentHash, sourceUrl, now()).run();
+  return { id: result.meta.last_row_id, key, filename, mime, size: bytes.byteLength };
+}
+
+function randomShareToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 // 帶時效的檔案簽名。origin 要帶進來組完整網址——呼叫端（MCP server）拿到是直接
 // 當連結用的，只給相對路徑會是死連結。key 逐段編碼，中文檔名才不會壞。
 // 注意：這不是「免驗證的對外分享連結」——/api/* 的 FIELD_PIN 閘門在簽名檢查
@@ -309,15 +703,50 @@ async function verifyFileSignature(fileKey, fieldPin, expires, sig) {
   return sig === expected ? null : "簽名無效";
 }
 
+// Whisper 拿到靜音或極低音量時，不會老實回空字串，而是反覆吐出訓練資料裡的
+// 常見結尾語（英文最常見的是 "Thank you."／"Thank you for watching."，中文是
+// 「字幕由…提供」這類）。2026-08-16 使用者實測：麥克風喚醒失敗、實際錄到靜音時，
+// 即時逐字稿整段都是 "Thank you. Thank you. Thank you…"。
+//
+// 這種內容若照單全收，會同時污染三個地方：永久存成逐字稿、被拿去自動命名附件、
+// 還餵進語意搜尋的向量庫。判斷主要靠「重複」這個結構特徵而不是單純比對字串：
+// 真人講話不會整段只有一兩種句子重複十幾次；已知句型只當輔助訊號。
+const SILENCE_HALLUCINATION_PHRASES = [
+  "thank you", "thank you.", "thanks for watching", "thank you for watching",
+  "please subscribe", "you", "字幕由amara.org社群提供", "字幕志愿者", "谢谢观看", "謝謝觀看",
+];
+
+function looksLikeSilenceHallucination(text) {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return false;
+  const norm = (s) => s.toLowerCase().replace(/[\s。．.,，!！?？~-]+/g, " ").trim();
+  // 整段就是一句已知的靜音幻覺句
+  if (SILENCE_HALLUCINATION_PHRASES.includes(norm(trimmed))) return true;
+  const parts = trimmed.split(/(?<=[.。!！?？])\s*/).map(norm).filter(Boolean);
+  if (parts.length < 5) return false;
+  const unique = new Set(parts);
+  // 五句以上卻只有一兩種內容不斷重複＝不是人在講話
+  if (unique.size > 2) return false;
+  return [...unique].every((p) => SILENCE_HALLUCINATION_PHRASES.includes(p) || p.split(" ").length <= 4);
+}
+
 async function transcribeAttachment(env, db, old) {
   const obj = await env.FILES.get(old.key);
   if (!obj) throw new Error("找不到檔案內容");
   const bytes = new Uint8Array(await obj.arrayBuffer());
   const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(bytes), task: "transcribe" });
-  const text = (result?.text || "").trim();
+  const raw = (result?.text || "").trim();
+  const hallucinated = looksLikeSilenceHallucination(raw);
+  // 判定成幻覺就存成空的：留著只會讓之後的搜尋、命名、向量庫都以為這段有內容。
+  const text = hallucinated ? "" : raw;
   await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = ? WHERE id = ?").bind(text, now(), old.id).run();
   await autoRenameAttachment(db, old, text);
-  await logHistory(db, old.entry_id, null, "錄音轉文字", `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
+  await logHistory(db, old.entry_id, null, "錄音轉文字",
+    hallucinated
+      // 講清楚是麥克風沒收到聲音，不要只寫「無語音內容」讓人以為是自己沒講話
+      ? `${old.filename}：這段沒有收到聲音（辨識結果為靜音時的重複雜訊，已捨棄），請確認麥克風是否被其他程式佔用或靜音`
+      : `${old.filename}：${text.slice(0, 60) || "（無語音內容）"}`);
+  await triggerEmbedding(env, { kind: "attachment", id: old.id, entryId: old.entry_id, textContent: text });
   return text;
 }
 
@@ -387,6 +816,13 @@ async function autoRenameAttachment(db, att, extractedText) {
   return true;
 }
 
+async function activeAttachment(db, id) {
+  return db.prepare(
+    `SELECT a.* FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
+     WHERE a.id = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
+  ).bind(id).first();
+}
+
 // 貼上的 Notion 頁面網址 → 32 碼 page ID（補回標準 UUID 格式的連字號）
 function parseNotionPageId(input) {
   const raw = (input || "").trim();
@@ -397,7 +833,7 @@ function parseNotionPageId(input) {
   return `${id32.slice(0, 8)}-${id32.slice(8, 12)}-${id32.slice(12, 16)}-${id32.slice(16, 20)}-${id32.slice(20)}`;
 }
 
-async function handleApi(request, env, url) {
+async function handleApi(request, env, url, identity = {}) {
   const db = env.DB;
   await ensureSchema(db, now());
   const path = url.pathname.replace(/^\/api/, "");
@@ -412,46 +848,217 @@ async function handleApi(request, env, url) {
     return json(await cloudflareUsage(env));
   }
 
+  // ---- 垃圾桶：一般刪除只進這裡，手動永久刪除與 60 天排程共用同一套清理 ----
+  if (path === "/trash" && method === "GET") {
+    return json({ retention_days: 60, items: await listTrash(db) });
+  }
+  const trashRestoreMatch = path.match(/^\/trash\/(\d+)\/restore$/);
+  if (trashRestoreMatch && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const result = await restoreTrashItem(db, Number(trashRestoreMatch[1]), body, now());
+    if (!result) return bad("找不到垃圾桶項目，或正在永久刪除", 404);
+    if (result.conflict) return json({ error: result.reason, target_required: true }, 409);
+    await logHistory(db, null, null, "從垃圾桶還原", result.item.title || `${result.item.item_type} ${result.item.item_id}`);
+    return json({ ok: true, ...result });
+  }
+  const trashItemMatch = path.match(/^\/trash\/(\d+)$/);
+  if (trashItemMatch && method === "DELETE") {
+    const result = await permanentlyDeleteTrashItem(db, env.FILES, Number(trashItemMatch[1]), env.VECTOR_INDEX);
+    if (!result) return bad("找不到垃圾桶項目，或正在永久刪除", 404);
+    return json({ ok: true, ...result });
+  }
+  if (path === "/trash" && method === "DELETE") {
+    const items = await listTrash(db);
+    const results = [];
+    for (const item of items) results.push(await permanentlyDeleteTrashItem(db, env.FILES, Number(item.id), env.VECTOR_INDEX));
+    return json({ ok: true, deleted: results.filter(Boolean).length });
+  }
+
   // ---- 暫存區 ----
-  // 「來不及分類就先丟這裡」要有一個真的、看得見的資料夾（不是空了就消失的
-  // 收件匣面板）。純手動：使用者自己找時間搬去該去的資料夾，不再有
-  // AI／天數排程自動歸類（2026-08-09 移除，見該功能被拿掉的說明）。
+  // 「來不及分類就先丟這裡」要有一個真的、看得見的資料夾。B 模式每天只掃
+  // 這個容器裡的新／更新資料；高信心才搬，其他留在這裡等人確認。
   if (path === "/staging" && (method === "GET" || method === "POST")) {
     const folder = await ensureStagingFolder(db, now());
     return json({ ok: true, id: Number(folder.id), name: folder.name });
+  }
+
+  // 週報由人或 Claude 整理，不做排程自動覆寫。這個入口只保證「一週一檔」：
+  // 同一 ISO 週重複按按鈕會開啟既有檔案，不會產生兩份互相衝突的週報。
+  if (path === "/weekly-reports/current" && method === "POST") {
+    const report = taipeiIsoWeek();
+    let folder = await db.prepare(
+      "SELECT id, name FROM folders WHERE role = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
+    ).bind(WEEKLY_REPORT_FOLDER_ROLE).first();
+    if (!folder) {
+      const existing = await db.prepare(
+        "SELECT id, name FROM folders WHERE parent_id IS NULL AND name = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
+      ).bind("工作週報").first();
+      if (existing) {
+        await db.prepare("UPDATE folders SET role = ?, type = ?, category = ? WHERE id = ?")
+          .bind(WEEKLY_REPORT_FOLDER_ROLE, "週報", "routine_report", existing.id).run();
+        folder = existing;
+      } else {
+        const created = await db.prepare(
+          "INSERT INTO folders (name, type, category, parent_id, role, created_at) VALUES (?, ?, ?, NULL, ?, ?)"
+        ).bind("工作週報", "週報", "routine_report", WEEKLY_REPORT_FOLDER_ROLE, now()).run();
+        folder = { id: created.meta.last_row_id, name: "工作週報" };
+        await logHistory(db, null, folder.id, "建立資料夾", "工作週報（每週獨立檔案）");
+      }
+    }
+    const title = `${report.key} 工作週報（${report.start.slice(5).replace("-", "/")}–${report.end.slice(5).replace("-", "/")}）`;
+    let entry = await db.prepare(
+      "SELECT id, title FROM entries WHERE folder_id = ? AND json_extract(fields_json, '$._kind') = 'weekly_report' AND json_extract(fields_json, '$.週次') = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
+    ).bind(folder.id, report.key).first();
+    if (!entry) {
+      const fields = {
+        _kind: "weekly_report",
+        "週次": report.key,
+        "期間": `${report.start}–${report.end}`,
+        "中長期規劃": WEEKLY_REPORT_FIXED_PLAN,
+        "本週工作報告": "",
+        "下週重要工作計畫": "",
+      };
+      const created = await db.prepare(
+        "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'text', ?)"
+      ).bind(folder.id, title, JSON.stringify(fields), weeklyReportText(fields), now()).run();
+      entry = { id: created.meta.last_row_id, title };
+      await logHistory(db, entry.id, folder.id, "建立週報模板", report.key);
+    }
+    return json({ ok: true, id: Number(entry.id), folder_id: Number(folder.id), title: entry.title, week: report.key });
   }
   // 使用者確認「分類正確」或自己改過位置之後，把 🤖 標記清掉
   // （舊資料可能還留著歷史上 AI 自動歸類時打的標記，這個入口保留給它們用）
   const confirmFiledMatch = path.match(/^\/entries\/(\d+)\/confirm-filing$/);
   if (confirmFiledMatch && method === "POST") {
     const id = Number(confirmFiledMatch[1]);
-    const entry = await db.prepare("SELECT id, title FROM entries WHERE id = ?").bind(id).first();
+    const entry = await db.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!entry) return bad("找不到紀錄", 404);
     await db.prepare("UPDATE entries SET auto_filed_at = '', auto_filed_reason = '' WHERE id = ?").bind(id).run();
-    await logHistory(db, id, null, "確認歸類", `${entry.title || "（未命名）"}：使用者確認分類正確`);
+    await db.prepare(
+      `UPDATE filing_suggestions SET status = 'confirmed', reviewed_at = ?, updated_at = ?
+       WHERE entry_id = ? AND status IN ('auto_applied', 'baseline_auto_applied')`
+    ).bind(now(), now(), id).run();
+    await logHistory(db, id, null, "確認分類", `${entry.title || "（未命名）"}：使用者確認分類正確`);
     return json({ ok: true });
+  }
+
+  // B 模式的人工覆核。所有端點都用狀態與目前位置雙重檢查，避免舊分頁上的
+  // 按鈕把已經被別人移動過的記事再次搬走。
+  const filingActionMatch = path.match(/^\/filing-suggestions\/(\d+)\/(accept|reject|undo)$/);
+  if (filingActionMatch && method === "POST") {
+    const entryId = Number(filingActionMatch[1]);
+    const action = filingActionMatch[2];
+    const suggestion = await db.prepare(
+      `SELECT s.*, e.title, e.folder_id AS current_folder_id,
+              cf.role AS current_folder_role, sf.name AS suggested_folder_name
+       FROM filing_suggestions s
+       JOIN entries e ON e.id = s.entry_id
+       LEFT JOIN folders cf ON cf.id = e.folder_id
+       LEFT JOIN folders sf ON sf.id = s.suggested_folder_id
+       WHERE s.entry_id = ? AND COALESCE(e.deleted_at, '') = ''
+         AND (sf.id IS NULL OR COALESCE(sf.deleted_at, '') = '')`
+    ).bind(entryId).first();
+    if (!suggestion) return bad("找不到分類建議", 404);
+    const reviewedAt = now();
+    if (action === "accept") {
+      if (suggestion.status !== "pending" || suggestion.current_folder_role !== "staging") {
+        return bad("這筆建議已處理，或記事已不在待分類", 409);
+      }
+      if (!suggestion.suggested_folder_id || !suggestion.suggested_folder_name) return bad("建議的資料夾已不存在", 409);
+      const moved = await db.prepare(
+        `UPDATE entries SET folder_id = ?, parent_entry_id = NULL, auto_filed_at = '',
+           auto_filed_reason = '', updated_at = ? WHERE id = ? AND folder_id = ?`
+      ).bind(suggestion.suggested_folder_id, reviewedAt, entryId, suggestion.current_folder_id).run();
+      if (!moved?.meta?.changes) return bad("記事位置已變更，請重新整理", 409);
+      await db.prepare(
+        "UPDATE filing_suggestions SET status = 'accepted', reviewed_at = ?, updated_at = ? WHERE entry_id = ?"
+      ).bind(reviewedAt, reviewedAt, entryId).run();
+      await logHistory(db, entryId, suggestion.suggested_folder_id, "套用 AI 分類建議", `${suggestion.title || "（未命名）"} → ${suggestion.suggested_folder_name}`);
+      return json({ ok: true, folder_id: Number(suggestion.suggested_folder_id) });
+    }
+    if (action === "reject") {
+      if (suggestion.status !== "pending") return bad("這筆建議已處理", 409);
+      await db.prepare(
+        "UPDATE filing_suggestions SET status = 'rejected', reviewed_at = ?, updated_at = ? WHERE entry_id = ? AND status = 'pending'"
+      ).bind(reviewedAt, reviewedAt, entryId).run();
+      await logHistory(db, entryId, suggestion.current_folder_id, "忽略 AI 分類建議", suggestion.suggested_folder_name || suggestion.reason || "未指定位置");
+      return json({ ok: true });
+    }
+    if (!["auto_applied", "baseline_auto_applied"].includes(suggestion.status)
+        || Number(suggestion.current_folder_id) !== Number(suggestion.suggested_folder_id)) {
+      return bad("這筆自動分類已被確認或位置已變更，不能復原", 409);
+    }
+    const previousFolder = await db.prepare(
+      "SELECT id, COALESCE(role, '') AS role FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+    ).bind(suggestion.previous_folder_id).first();
+    if (!previousFolder) return bad("整理前的原位置已不存在", 409);
+    if (suggestion.status === "auto_applied" && previousFolder.role !== "staging") {
+      return bad("原待分類位置不正確，不能復原", 409);
+    }
+    const restored = await db.prepare(
+      `UPDATE entries SET folder_id = ?, parent_entry_id = NULL, auto_filed_at = '',
+         auto_filed_reason = '', updated_at = ? WHERE id = ? AND folder_id = ?`
+    ).bind(previousFolder.id, reviewedAt, entryId, suggestion.suggested_folder_id).run();
+    if (!restored?.meta?.changes) return bad("記事位置已變更，請重新整理", 409);
+    await db.prepare(
+      `UPDATE filing_suggestions SET status = 'undone', reviewed_at = ?, updated_at = ?,
+         source_updated_at = ? || ':' || COALESCE((
+           SELECT MAX(COALESCE(NULLIF(a.ocr_at, ''), NULLIF(a.transcribed_at, ''), a.created_at))
+           FROM attachments a WHERE a.entry_id = ?
+         ), '')
+       WHERE entry_id = ?`
+    ).bind(reviewedAt, reviewedAt, reviewedAt, entryId, entryId).run();
+    const restoreLabel = suggestion.status === "baseline_auto_applied" ? "原資料夾" : "待分類";
+    await logHistory(db, entryId, previousFolder.id, "復原 AI 自動分類", `${suggestion.suggested_folder_name || "原建議位置"} → ${restoreLabel}`);
+    return json({ ok: true, folder_id: Number(previousFolder.id) });
   }
 
   // ---- folders ----
   if (path === "/folders" && method === "GET") {
     const { results } = await db.prepare(
       `SELECT f.*,
-        (SELECT COUNT(*) FROM entries e WHERE e.folder_id = f.id) AS entry_count,
-        (SELECT COUNT(*) FROM folders c WHERE c.parent_id = f.id) AS child_count
-       FROM folders f ORDER BY ${FOLDER_CATEGORY_RANK_SQL}, f.status = '進行中' DESC, f.sort_order, f.id DESC`
+        COALESCE(ec.entry_count, 0) AS entry_count,
+        COALESCE(cc.child_count, 0) AS child_count
+       FROM folders f
+       LEFT JOIN (
+         SELECT folder_id, COUNT(*) AS entry_count FROM entries
+         WHERE parent_entry_id IS NULL AND COALESCE(deleted_at, '') = '' GROUP BY folder_id
+       ) ec ON ec.folder_id = f.id
+       LEFT JOIN (
+         SELECT parent_id, COUNT(*) AS child_count FROM folders
+         WHERE COALESCE(deleted_at, '') = '' GROUP BY parent_id
+       ) cc ON cc.parent_id = f.id
+       WHERE COALESCE(f.deleted_at, '') = ''
+       ORDER BY ${FOLDER_CATEGORY_RANK_SQL}, f.status = '進行中' DESC, f.sort_order, f.id DESC`
     ).all();
     return json(results);
   }
   if (path === "/folders" && method === "POST") {
     const body = await request.json().catch(() => ({}));
-    const name = (body.name || "").trim();
-    if (!name) return bad("name 為必填");
+    const requestedName = (body.name || "").trim();
+    if (!requestedName) return bad("name 為必填");
     const type = (body.type || "其他").trim() || "其他";
     const parentId = body.parent_id ? Number(body.parent_id) : null;
+    const requestedCategory = String(body.category || (parentId ? "" : "project")).trim();
+    if (requestedCategory && !FOLDER_CATEGORIES.includes(requestedCategory)) {
+      return bad(`category 只能是 ${FOLDER_CATEGORIES.join("／")} 其中之一`);
+    }
     // 四層知識架構：第 1 層產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
     // 再深下去分類就失去意義（也會讓匯出與麵包屑難讀），所以擋在第 4 層。
     let depth = 1;
+    let category = requestedCategory || "misc";
     if (parentId) {
+      let parent = await db.prepare(
+        "SELECT id, parent_id, category FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+      ).bind(parentId).first();
+      if (!parent) return bad("找不到上層資料夾", 404);
+      while (parent.parent_id) {
+        parent = await db.prepare(
+          "SELECT id, parent_id, category FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+        ).bind(parent.parent_id).first();
+        if (!parent) return bad("找不到上層資料夾", 404);
+      }
+      category = FOLDER_CATEGORIES.includes(parent.category) ? parent.category : "misc";
       const parentDepth = await folderDepth(db, parentId);
       if (!parentDepth) return bad("找不到上層資料夾", 404);
       if (parentDepth >= MAX_FOLDER_DEPTH) {
@@ -459,8 +1066,13 @@ async function handleApi(request, env, url) {
       }
       depth = parentDepth + 1;
     }
-    const r = await db.prepare("INSERT INTO folders (name, type, parent_id, created_at) VALUES (?, ?, ?, ?)")
-      .bind(name.slice(0, 80), type.slice(0, 60), parentId, now()).run();
+    // 根資料夾可以保留「專案｜檢體針」這類分類名稱；子資料夾只存本層名稱。
+    const name = parentId ? canonicalFolderLocalName(requestedName) : requestedName.slice(0, 80);
+    if (!name) return bad("name 為必填");
+    const siblingConflict = await findSiblingFolderNameConflict(db, { parentId, name, category });
+    if (siblingConflict) return bad(`同一層已經有「${name}」資料夾`, 409);
+    const r = await db.prepare("INSERT INTO folders (name, type, category, parent_id, created_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(name, type.slice(0, 60), category, parentId, now()).run();
     await logHistory(db, null, r.meta.last_row_id, "建立資料夾", `${name}（${type}，第 ${depth} 層）`);
     return json({ id: r.meta.last_row_id, ok: true, depth, max_depth: MAX_FOLDER_DEPTH });
   }
@@ -494,14 +1106,14 @@ async function handleApi(request, env, url) {
   if (folderMatch && method === "PUT") {
     const id = Number(folderMatch[1]);
     const body = await request.json().catch(() => ({}));
-    const old = await db.prepare("SELECT * FROM folders WHERE id = ?").bind(id).first();
+    const old = await db.prepare("SELECT * FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!old) return bad("找不到資料夾", 404);
-    const name = body.name !== undefined ? (body.name || "").trim() : old.name;
+    const requestedName = body.name !== undefined ? (body.name || "").trim() : old.name;
     const status = body.status !== undefined ? (body.status || "").trim() : old.status;
     // type 也可以改：建立時分類選錯很常見（例如誤選、或舊資料/匯入時類型跟預期不一樣），
     // 之前只能改 name/status，改 type 沒地方修，只能刪掉重建
     const type = body.type !== undefined ? (body.type || "").trim() : old.type;
-    if (!name) return bad("name 不可為空");
+    if (!requestedName) return bad("name 不可為空");
     if (!type) return bad("type 不可為空");
     // category＝色系分組，跟上面的 type（活動性質）是兩個不同的軸，見
     // lib/schema.js MIGRATIONS 裡 FOLDER_CATEGORIES 上方的說明。空字串代表
@@ -519,11 +1131,13 @@ async function handleApi(request, env, url) {
       : old.sort_order;
     // parent_id 也能改＝資料夾本身可以搬到別的分支（或搬回最上層）。
     // 沒有這個，四層架構一旦建錯就只能刪掉重來，裡面的記事與附件跟著陪葬。
+    const nextParent = body.parent_id !== undefined
+      ? (body.parent_id ? Number(body.parent_id) : null)
+      : (old.parent_id ? Number(old.parent_id) : null);
     if (body.parent_id !== undefined) {
-      const nextParent = body.parent_id ? Number(body.parent_id) : null;
       if (nextParent === id) return bad("不能把資料夾搬到自己底下");
       if (nextParent) {
-        const parent = await db.prepare("SELECT id FROM folders WHERE id = ?").bind(nextParent).first();
+        const parent = await db.prepare("SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(nextParent).first();
         if (!parent) return bad("找不到目標上層資料夾", 404);
         if (await isDescendantOf(db, nextParent, id)) return bad("不能把資料夾搬到自己的子資料夾底下");
         const [parentDepth, height] = await Promise.all([folderDepth(db, nextParent), subtreeHeight(db, id)]);
@@ -531,6 +1145,17 @@ async function handleApi(request, env, url) {
           return bad(`搬過去會變成第 ${parentDepth + height} 層，超過 ${MAX_FOLDER_DEPTH} 層上限（這個資料夾底下還有 ${height - 1} 層）`);
         }
       }
+    }
+    const name = nextParent ? canonicalFolderLocalName(requestedName) : requestedName.slice(0, 80);
+    if (!name) return bad("name 不可為空");
+    const siblingConflict = await findSiblingFolderNameConflict(db, {
+      parentId: nextParent,
+      name,
+      excludeId: id,
+      category: category || "misc",
+    });
+    if (siblingConflict) return bad(`同一層已經有「${name}」資料夾`, 409);
+    if (body.parent_id !== undefined && nextParent !== (old.parent_id ? Number(old.parent_id) : null)) {
       await db.prepare("UPDATE folders SET parent_id = ? WHERE id = ?").bind(nextParent, id).run();
       await logHistory(db, null, id, "移動資料夾", `${name} → ${nextParent ? `folder ${nextParent}` : "最上層"}`);
     }
@@ -541,16 +1166,11 @@ async function handleApi(request, env, url) {
   }
   if (folderMatch && method === "DELETE") {
     const id = Number(folderMatch[1]);
-    const folder = await db.prepare("SELECT * FROM folders WHERE id = ?").bind(id).first();
+    const folder = await db.prepare("SELECT * FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!folder) return bad("找不到資料夾", 404);
-    const countRow = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE folder_id = ?").bind(id).first();
-    const moved = Number(countRow?.count || 0);
-    // 安全刪除分類：記事移到上層（最上層才回收件匣），子資料夾也上移一層。
-    await db.prepare("UPDATE entries SET folder_id = ?, updated_at = ? WHERE folder_id = ?").bind(folder.parent_id || null, now(), id).run();
-    await db.prepare("UPDATE folders SET parent_id = ? WHERE parent_id = ?").bind(folder.parent_id || null, id).run();
-    await db.prepare("DELETE FROM folders WHERE id = ?").bind(id).run();
-    await logHistory(db, null, folder.parent_id || null, "刪除資料夾", `${folder.name}；${moved} 筆記事移至${folder.parent_id ? "上層" : "收件匣"}`);
-    return json({ ok: true, moved });
+    const result = await moveFolderTreeToTrash(db, folder, now());
+    await logHistory(db, null, folder.id, "移到垃圾桶", `${folder.name}；${result.folder_count} 個資料夾、${result.entry_count} 筆紀錄`);
+    return json({ ok: true, trashed: true, ...result });
   }
   const mergeFolderMatch = path.match(/^\/folders\/(\d+)\/merge$/);
   if (mergeFolderMatch && method === "POST") {
@@ -563,11 +1183,25 @@ async function handleApi(request, env, url) {
       db.prepare("SELECT * FROM folders WHERE id = ?").bind(targetId).first(),
     ]);
     if (!source || !target) return bad("找不到來源或目標資料夾", 404);
+    if (source.deleted_at || target.deleted_at) return bad("來源或目標資料夾已在垃圾桶，無法合併", 409);
     if (await isDescendantOf(db, targetId, sourceId)) return bad("不能合併到自己的子資料夾");
     const countRow = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE folder_id = ?").bind(sourceId).first();
     const moved = Number(countRow?.count || 0);
     const childRow = await db.prepare("SELECT COUNT(*) AS count FROM folders WHERE parent_id = ?").bind(sourceId).first();
     const childCount = Number(childRow?.count || 0);
+    // 合併會把來源的直屬子資料夾全部改掛到目標；若目標已經有同名子資料夾，
+    // 直接搬會形成同層同名而無法辨認哪一個是哪一個。先擋下，讓使用者先改名
+    // 或逐一合併，不在背後任意挑一邊覆蓋。
+    const childNameConflict = await db.prepare(
+      `SELECT s.name FROM folders s
+       JOIN folders t ON t.parent_id = ? AND LOWER(TRIM(t.name)) = LOWER(TRIM(s.name))
+       WHERE s.parent_id = ?
+         AND COALESCE(s.deleted_at, '') = '' AND COALESCE(t.deleted_at, '') = ''
+       LIMIT 1`
+    ).bind(targetId, sourceId).first();
+    if (childNameConflict) {
+      return bad(`兩邊都有「${childNameConflict.name}」子資料夾；請先重新命名或先合併這兩個子資料夾`, 409);
+    }
     // 子資料夾要跟著進目標資料夾，不能丟回來源的上層。
     // 舊行為（丟上層）會把「記事在 A/B 底下」拆成「記事進了目標、B 卻跑到別的
     // 分支」——同一批資料被劈成兩半，而且畫面上完全看不出發生過這件事。
@@ -608,20 +1242,22 @@ async function handleApi(request, env, url) {
                 f.name AS folder_name, f.type AS folder_type, COALESCE(f.role, '') AS folder_role,
                 (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
          FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+         WHERE COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
          ORDER BY e.id DESC LIMIT ${SEARCH_SCAN_CAP}`
       ).all(),
       db.prepare(
         `SELECT a.id AS att_id, a.entry_id, a.kind, a.filename, a.transcript, COALESCE(a.ocr_text, '') AS ocr_text, a.offset_secs,
                 e.title AS entry_title, e.folder_id, f.name AS folder_name, f.type AS folder_type
          FROM attachments a JOIN entries e ON a.entry_id = e.id LEFT JOIN folders f ON f.id = e.folder_id
+         WHERE COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
          ORDER BY a.id DESC LIMIT ${SEARCH_SCAN_CAP}`
       ).all(),
     ]);
     for (const e of allEntries) e._body = e.body_format === "html" ? htmlToPlainText(e.body) : (e.body || "");
     for (const a of allAtts) a._ocr = stripPdfMetadata(a.ocr_text || "");
 
-    const entryHits = runSearch(allEntries, plan, (e) => `${e.title}\n${e._body}\n${e.fields_json}`, limit);
-    const attHits = runSearch(allAtts, plan, (a) => `${a.transcript}\n${a._ocr}\n${a.filename}`, limit);
+    const entryHits = runSearch(allEntries, plan, (e) => `${e.title}\n${e._body}\n${e.fields_json}\n${e.folder_name || ""}\n${e.folder_type || ""}`, limit);
+    const attHits = runSearch(allAtts, plan, (a) => `${a.transcript}\n${a._ocr}\n${a.filename}\n${a.folder_name || ""}\n${a.folder_type || ""}`, limit);
 
     const entries = entryHits.hits.map(({ row: e }) => ({
       id: e.id, folder_id: e.folder_id, title: e.title, created_at: e.created_at, updated_at: e.updated_at,
@@ -644,6 +1280,62 @@ async function handleApi(request, env, url) {
       truncated: allEntries.length >= SEARCH_SCAN_CAP || allAtts.length >= SEARCH_SCAN_CAP,
     });
   }
+  // 語意搜尋：跟上面 /search（傳統關鍵字）是分開的端點，補「講得出概念但講不出
+  // 關鍵字」這種情境——例如「跟滅菌相關的品質問題」不會直接命中「滅菌」兩個字
+  // 剛好都出現的記事。查詢文字先轉向量，去 Vectorize 找最相似的內容，再回 D1
+  // 撈實際資料。VECTOR_MIN_SCORE 是先抓的起始門檻，之後如果覆蓋率夠了還是常
+  // 漏掉相關結果，再回頭調。
+  const VECTOR_MIN_SCORE = 0.55;
+  if (path === "/search/semantic" && method === "GET") {
+    const q = (url.searchParams.get("q") || "").trim();
+    if (!q) return bad("查詢詞不可為空");
+    if (!env.AI) return bad("AI 未配置", 501);
+    if (!env.VECTOR_INDEX) return bad("Vectorize 未配置", 501);
+    const topK = Math.min(30, Math.max(1, Number(url.searchParams.get("topK") || "10") || 10));
+    const folderId = url.searchParams.get("folder_id") ? Number(url.searchParams.get("folder_id")) : null;
+
+    let queryVector;
+    try {
+      const embedded = await budgetedAi(env).run("@cf/baai/bge-m3", { text: q.slice(0, 2000) });
+      queryVector = embedded.data[0];
+    } catch (err) {
+      return bad(`查詢向量化失敗：${err.message}`, 502);
+    }
+    // 多要一些候選（同一份附件的多段命中要去重），實際回傳數量還是看 topK
+    const matches = await env.VECTOR_INDEX.query(queryVector, { topK: topK * 3, returnMetadata: true });
+
+    const entryResults = [];
+    const attBestByEntryId = new Map(); // attachmentId -> 目前分數最高的一筆
+    for (const m of matches.matches || []) {
+      if (m.score < VECTOR_MIN_SCORE) continue;
+      const meta = m.metadata || {};
+      if (meta.kind === "entry") {
+        const entry = await db.prepare(
+          `SELECT e.*, f.name AS folder_name, f.type AS folder_type FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+           WHERE e.id = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
+        ).bind(Number(meta.entryId)).first();
+        if (entry && (!folderId || entry.folder_id === folderId)) entryResults.push({ score: m.score, entry });
+      } else if (meta.kind === "attachment") {
+        const attId = Number(meta.attachmentId);
+        const prev = attBestByEntryId.get(attId);
+        if (prev && prev.score >= m.score) continue;
+        const att = await db.prepare(
+          `SELECT a.*, e.title AS entry_title, e.folder_id, f.name AS folder_name, f.type AS folder_type
+           FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
+           WHERE a.id = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
+        ).bind(attId).first();
+        if (att && (!folderId || att.folder_id === folderId)) attBestByEntryId.set(attId, { score: m.score, attachment: att });
+      }
+    }
+    entryResults.sort((a, b) => b.score - a.score);
+    const attachmentResults = [...attBestByEntryId.values()].sort((a, b) => b.score - a.score);
+
+    return json({
+      query: q,
+      entries: entryResults.slice(0, topK),
+      attachments: attachmentResults.slice(0, topK),
+    });
+  }
   // 跨資料夾找記事（給「新增關聯」的選取器用：關聯常常是跨資料夾的，
   // 例如把一筆實驗記事關聯到另一棵資料夾樹下的廠商記事）
   if (path === "/entries/search" && method === "GET") {
@@ -655,6 +1347,7 @@ async function handleApi(request, env, url) {
       `SELECT e.id, e.title, e.folder_id, f.name AS folder_name, f.type AS folder_type, e.created_at
        FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
        WHERE (e.title LIKE ? OR e.body LIKE ?) AND e.id != ?
+         AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
        ORDER BY e.id DESC LIMIT 20`
     ).bind(like, like, excludeId).all();
     return json(results);
@@ -678,11 +1371,20 @@ async function handleApi(request, env, url) {
               COALESCE(e.auto_filed_at, '') AS auto_filed_at,
               COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
               f.name AS folder_name, f.type AS folder_type, COALESCE(f.role, '') AS folder_role,
+              COALESCE(s.status, '') AS suggestion_status,
+              s.suggested_folder_id, sf.name AS suggested_folder_name,
+              COALESCE(s.confidence, 0) AS filing_confidence,
+              COALESCE(s.reason, '') AS filing_reason,
               (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
-       FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
-       WHERE e.folder_id IS NULL
+       FROM entries e
+       LEFT JOIN folders f ON f.id = e.folder_id
+       LEFT JOIN filing_suggestions s ON s.entry_id = e.id
+       LEFT JOIN folders sf ON sf.id = s.suggested_folder_id
+       WHERE COALESCE(e.deleted_at, '') = '' AND e.parent_entry_id IS NULL
+         AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
+         AND (e.folder_id IS NULL
           OR f.role = 'staging'
-          OR (COALESCE(e.auto_filed_at, '') <> '' AND e.auto_filed_at <> 'failed')
+          OR (COALESCE(e.auto_filed_at, '') <> '' AND e.auto_filed_at <> 'failed'))
        ORDER BY COALESCE(NULLIF(e.updated_at, ''), e.created_at) DESC, e.id DESC
        LIMIT ?`
     ).bind(limit).all();
@@ -694,13 +1396,21 @@ async function handleApi(request, env, url) {
     let q;
     if (inbox) {
       q = db.prepare(
-        `SELECT e.*, (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
-         FROM entries e WHERE e.folder_id IS NULL ORDER BY e.id DESC`
+        `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                COALESCE(e.auto_filed_at, '') AS auto_filed_at,
+                COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
+                (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
+         FROM entries e WHERE e.folder_id IS NULL AND e.parent_entry_id IS NULL
+           AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`
       );
     } else if (folderId) {
       q = db.prepare(
-        `SELECT e.*, (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
-         FROM entries e WHERE e.folder_id = ? ORDER BY e.id DESC`
+        `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                COALESCE(e.auto_filed_at, '') AS auto_filed_at,
+                COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
+                (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
+         FROM entries e WHERE e.folder_id = ? AND e.parent_entry_id IS NULL
+           AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`
       ).bind(Number(folderId));
     } else {
       return bad("需指定 folder_id 或 inbox=1");
@@ -712,7 +1422,9 @@ async function handleApi(request, env, url) {
     if (url.searchParams.get("include") === "attachments" && results.length) {
       const ids = results.map((e) => e.id);
       const { results: atts } = await db.prepare(
-        `SELECT * FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
+        `SELECT id, entry_id, kind, filename, key, mime, created_at, offset_secs,
+                source_pdf_id, rotation
+         FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
       ).bind(...ids).all();
       const byEntry = new Map();
       for (const a of atts || []) {
@@ -725,7 +1437,18 @@ async function handleApi(request, env, url) {
   }
   if (path === "/entries" && method === "POST") {
     const body = await request.json().catch(() => ({}));
-    const folderId = body.folder_id ? Number(body.folder_id) : null;
+    let folderId = body.folder_id ? Number(body.folder_id) : null;
+    const parentEntryId = body.parent_entry_id ? Number(body.parent_entry_id) : null;
+    if (parentEntryId) {
+      const parent = await db.prepare("SELECT id, folder_id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''")
+        .bind(parentEntryId).first();
+      if (!parent) return bad("找不到外層紀錄", 404);
+      folderId = parent.folder_id;
+    }
+    if (folderId) {
+      const folder = await db.prepare("SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(folderId).first();
+      if (!folder) return bad("找不到資料夾", 404);
+    }
     // 新記事一律是富文字，不再有「先建成純文字、之後手動升級」這一段。呼叫端
     // （前端各個採集入口）送來的 body 是純文字，這裡轉成 HTML 段落再存；要直接
     // 送 HTML 就明確帶 body_format: "html"。
@@ -736,19 +1459,144 @@ async function handleApi(request, env, url) {
     const storedBody = asText
       ? rawBody
       : sanitizeEntryHtml(body.body_format === "html" ? rawBody : textToHtml(rawBody));
+    const title = (body.title || "").trim();
     const r = await db.prepare(
-      "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-    ).bind(folderId, (body.title || "").trim(), JSON.stringify(body.fields || {}), storedBody, asText ? "text" : "html", now()).run();
+      "INSERT INTO entries (folder_id, parent_entry_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(folderId, parentEntryId, title, JSON.stringify(body.fields || {}), storedBody, asText ? "text" : "html", now()).run();
     await logHistory(db, r.meta.last_row_id, folderId, "新增紀錄", body.title || "");
+    await triggerEmbedding(env, {
+      kind: "entry", id: r.meta.last_row_id, entryId: r.meta.last_row_id,
+      textContent: asText ? storedBody : htmlToPlainText(storedBody), title,
+    });
     return json({ id: r.meta.last_row_id, ok: true });
   }
+
+  // ---- 瀏覽器一鍵剪藏 ----
+  // Chrome／Edge 擴充功能先用 DevTools 列印目前（含登入狀態）的分頁為 PDF；
+  // 無法列印或檔案過大時改送已移除腳本／表單的 HTML。無論附件是哪一種，正文
+  // 與來源網址都寫進 entries，後續搜尋、AI 整理不必重新解析附件。
+  if (path === "/clips" && method === "POST") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const body = await request.json().catch(() => null);
+    if (!body) return bad("剪藏資料格式錯誤");
+    const sourceUrl = String(body.url || "").trim().slice(0, 2000);
+    let parsedUrl;
+    try { parsedUrl = new URL(sourceUrl); } catch { return bad("來源網址不正確"); }
+    if (!/^https?:$/.test(parsedUrl.protocol)) return bad("只接受 http 或 https 網頁");
+    const title = String(body.title || parsedUrl.hostname || "網頁剪藏").trim().slice(0, 160) || "網頁剪藏";
+    const text = String(body.text || "").trim().slice(0, 300000);
+    const html = String(body.html || "");
+    if (new TextEncoder().encode(html).byteLength > 3 * 1024 * 1024) return bad("HTML 超過 3MB，請縮短頁面後再試", 413);
+    let folderId = body.folder_id ? Number(body.folder_id) : null;
+    if (folderId) {
+      const folder = await db.prepare("SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(folderId).first();
+      if (!folder) return bad("找不到指定資料夾", 404);
+    }
+    const clippedAt = now();
+    const entryBody = textToHtml([`來源：${sourceUrl}`, `剪藏時間：${clippedAt}`, "", text].join("\n"));
+    const fields = { source: "browser_clip", source_url: sourceUrl, clipped_at: clippedAt };
+    const created = await db.prepare(
+      "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'html', ?)"
+    ).bind(folderId, title, JSON.stringify(fields), sanitizeEntryHtml(entryBody), clippedAt).run();
+    const entryId = created.meta.last_row_id;
+    let attachment;
+    let format = "html";
+    try {
+      if (body.pdf_base64) {
+        const pdf = base64ToBytes(body.pdf_base64);
+        if (pdf.byteLength > 15 * 1024 * 1024) throw new Error("PDF 超過剪藏上限 15MB");
+        if (pdf.byteLength < 5 || String.fromCharCode(...pdf.subarray(0, 5)) !== "%PDF-") throw new Error("PDF 檔頭不正確");
+        attachment = await storeClipAttachment(db, env.FILES, entryId, `${title}.pdf`, "application/pdf", pdf, sourceUrl);
+        format = "pdf";
+      } else if (html) {
+        attachment = await storeClipAttachment(db, env.FILES, entryId, `${title}.html`, "text/html; charset=utf-8", new TextEncoder().encode(html), sourceUrl);
+      }
+      await db.prepare("UPDATE entries SET fields_json = ? WHERE id = ?")
+        .bind(JSON.stringify({ ...fields, clip_format: format }), entryId).run();
+      await logHistory(db, entryId, folderId, "網頁剪藏", `${title}｜${format.toUpperCase()}｜${sourceUrl}`);
+      await triggerEmbedding(env, { kind: "entry", id: entryId, entryId, textContent: text, title });
+      return json({ ok: true, entry_id: entryId, attachment, format, destination: folderId ? "folder" : "pending" });
+    } catch (error) {
+      if (html) {
+        try {
+          attachment = await storeClipAttachment(db, env.FILES, entryId, `${title}.html`, "text/html; charset=utf-8", new TextEncoder().encode(html), sourceUrl);
+          await db.prepare("UPDATE entries SET fields_json = ? WHERE id = ?")
+            .bind(JSON.stringify({ ...fields, clip_format: "html", pdf_error: error.message }), entryId).run();
+          await logHistory(db, entryId, folderId, "網頁剪藏", `${title}｜HTML 備援｜${sourceUrl}`);
+          await triggerEmbedding(env, { kind: "entry", id: entryId, entryId, textContent: text, title });
+          return json({ ok: true, entry_id: entryId, attachment, format: "html", fallback: true, pdf_error: error.message, destination: folderId ? "folder" : "pending" });
+        } catch (fallbackError) {
+          await db.prepare("DELETE FROM entries WHERE id = ?").bind(entryId).run().catch(() => {});
+          return bad(`PDF 與 HTML 都無法保存：${fallbackError.message}`, 500);
+        }
+      }
+      await db.prepare("DELETE FROM entries WHERE id = ?").bind(entryId).run().catch(() => {});
+      return bad(error.message, 413);
+    }
+  }
+  if (path === "/shares" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const entryId = Number(body.entry_id || 0);
+    const attachmentId = body.attachment_id ? Number(body.attachment_id) : null;
+    const expiresDays = Math.min(Math.max(Number(body.expires_days) || 7, 1), 30);
+    const entry = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(entryId).first();
+    if (!entry) return bad("找不到要分享的資料", 404);
+    const { results: allAttachments } = await db.prepare(
+      "SELECT id, kind, filename, key, size, mime, created_at FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY id"
+    ).bind(entryId).all();
+    const attachments = attachmentId
+      ? (allAttachments || []).filter((item) => Number(item.id) === attachmentId)
+      : (allAttachments || []);
+    if (attachmentId && !attachments.length) return bad("找不到要分享的附件", 404);
+    const allowAttachments = body.allow_attachments !== false;
+    const allowDownload = body.allow_download === true;
+    const snapshot = {
+      version: 1,
+      entry: { id: entry.id, title: entry.title, body: canonicalEntryBody(entry), body_format: entry.body_format, created_at: entry.created_at, updated_at: entry.updated_at },
+      attachments: allowAttachments ? attachments : [],
+    };
+    const token = randomShareToken();
+    const tokenHash = await sha256Hex(token);
+    const expiresAt = new Date(Date.now() + expiresDays * 86400000).toISOString();
+    const createdAt = now();
+    const result = await db.prepare(
+      `INSERT INTO share_links (token_hash, entry_id, attachment_id, snapshot_json, expires_at, allow_attachments, allow_download, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(tokenHash, entryId, attachmentId, JSON.stringify(snapshot), expiresAt, allowAttachments ? 1 : 0, allowDownload ? 1 : 0, identity.email || "legacy-pin", createdAt).run();
+    await logHistory(db, entryId, entry.folder_id, "建立分享", `到期：${expiresAt}；附件：${allowAttachments ? "是" : "否"}；下載：${allowDownload ? "是" : "否"}`);
+    const origin = String(env.SHARE_ORIGIN || "https://share.gogoyankee.workers.dev").replace(/\/$/, "");
+    return json({ id: result.meta.last_row_id, url: `${origin}/s/${token}`, expires_at: expiresAt, allow_download: allowDownload });
+  }
+  if (path === "/shares" && method === "GET") {
+    const entryId = Number(url.searchParams.get("entry_id") || 0);
+    const query = entryId
+      ? db.prepare("SELECT id, entry_id, attachment_id, expires_at, revoked_at, allow_attachments, allow_download, created_by, created_at, access_count, last_accessed_at FROM share_links WHERE entry_id = ? ORDER BY id DESC").bind(entryId)
+      : db.prepare("SELECT id, entry_id, attachment_id, expires_at, revoked_at, allow_attachments, allow_download, created_by, created_at, access_count, last_accessed_at FROM share_links ORDER BY id DESC LIMIT 100");
+    const { results } = await query.all();
+    return json({ shares: results || [] });
+  }
+  const shareRevokeMatch = path.match(/^\/shares\/(\d+)$/);
+  if (shareRevokeMatch && method === "DELETE") {
+    const id = Number(shareRevokeMatch[1]);
+    const share = await db.prepare("SELECT entry_id FROM share_links WHERE id = ?").bind(id).first();
+    if (!share) return bad("找不到分享連結", 404);
+    await db.prepare("UPDATE share_links SET revoked_at = ? WHERE id = ?").bind(now(), id).run();
+    await logHistory(db, share.entry_id, null, "撤銷分享", `分享編號 ${id}`);
+    return json({ ok: true });
+  }
+
   const entryMatch = path.match(/^\/entries\/(\d+)$/);
   if (entryMatch && method === "GET") {
     const id = Number(entryMatch[1]);
-    const entry = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
+    const entry = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!entry) return bad("找不到紀錄", 404);
-    const { results: atts } = await db.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all();
-    return json({ ...entry, attachments: atts });
+    const [{ results: atts }, { results: children }] = await Promise.all([
+      db.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all(),
+      db.prepare(`SELECT e.*, (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count,
+                  (SELECT COUNT(*) FROM entries c WHERE c.parent_entry_id = e.id AND COALESCE(c.deleted_at, '') = '') AS child_count
+                  FROM entries e WHERE e.parent_entry_id = ? AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`).bind(id).all(),
+    ]);
+    return json({ ...entry, body: canonicalEntryBody(entry), attachments: atts, children });
   }
   // 一筆記事的操作履歷（history 表是 append-only 的稽核軌跡）。
   // 這張表從第一版就在寫，但一直沒有任何地方讀得到——等於白記。前台的
@@ -757,7 +1605,7 @@ async function handleApi(request, env, url) {
   const entryHistoryMatch = path.match(/^\/entries\/(\d+)\/history$/);
   if (entryHistoryMatch && method === "GET") {
     const id = Number(entryHistoryMatch[1]);
-    const entry = await db.prepare("SELECT id FROM entries WHERE id = ?").bind(id).first();
+    const entry = await db.prepare("SELECT id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!entry) return bad("找不到紀錄", 404);
     const limit = Math.min(Number(url.searchParams.get("limit") || 50) || 50, 200);
     const { results } = await db.prepare(
@@ -768,20 +1616,49 @@ async function handleApi(request, env, url) {
   if (entryMatch && method === "PUT") {
     const id = Number(entryMatch[1]);
     const body = await request.json().catch(() => ({}));
-    const old = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
+    const old = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!old) return bad("找不到紀錄", 404);
-    const title = body.title !== undefined ? (body.title || "").trim() : old.title;
+    let oldFields = {};
+    try { oldFields = JSON.parse(old.fields_json || "{}"); } catch { /* 壞 JSON 當空 */ }
+    const isWeeklyReport = oldFields._kind === "weekly_report";
+    // 週報檔名同時是「一週一檔」的識別資訊，固定由系統管理；一般記事仍可自由改名。
+    const title = isWeeklyReport ? old.title : (body.title !== undefined ? (body.title || "").trim() : old.title);
     // fields 用合併不用取代：前端只送「模板欄位」，取代會把沒顯示在表單上的鍵
     // 全部抹掉——包括同步機制的 _sid／_content_hash／litdb_id。那些鍵一被抹掉，
     // 每天的來源同步就認不得這筆記事，整批重複匯入。要清空某個欄位送空字串即可。
     let fields = old.fields_json;
     if (body.fields !== undefined && body.fields && typeof body.fields === "object") {
-      let oldFields = {};
-      try { oldFields = JSON.parse(old.fields_json || "{}"); } catch { /* 壞 JSON 當空 */ }
-      fields = JSON.stringify({ ...oldFields, ...body.fields });
+      fields = JSON.stringify(isWeeklyReport ? {
+        ...oldFields,
+        _kind: "weekly_report",
+        "中長期規劃": WEEKLY_REPORT_FIXED_PLAN,
+        "本週工作報告": String(body.fields["本週工作報告"] ?? oldFields["本週工作報告"] ?? "").trim(),
+        "下週重要工作計畫": String(body.fields["下週重要工作計畫"] ?? oldFields["下週重要工作計畫"] ?? "").trim(),
+      } : { ...oldFields, ...body.fields });
     }
-    const folderId = body.folder_id !== undefined ? (body.folder_id ? Number(body.folder_id) : null) : old.folder_id;
-    let bodyFormat = old.body_format || "text";
+    let folderId = body.folder_id !== undefined ? (body.folder_id ? Number(body.folder_id) : null) : old.folder_id;
+    let parentEntryId = body.parent_entry_id !== undefined
+      ? (body.parent_entry_id ? Number(body.parent_entry_id) : null)
+      : old.parent_entry_id;
+    // 明確指定 folder_id＝把整個資料包移到該資料夾頂層；不能偷偷沿用舊的外層紀錄。
+    if (body.folder_id !== undefined && body.parent_entry_id === undefined) parentEntryId = null;
+    const changingContainer = body.folder_id !== undefined || body.parent_entry_id !== undefined;
+    if (changingContainer && parentEntryId) {
+      if (parentEntryId === id) return bad("不能把紀錄移到自己裡面");
+      const parent = await db.prepare("SELECT id, folder_id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''")
+        .bind(parentEntryId).first();
+      if (!parent) return bad("找不到目標紀錄", 404);
+      const subtree = await entrySubtreeIds(db, id, false);
+      if (subtree.includes(parentEntryId)) return bad("不能把紀錄移到自己的子紀錄裡面");
+      folderId = parent.folder_id;
+    } else if (changingContainer) {
+      parentEntryId = null;
+      if (folderId) {
+        const folder = await db.prepare("SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(folderId).first();
+        if (!folder) return bad("找不到目標資料夾", 404);
+      }
+    }
+    let bodyFormat = isWeeklyReport ? "text" : (old.body_format || "text");
     if (body.body_format !== undefined) {
       const requested = String(body.body_format || "text");
       if (requested === "html") {
@@ -796,23 +1673,48 @@ async function handleApi(request, env, url) {
           return bad("這筆記事由外部來源同步管理，無法升級為富文字");
         }
       }
-      bodyFormat = requested === "html" ? "html" : "text";
+      bodyFormat = isWeeklyReport ? "text" : (requested === "html" ? "html" : "text");
     }
-    const bodyRaw = body.body !== undefined ? (body.body || "").trim() : old.body;
+    let weeklyFields = null;
+    if (isWeeklyReport) {
+      try { weeklyFields = JSON.parse(fields || "{}"); } catch { weeklyFields = oldFields; }
+    }
+    const bodyRaw = isWeeklyReport
+      ? weeklyReportText(weeklyFields)
+      : body.body !== undefined ? (body.body || "").trim() : old.body;
     // 存進資料庫前統一過一次白名單式清理：Quill 正常操作不會產生危險標籤，
     // 但前端可以被繞過，資料庫裡不能留 <script> 之類的東西
     const bodyText = bodyFormat === "html" ? sanitizeEntryHtml(bodyRaw) : bodyRaw;
-    const folderChanged = body.folder_id !== undefined && folderId !== old.folder_id;
+    const folderChanged = changingContainer && (folderId !== old.folder_id || parentEntryId !== old.parent_entry_id);
     // 這筆是（歷史上）AI 自動歸類的，使用者卻手動搬去別的資料夾——清掉 🤖
     // 標記，不然畫面上會留著指向舊資料夾的過時理由。
     const wasAutoFiled = folderChanged && old.auto_filed_at && old.auto_filed_at !== "failed";
     const autoFiledAt = wasAutoFiled ? "" : (old.auto_filed_at || "");
     const autoFiledReason = wasAutoFiled ? "" : (old.auto_filed_reason || "");
     await db.prepare(
-      "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, body_format = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ? WHERE id = ?"
-    ).bind(title, bodyText, fields, folderId, bodyFormat, autoFiledAt, autoFiledReason, now(), id).run();
+      "UPDATE entries SET title = ?, body = ?, fields_json = ?, folder_id = ?, parent_entry_id = ?, body_format = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ? WHERE id = ?"
+    ).bind(title, bodyText, fields, folderId, parentEntryId, bodyFormat, autoFiledAt, autoFiledReason, now(), id).run();
+    if (body.title !== undefined || body.body !== undefined || body.body_format !== undefined) {
+      await triggerEmbedding(env, {
+        kind: "entry", id, entryId: id,
+        textContent: bodyFormat === "html" ? htmlToPlainText(bodyText) : bodyText, title,
+      });
+    }
+    if (changingContainer) {
+      const subtree = (await entrySubtreeIds(db, id, false)).filter((entryId) => entryId !== id);
+      for (let i = 0; i < subtree.length; i += 80) {
+        const part = subtree.slice(i, i + 80);
+        if (!part.length) continue;
+        await db.prepare(`UPDATE entries SET folder_id = ?, updated_at = ? WHERE id IN (${part.map(() => "?").join(",")})`)
+          .bind(folderId, now(), ...part).run();
+      }
+    }
     if (folderChanged) {
-      await logHistory(db, id, folderId, "歸檔", title);
+      await db.prepare(
+        `UPDATE filing_suggestions SET status = 'overridden', reviewed_at = ?, updated_at = ?
+         WHERE entry_id = ? AND status IN ('pending', 'auto_applied', 'baseline_auto_applied')`
+      ).bind(now(), now(), id).run();
+      await logHistory(db, id, folderId, "分類", title);
     } else {
       await logHistory(db, id, folderId, "更新紀錄", title);
     }
@@ -820,17 +1722,11 @@ async function handleApi(request, env, url) {
   }
   if (entryMatch && method === "DELETE") {
     const id = Number(entryMatch[1]);
-    const old = await db.prepare("SELECT * FROM entries WHERE id = ?").bind(id).first();
+    const old = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!old) return bad("找不到紀錄", 404);
-    const { results: atts } = await db.prepare("SELECT * FROM attachments WHERE entry_id = ?").bind(id).all();
-    if (env.FILES) {
-      for (const a of atts) await env.FILES.delete(a.key).catch(() => {});
-    }
-    await db.prepare("DELETE FROM attachments WHERE entry_id = ?").bind(id).run();
-    await db.prepare("DELETE FROM relations WHERE from_entry_id = ? OR to_entry_id = ?").bind(id, id).run();
-    await db.prepare("DELETE FROM entries WHERE id = ?").bind(id).run();
-    await logHistory(db, null, old.folder_id, "刪除紀錄", old.title);
-    return json({ ok: true });
+    const result = await moveEntryTreeToTrash(db, old, now());
+    await logHistory(db, id, old.folder_id, "移到垃圾桶", `${old.title || "（未命名）"}；${result.entry_count} 筆紀錄資料包`);
+    return json({ ok: true, trashed: true, ...result });
   }
 
   // ---- 合併：把來源記事併入目標記事（附件搬過去，來源記事之後刪除）----
@@ -844,10 +1740,13 @@ async function handleApi(request, env, url) {
     const targetId = Number(body.target_id || 0);
     if (!targetId || targetId === sourceId) return bad("合併目標不正確");
     const [source, target] = await Promise.all([
-      db.prepare("SELECT * FROM entries WHERE id = ?").bind(sourceId).first(),
-      db.prepare("SELECT * FROM entries WHERE id = ?").bind(targetId).first(),
+      db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(sourceId).first(),
+      db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(targetId).first(),
     ]);
     if (!source || !target) return bad("找不到來源或目標紀錄", 404);
+    const sourceChildren = await db.prepare("SELECT COUNT(*) AS count FROM entries WHERE parent_entry_id = ? AND COALESCE(deleted_at, '') = ''")
+      .bind(sourceId).first();
+    if (Number(sourceChildren?.count || 0)) return bad("這筆紀錄包含子紀錄，不能使用破壞式合併；請改用移動");
 
     let sourceFields = {};
     let targetFields = {};
@@ -949,7 +1848,8 @@ async function handleApi(request, env, url) {
        FROM relations r
        JOIN entries e ON e.id = (CASE WHEN r.from_entry_id = ? THEN r.to_entry_id ELSE r.from_entry_id END)
        LEFT JOIN folders f ON f.id = e.folder_id
-       WHERE r.from_entry_id = ? OR r.to_entry_id = ?
+       WHERE (r.from_entry_id = ? OR r.to_entry_id = ?)
+         AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')
        ORDER BY r.id DESC`
     ).bind(entryId, entryId, entryId, entryId).all();
     return json(results);
@@ -963,8 +1863,8 @@ async function handleApi(request, env, url) {
     if (fromId === toId) return bad("不能關聯到自己");
     if (!relationType) return bad("relation_type 為必填");
     const [from, to] = await Promise.all([
-      db.prepare("SELECT id FROM entries WHERE id = ?").bind(fromId).first(),
-      db.prepare("SELECT id FROM entries WHERE id = ?").bind(toId).first(),
+      db.prepare("SELECT id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(fromId).first(),
+      db.prepare("SELECT id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(toId).first(),
     ]);
     if (!from || !to) return bad("找不到其中一筆記事", 404);
     const r = await db.prepare(
@@ -1094,12 +1994,91 @@ async function handleApi(request, env, url) {
     return json(outcome, outcome.ok ? 200 : 502);
   }
 
+  // B 模式平常由每日 cron 執行；保留後臺端點給部署後驗證或需要立刻補跑時使用，
+  // 前臺不放手動按鈕。dailyLimit 在引擎內仍有 100 筆硬上限，避免一次誤掃全庫。
+  if (path === "/admin/run-hybrid-filing" && method === "POST") {
+    if (!env.AI) return bad("Workers AI 未配置", 501);
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    const dailyLimit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 25) || 25));
+    const outcome = await runHybridAutofile(env, {
+      timestamp: now,
+      dailyLimit,
+      runAi: (model, input) => budgetedAi(env).run(model, input),
+      logHistory,
+    });
+    return json({ ok: true, ...outcome });
+  }
+
+  // 既有正式資料的母體整理是「明確下令才跑」的一次性工作，不掛每日 cron。
+  // 每筆只評估一次；高信心才搬，原資料夾記在 filing_suggestions，可逐筆復原。
+  if (path === "/admin/review-existing-filing" && method === "POST") {
+    if (!env.AI) return bad("Workers AI 未配置", 501);
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 25) || 25));
+    const outcome = await runBaselineFilingReview(env, {
+      timestamp: now,
+      limit,
+      runAi: (model, input) => budgetedAi(env).run(model, input),
+      logHistory,
+    });
+    return json({ ok: true, scope: "existing_filing_once", ...outcome });
+  }
+
   // 一次性的資料夾分類重整（2026-08-08）手動觸發端點，跟 /admin/sync-sources
   // 同一個道理：本來掛在 scheduled()，每天台灣時間 02:00 才會自動套用一次，
   // 不想等的話用這支立刻跑。函式自己有標記機制，跑第二次也是安全的無事發生。
   if (path === "/admin/reorg-folders-20260808" && method === "POST") {
     await applyFolderReorg20260808(db, now());
     return json({ ok: true });
+  }
+
+  // 一次性補跑：語意搜尋上線前就已經存在、但從沒排入向量化的舊記事／附件
+  // 一起補上（embedding_status 還是預設的 'pending'）。上線後跑一次即可，
+  // 之後新資料靠寫入點各自的 triggerEmbedding() 呼叫，不需要重跑這支。
+  //
+  // 分批是必要的，不是保守起見：2026-08-16 第一次補跑一口氣排了 298 筆
+  // （附件每份最多再切 20 段），把當天的免費 Neurons 額度吃掉，害正在進行的
+  // 錄音即時轉錄被安全門檻擋下來停掉。向量化是背景的加值功能，不該跟現場
+  // 錄音搶額度——預設一次只跑 limit 筆，剩下的下次再打這支繼續。
+  if (path === "/admin/backfill-embeddings" && method === "POST") {
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 40, 1), 200);
+    let queued = 0;
+    const { results: entries } = await db.prepare(
+      `SELECT id, title, body, body_format FROM entries
+       WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending'
+       ORDER BY id LIMIT ?`
+    ).bind(limit).all();
+    for (const e of entries) {
+      const text = e.body_format === "html" ? htmlToPlainText(e.body || "") : (e.body || "");
+      if (!text.trim() && !(e.title || "").trim()) continue;
+      await triggerEmbedding(env, { kind: "entry", id: e.id, entryId: e.id, textContent: text, title: e.title });
+      queued++;
+    }
+    const attBudget = Math.max(0, limit - entries.length);
+    const { results: atts } = attBudget ? await db.prepare(
+      `SELECT a.id, a.entry_id, a.transcript, a.ocr_text FROM attachments a
+       JOIN entries e ON e.id = a.entry_id
+       WHERE COALESCE(e.deleted_at, '') = '' AND COALESCE(a.embedding_status, 'pending') = 'pending'
+         AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')
+       ORDER BY a.id LIMIT ?`
+    ).bind(attBudget).all() : { results: [] };
+    for (const a of atts) {
+      const text = a.transcript || stripPdfMetadata(a.ocr_text || "");
+      await triggerEmbedding(env, { kind: "attachment", id: a.id, entryId: a.entry_id, textContent: text });
+      queued++;
+    }
+    // 還有沒有剩的一併回報，呼叫端才知道要不要再打一次——不然「跑完了」跟
+    // 「這批跑完但還有 200 筆沒動」在回應上看起來一模一樣。
+    const { total: remaining } = await db.prepare(
+      `SELECT (SELECT COUNT(*) FROM entries
+                WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending')
+             + (SELECT COUNT(*) FROM attachments a JOIN entries e ON e.id = a.entry_id
+                WHERE COALESCE(e.deleted_at, '') = '' AND COALESCE(a.embedding_status, 'pending') = 'pending'
+                  AND (COALESCE(a.transcript, '') != '' OR COALESCE(a.ocr_text, '') != '')) AS total`
+    ).first();
+    return json({ ok: true, queued, entries: entries.length, attachments: atts.length, remaining: Number(remaining || 0) - queued });
   }
 
   // ---- 外部來源管理（新增一個知識庫＝往 sources 表加一列，不用改程式碼）----
@@ -1178,11 +2157,17 @@ async function handleApi(request, env, url) {
     // 節錄版偵測用：只在頂層檔案（不是深度處理拆出來的頁面圖）記來源網址
     const sourceUrlRaw = request.headers.get("x-source-url");
     const sourceUrl = !sourcePdfId && sourceUrlRaw ? decodeURIComponent(sourceUrlRaw).trim().slice(0, 500) : "";
-    const entry = await db.prepare("SELECT folder_id FROM entries WHERE id = ?").bind(entryId).first();
+    const entry = await db.prepare(
+      `SELECT e.folder_id FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+       WHERE e.id = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
+    ).bind(entryId).first();
     if (!entry) return bad("找不到附件所屬記事", 404);
     // 新檔直接比 SHA-256；舊檔尚無 hash 時，只針對同檔名同大小者讀 R2 補算一次，
     // 避免誤判不同內容。一般附件在同一資料夾內去重；PDF 拆頁仍只在同一記事內比對。
-    const candidateQuery = sourcePdfId
+    // 錄音是一次事件的原始資料，即使兩段都是靜音、位元完全相同，也不能跨
+    // 記事去重，否則新記事會留下空殼、附件卻仍掛在舊記事。錄音只在同一資料包
+    // 內去重（防止補傳重試重複建立）；一般文件才維持資料夾層級去重。
+    const candidateQuery = sourcePdfId || kind === "audio"
       ? db.prepare(
         `SELECT id, key, filename, size, content_hash FROM attachments
          WHERE entry_id = ? AND (content_hash = ? OR (COALESCE(content_hash, '') = '' AND filename = ? AND size = ?))`
@@ -1232,6 +2217,11 @@ async function handleApi(request, env, url) {
   if (fileMatch && method === "GET") {
     if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
     const key = decodeURIComponent(fileMatch[1]);
+    const activeFile = await db.prepare(
+      `SELECT a.id, a.mime, a.filename FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
+       WHERE a.key = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
+    ).bind(key).first();
+    if (!activeFile) return bad("找不到檔案", 404);
     // 帶 expires+sig 就一定要通過驗證（篡改或過期都 403）；不帶的照舊，
     // 因為前端 <img src>／下載連結本來就是靠 ?pin= 走同一個閘門
     const expires = url.searchParams.get("expires");
@@ -1242,14 +2232,46 @@ async function handleApi(request, env, url) {
     }
     const obj = await env.FILES.get(key);
     if (!obj) return bad("找不到檔案", 404);
-    return new Response(obj.body, {
-      headers: {
-        "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
-        "cache-control": "private, max-age=3600",
-      },
-    });
+    // 舊檔案的 R2 httpMetadata 曾經只存 application/octet-stream；如果直接把
+    // 這個值送給 Chrome，PDF 在 iframe／預覽欄會顯示破損圖示。資料庫的 mime
+    // 是上傳時保存的實際類型，優先使用；再以副檔名補救更早期的舊資料。
+    const storedMime = String(activeFile.mime || "").trim();
+    let contentType = storedMime && storedMime !== "application/octet-stream"
+      ? storedMime
+      : (obj.httpMetadata?.contentType || storedMime || "application/octet-stream");
+    const displayName = activeFile.filename || key;
+    if (!contentType || /^(?:application|binary)\/octet-stream$/i.test(contentType)) {
+      const ext = displayName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || "";
+      const knownMime = {
+        pdf: "application/pdf", html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", xhtml: "application/xhtml+xml",
+        txt: "text/plain; charset=utf-8", md: "text/markdown; charset=utf-8", csv: "text/csv; charset=utf-8", json: "application/json; charset=utf-8", xml: "application/xml; charset=utf-8",
+        yaml: "text/yaml; charset=utf-8", yml: "text/yaml; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8",
+        jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp", avif: "image/avif",
+        mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", ogg: "audio/ogg", aac: "audio/aac", flac: "audio/flac", opus: "audio/ogg",
+        mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", m4v: "video/x-m4v",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }[ext];
+      if (knownMime) contentType = knownMime;
+    }
+    const headers = {
+      "content-type": contentType,
+      "cache-control": "private, max-age=3600",
+      "x-content-type-options": "nosniff",
+    };
+    // 使用者上傳的 HTML 屬於不可信內容。即使另開原檔也套 CSP sandbox，避免它
+    // 在 MyWiki 同網域執行腳本、讀 localStorage/PIN 或送出表單。預覽 iframe 本身
+    // 還有 sandbox 屬性，這裡是伺服器端第二道防線。
+    if (/^(?:text\/html|application\/xhtml\+xml)(?:;|$)/i.test(contentType) || /\.(?:html?|xhtml)$/i.test(key)) {
+      headers["content-security-policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+    } else if (/^image\/svg\+xml(?:;|$)/i.test(contentType) || /\.svg$/i.test(key)) {
+      headers["content-security-policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+    }
+    return new Response(obj.body, { headers });
   }
-  // 手動整理既有附件名稱：只用已入庫的 OCR／逐字稿與記事脈絡，不重新呼叫 AI。
+  // 後臺整理既有附件名稱：只用已入庫的 OCR／逐字稿與記事脈絡，不重新呼叫 AI。
+  // 前臺沒有按鈕；這支路由保留給 scheduled() 共用同一套整理邏輯。
   if (path === "/attachments/rename-existing" && method === "POST") {
     await db.prepare(
       "UPDATE attachments SET original_filename = filename WHERE COALESCE(original_filename, '') = ''"
@@ -1344,12 +2366,43 @@ async function handleApi(request, env, url) {
   if (attMatch && method === "PUT") {
     const id = Number(attMatch[1]);
     const body = await request.json().catch(() => ({}));
-    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    const old = await activeAttachment(db, id);
     if (!old) return bad("找不到附件", 404);
+    if (body.filename !== undefined) {
+      let filename = String(body.filename || "").trim();
+      if (!filename) return bad("檔名不可空白");
+      if (filename.length > 240) return bad("檔名不可超過 240 個字元");
+      if (/[\\/\u0000-\u001f\u007f]/.test(filename) || filename === "." || filename === "..") {
+        return bad("檔名不可包含路徑符號或控制字元");
+      }
+      const oldExt = String(old.filename || "").match(/(\.[^./\\]+)$/)?.[1] || "";
+      const newExt = filename.match(/(\.[^./\\]+)$/)?.[1] || "";
+      // UI 會自動補副檔名；API 仍做第二道防線，避免直接呼叫 API 把檔案類型改壞。
+      if (oldExt && !newExt) filename += oldExt;
+      else if (oldExt && newExt.toLowerCase() !== oldExt.toLowerCase()) return bad(`副檔名必須保留為 ${oldExt}`);
+      if (filename === old.filename) return json({ ok: true, filename });
+      await db.prepare(
+        "UPDATE attachments SET original_filename = CASE WHEN COALESCE(original_filename, '') = '' THEN filename ELSE original_filename END, filename = ? WHERE id = ?"
+      ).bind(filename, id).run();
+      await logHistory(db, old.entry_id, null, "重新命名附件", `${old.filename} → ${filename}`);
+      return json({ ok: true, filename });
+    }
+    if (body.transcript !== undefined) {
+      // 人工校正逐字稿屬於正式內容，不應被「編輯後又自動排隊轉錄」覆蓋；
+      // 以 manual_edit 標記已處理。使用者若真的要重跑 AI，仍可從 ⋯ 明確選擇
+      // 重新轉錄，該流程會覆寫 transcript 與 transcribed_at。
+      const transcript = String(body.transcript || "").trim().slice(0, 500000);
+      await db.prepare("UPDATE attachments SET transcript = ?, transcribed_at = 'manual_edit' WHERE id = ?")
+        .bind(transcript, id).run();
+      await logHistory(db, old.entry_id, null, "編輯錄音逐字稿", `${old.filename}（${transcript.length} 字）`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: transcript });
+      return json({ ok: true, transcript, transcribed_at: "manual_edit" });
+    }
     if (body.ocr_text !== undefined) {
       const ocrText = (body.ocr_text || "").trim();
       await db.prepare("UPDATE attachments SET ocr_text = ? WHERE id = ?").bind(ocrText, id).run();
       await logHistory(db, old.entry_id, null, "編輯擷取文字", `${old.filename}：「${ocrText.slice(0, 80)}」`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: ocrText });
       return json({ ok: true });
     }
     // 標記「不整理」：把 *_at 設成 'skipped'（不呼叫 AI、不花額度），
@@ -1378,7 +2431,9 @@ async function handleApi(request, env, url) {
   if (attMatch && method === "DELETE") {
     // 連同深度處理產生的逐頁圖片與 AI 用量預約一起清掉；若記事因此變成完全空的
     // （沒檔案也沒文字），記事本身也收掉，不留下使用者看不懂的空殼
-    const result = await deleteAttachmentDeep(db, env.FILES, Number(attMatch[1]), { logHistory });
+    const id = Number(attMatch[1]);
+    if (!await activeAttachment(db, id)) return bad("找不到附件", 404);
+    const result = await deleteAttachmentDeep(db, env.FILES, id, { logHistory, vectorIndex: env.VECTOR_INDEX });
     return json(result, result.status || 200);
   }
 
@@ -1388,7 +2443,9 @@ async function handleApi(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const folderId = Number(body.folder_id || 0);
     if (!folderId) return bad("請指定目標資料夾");
-    const result = await moveAttachment(db, Number(attMoveMatch[1]), folderId, { logHistory, timestamp: now });
+    const id = Number(attMoveMatch[1]);
+    if (!await activeAttachment(db, id)) return bad("找不到附件", 404);
+    const result = await moveAttachment(db, id, folderId, { logHistory, timestamp: now });
     return json(result, result.status || 200);
   }
   const attNoteMatch = path.match(/^\/attachments\/(\d+)\/note$/);
@@ -1396,7 +2453,7 @@ async function handleApi(request, env, url) {
     const id = Number(attNoteMatch[1]);
     const body = await request.json().catch(() => ({}));
     const note = String(body.note || "").trim().slice(0, 50000);
-    const attachment = await db.prepare("SELECT id, entry_id, filename FROM attachments WHERE id = ?").bind(id).first();
+    const attachment = await activeAttachment(db, id);
     if (!attachment) return bad("找不到附件", 404);
     await db.prepare("UPDATE attachments SET note = ? WHERE id = ?").bind(note, id).run();
     await logHistory(db, attachment.entry_id, null, "更新附件記事", `${attachment.filename}：${note.slice(0, 120)}`);
@@ -1409,7 +2466,7 @@ async function handleApi(request, env, url) {
   const attRotateMatch = path.match(/^\/attachments\/(\d+)\/rotate$/);
   if (attRotateMatch && method === "POST") {
     const id = Number(attRotateMatch[1]);
-    const attachment = await db.prepare("SELECT id, entry_id, filename, COALESCE(rotation, 0) AS rotation FROM attachments WHERE id = ?").bind(id).first();
+    const attachment = await activeAttachment(db, id);
     if (!attachment) return bad("找不到附件", 404);
     const rotation = (Number(attachment.rotation) + 90) % 360;
     await db.prepare("UPDATE attachments SET rotation = ? WHERE id = ?").bind(rotation, id).run();
@@ -1417,15 +2474,15 @@ async function handleApi(request, env, url) {
   }
   const attNormalizeMatch = path.match(/^\/attachments\/(\d+)\/normalize-name$/);
   if (attNormalizeMatch && method === "POST") {
-    const result = await normalizeAttachmentName(db, Number(attNormalizeMatch[1]), { logHistory });
+    const id = Number(attNormalizeMatch[1]);
+    if (!await activeAttachment(db, id)) return bad("找不到附件", 404);
+    const result = await normalizeAttachmentName(db, id, { logHistory });
     return json(result, result.status || 200);
   }
   const attCategoryMatch = path.match(/^\/attachments\/(\d+)\/category$/);
   if (attCategoryMatch && (method === "GET" || method === "PUT")) {
     const id = Number(attCategoryMatch[1]);
-    const attachment = await db.prepare(
-      "SELECT id, entry_id, filename, COALESCE(device_category, '') AS device_category FROM attachments WHERE id = ?"
-    ).bind(id).first();
+    const attachment = await activeAttachment(db, id);
     if (!attachment) return bad("找不到附件", 404);
     if (method === "GET") {
       return json({
@@ -1459,7 +2516,7 @@ async function handleApi(request, env, url) {
   if (rawMatch && method === "GET") {
     if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
     const id = Number(rawMatch[1]);
-    const att = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    const att = await activeAttachment(db, id);
     if (!att) return bad("找不到附件", 404);
     const obj = await env.FILES.get(att.key);
     if (!obj) return bad("找不到檔案內容", 404);
@@ -1563,6 +2620,7 @@ async function handleApi(request, env, url) {
         await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), att.id).run();
         await autoRenameAttachment(db, att, text);
         await logHistory(db, att.entry_id, null, "批次照片擷取文字", `${att.filename}：${text.slice(0, 60) || "（照片上沒有文字）"}`);
+        await triggerEmbedding(env, { kind: "attachment", id: att.id, entryId: att.entry_id, textContent: text });
         results.push({ attachment_id: att.id, filename: att.filename, success: true, message: `擷取文字成功，${text.length} 字` });
       } catch (err) {
         // 單張失敗不中斷整批。ocr_at 標成 failed 而不是還原成空字串：還原的話
@@ -1589,11 +2647,50 @@ async function handleApi(request, env, url) {
     });
   }
 
+  // ---------- 巡廠頁面（Jeremy 功能規格書）：截圖 OCR → LLM 整理 → 存檔 ----------
+  // 存檔本身沿用既有的 POST /entries（body_format:"text"，保留巡廠紀錄的固定
+  // 縮排／換行/『』符號不被富文字轉換動到）＋ POST /upload（把原始截圖當附件
+  // 保留，方便日後追溯核對），不另外開端點；這裡只加「整理」流程真正新增的
+  // 兩支：單張截圖 OCR（不需要先有 entry，存檔前只是預覽，可能整批放棄）、
+  // 和把已 OCR 好的文字送給 Claude 整理成固定格式。
+  const patrolOcrMatch = path === "/patrol/ocr" && method === "POST";
+  if (patrolOcrMatch) {
+    if (!env.AI) return bad("尚未啟用 Workers AI（見 fieldlog/README.md）", 501);
+    const mime = request.headers.get("content-type") || "application/octet-stream";
+    if (!mime.startsWith("image/")) return bad("只接受圖片");
+    const body = await request.arrayBuffer();
+    if (!body.byteLength) return bad("空檔案");
+    if (body.byteLength > 50 * 1024 * 1024) return bad("檔案過大（上限 50MB）");
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    const ai = budgetedAi(env);
+    const r = await extractImageText(ai, new Uint8Array(body));
+    if (!r.ok) return bad(friendlyAiError(new Error(r.error)), 502);
+    return json({ text: r.text });
+  }
+
+  if (path === "/patrol/format" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (!items.length) return bad("需要至少一張截圖的 OCR 文字");
+    try {
+      const formatted = await formatPatrolReport(env, items);
+      return json({ formatted_text: formatted });
+    } catch (err) {
+      return bad(err.message, 502);
+    }
+  }
+
+  if (path === "/patrol/folder" && method === "GET") {
+    const folderId = await ensurePatrolFolder(db, now());
+    return json({ folder_id: folderId });
+  }
+
   const transcribeMatch = path.match(/^\/attachments\/(\d+)\/transcribe$/);
   if (transcribeMatch && method === "POST") {
     if (!env.AI) return bad("尚未啟用 Workers AI（見 fieldlog/README.md）", 501);
     const id = Number(transcribeMatch[1]);
-    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    const old = await activeAttachment(db, id);
     if (!old) return bad("找不到附件", 404);
     if (old.kind !== "audio") return bad("只有錄音檔可以轉文字");
     try { await enforceAiSoftBudget(env); }
@@ -1618,7 +2715,7 @@ async function handleApi(request, env, url) {
     if (!env.AI || !env.FILES) return bad("尚未啟用自動轉錄", 501);
     const entryId = Number(autoTranscribeMatch[1]);
     const { results: candidates } = await db.prepare(
-      "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND duration_secs > 0 ORDER BY offset_secs, id"
+      "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND (duration_secs > 0 OR (duration_secs IS NULL AND size > 0)) ORDER BY offset_secs, id"
     ).bind(entryId).all();
     if (!candidates.length) return json({ processed: 0, reason: "沒有可安全自動轉錄的新錄音" });
     let usage;
@@ -1633,10 +2730,15 @@ async function handleApi(request, env, url) {
     const transcripts = [];
     const failed = [];
     for (const audio of candidates) {
-      const estimate = Math.ceil(Number(audio.duration_secs) / 60 * 46.63);
-      if (cloudUsed + reserved + estimate > 7000) {
-        // 訊息裡的門檻數字直接讀常數，不寫死百分比字面——上次改 AI_AUTO_SAFE_NEURONS
-        // 沒跟著改這裡的文字，畫面一直講「70%」，即使門檻早就不是免費額度的 70% 了
+      // v133 以前的離線佇列補傳時會遺失 duration_secs。這些 R2 音檔仍是真實資料，
+      // 不能因此永遠排除在轉錄之外；未知長度以單段上限 10 分鐘保守預留額度。
+      const estimateDurationSecs = Number(audio.duration_secs) > 0 ? Number(audio.duration_secs) : 10 * 60;
+      const estimate = Math.ceil(estimateDurationSecs / 60 * 46.63);
+      // 門檻一律讀 AI_AUTO_SAFE_NEURONS，不要再寫死數字：上次把常數從 7000 調到
+      // 10000 時只改了下面的訊息，這行的比較值卻留在 7000，變成畫面說「超過
+      // 10,000」、實際上 7,000 就停——白白少用 30% 的免費額度，而且從訊息完全
+      // 看不出來。訊息與實際門檻必須同一個來源。
+      if (cloudUsed + reserved + estimate > AI_AUTO_SAFE_NEURONS) {
         return json({ processed, stopped: true, reason: `預估將超過安全門檻（${AI_AUTO_SAFE_NEURONS.toLocaleString()} Neurons）`, cloudUsed, reserved, transcripts });
       }
       const claim = await db.prepare(
@@ -1677,7 +2779,7 @@ async function handleApi(request, env, url) {
   if (ocrMatch && method === "POST") {
     if (!env.FILES) return bad("尚未啟用附件儲存（需 R2）", 501);
     const id = Number(ocrMatch[1]);
-    const old = await db.prepare("SELECT * FROM attachments WHERE id = ?").bind(id).first();
+    const old = await activeAttachment(db, id);
     if (!old) return bad("找不到附件", 404);
     const isPdf = (old.mime || "") === "application/pdf" || old.filename.toLowerCase().endsWith(".pdf");
     // docx／xlsx／pptx／純文字：直接從檔案結構解出文字，不經過 AI——免費、瞬間、
@@ -1697,6 +2799,7 @@ async function handleApi(request, env, url) {
       await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
       await autoRenameAttachment(db, old, text);
       await logHistory(db, old.entry_id, null, "文件擷取文字", `${old.filename}：${text.slice(0, 60) || "（沒有擷取到文字）"}`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: text });
       return json({ ocr_text: text });
     }
     if (!env.AI) return bad("尚未啟用圖片擷取文字（需 Workers AI）", 501);
@@ -1713,6 +2816,7 @@ async function handleApi(request, env, url) {
       await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(pdfText, now(), id).run();
       await autoRenameAttachment(db, old, pdfText);
       await logHistory(db, old.entry_id, null, "PDF 擷取文字", `${old.filename}：${pdfText.slice(0, 60) || "（沒有擷取到文字，可能是圖形型 PDF）"}`);
+      await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: pdfText });
       return json({ ocr_text: pdfText });
     }
     const bytes = new Uint8Array(await obj.arrayBuffer());
@@ -1741,6 +2845,7 @@ async function handleApi(request, env, url) {
     await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
     await autoRenameAttachment(db, old, text);
     await logHistory(db, old.entry_id, null, "照片擷取文字", `${old.filename}：${text.slice(0, 60) || "（照片上沒有文字）"}`);
+    await triggerEmbedding(env, { kind: "attachment", id, entryId: old.entry_id, textContent: text });
     return json({ ocr_text: text });
   }
 
@@ -1748,9 +2853,11 @@ async function handleApi(request, env, url) {
   const exportMatch = path.match(/^\/export\/folder\/(\d+)$/);
   if (exportMatch && method === "GET") {
     const id = Number(exportMatch[1]);
-    const folder = await db.prepare("SELECT * FROM folders WHERE id = ?").bind(id).first();
+    const folder = await db.prepare("SELECT * FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!folder) return bad("找不到資料夾", 404);
-    const { results: entries } = await db.prepare("SELECT * FROM entries WHERE folder_id = ? ORDER BY id").bind(id).all();
+    const { results: entries } = await db.prepare(
+      "SELECT * FROM entries WHERE folder_id = ? AND COALESCE(deleted_at, '') = '' ORDER BY id"
+    ).bind(id).all();
     const lines = [
       `# ${folder.name}（${folder.type}）`,
       ``,
@@ -1764,12 +2871,18 @@ async function handleApi(request, env, url) {
       const { results: atts } = await db.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(e.id).all();
       lines.push(`---`, ``, `## ${e.title || "（未命名紀錄）"}`, ``, `建立：${e.created_at}${e.updated_at ? `｜更新：${e.updated_at}` : ""}`);
       const fields = JSON.parse(e.fields_json || "{}");
-      const filled = Object.entries(fields).filter(([, v]) => v && String(v).trim());
+      const isWeeklyReport = fields._kind === "weekly_report";
+      // 一般記事保留欄位列表；週報欄位本身就是完整文件，若再列一次欄位、
+      // 接著又輸出 body，會把整份週報重複兩遍，而且可能把舊 body 一併帶出。
+      const filled = isWeeklyReport
+        ? []
+        : Object.entries(fields).filter(([key, v]) => !key.startsWith("_") && v && String(v).trim());
       if (filled.length) {
         lines.push(``);
         for (const [k, v] of filled) lines.push(`- **${k}**：${v}`);
       }
-      const bodyOut = e.body_format === "html" ? htmlToPlainText(e.body) : e.body;
+      const canonicalBody = canonicalEntryBody(e);
+      const bodyOut = e.body_format === "html" ? htmlToPlainText(canonicalBody) : canonicalBody;
       if (bodyOut) lines.push(``, bodyOut);
       const audios = atts.filter((a) => a.kind === "audio");
       const photos = atts.filter((a) => a.kind === "photo");
@@ -1799,7 +2912,9 @@ async function handleApi(request, env, url) {
       }
       lines.push(``);
     }
-    return new Response(lines.join("\n"), {
+    // UTF-8 BOM：部分 Windows 瀏覽器／文字工具即使看到 charset=utf-8，仍會
+    // 把直接開啟的 .md 猜成 ANSI/Big5。BOM 不改內容，只讓解碼器明確使用 UTF-8。
+    return new Response(`\uFEFF${lines.join("\n")}`, {
       headers: {
         "content-type": "text/markdown; charset=utf-8",
         "content-disposition": `attachment; filename="fieldlog-folder-${id}.md"`,
@@ -1818,7 +2933,7 @@ async function handleApi(request, env, url) {
 const NO_CACHE_SHELL_PATHS = new Set([
   "/", "/index.html", "/app.js", "/style.css",
   "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json",
-  "/help.html",
+  "/help.html", "/wiki.html", "/patrol.html",
 ]);
 
 async function noStoreAsset(request, env) {
@@ -1829,34 +2944,112 @@ async function noStoreAsset(request, env) {
   return new Response(response.body, { status: response.status, headers });
 }
 
+function secureResponse(response) {
+  const headers = securityHeaders(new Headers(response.headers));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+async function privateIdentity(request, env, url) {
+  const access = await verifyAccessRequest(request, env);
+  if (access.configured) return access;
+  const pin = (env.FIELD_PIN || "").trim();
+  if (!pin) return { ok: false, error: "尚未設定 FIELD_PIN 或 Cloudflare Access" };
+  if (await verifyLegacySession(request, pin)) return { ok: true, email: "legacy-session" };
+  const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
+  return given === pin ? { ok: true, email: "legacy-pin" } : { ok: false, error: "PIN 錯誤或未提供" };
+}
+
+async function handleSession(request, env) {
+  if (env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD) return bad("已啟用 Cloudflare Access，不接受 PIN Session", 404);
+  await ensureSchema(env.DB, now());
+  const headers = new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  if (request.method === "DELETE") {
+    headers.set("set-cookie", "__Host-myw_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+    return new Response(JSON.stringify({ ok: true }), { headers });
+  }
+  if (request.method !== "POST") return bad("只接受 POST", 405);
+  const fieldPin = String(env.FIELD_PIN || "").trim();
+  if (!fieldPin) return bad("尚未設定登入方式", 401);
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  const clientKey = await sha256Hex(`${ip}:${fieldPin}`);
+  const attempt = await env.DB.prepare("SELECT * FROM auth_attempts WHERE client_key = ?").bind(clientKey).first();
+  if (attempt?.blocked_until && Date.parse(attempt.blocked_until) > Date.now()) return bad("登入嘗試過多，請稍後再試", 429);
+  const body = await request.json().catch(() => ({}));
+  if (String(body.pin || "").trim() !== fieldPin) {
+    const activeWindow = attempt && Date.now() - Date.parse(attempt.window_started_at) < 10 * 60 * 1000;
+    const failures = activeWindow ? Number(attempt.failures || 0) + 1 : 1;
+    const blockedUntil = failures >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : "";
+    await env.DB.prepare(
+      `INSERT INTO auth_attempts (client_key, failures, window_started_at, blocked_until) VALUES (?, ?, ?, ?)
+       ON CONFLICT(client_key) DO UPDATE SET failures = excluded.failures, window_started_at = excluded.window_started_at, blocked_until = excluded.blocked_until`
+    ).bind(clientKey, failures, activeWindow ? attempt.window_started_at : new Date().toISOString(), blockedUntil).run();
+    return bad(failures >= 5 ? "登入嘗試過多，已暫時鎖定" : "PIN 錯誤", failures >= 5 ? 429 : 401);
+  }
+  await env.DB.prepare("DELETE FROM auth_attempts WHERE client_key = ?").bind(clientKey).run();
+  const session = await createLegacySession(fieldPin);
+  headers.set("set-cookie", `__Host-myw_session=${session}; Path=/; Max-Age=43200; HttpOnly; Secure; SameSite=Strict`);
+  return new Response(JSON.stringify({ ok: true, expires_in: 43200 }), { headers });
+}
+
+const FILENAME_MAINTENANCE_KEY = "maintenance.filename_cleanup";
+const FILENAME_MAINTENANCE_VERSION = "2026-08-24-v1";
+
+/**
+ * 舊附件整理屬於一次性資料維護，不是前臺功能。
+ *
+ * 版本存在 D1，只有排程成功完成後才寫入；失敗時隔天可重試。這避免原本以
+ * localStorage 判斷造成每台電腦、每個瀏覽器各自重跑一次全庫掃描。
+ */
+async function runFilenameMaintenanceOnce(env) {
+  const state = await env.DB.prepare("SELECT value FROM settings WHERE key = ?")
+    .bind(FILENAME_MAINTENANCE_KEY).first();
+  if (state?.value === FILENAME_MAINTENANCE_VERSION) {
+    return { ok: true, skipped: true, version: FILENAME_MAINTENANCE_VERSION };
+  }
+
+  // 直接呼叫同一個後端處理器，不經網路，也不需要使用者登入或開啟資料夾。
+  const request = new Request("https://fieldlog.internal/api/attachments/rename-existing", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  const response = await handleApi(request, env, new URL(request.url), { email: "scheduled-maintenance" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) {
+    throw new Error(result.error || `檔名整理回傳 HTTP ${response.status}`);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).bind(FILENAME_MAINTENANCE_KEY, FILENAME_MAINTENANCE_VERSION, now()).run();
+  return { ...result, version: FILENAME_MAINTENANCE_VERSION };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/session") return secureResponse(await handleSession(request, env));
     // /wiki/* 是個人知識庫內容（wrangler run_worker_first 導進來的），
     // 與 API 同一套 PIN 驗證，通過才放行到靜態資產
     if (url.pathname.startsWith("/wiki/")) {
-      const pin = (env.FIELD_PIN || "").trim();
-      if (!pin) return bad("尚未設定 FIELD_PIN：請至 Worker Settings → Variables and Secrets 新增", 401);
-      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
-      if (given !== pin) return bad("PIN 錯誤或未提供", 401);
-      return env.ASSETS.fetch(new Request(new URL(url.pathname, url.origin), request));
+      const identity = await privateIdentity(request, env, url);
+      if (!identity.ok) return secureResponse(bad(identity.error, 401));
+      return secureResponse(await env.ASSETS.fetch(new Request(new URL(url.pathname, url.origin), request)));
     }
     if (NO_CACHE_SHELL_PATHS.has(url.pathname)) {
-      return noStoreAsset(request, env);
+      return secureResponse(await noStoreAsset(request, env));
     }
     if (url.pathname.startsWith("/api/")) {
-      // fail-closed：FIELD_PIN 未設定時全部拒絕
-      const pin = (env.FIELD_PIN || "").trim();
-      if (!pin) return bad("尚未設定 FIELD_PIN：請至 Worker Settings → Variables and Secrets 新增", 401);
-      const given = (request.headers.get("x-pin") || url.searchParams.get("pin") || "").trim();
-      if (given !== pin) return bad("PIN 錯誤或未提供", 401);
+      const identity = await privateIdentity(request, env, url);
+      if (!identity.ok) return secureResponse(bad(identity.error, 401));
       try {
-        return await handleApi(request, env, url);
+        return secureResponse(await handleApi(request, env, url, identity));
       } catch (err) {
-        return bad(`伺服器錯誤：${err.message}`, 500);
+        return secureResponse(bad(`伺服器錯誤：${err.message}`, 500));
       }
     }
-    return env.ASSETS.fetch(request);
+    return secureResponse(await env.ASSETS.fetch(request));
   },
 
   // 每天自動同步 sources 表裡的外部來源（cron 排程見 wrangler.jsonc 的 triggers；
@@ -1865,7 +3058,12 @@ export default {
   // 不中斷其他來源，結果一律記進 sync_log，事後用 MCP 的 sync_status 就查得到。
   async scheduled(_event, env) {
     await ensureSchema(env.DB, now());
-    await syncSources(env.DB, {});
+    try {
+      await syncSources(env.DB, {});
+    } catch (err) {
+      // 外部來源同步失敗不能阻止垃圾桶到期清理；兩件維護工作互不依賴。
+      console.error(JSON.stringify({ event: "source_sync_failed", error: err.message }));
+    }
     // 一次性的資料夾分類重整（2026-08-08）。自帶標記、只會真的套用一次，
     // 之後每天的排程呼叫都是立即返回的無事發生，跟上面的同步分開 try，
     // 不讓一次性遷移失敗連帶擋到當天的同步。
@@ -1873,6 +3071,34 @@ export default {
       await applyFolderReorg20260808(env.DB, now());
     } catch (err) {
       console.error("資料夾分類重整失敗", err);
+    }
+    // 舊附件檔名與完全相同的重複檔只需整理一次。新附件在上傳／文字擷取流程
+    // 已逐檔自動命名與防重，不需要每天全庫掃描。
+    try {
+      const cleanup = await runFilenameMaintenanceOnce(env);
+      if (!cleanup.skipped) console.log(JSON.stringify({ event: "filename_maintenance_complete", ...cleanup }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "filename_maintenance_failed", error: err.message }));
+    }
+    // B 模式分類只讀待分類容器的新／更新資料。使用 Cloudflare 自有綁定的
+    // BGE-M3 與 Llama，不依賴 GPT／Claude；單筆誤判可由前臺復原。
+    try {
+      if (!env.AI) throw new Error("Workers AI 未配置");
+      await enforceAiSoftBudget(env);
+      const filing = await runHybridAutofile(env, {
+        timestamp: now,
+        runAi: (model, input) => budgetedAi(env).run(model, input),
+        logHistory,
+      });
+      console.log(JSON.stringify({ event: "hybrid_autofile_complete", ...filing }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "hybrid_autofile_schedule_failed", error: err.message }));
+    }
+    try {
+      const trash = await purgeExpiredTrash(env.DB, env.FILES, now(), env.VECTOR_INDEX);
+      console.log(JSON.stringify({ event: "trash_purge_complete", ...trash }));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "trash_purge_schedule_failed", error: err.message }));
     }
   },
 };

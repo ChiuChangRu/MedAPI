@@ -1,0 +1,43 @@
+name: 部署 MyWiki MCP 到 Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - codex/kiwi-integration
+    paths:
+      - "mcp/**"
+      - "fieldlog/src/lib/render.js"
+      - "fieldlog/src/lib/richtext.js"
+      - "fieldlog/src/lib/schema.js"
+      - ".github/workflows/deploy-mcp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-mcp-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install MCP dependencies
+        run: npm ci
+
+      - name: Deploy MyWiki MCP Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: mcp
+          wranglerVersion: "4.113.0"
+          command: deploy --keep-vars

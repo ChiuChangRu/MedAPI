@@ -317,8 +317,7 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
       }
       const key = encodeURIComponent(attachment.key);
-      const accessPin = typeof pin === "function" ? pin() : (localStorage.getItem("fieldlog_pin") || "");
-      const response = await fetch(`/api/file/${key}?pin=${encodeURIComponent(accessPin)}`, { cache: "no-store" });
+      const response = await fetch(`/api/file/${key}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`下載失敗（HTTP ${response.status}）`);
       const bytes = new Uint8Array(await response.arrayBuffer());
       state.entryId = Number(entryId);
