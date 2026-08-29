@@ -85,3 +85,39 @@ test("Word 工具列有安全插圖按鈕，圖片先上傳附件而不是內嵌
   assert.match(editor, /opts\.onImagePaste\(file\)/,
     "選到的圖片要交給既有 R2 上傳與附件插入流程");
 });
+
+test("桌機編輯器把儲存移到上方工具列，不再用底部固定操作列", async () => {
+  const [app, index, css] = await Promise.all([
+    read("../fieldlog/public/app.js"),
+    read("../fieldlog/public/index.html"),
+    read("../fieldlog/public/style.css"),
+  ]);
+  assert.match(index, /id="folder-preview-save"[^>]*hidden/);
+  assert.match(app, /\$\("folder-preview-save"\)\.onclick = \(\) => \$\("entry-preview-editor"\)\.requestSubmit\(\)/);
+  assert.doesNotMatch(app, /class="preview-editor-actions"/,
+    "記事、檔案與錄音編輯器都不應再各自產生底部儲存列");
+  assert.doesNotMatch(css, /\.preview-editor-actions/);
+});
+
+test("右欄提供窄、標準、寬選單並保留拖曳微調", async () => {
+  const [app, index] = await Promise.all([
+    read("../fieldlog/public/app.js"),
+    read("../fieldlog/public/index.html"),
+  ]);
+  assert.match(index, /id="folder-preview-width"/);
+  for (const option of ["40", "60", "80"]) assert.match(index, new RegExp(`value="${option}"`));
+  assert.match(app, /function applyPreviewWidthMode\(mode, persist = false\)/);
+  assert.match(app, /widthSelect\.onchange = \(\) => applyPreviewWidthMode/);
+  assert.match(app, /handle\.addEventListener\("pointerdown"/);
+});
+
+test("Markdown 維持安全的輸入轉格式，不提供會遺失附件的原始碼雙向切換", async () => {
+  const [editor, help] = await Promise.all([
+    read("../fieldlog/public/richtext-editor.js"),
+    read("../fieldlog/public/help.html"),
+  ]);
+  assert.match(editor, /function mdToHtml\(src\)/);
+  assert.match(editor, /looksLikeMarkdown\(text\)/);
+  assert.match(help, /Word／Markdown 原始碼雙向切換/);
+  assert.match(help, /圖片、附件與複雜格式/);
+});

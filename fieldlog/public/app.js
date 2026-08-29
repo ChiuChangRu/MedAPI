@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "161";
+const APP_VERSION = "162";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2406,6 +2406,12 @@ function clearFilePreview(message = "選取一份檔案以預覽") {
     $("folder-preview-edit").hidden = true;
     $("folder-preview-edit").onclick = null;
   }
+  if ($("folder-preview-save")) {
+    $("folder-preview-save").hidden = true;
+    $("folder-preview-save").disabled = false;
+    $("folder-preview-save").textContent = "💾 儲存";
+    $("folder-preview-save").onclick = null;
+  }
   if ($("folder-preview-manage")) {
     $("folder-preview-manage").disabled = true;
     $("folder-preview-manage").onclick = null;
@@ -2466,6 +2472,7 @@ async function renderEntryPreview(entryId) {
     };
   });
   $("folder-preview-open").hidden = true;
+  $("folder-preview-save").hidden = true;
   $("folder-preview-edit").hidden = false;
   $("folder-preview-edit").textContent = "編輯";
   $("folder-preview-edit").onclick = () => showEntryEditor(entryId).catch((error) => showToast("開啟編輯失敗：" + error.message));
@@ -2509,7 +2516,6 @@ async function renderEntryEditor(entryId) {
           <textarea id="preview-entry-field-${index}" data-field="${esc(key)}">${esc(String(value || ""))}</textarea>`).join("")}</div>
       </details>` : ""}
     </main>
-    <div class="preview-editor-actions"><button class="btn primary" id="preview-entry-save" type="submit">儲存</button><button class="btn" id="preview-entry-cancel" type="button">取消</button></div>
   </form>`;
   let richEditor = null;
   if (useRichEditor) {
@@ -2527,12 +2533,13 @@ async function renderEntryEditor(entryId) {
   $("folder-preview-edit").hidden = false;
   $("folder-preview-edit").textContent = "取消";
   $("folder-preview-edit").onclick = returnToPreview;
+  $("folder-preview-save").hidden = false;
+  $("folder-preview-save").onclick = () => $("entry-preview-editor").requestSubmit();
   $("folder-preview-manage").disabled = true;
   $("folder-preview-manage").onclick = null;
-  $("preview-entry-cancel").onclick = returnToPreview;
   $("entry-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
-    const save = $("preview-entry-save");
+    const save = $("folder-preview-save");
     const title = $("preview-entry-title").value.trim();
     if (!isWeeklyReport && !title) return showToast("名稱不可空白");
     const patch = { fields: {} };
@@ -2614,6 +2621,7 @@ async function renderRecordingPreview(entryId) {
 
   const firstUrl = fileUrlForKey(audio[0].key);
   $("folder-preview-open").hidden = false;
+  $("folder-preview-save").hidden = true;
   $("folder-preview-open").textContent = audio.length === 1 ? "下載錄音" : "下載第 1 段";
   $("folder-preview-open").href = firstUrl;
   $("folder-preview-open").setAttribute("download", audio[0].filename || "recording");
@@ -2877,6 +2885,7 @@ async function renderFilePreview({ entryId, attachmentId, filename, key, mime, k
     body.innerHTML = `<div class="folder-preview-empty"><strong>此 OpenDocument／RTF 目前只提供原檔</strong><p>可另存為 docx、xlsx 或 pptx，以取得右欄文字或表格預覽。</p></div>`;
   } else body.innerHTML = `<p class="folder-preview-empty">此格式目前無法在側欄預覽，可開啟原檔。</p>`;
   $("folder-preview-open").hidden = false;
+  $("folder-preview-save").hidden = true;
   $("folder-preview-open").href = url;
   $("folder-preview-open").removeAttribute("download");
   $("folder-preview-open").textContent = "開啟原檔";
@@ -2941,7 +2950,6 @@ async function renderFileEditor(entryId, attachmentId) {
         <button class="btn small danger" id="preview-file-delete" type="button">刪除檔案</button>
       </div>
     </section>
-    <div class="preview-editor-actions"><button class="btn primary" id="preview-file-save" type="submit">儲存</button><button class="btn" id="preview-file-cancel" type="button">取消</button></div>
   </form>`;
   const categorySelect = $("preview-file-category");
   try {
@@ -2962,9 +2970,10 @@ async function renderFileEditor(entryId, attachmentId) {
   $("folder-preview-edit").hidden = false;
   $("folder-preview-edit").textContent = "取消";
   $("folder-preview-edit").onclick = returnToPreview;
+  $("folder-preview-save").hidden = false;
+  $("folder-preview-save").onclick = () => $("file-preview-editor").requestSubmit();
   $("folder-preview-manage").disabled = true;
   $("folder-preview-manage").onclick = null;
-  $("preview-file-cancel").onclick = returnToPreview;
   $("preview-file-copy").onclick = async () => {
     const text = $("preview-file-index").value;
     if (!text.trim()) return showToast("目前沒有可複製的文字");
@@ -3041,7 +3050,7 @@ async function renderFileEditor(entryId, attachmentId) {
   };
   $("file-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
-    const save = $("preview-file-save");
+    const save = $("folder-preview-save");
     const nextFilename = $("preview-file-name").value.trim();
     if (!nextFilename) return showToast("檔案名稱不可空白");
     save.disabled = true;
@@ -3094,6 +3103,7 @@ async function fetchTextPreview(url, maxChars) {
 }
 
 const PREVIEW_WIDTH_KEY = "fieldlog_preview_width";
+const PREVIEW_WIDTH_MODE_KEY = "fieldlog_preview_width_mode";
 const PREVIEW_WIDTH_MIN = 280;
 // 內容區原本硬保留 480px，右欄拉寬到一半就會卡住；280px 仍足夠顯示檔名，
 // 同時允許分隔線繼續往左拖，把大部分空間交給預覽／編輯。
@@ -3134,20 +3144,44 @@ function setPreviewWidth(width, persist = false) {
   if (persist) localStorage.setItem(PREVIEW_WIDTH_KEY, String(Math.round(clamped)));
 }
 
+function setPreviewWidthMode(mode, persist = false) {
+  const select = $("folder-preview-width");
+  const normalized = ["40", "60", "80"].includes(String(mode)) ? String(mode) : "custom";
+  if (select) select.value = normalized;
+  if (persist) localStorage.setItem(PREVIEW_WIDTH_MODE_KEY, normalized);
+}
+
+function applyPreviewWidthMode(mode, persist = false) {
+  const normalized = ["40", "60", "80"].includes(String(mode)) ? String(mode) : "custom";
+  setPreviewWidthMode(normalized, persist);
+  if (normalized === "custom") return;
+  if (document.body.classList.contains("reader-fullscreen")) setReaderFullscreen(false);
+  const workspace = document.querySelector(".folder-workspace");
+  const available = workspace?.getBoundingClientRect().width || window.innerWidth;
+  setPreviewWidth(available * (Number(normalized) / 100), persist);
+}
+
 function initPreviewLayout() {
   const handle = $("folder-preview-resize");
   const button = $("btn-toggle-preview");
-  if (!handle || !button) return;
+  const widthSelect = $("folder-preview-width");
+  if (!handle || !button || !widthSelect) return;
   const expand = $("folder-preview-expand");
   const close = $("folder-preview-close");
   if (expand) expand.onclick = () => setReaderFullscreen(!document.body.classList.contains("reader-fullscreen"));
   if (close) close.onclick = () => clearFilePreview();
   localStorage.setItem("fieldlog_preview_enabled", "1");
   button.hidden = true;
+  const savedMode = localStorage.getItem(PREVIEW_WIDTH_MODE_KEY) || "custom";
   const saved = Number(localStorage.getItem(PREVIEW_WIDTH_KEY));
-  if (saved) setPreviewWidth(saved);
+  if (["40", "60", "80"].includes(savedMode)) applyPreviewWidthMode(savedMode);
+  else {
+    setPreviewWidthMode("custom");
+    if (saved) setPreviewWidth(saved);
+  }
   syncPreviewLayout();
   button.onclick = null;
+  widthSelect.onchange = () => applyPreviewWidthMode(widthSelect.value, true);
   handle.addEventListener("pointerdown", (event) => {
     if (!PREVIEW_ENABLED) return;
     event.preventDefault();
@@ -3163,7 +3197,10 @@ function initPreviewLayout() {
       handle.removeEventListener("pointerup", onUp);
       handle.removeEventListener("pointercancel", onUp);
       const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10);
-      if (current) setPreviewWidth(current, true);
+      if (current) {
+        setPreviewWidthMode("custom", true);
+        setPreviewWidth(current, true);
+      }
     };
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onUp);
@@ -3173,9 +3210,12 @@ function initPreviewLayout() {
     if (!PREVIEW_ENABLED || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
     event.preventDefault();
     const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10) || 400;
+    setPreviewWidthMode("custom", true);
     setPreviewWidth(current + (event.key === "ArrowLeft" ? 16 : -16), true);
   });
   window.addEventListener("resize", () => {
+    const mode = localStorage.getItem(PREVIEW_WIDTH_MODE_KEY) || "custom";
+    if (["40", "60", "80"].includes(mode)) return applyPreviewWidthMode(mode);
     const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--preview-width"), 10) || 400;
     setPreviewWidth(current);
   });
@@ -4591,7 +4631,6 @@ async function renderRecordingEditor(entryId, entry, audio) {
         </div>
         <div class="recording-editor-downloads">${audio.map((item, index) => `<a href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">下載${audio.length > 1 ? `第 ${index + 1} 段` : "錄音"}｜${esc(item.filename)}</a>`).join("")}</div>
       </section>
-      <div class="preview-editor-actions"><button class="btn primary" id="recording-edit-save" type="submit">儲存</button><button class="btn" id="recording-edit-cancel" type="button">取消</button></div>
     </form>`;
   const returnToPreview = () => showRecordingPreview(entryId).catch((error) => showToast("預覽失敗：" + error.message));
   $("folder-preview-open").hidden = false;
@@ -4601,9 +4640,10 @@ async function renderRecordingEditor(entryId, entry, audio) {
   $("folder-preview-edit").hidden = false;
   $("folder-preview-edit").textContent = "取消";
   $("folder-preview-edit").onclick = returnToPreview;
+  $("folder-preview-save").hidden = false;
+  $("folder-preview-save").onclick = () => $("recording-preview-editor").requestSubmit();
   $("folder-preview-manage").disabled = true;
   $("folder-preview-manage").onclick = null;
-  $("recording-edit-cancel").onclick = returnToPreview;
   body.querySelectorAll(".recording-audio-delete").forEach((button) => {
     button.onclick = async () => {
       const filename = button.dataset.filename || "這段錄音";
@@ -4673,7 +4713,7 @@ async function renderRecordingEditor(entryId, entry, audio) {
   };
   $("recording-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
-    const button = $("recording-edit-save");
+    const button = $("folder-preview-save");
     const title = $("recording-edit-title").value.trim();
     if (!title) { showToast("名稱不可空白"); return; }
     button.disabled = true;
@@ -6670,7 +6710,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=161").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=162").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
