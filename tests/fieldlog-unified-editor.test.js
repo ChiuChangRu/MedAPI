@@ -42,7 +42,13 @@ test("桌機右欄的一般記事統一使用 Word 類富文字編輯器", async
   const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
   assert.ok(editor, "應能定位桌機右欄記事編輯器");
   assert.match(editor, /id="preview-entry-rich"/);
+  assert.match(editor, /setFolderPreviewTitle\(entry\.title \|\| "記事", !isWeeklyReport\)/,
+    "文件名稱只能在右欄頂部出現並直接編輯");
+  assert.doesNotMatch(editor, /id="preview-entry-title"/,
+    "白紙內不得再產生第二個文件名稱");
   assert.match(editor, /fieldlogRichEditor\?\.init/);
+  assert.match(editor, /toolbarHost: \$\("folder-preview-editor-toolbar"\)/,
+    "格式工具列要放在右欄頂部，不得留在白紙內容內");
   assert.match(editor, /textToHtmlForEditor\(entry\.body \|\| ""\)/,
     "舊純文字記事要直接載入同一編輯器");
   assert.match(editor, /patch\.body_format = "html"/,
@@ -51,6 +57,8 @@ test("桌機右欄的一般記事統一使用 Word 類富文字編輯器", async
     "富文字記事不能再被錯誤鎖成唯讀");
   assert.match(css, /\.word-note-page/);
   assert.match(css, /\.word-rich-editor \.ql-editor/);
+  assert.match(css, /\.word-note-editor \{[\s\S]*overflow: visible/,
+    "記事表面不得建立第二個捲軸");
 });
 
 test("Word 編輯器不把 1.、-、* 自動轉成清單，工具列清單仍保留", async () => {

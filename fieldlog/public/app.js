@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "163";
+const APP_VERSION = "164";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2388,6 +2388,29 @@ function bindFileRows() {
   bindImageLinks();
 }
 
+function setFolderPreviewTitle(text, editable = false) {
+  const title = $("folder-preview-title");
+  if (!title) return;
+  title.textContent = text || "預覽";
+  title.contentEditable = editable ? "true" : "false";
+  title.classList.toggle("editable", editable);
+  title.toggleAttribute("role", editable);
+  if (editable) title.setAttribute("role", "textbox");
+  title.setAttribute("aria-label", editable ? "文件名稱" : "目前項目名稱");
+  title.onkeydown = editable ? (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    title.blur();
+  } : null;
+}
+
+function clearFolderPreviewEditorToolbar() {
+  const host = $("folder-preview-editor-toolbar");
+  if (!host) return;
+  host.replaceChildren();
+  host.hidden = true;
+}
+
 function clearFilePreview(message = "選取一份檔案以預覽") {
   const pane = $("folder-preview");
   const body = $("folder-preview-body");
@@ -2395,7 +2418,8 @@ function clearFilePreview(message = "選取一份檔案以預覽") {
   if (typeof body._previewCleanup === "function") body._previewCleanup();
   pane.dataset.attachmentId = "";
   pane.dataset.entryId = "";
-  if ($("folder-preview-title")) $("folder-preview-title").textContent = "預覽";
+  setFolderPreviewTitle("預覽");
+  clearFolderPreviewEditorToolbar();
   if ($("folder-preview-open")) {
     $("folder-preview-open").hidden = false;
     $("folder-preview-open").textContent = "開啟原檔";
@@ -2466,10 +2490,10 @@ async function renderEntryEditor(entryId) {
   const initialHtml = entry.body_format === "html"
     ? String(entry.body || "")
     : textToHtmlForEditor(entry.body || "");
-  $("folder-preview-title").textContent = entry.title || "記事";
+  setFolderPreviewTitle(entry.title || "記事", !isWeeklyReport);
+  clearFolderPreviewEditorToolbar();
   body.innerHTML = `<form class="preview-editor word-note-editor" id="entry-preview-editor">
     <main class="word-note-page">
-      <input id="preview-entry-title" class="word-note-title" maxlength="160" value="${esc(entry.title || "")}" aria-label="文件名稱" placeholder="文件名稱" ${isWeeklyReport ? "disabled" : ""} />
       ${useRichEditor ? `<div id="preview-entry-rich" class="rich-editor word-rich-editor" aria-label="文件內容"></div>` : ""}
       ${isSynced ? `<div class="word-note-plain">
         <p class="sub">🔒 此記事由外部來源同步管理，保留純文字以免同步標記遺失。</p>
@@ -2487,6 +2511,7 @@ async function renderEntryEditor(entryId) {
     const editorElement = $("preview-entry-rich");
     richEditor = window.fieldlogRichEditor?.init(editorElement, injectFilePinForDisplay(initialHtml), {
       onImagePaste: (file) => insertFilesIntoRichEditor(entryId, editorElement, [file]),
+      toolbarHost: $("folder-preview-editor-toolbar"),
     });
     setupRichImageDropZone(editorElement, entryId);
     if (!richEditor) {
@@ -2505,7 +2530,7 @@ async function renderEntryEditor(entryId) {
   $("entry-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
     const save = $("folder-preview-save");
-    const title = $("preview-entry-title").value.trim();
+    const title = String($("folder-preview-title")?.textContent || "").trim();
     if (!isWeeklyReport && !title) return showToast("名稱不可空白");
     const patch = { fields: {} };
     if (!isWeeklyReport) {
@@ -2555,7 +2580,8 @@ async function renderRecordingPreview(entryId) {
   document.querySelector(`.record-group-card[data-id="${entryId}"]`)?.classList.add("preview-selected");
   pane.dataset.attachmentId = "";
   pane.dataset.entryId = String(entryId);
-  title.textContent = entry.title || "錄音";
+  setFolderPreviewTitle(entry.title || "錄音");
+  clearFolderPreviewEditorToolbar();
 
   const totalSize = audio.reduce((sum, item) => sum + (Number(item.size) || 0), 0);
   const knownDuration = audio.filter((item) => Number(item.duration_secs) > 0);
@@ -2809,7 +2835,8 @@ async function renderFilePreview({ entryId, attachmentId, filename, key, mime, k
   document.querySelector(`.folder-file-row[data-att-id="${attachmentId}"]`)?.classList.add("preview-selected");
   pane.dataset.attachmentId = String(attachmentId);
   pane.dataset.entryId = String(entryId);
-  title.textContent = filename;
+  setFolderPreviewTitle(filename);
+  clearFolderPreviewEditorToolbar();
   if (typeof body._previewCleanup === "function") body._previewCleanup();
   body.innerHTML = `<p class="folder-preview-empty">載入預覽中…</p>`;
   const url = fileUrlForKey(key);
@@ -2886,7 +2913,8 @@ async function renderFileEditor(entryId, attachmentId) {
     ? `已擷取 ${initialIndexText.length.toLocaleString()} 字${!attachment.ocr_text && deepText ? "（逐頁結果）" : ""}`
     : attachment.ocr_at === "skipped" ? "已設定略過"
       : attachment.ocr_at ? "已擷取，但未找到文字" : "尚未擷取";
-  title.textContent = `編輯｜${attachment.filename}`;
+  setFolderPreviewTitle(`編輯｜${attachment.filename}`);
+  clearFolderPreviewEditorToolbar();
   body.innerHTML = `<form class="preview-editor" id="file-preview-editor">
     <label for="preview-file-name">檔案名稱</label>
     <input id="preview-file-name" maxlength="240" value="${esc(attachment.filename || "")}" />
@@ -4563,7 +4591,8 @@ async function loadRecordingEditor(entryId) {
 async function renderRecordingEditor(entryId, entry, audio) {
   if ($("entry-overlay")?.classList.contains("open")) closeEntry();
   const body = $("folder-preview-body");
-  $("folder-preview-title").textContent = `編輯｜${entry.title || "錄音"}`;
+  setFolderPreviewTitle(`編輯｜${entry.title || "錄音"}`);
+  clearFolderPreviewEditorToolbar();
   body.innerHTML = `<form class="recording-editor preview-editor" id="recording-preview-editor">
       <label for="recording-edit-title">名稱</label>
       <input id="recording-edit-title" maxlength="160" value="${esc(entry.title || "")}" />
@@ -6675,7 +6704,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=163").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=164").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

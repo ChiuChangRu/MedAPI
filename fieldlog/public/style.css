@@ -1133,9 +1133,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
     display: flex; position: sticky; top: 118px; height: calc(100vh - 138px); min-height: 420px;
     flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: #fff;
   }
-  .folder-preview-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .folder-preview-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
   .folder-preview-head > strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folder-preview-head > strong.editable { padding: 5px 7px; border-radius: 6px; cursor: text; outline: 1px solid transparent; }
+  .folder-preview-head > strong.editable:hover { background: #f1f5f4; }
+  .folder-preview-head > strong.editable:focus { overflow: visible; background: #fff; outline-color: var(--accent); white-space: normal; }
   .folder-preview-actions { display: flex; gap: 6px; flex: none; }
+  .folder-preview-editor-toolbar { flex: 0 0 100%; min-width: 0; }
+  .folder-preview-editor-toolbar[hidden] { display: none; }
+  .folder-preview-editor-toolbar .ql-toolbar { padding: 7px 0 0; border: 0; border-top: 1px solid var(--border); background: #fff; }
   .preview-width-select {
     width: auto; min-width: 66px; padding: 6px 24px 6px 8px; border: 1px solid var(--border);
     border-radius: 8px; background: #fff; color: var(--text); font: inherit; font-size: 12px; cursor: pointer;
@@ -1171,23 +1177,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .preview-editor textarea.preview-index-text { min-height: 260px; font-family: Consolas, "Microsoft JhengHei", sans-serif; }
   .preview-editor .sub { margin: -4px 0 0; }
   .word-note-editor {
-    padding: 18px 18px 0; gap: 0; background: #eef1f4;
+    padding: 18px; gap: 0; overflow: visible; background: #eef1f4;
   }
   .word-note-page {
     width: min(100%, 860px); min-height: calc(100vh - 245px); margin: 0 auto;
     padding: clamp(22px, 4vw, 52px); border: 1px solid #d9dee5; background: #fff;
     box-shadow: 0 3px 14px rgba(15, 23, 42, .08);
   }
-  .preview-editor input.word-note-title {
-    margin: 0 0 18px; padding: 0 0 12px; border: 0; border-bottom: 1px solid #d9dee5;
-    border-radius: 0; box-shadow: none; font-size: clamp(22px, 2.4vw, 32px); font-weight: 700;
-    line-height: 1.25;
-  }
-  .preview-editor input.word-note-title:focus { border-color: var(--accent); box-shadow: none; }
   .word-rich-editor { border-color: #d9dee5; border-radius: 4px; overflow: visible; }
-  .word-rich-editor .ql-toolbar {
-    position: sticky; top: 0; z-index: 3; background: #f8fafc; border-bottom-color: #d9dee5;
-  }
+  .word-rich-editor > .ql-toolbar { display: none; }
   .word-rich-editor .ql-editor { min-height: 440px; padding: 22px; font-size: 16px; line-height: 1.75; }
   .word-note-fields { margin-top: 20px; border-top: 1px solid #d9dee5; }
   .word-note-fields > summary { padding: 13px 0; font-weight: 700; cursor: pointer; }

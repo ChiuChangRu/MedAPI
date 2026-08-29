@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=163" />
+<link rel="stylesheet" href="style.css?v=164" />
 <link rel="stylesheet" href="home.css" />
 <!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
      CDN 載入、鎖定版本號，不用 @latest -->
@@ -43,7 +43,7 @@
   <div id="view-home">
     <header class="home-app-head">
       <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      <a class="head-link" href="help.html?v=163">📖 使用說明</a>
+      <a class="head-link" href="help.html?v=164">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
@@ -199,7 +199,7 @@
       <div class="folder-preview-resize" id="folder-preview-resize" role="separator" aria-orientation="vertical" aria-label="調整預覽寬度" tabindex="0"></div>
       <aside class="folder-preview" id="folder-preview" aria-label="檔案預覽">
         <div class="folder-preview-head">
-          <strong id="folder-preview-title">預覽</strong>
+          <strong id="folder-preview-title" aria-label="目前項目名稱">預覽</strong>
           <div class="folder-preview-actions">
             <button class="btn small primary" id="folder-preview-save" type="button" hidden>💾 儲存</button>
             <button class="btn small ghost" id="folder-preview-edit" type="button" hidden>編輯</button>
@@ -216,6 +216,7 @@
                     aria-label="關閉右欄內容" title="關閉右欄內容">✕</button>
             <button class="btn small" id="folder-preview-manage" type="button" title="管理與移動" disabled>⋯</button>
           </div>
+          <div class="folder-preview-editor-toolbar" id="folder-preview-editor-toolbar" hidden></div>
         </div>
         <div class="folder-preview-body" id="folder-preview-body"><p class="folder-preview-empty">選取一份檔案以預覽</p></div>
       </aside>
@@ -493,11 +494,11 @@
      只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=163"></script>
+<script src="app.js?v=164"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=163"></script>
+<script src="pdf-editor.js?v=164"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=163"></script>
+<script src="richtext-editor.js?v=164"></script>
 </body>
 </html>

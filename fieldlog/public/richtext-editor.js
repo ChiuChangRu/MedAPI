@@ -331,6 +331,10 @@
       for (const [selector, title] of Object.entries(labels)) {
         toolbar.querySelector(selector)?.setAttribute("title", title);
       }
+      if (opts.toolbarHost) {
+        opts.toolbarHost.replaceChildren(toolbar);
+        opts.toolbarHost.hidden = false;
+      }
     }
     return quill;
   }

@@ -8,11 +8,11 @@ const index = await readFile(new URL("../fieldlog/public/index.html", import.met
 const sw = await readFile(new URL("../fieldlog/public/sw.js", import.meta.url), "utf8");
 
 test("手機版載入最新版殼與快取", () => {
-  assert.match(app, /const APP_VERSION = "163"/);
-  assert.match(index, /app\.js\?v=163/);
-  assert.match(index, /style\.css\?v=163/);
-  assert.match(sw, /app\.js\?v=163/);
-  assert.match(sw, /style\.css\?v=163/);
+  assert.match(app, /const APP_VERSION = "164"/);
+  assert.match(index, /app\.js\?v=164/);
+  assert.match(index, /style\.css\?v=164/);
+  assert.match(sw, /app\.js\?v=164/);
+  assert.match(sw, /style\.css\?v=164/);
 });
 
 test("手機寬度不顯示桌機側欄，沿用可操作的單欄資料夾清單", () => {

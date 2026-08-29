@@ -94,8 +94,10 @@ test("一般記事與週報都統一在右欄編輯，週報欄位由 fields_jso
   ]);
   const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
   assert.match(editor, /_kind === "weekly_report"/);
-  assert.match(editor, /id="preview-entry-title"/);
+  assert.match(editor, /setFolderPreviewTitle\(entry\.title \|\| "記事", !isWeeklyReport\)/);
+  assert.doesNotMatch(editor, /id="preview-entry-title"/);
   assert.match(editor, /id="preview-entry-rich"/);
+  assert.match(editor, /toolbarHost: \$\("folder-preview-editor-toolbar"\)/);
   assert.match(editor, /fieldlogRichEditor\?\.init/);
   assert.match(html, /id="folder-preview-save"/);
   assert.match(editor, /\$\("folder-preview-save"\)\.onclick = \(\) => \$\("entry-preview-editor"\)\.requestSubmit\(\)/);

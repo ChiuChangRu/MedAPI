@@ -100,8 +100,8 @@ test("v144 前後臺與部署接線完整，其他分類不會成為 AI 自動�
   assert.match(workflow, /"kind":"normalize_work_sections_v144"/);
   assert.match(autofile, /COALESCE\(category, 'misc'\) <> 'misc'/);
   assert.match(worker, /"routine_report", WEEKLY_REPORT_FOLDER_ROLE/);
-  assert.match(app, /const APP_VERSION = "163"/);
-  assert.match(worker, /const UI_VERSION = "163"/);
-  assert.match(index, /app\.js\?v=163/);
-  assert.match(sw, /fieldlog-v163-single-note-surface/);
+  assert.match(app, /const APP_VERSION = "164"/);
+  assert.match(worker, /const UI_VERSION = "164"/);
+  assert.match(index, /app\.js\?v=164/);
+  assert.match(sw, /fieldlog-v164-one-note-toolbar/);
 });
