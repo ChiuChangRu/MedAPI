@@ -80,6 +80,7 @@
     <button class="view-tab" data-view="visited">✅ 完成拜訪清單<span class="tab-count" id="tab-count-visited"></span></button>
     <button class="view-tab" data-view="agenda">🗣 論壇議程</button>
     <button class="view-tab" data-view="prep">📝 參訪前報告</button>
+    <button class="view-tab" data-view="packing">🧳 資料盤點</button>
     <button class="view-tab pdf-tab" id="btn-mylist-pdf" title="產出可列印的分派清單（存成 PDF 當紙本備援，軟體完全失效也知道要去哪）">🖨 PDF</button>
   </div>
 
@@ -117,6 +118,17 @@
       <p class="itin-sub">依職掌與五年技術地圖整理　·　家數即時取自 881 家官方名冊，點晶片可直接篩出該群廠商</p>
     </div>
     <div class="prep-list" id="prep-list"></div>
+  </section>
+
+  <!-- 出發前攜帶資料盤點表：轉錄自紙本盤點表（config.js 的 PACKING_CHECKLIST，共 61 項）。
+       勾選狀態存在自己裝置的 localStorage，是個人打包檢查表，不是團隊共筆。 -->
+  <section class="pack-section" id="pack-section">
+    <div class="itin-head">
+      <h2>出發前攜帶資料盤點表</h2>
+      <p class="itin-sub">共 61 項，出發前逐項確認、返程前再次核對　·　勾選狀態只存在你自己的裝置</p>
+    </div>
+    <div class="pack-progress" id="pack-progress"></div>
+    <div class="pack-list" id="pack-list"></div>
   </section>
 
   <!-- 篩選列 -->

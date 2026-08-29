@@ -1300,6 +1300,8 @@ function setActiveViewTab(view) {
   document.body.classList.toggle("itinerary-view", view === "itinerary");
   // 參訪前報告：同理
   document.body.classList.toggle("prep-view", view === "prep");
+  // 資料盤點：同理
+  document.body.classList.toggle("packing-view", view === "packing");
 }
 
 // 設定負責人篩選值；選單裡沒有這個名字就補一個 option，
@@ -1336,6 +1338,8 @@ function setView(view, { scroll = true } = {}) {
   } else if (view === "prep") {
     renderPrepReport();
     loadPrepNotes();
+  } else if (view === "packing") {
+    renderPackingChecklist();
   }
   setActiveViewTab(view);
   if (!scroll) return;
@@ -1345,6 +1349,8 @@ function setView(view, { scroll = true } = {}) {
     $("itinerary-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (view === "prep") {
     $("prep-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (view === "packing") {
+    $("pack-section").scrollIntoView({ behavior: "smooth", block: "start" });
   } else {
     $("stats").scrollIntoView({ behavior: "smooth", block: "center" });
   }
@@ -3329,6 +3335,75 @@ async function savePrepNote(name, btn) {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ---------- 出發前攜帶資料盤點表（PACKING_CHECKLIST，config.js）----------
+// 個人打包檢查表：誰帶了護照沒有不需要跟全隊同步，勾選狀態只存自己裝置的
+// localStorage，不寫共用資料庫（跟拜訪狀態／筆記那種團隊共筆刻意不同）。
+function getPackingState() {
+  try { return JSON.parse(localStorage.getItem("medtec_packing_state") || "{}"); } catch { return {}; }
+}
+
+function setPackingState(state) {
+  try { localStorage.setItem("medtec_packing_state", JSON.stringify(state)); } catch { /* 空間不足時放棄，不影響本次勾選畫面 */ }
+}
+
+function packingItemKey(catIndex, itemIndex) {
+  return `${catIndex}-${itemIndex}`;
+}
+
+function renderPackingChecklist() {
+  const wrap = $("pack-list");
+  if (!wrap) return;
+  const state = getPackingState();
+
+  wrap.innerHTML = PACKING_CHECKLIST.map((cat, ci) => {
+    const rows = cat.items.map((item, ii) => {
+      const key = packingItemKey(ci, ii);
+      const st = state[key] || {};
+      return `<tr class="${st.before ? "pack-done-before" : ""}${st.after ? " pack-done-after" : ""}">
+        <td class="pack-check"><input type="checkbox" data-key="${key}" data-phase="before" ${st.before ? "checked" : ""}></td>
+        <td class="pack-check"><input type="checkbox" data-key="${key}" data-phase="after" ${st.after ? "checked" : ""}></td>
+        <td class="pack-name">${esc(item.name)}</td>
+        <td class="pack-form">${esc(item.form)}</td>
+        <td class="pack-note">${esc(item.note || "")}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="pack-cat">
+      <h3>${esc(cat.category)}</h3>
+      <table class="pack-table">
+        <thead><tr><th>出發前</th><th>返程前</th><th>確認項目</th><th>形式</th><th>備註／核對重點</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join("");
+
+  wrap.querySelectorAll("input[type=checkbox][data-key]").forEach((box) => {
+    box.onchange = () => {
+      const st = getPackingState();
+      const key = box.dataset.key;
+      const phase = box.dataset.phase;
+      st[key] = { ...(st[key] || {}), [phase]: box.checked };
+      setPackingState(st);
+      box.closest("tr").classList.toggle(phase === "before" ? "pack-done-before" : "pack-done-after", box.checked);
+      refreshPackingProgress();
+    };
+  });
+
+  refreshPackingProgress();
+}
+
+function refreshPackingProgress() {
+  const el = $("pack-progress");
+  if (!el) return;
+  const state = getPackingState();
+  const total = PACKING_CHECKLIST.reduce((n, c) => n + c.items.length, 0);
+  let before = 0, after = 0;
+  for (const v of Object.values(state)) {
+    if (v.before) before++;
+    if (v.after) after++;
+  }
+  el.textContent = `出發前已勾選 ${before}/${total}　·　返程前已勾選 ${after}/${total}`;
 }
 
 // ---------- 論壇議程（Medtec 官網研討會場次，跟展商無關的獨立實體）----------
