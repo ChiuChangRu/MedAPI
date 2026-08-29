@@ -7,14 +7,14 @@ const index = await readFile(new URL("../fieldlog/public/index.html", import.met
 const sw = await readFile(new URL("../fieldlog/public/sw.js", import.meta.url), "utf8");
 const help = await readFile(new URL("../fieldlog/public/help.html", import.meta.url), "utf8");
 
-test("v159 強制檢查新 service worker 與說明頁", () => {
-  assert.match(app, /register\("sw\.js\?v=159"\)\.then\(\(registration\) => registration\.update\(\)\)/);
-  assert.match(index, /help\.html\?v=159/);
-  assert.match(sw, /help\.html\?v=159/);
+test("v160 強制檢查新 service worker 與說明頁", () => {
+  assert.match(app, /register\("sw\.js\?v=160"\)\.then\(\(registration\) => registration\.update\(\)\)/);
+  assert.match(index, /help\.html\?v=160/);
+  assert.match(sw, /help\.html\?v=160/);
 });
 
 test("最新版說明涵蓋資料架構、搬移、垃圾桶與裝置限制", () => {
-  for (const text of ["八個工作主目錄", "最多四層", "來源資料夾會消失", "小型載入視窗", "垃圾桶保留 60 天", "AI導用", "v159"]) {
+  for (const text of ["八個工作主目錄", "最多四層", "來源資料夾會消失", "小型載入視窗", "垃圾桶保留 60 天", "AI導用", "v160"]) {
     assert.ok(help.includes(text), `使用說明應包含：${text}`);
   }
   assert.match(help, /iPhone／iPad[\s\S]*切走，系統會結束並保存已錄內容/);

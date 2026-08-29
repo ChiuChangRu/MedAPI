@@ -60,3 +60,27 @@ test("Word 編輯器不把 1.、-、* 自動轉成清單，工具列清單仍保
   assert.match(editor, /\[\{ list: "ordered" \}, \{ list: "bullet" \}\]/,
     "手動編號與項目符號按鈕仍要保留");
 });
+
+test("首頁記事直接建立 HTML 草稿並開啟同一套 Word 編輯器", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const quick = app.match(/async function quickNote\(\)[\s\S]*?\n}\n\n\/\*\* 快速備忘/)?.[0] || "";
+  assert.ok(quick, "應能定位首頁記事流程");
+  assert.match(quick, /body_format: "html"/,
+    "首頁記事必須直接使用 HTML 格式，不能再建立簡易純文字記事");
+  assert.match(quick, /await openEntry\(Number\(created\.id\)\)/,
+    "建立草稿後要開啟全系統共用的記事編輯器");
+  assert.doesNotMatch(quick, /openEditModal/,
+    "首頁記事不能再使用舊簡易文字框");
+});
+
+test("Word 工具列有安全插圖按鈕，圖片先上傳附件而不是內嵌 base64", async () => {
+  const editor = await read("../fieldlog/public/richtext-editor.js");
+  assert.match(editor, /\["blockquote", "code-block", "link", "image"\]/,
+    "工具列要顯示插入圖片按鈕");
+  assert.match(editor, /addHandler\("image"/,
+    "要覆寫 Quill 內建的 base64 圖片處理");
+  assert.match(editor, /picker\.accept = "image\/\*"/);
+  assert.match(editor, /picker\.multiple = true/);
+  assert.match(editor, /opts\.onImagePaste\(file\)/,
+    "選到的圖片要交給既有 R2 上傳與附件插入流程");
+});

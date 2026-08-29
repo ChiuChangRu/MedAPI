@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "159";
+const APP_VERSION = "160";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -3365,25 +3365,34 @@ async function openCurrentWeeklyReport() {
   }
 }
 
-// 打字沒有「錄影錄到一半」的時間壓力，所以寫完可以選位置；取消就留在待分類。
-function quickNote() {
-  openEditModal({
-    title: "快速備忘（先存入待分類，之後可選擇資料夾）",
-    value: "",
-    onSave: async (text) => {
-      if (!text) return;
-      // 先落地再問位置：文字永遠先存入待分類，
-      // 選擇器等編輯框關掉之後才開——編輯框的 z-index 比它高，同時開會被壓住看不見。
-      const folderId = CURRENT_FOLDER ? CURRENT_FOLDER.id : await stagingFolderId();
-      const created = await api("/entries", {
-        method: "POST",
-        body: JSON.stringify({ folder_id: folderId, title: text.slice(0, 30), body: text }),
-      });
-      await Promise.all([loadFolders(), loadRecent()]);
-      if (CURRENT_FOLDER) { showToast("已存入這個資料夾"); return; }
-      setTimeout(() => askQuickNoteFolder(Number(created.id)), 0);
-    },
-  });
+// 首頁與資料夾裡的記事只能有一種編輯方式：先建立 HTML 草稿，再立刻打開
+// 全系統共用的 Word 編輯器。必須先有 entry id，圖片才能上傳成這筆記事的附件，
+// 不能把 base64 圖片塞進 D1，也不能繼續用沒有格式工具列的舊簡易文字框。
+async function quickNote() {
+  const button = $("btn-quick-note");
+  if (button.disabled) return;
+  button.disabled = true;
+  const original = button.innerHTML;
+  button.innerHTML = "⏳<span>建立中…</span>";
+  try {
+    const folderId = CURRENT_FOLDER ? CURRENT_FOLDER.id : await stagingFolderId();
+    const created = await api("/entries", {
+      method: "POST",
+      body: JSON.stringify({
+        folder_id: folderId,
+        title: "新記事",
+        body: "",
+        body_format: "html",
+      }),
+    });
+    await Promise.all([loadFolders(), loadRecent()]);
+    await openEntry(Number(created.id));
+  } catch (error) {
+    showToast("建立記事失敗：" + error.message);
+  } finally {
+    button.disabled = false;
+    button.innerHTML = original;
+  }
 }
 
 /** 快速備忘存好之後詢問位置；不選就留在待分類。 */
@@ -6654,7 +6663,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=159").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=160").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
