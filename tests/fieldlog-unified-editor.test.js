@@ -4,6 +4,20 @@ import test from "node:test";
 
 const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 
+test("首頁先啟動 MyWiki，選用 CDN 不再阻塞 3% 載入畫面", async () => {
+  const index = await read("../fieldlog/public/index.html");
+  const appPosition = index.indexOf('<script src="app.js?v=166"></script>');
+  const pdfPosition = index.indexOf("pdfjs-dist@3.11.174/build/pdf.min.js");
+  const quillPosition = index.indexOf("quill@2.0.3/dist/quill.js");
+
+  assert.ok(appPosition >= 0, "應載入 v166 首頁程式");
+  assert.ok(pdfPosition > appPosition, "PDF.js 必須在首頁程式之後");
+  assert.ok(quillPosition > appPosition, "Quill 必須在首頁程式之後");
+  assert.match(index, /<script async src="https:\/\/cdn\.jsdelivr\.net\/npm\/pdfjs-dist@3\.11\.174\/build\/pdf\.min\.js"><\/script>/);
+  assert.match(index, /<script async src="https:\/\/cdn\.jsdelivr\.net\/npm\/quill@2\.0\.3\/dist\/quill\.js"><\/script>/);
+  assert.match(index, /quill\.snow\.css"\s+media="print" onload="this\.media='all'"/);
+});
+
 test("一般記事不再依資料夾類型產生上海參展式專用欄位", async () => {
   const app = await read("../fieldlog/public/app.js");
   const editor = app.match(/async function showEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function attachmentWithText/)?.[0] || "";

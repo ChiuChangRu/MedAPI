@@ -11,11 +11,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=165" />
+<link rel="stylesheet" href="style.css?v=166" />
 <link rel="stylesheet" href="home.css" />
-<!-- 富文字記事編輯框（entries.body_format = 'html'）：跟下面 pdf.js 一樣直接
-     CDN 載入、鎖定版本號，不用 @latest -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />
+<!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
+      media="print" onload="this.media='all'" />
 </head>
 <body>
 <!-- 桌機檔案總管式側欄；手機仍沿用原本的單欄清單。待分類與垃圾桶是快捷入口，
@@ -43,7 +43,7 @@
   <div id="view-home">
     <header class="home-app-head">
       <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      <a class="head-link" href="help.html?v=165">📖 使用說明</a>
+      <a class="head-link" href="help.html?v=166">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
@@ -490,15 +490,14 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- Tier 2 深度處理：PDF 逐頁 render 成圖片（Cloudflare Worker 沒有 PDF 渲染能力，
-     只能在瀏覽器端做）。只在使用者按「深度處理」時才用到，其餘功能不依賴它。 -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
-<script src="app.js?v=165"></script>
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=165"></script>
+<script src="pdf-editor.js?v=166"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=165"></script>
+<script src="richtext-editor.js?v=166"></script>
+<!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
+<script src="app.js?v=166"></script>
+<script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
 </html>
