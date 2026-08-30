@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "166";
+const APP_VERSION = "167";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2684,20 +2684,29 @@ async function attachmentWithText(entryId, attachmentId, { extract = false } = {
 }
 
 async function renderPdfPreview(url, body, filename) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`PDF 讀取失敗（HTTP ${response.status}）`);
+  const pdfBytes = await response.arrayBuffer();
+  const pdfBlobUrl = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
+  const fileControls = `<div class="pdf-file-controls" aria-label="PDF 檔案操作"><a class="btn small" data-pdf-download href="${pdfBlobUrl}" download="${esc(filename)}">⬇️ 下載</a><button class="btn small" type="button" data-pdf-print>🖨️ 列印</button></div>`;
   if (!window.pdfjsLib?.getDocument) {
-    body.innerHTML = `<p class="folder-preview-empty">PDF 預覽程式尚未載入。可先按「開啟原檔」。</p>`;
+    body.innerHTML = `<div class="pdf-sidebar-preview"><div class="pdf-sidebar-toolbar">${fileControls}</div><p class="folder-preview-empty">PDF 預覽程式尚未載入，仍可下載或列印原始 PDF。</p></div>`;
+    body.querySelector("[data-pdf-print]").onclick = () => printPdfBlobUrl(pdfBlobUrl);
+    body._previewCleanup = () => {
+      URL.revokeObjectURL(pdfBlobUrl);
+      body._previewCleanup = null;
+    };
     return;
   }
   if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
   }
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`PDF 讀取失敗（HTTP ${response.status}）`);
-  const pdf = await window.pdfjsLib.getDocument({ data: await response.arrayBuffer() }).promise;
+  const pdf = await window.pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
   body.innerHTML = `<div class="pdf-sidebar-preview">
     <div class="pdf-sidebar-toolbar">
       <div class="pdf-page-controls"><button class="btn small" type="button" data-page="-1">‹ 上一頁</button><span>第 <b data-page-label>1</b> / ${pdf.numPages} 頁</span><button class="btn small" type="button" data-page="1">下一頁 ›</button></div>
       <div class="pdf-zoom-controls" aria-label="PDF 顯示大小"><button class="btn small" type="button" data-zoom="out" title="縮小">−</button><span data-zoom-label>符合寬度</span><button class="btn small" type="button" data-zoom="in" title="放大">＋</button><button class="btn small" type="button" data-zoom="fit">符合寬度</button></div>
+      ${fileControls}
     </div>
     <div class="pdf-sidebar-canvas-wrap"><canvas aria-label="${esc(filename)} PDF 預覽"></canvas></div>
   </div>`;
@@ -2707,6 +2716,7 @@ async function renderPdfPreview(url, body, filename) {
   const zoomLabel = body.querySelector("[data-zoom-label]");
   const pageButtons = [...body.querySelectorAll("[data-page]")];
   const zoomButtons = [...body.querySelectorAll("[data-zoom]")];
+  body.querySelector("[data-pdf-print]").onclick = () => printPdfBlobUrl(pdfBlobUrl);
   let pageNo = 1;
   let zoomMode = "fit";
   let zoomScale = 1;
@@ -2778,9 +2788,41 @@ async function renderPdfPreview(url, body, filename) {
   body._previewCleanup = () => {
     resizeObserver.disconnect();
     if (typeof pdf.destroy === "function") pdf.destroy();
+    URL.revokeObjectURL(pdfBlobUrl);
     body._previewCleanup = null;
   };
   await render();
+}
+
+function printPdfBlobUrl(blobUrl, { revokeAfter = false } = {}) {
+  const frame = document.createElement("iframe");
+  frame.title = "PDF 列印";
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
+  const cleanup = () => {
+    frame.remove();
+    if (revokeAfter) URL.revokeObjectURL(blobUrl);
+  };
+  frame.onload = () => {
+    window.setTimeout(() => {
+      try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+        window.setTimeout(cleanup, 60000);
+      } catch {
+        cleanup();
+        showToast("瀏覽器無法直接開啟列印，請先下載 PDF 再列印");
+      }
+    }, 250);
+  };
+  frame.src = blobUrl;
+  document.body.append(frame);
+}
+
+async function printPdfFromUrl(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`PDF 讀取失敗（HTTP ${response.status}）`);
+  const blobUrl = URL.createObjectURL(new Blob([await response.arrayBuffer()], { type: "application/pdf" }));
+  printPdfBlobUrl(blobUrl, { revokeAfter: true });
 }
 
 function safeHtmlPreviewDocument(source) {
@@ -4947,6 +4989,7 @@ async function openFileDetail(entryId, attachmentId) {
         ? `<a id="file-read-action" href="${fileUrl}" data-image-url="${fileUrl}" data-image-name="${esc(attachment.filename)}">📖 閱讀</a>`
         : `<a id="file-read-action" href="${fileUrl}" target="_blank" rel="noopener">📖 閱讀</a>`}
       <button id="file-doodle-action" type="button" ${canDoodle ? "" : 'class="disabled" disabled'}>✍️ 塗鴉</button>
+      ${isPdfAtt(attachment) ? `<a id="file-download-action" href="${fileUrl}" download="${esc(attachment.filename)}">⬇️ 下載</a><button id="file-print-action" type="button">🖨️ 列印</button>` : ""}
       <button id="file-move-action" type="button">📂 移動</button>
       <button id="file-category-action" type="button">🏷 分類</button>
       <button id="file-note-action" type="button">📝 Note</button>
@@ -5011,6 +5054,9 @@ async function openFileDetail(entryId, attachmentId) {
         .catch((error) => showToast("開啟塗鴉失敗：" + error.message));
     };
   }
+  if ($("file-print-action")) $("file-print-action").onclick = () => {
+    printPdfFromUrl(fileUrl).catch((error) => showToast("列印失敗：" + error.message));
+  };
   $("file-category-manage").onclick = () => openCategoryManager("device");
   // 拖曳只搬得到「目前資料夾底下的子資料夾」，跨分支、往上一層、從第 4 層搬回
   // 第 1 層都做不到；這顆按鈕走同一支 /attachments/:id/move，但目標可以是任何
@@ -6795,7 +6841,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=166").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=167").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
