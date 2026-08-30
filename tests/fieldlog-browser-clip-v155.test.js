@@ -24,9 +24,9 @@ test("MyWiki clips 端點驗證網址與大小並保存正文、來源及附件"
   assert.match(worker, /destination: folderId \? "folder" : "pending"/);
 });
 
-test("v166 使用說明提供擴充功能下載與 PDF／HTML 備援規則", () => {
+test("v167 使用說明提供擴充功能下載與 PDF／HTML 備援規則", () => {
   assert.match(help, /downloads\/mywiki-clip-v1\.zip/);
   assert.match(help, /優先保存 PDF/);
   assert.match(help, /自動改存安全 HTML/);
-  assert.match(help, /v166/);
+  assert.match(help, /v167/);
 });

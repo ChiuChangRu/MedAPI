@@ -9,7 +9,7 @@ test("PDF 預覽可縮小、放大、符合寬度，欄寬改變會重新排版"
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/style.css"),
   ]);
-  const preview = app.match(/async function renderPdfPreview[\s\S]*?\n}\n\nfunction safeHtmlPreviewDocument/)?.[0] || "";
+  const preview = app.match(/async function renderPdfPreview[\s\S]*?\n}\n\nfunction printPdfBlobUrl/)?.[0] || "";
   assert.match(preview, /data-zoom="out"/);
   assert.match(preview, /data-zoom="in"/);
   assert.match(preview, /data-zoom="fit"/);
@@ -17,6 +17,26 @@ test("PDF 預覽可縮小、放大、符合寬度，欄寬改變會重新排版"
   assert.match(preview, /new ResizeObserver/);
   assert.match(preview, /canvas\.style\.width/);
   assert.match(css, /\.pdf-sidebar-canvas-wrap canvas \{[^}]*max-width: none;/);
+});
+
+test("PDF 在桌機預覽與手機檔案頁都能直接下載及列印", async () => {
+  const [app, css] = await Promise.all([
+    read("../fieldlog/public/app.js"),
+    read("../fieldlog/public/style.css"),
+  ]);
+  const preview = app.match(/async function renderPdfPreview[\s\S]*?\n}\n\nfunction printPdfBlobUrl/)?.[0] || "";
+  const mobile = app.match(/async function openFileDetail[\s\S]*?\n}\n\nfunction attHtml/)?.[0] || "";
+  assert.match(preview, /data-pdf-download/);
+  assert.match(preview, /data-pdf-print/);
+  assert.match(preview, /download="\$\{esc\(filename\)\}"/);
+  assert.match(preview, /PDF 預覽程式尚未載入，仍可下載或列印原始 PDF/);
+  assert.match(app, /function printPdfBlobUrl\(blobUrl/);
+  assert.match(app, /frame\.contentWindow\.print\(\)/);
+  assert.match(app, /async function printPdfFromUrl\(url\)/);
+  assert.match(mobile, /id="file-download-action"/);
+  assert.match(mobile, /id="file-print-action"/);
+  assert.match(mobile, /printPdfFromUrl\(fileUrl\)/);
+  assert.match(css, /\.pdf-file-controls/);
 });
 
 test("HTML 改為抓取後安全清理，不直接執行上傳內容", async () => {
