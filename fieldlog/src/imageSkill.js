@@ -54,17 +54,33 @@ export function collapseRepeats(text) {
   return t;
 }
 
-// Cloudflare AI 的 toMarkdown 轉 PDF 時，開頭一定塞一段檔案 metadata
-// （# 檔名 → ## Metadata → 一堆 "- Key=Value"：PDFFormatVersion、Creator、
-// Producer、UUID、日期…）。這些對搜尋是雜訊，還會讓「檔名裡的關鍵字」永遠
-// 命中在最上面、snippet 永遠回傳 metadata。存進庫前剝掉，只留真正的文件本文。
-// 只剝「- key=value」型的 metadata 條列與檔名 H1，不會誤傷本文的項目符號
-// （例：「- 产品介绍」沒有 = 號，保留）。找不到 metadata 區塊就原樣回傳。
+// Cloudflare AI 的 toMarkdown 轉 PDF 時，通常會在開頭塞一段檔案 metadata：
+// # 檔名 → ## Metadata → 一串 "- Key=Value"。只移除這個「確定是 metadata」的
+// 前綴；不能像舊版一樣先跳過所有 H1，否則簡報型 PDF 被轉成大量 # 標題時，
+// 真正本文會被整段吃掉（Lipidure-CM5206 PDF 即屬此類回歸案例）。
 export function stripPdfMetadata(md) {
-  const lines = String(md || "").split("\n");
-  let i = 0;
-  while (i < lines.length && (lines[i].trim() === "" || lines[i].startsWith("# "))) i++;
-  if (i < lines.length && /^##\s*Metadata/i.test(lines[i].trim())) {
+  const lines = String(md || "").replace(/\r\n?/g, "\n").split("\n");
+  let first = 0;
+  while (first < lines.length && lines[first].trim() === "") first++;
+
+  let i = first;
+  // 只把「一個檔名 H1 + Metadata」視為 toMarkdown 前綴。若 H1 後不是 Metadata，
+  // 它就是文件內容，必須從 first 原樣保留。
+  if (i < lines.length && /^#\s+/.test(lines[i].trim()) && !/^##\s+/.test(lines[i].trim())) {
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === "") j++;
+    if (j < lines.length && /^##\s*Metadata\b/i.test(lines[j].trim())) {
+      i = j + 1;
+      while (i < lines.length) {
+        const t = lines[i].trim();
+        if (t === "" || /^-\s+[\w.:@-]+=/.test(t)) { i++; continue; }
+        break;
+      }
+    } else {
+      i = first;
+    }
+  } else if (i < lines.length && /^##\s*Metadata\b/i.test(lines[i].trim())) {
+    // 少數輸出沒有檔名 H1，直接從 Metadata 開始，也只剝 metadata 區塊。
     i++;
     while (i < lines.length) {
       const t = lines[i].trim();
@@ -72,16 +88,14 @@ export function stripPdfMetadata(md) {
       break;
     }
   }
+
   const body = lines.slice(i).join("\n").trim();
   if (!body) return "";
   // 圖形型 PDF（無文字層）：toMarkdown 只吐得出頁面骨架（## Contents / ### Page N），
   // 每頁底下沒有真正的文字段落，這種結果對搜尋無意義（還會被「Page 3」誤命中），
-  // 視為無內容回傳空字串。骨架的判準是「每一行都是 Contents／Page N 這類版面標題」。
-  // 2026-07-26 修正：舊判斷是「沒有任何非 # 開頭的行＝無內容」，會把大綱式文件
-  // （目錄、章節清單——每行都是標題、但標題文字本身就是有價值的內容）整份抹掉，
-  // 附件從此只剩檔名可搜、而且完全沒有提示。現在只有純版面骨架才會被判為無內容。
+  // 視為無內容回傳空字串。真正的章節 H1/H2 即使全文都是標題也必須保留。
   const contentLines = body.split("\n").filter((l) => l.trim());
-  const skeletonOnly = contentLines.every((l) => {
+  const skeletonOnly = contentLines.length > 0 && contentLines.every((l) => {
     const t = l.trim();
     if (!t.startsWith("#")) return false;
     return /^(contents?|page\s*\d*|metadata)$/i.test(t.replace(/^#+\s*/, "").trim());
