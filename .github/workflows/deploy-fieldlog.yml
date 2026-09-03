@@ -22,6 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # v167 的 app.js 仍含 iOS hidden => stopAudio() 舊邏輯。先前把 hotfix 放在
+      # richtext-editor.js 會因為它比 app.js 早載入而被 app.js 覆蓋，實際無效。
+      # 部署前把修正附加在 app.js 最後（init() 之後），確保 runtime 真正覆寫
+      # onPageHidden。待 app.js 正式重構後可移除此相容層。
+      - name: Apply iOS background-audio runtime patch
+        working-directory: fieldlog
+        shell: bash
+        run: |
+          printf '\n\n' >> public/app.js
+          cat public/background-audio-fix.js >> public/app.js
+          grep -q "background-audio best-effort patch active" public/app.js
+
       - name: Deploy Fieldlog Worker
         uses: cloudflare/wrangler-action@v3
         with:
@@ -31,9 +43,6 @@ jobs:
           wranglerVersion: "4.113.0"
           command: deploy --keep-vars
 
-      # v142 母體整理只由後台 Workflow 執行，不依賴 Cloud Browser／Access 登入。
-      # Workflow 會在 D1 settings 凍結母體最大 ID 並寫入完成標記；之後部署即使
-      # 再觸發，也只會 skipped，不會把新資料納入這次整理。
       - name: Trigger and verify one-time existing filing review
         working-directory: fieldlog
         env:
@@ -49,19 +58,13 @@ jobs:
             output="$(npx --yes wrangler@4.113.0 workflows instances describe \
               fieldlog-embedding-workflow "$instance_id" --step-output=false 2>&1)"
             echo "$output"
-            if echo "$output" | grep -qi "complete"; then
-              exit 0
-            fi
-            if echo "$output" | grep -Eqi "errored|terminated"; then
-              exit 1
-            fi
+            if echo "$output" | grep -qi "complete"; then exit 0; fi
+            if echo "$output" | grep -Eqi "errored|terminated"; then exit 1; fi
             sleep 10
           done
           echo "母體整理超過 10 分鐘仍未完成"
           exit 1
 
-      # v143：只整理第二層以下的顯示名稱。完整路徑由 parent_id 組成；維護工作
-      # 不搬動、不合併，若同層正規化後同名就跳過並保留原資料。
       - name: Normalize and verify existing child folder names
         working-directory: fieldlog
         env:
@@ -77,19 +80,13 @@ jobs:
             output="$(npx --yes wrangler@4.113.0 workflows instances describe \
               fieldlog-embedding-workflow "$instance_id" --step-output=true 2>&1)"
             echo "$output"
-            if echo "$output" | grep -qi "complete"; then
-              exit 0
-            fi
-            if echo "$output" | grep -Eqi "errored|terminated"; then
-              exit 1
-            fi
+            if echo "$output" | grep -qi "complete"; then exit 0; fi
+            if echo "$output" | grep -Eqi "errored|terminated"; then exit 1; fi
             sleep 10
           done
           echo "資料夾名稱整理超過 5 分鐘仍未完成"
           exit 1
 
-      # v144：建立八個虛擬工作分類並統一既有根資料夾名稱。只更新
-      # folders.name/category，不改 parent_id，也不搬動記事或附件。
       - name: Normalize and verify work sections
         working-directory: fieldlog
         env:
@@ -105,12 +102,8 @@ jobs:
             output="$(npx --yes wrangler@4.113.0 workflows instances describe \
               fieldlog-embedding-workflow "$instance_id" --step-output=true 2>&1)"
             echo "$output"
-            if echo "$output" | grep -qi "complete"; then
-              exit 0
-            fi
-            if echo "$output" | grep -Eqi "errored|terminated"; then
-              exit 1
-            fi
+            if echo "$output" | grep -qi "complete"; then exit 0; fi
+            if echo "$output" | grep -Eqi "errored|terminated"; then exit 1; fi
             sleep 10
           done
           echo "工作分類整理超過 5 分鐘仍未完成"
