@@ -15,10 +15,14 @@ function escapeHtml(value) {
 }
 
 function timestampToSeconds(value) {
-  const parts = String(value || "").trim().replace(",", ".").split(":").map(Number);
-  if (parts.length < 2 || parts.some((part) => !Number.isFinite(part))) return null;
+  const raw = String(value || "").trim().replace(",", ".");
+  if (!raw) return null;
+  const parts = raw.split(":").map(Number);
+  if (parts.some((part) => !Number.isFinite(part))) return null;
+  if (parts.length === 1) return parts[0];
   if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
 }
 
 export function parseVtt(vtt) {
@@ -40,6 +44,56 @@ export function parseVtt(vtt) {
     cues.push({ start, end, text });
   }
   return cues;
+}
+
+function joinCueText(left, right) {
+  const a = String(left || "");
+  const b = String(right || "");
+  if (!a) return b;
+  if (!b) return a;
+  // 中文／日文等沒有天然空白的文字不要被硬插空格；拉丁文字仍保留單字間距。
+  const noSpace = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]$/u.test(a)
+    || /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}，。！？；：、]/u.test(b);
+  return `${a}${noSpace ? "" : " "}${b}`;
+}
+
+function endsSentence(text) {
+  return /[。！？!?；;：:]\s*$/.test(String(text || ""));
+}
+
+/**
+ * Whisper 的 VTT 有時會把中文切成「一個字一個 cue」，甚至十幾個 cue 都落在
+ * 同一秒。VTT 在這裡只是定位工具，不是排版規格：把相鄰短 cue 合併成可讀段落，
+ * 仍保留段落起始時間供照片穿插。遇完整句、明顯停頓或約 6 秒就另起一段。
+ */
+export function mergeTranscriptCues(cues) {
+  const source = Array.isArray(cues) ? cues.filter((cue) => cue && String(cue.text || "").trim()) : [];
+  if (!source.length) return [];
+  const merged = [];
+  let current = null;
+  for (const cue of source) {
+    const item = {
+      start: Math.max(0, Number(cue.start) || 0),
+      end: Math.max(0, Number(cue.end) || Number(cue.start) || 0),
+      text: String(cue.text).trim(),
+    };
+    if (!current) {
+      current = item;
+      continue;
+    }
+    const gap = item.start - current.end;
+    const span = item.end - current.start;
+    const shouldBreak = endsSentence(current.text) || gap > 1.25 || span > 6;
+    if (shouldBreak) {
+      merged.push(current);
+      current = item;
+      continue;
+    }
+    current.text = joinCueText(current.text, item.text);
+    current.end = Math.max(current.end, item.end);
+  }
+  if (current) merged.push(current);
+  return merged;
 }
 
 export function formatRecordingOffset(seconds) {
@@ -70,7 +124,7 @@ export function buildRecordingDocumentHtml(attachments) {
   const events = [];
   for (const audio of items.filter((item) => item.kind === "audio")) {
     const base = Math.max(0, Number(audio.offset_secs) || 0);
-    const cues = parseVtt(audio.transcript_vtt);
+    const cues = mergeTranscriptCues(parseVtt(audio.transcript_vtt));
     if (cues.length) {
       for (const cue of cues) {
         events.push({ type: "text", at: base + cue.start, end: base + cue.end, id: Number(audio.id) || 0, text: cue.text });
