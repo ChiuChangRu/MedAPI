@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "168";
+const APP_VERSION = "169";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -123,6 +123,80 @@ async function loadCategories() {
 
 let FOLDERS = [];
 let CURRENT_FOLDER = null; // 開啟中的資料夾物件
+const RECENT_FOLDER_STORAGE_KEY = "fieldlog_recent_folder_ids";
+const RECENT_FOLDER_LIMIT = 5;
+
+/**
+ * 最近使用目錄是介面捷徑，不是文件內容，因此存在瀏覽器即可，不替資料庫增加一張
+ * 只服務首頁的表。只存 id、不存名稱或路徑：資料夾改名或搬家後，首頁會用目前的
+ * FOLDERS 重新算出正確顯示；已刪除／已無權限的 id 也會在 render 時剔除。
+ */
+function readRecentFolderIds() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_FOLDER_STORAGE_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0)
+      .filter((id, index, ids) => ids.indexOf(id) === index)
+      .slice(0, RECENT_FOLDER_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentFolderIds(ids) {
+  try {
+    localStorage.setItem(RECENT_FOLDER_STORAGE_KEY, JSON.stringify(ids.slice(0, RECENT_FOLDER_LIMIT)));
+  } catch {
+    // 無痕模式或瀏覽器停用儲存時，捷徑不應阻斷資料夾本身的開啟。
+  }
+}
+
+function recentFolders() {
+  const storedIds = readRecentFolderIds();
+  const byId = new Map(FOLDERS.map((folder) => [Number(folder.id), folder]));
+  const folders = storedIds.map((id) => byId.get(id)).filter(Boolean);
+  const validIds = folders.map((folder) => Number(folder.id));
+  if (validIds.length !== storedIds.length) saveRecentFolderIds(validIds);
+  return folders;
+}
+
+function renderRecentFolders() {
+  const wrap = $("recent-folder-list");
+  if (!wrap) return;
+  const folders = recentFolders();
+  if (!folders.length) {
+    wrap.innerHTML = `<p class="sub">尚無最近使用的目錄。</p>`;
+    return;
+  }
+  wrap.innerHTML = folders.map((folder) => {
+    const path = folderDisplayPath(folder);
+    const section = FOLDER_CATEGORY_META[folderSectionKey(folder)] || FOLDER_CATEGORY_META.misc;
+    const parentPath = path.slice(0, -1).join("／") || section.label;
+    return `<button class="recent-folder-card" type="button" data-id="${folder.id}"
+      title="開啟 ${esc(path.join("／"))}"
+      style="--recent-accent:${section.accent};--recent-bg:${section.bg}">
+      <span class="recent-folder-icon" aria-hidden="true">${section.icon}</span>
+      <span class="recent-folder-copy">
+        <strong>${esc(folder.name)}</strong>
+        <small>${esc(parentPath)}</small>
+      </span>
+    </button>`;
+  }).join("");
+  wrap.querySelectorAll(".recent-folder-card").forEach((button) => {
+    button.onclick = () => openFolder(Number(button.dataset.id));
+  });
+}
+
+function rememberRecentFolder(id) {
+  const numericId = Number(id);
+  if (!FOLDERS.some((folder) => Number(folder.id) === numericId)) return;
+  const nextIds = [numericId, ...readRecentFolderIds().filter((storedId) => storedId !== numericId)]
+    .slice(0, RECENT_FOLDER_LIMIT);
+  saveRecentFolderIds(nextIds);
+  renderRecentFolders();
+}
 
 /** 取得實體資料夾樹的根；工作分類以根資料夾的 category 為準。 */
 function rootFolderOf(folder) {
@@ -831,6 +905,7 @@ async function boot(preloadedFolders = null) {
 async function loadFolders(preloadedFolders = null) {
   FOLDERS = preloadedFolders || await api("/folders");
   renderFolders();
+  renderRecentFolders();
 }
 
 // 2026-08-09：卡片模式拿掉了——跟清單模式顯示的是同一批資料夾（只有根層），
@@ -2117,6 +2192,8 @@ async function openFolder(id) {
   // 一次帶附件回來，不要每筆有附件的記事各發一支 /entries/:id——資料夾裡
   // 記事、附件越多，原本開資料夾要打的 API 數就跟著等比例變多，越用越慢。
   const entries = await api(`/entries?folder_id=${id}&include=attachments`);
+  // API 成功回來才算「使用過」；網路失敗或 id 已不存在時不能污染最近清單。
+  rememberRecentFolder(id);
   const visibleAtts = (e) => (e.attachments || []).filter((a) => !a.source_pdf_id);
   // 錄音不論只有一段或多段，都維持「一筆錄音紀錄」：先錄音再分類，和先進
   // 資料夾再錄音，最後都會看到同一種結構。舊邏輯把單段錄音攤成檔案列、多段錄音
@@ -2227,10 +2304,8 @@ function bindRecordGroupCards() {
       ev.preventDefault();
       ev.stopPropagation();
       const entryId = Number(card.dataset.id);
-      const open = PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches
-        ? openRecordingManager(entryId)
-        : openRecordingActions(entryId);
-      open.catch((error) => showToast("開啟錄音操作失敗：" + error.message));
+      openRecordingActions(entryId)
+        .catch((error) => showToast("開啟錄音操作失敗：" + error.message));
     };
     const del = card.querySelector(".record-group-del");
     if (del) del.onclick = async (ev) => {
@@ -2336,11 +2411,8 @@ function bindFileRows() {
     row.onclick = (event) => {
       if (event.target.closest("button") || !PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
       event.preventDefault();
-      showFilePreview({
-        entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
-        filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
-        mime: row.dataset.mime || "", kind: row.dataset.kind || "",
-      }).catch((error) => showToast("預覽失敗：" + error.message));
+      showFileEditor(Number(row.dataset.entryId), Number(row.dataset.attId))
+        .catch((error) => showToast("開啟檔案失敗：" + error.message));
     };
     row.ondblclick = (event) => {
       if (event.target.closest("button")) return;
@@ -2567,7 +2639,7 @@ async function renderEntryEditor(entryId) {
   $("folder-preview-save").onclick = () => $("entry-preview-editor").requestSubmit();
   $("folder-preview-manage").disabled = !recordingAudio.length;
   $("folder-preview-manage").onclick = recordingAudio.length
-    ? () => openRecordingManager(entryId).catch((error) => showToast("開啟錄音管理失敗：" + error.message))
+    ? () => openRecordingActions(entryId).catch((error) => showToast("開啟錄音操作失敗：" + error.message))
     : null;
   $("entry-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
@@ -3038,16 +3110,15 @@ async function renderFileEditor(entryId, attachmentId) {
     categorySelect.innerHTML = `<option value="">分類讀取失敗</option>`;
     categorySelect.disabled = true;
   }
-  const returnToPreview = () => showFilePreview({
-    entryId, attachmentId, filename: attachment.filename, key: attachment.key, mime: attachment.mime, kind: attachment.kind,
-  }).catch((error) => showToast("預覽失敗：" + error.message));
+  const restoreSavedFile = () => showFileEditor(entryId, attachmentId)
+    .catch((error) => showToast("還原失敗：" + error.message));
   $("folder-preview-open").hidden = false;
   $("folder-preview-open").href = fileUrlForKey(attachment.key);
   $("folder-preview-open").textContent = "開啟原檔";
   $("folder-preview-open").removeAttribute("download");
   $("folder-preview-edit").hidden = false;
-  $("folder-preview-edit").textContent = "取消";
-  $("folder-preview-edit").onclick = returnToPreview;
+  $("folder-preview-edit").textContent = "還原";
+  $("folder-preview-edit").onclick = restoreSavedFile;
   $("folder-preview-save").hidden = false;
   $("folder-preview-save").onclick = () => $("file-preview-editor").requestSubmit();
   $("folder-preview-manage").disabled = true;
@@ -3144,9 +3215,7 @@ async function renderFileEditor(entryId, attachmentId) {
       }
       showToast("檔案資料已儲存");
       await refreshFolderView();
-      const refreshed = await attachmentWithText(entryId, attachmentId);
-      await showFilePreview({ entryId, attachmentId, filename: refreshed.attachment.filename, key: refreshed.attachment.key,
-        mime: refreshed.attachment.mime, kind: refreshed.attachment.kind });
+      await showFileEditor(entryId, attachmentId);
     } catch (error) {
       showToast("儲存失敗：" + error.message);
       save.disabled = false;
@@ -4618,11 +4687,8 @@ function bindImageLinks(root = document) {
       event.stopPropagation();
       const row = link.closest(".folder-file-row[data-att-id]");
       if (row && PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
-        showFilePreview({
-          entryId: Number(row.dataset.entryId), attachmentId: Number(row.dataset.attId),
-          filename: row.dataset.filename || "檔案", key: row.dataset.key || "",
-          mime: row.dataset.mime || "", kind: row.dataset.kind || "",
-        }).catch((error) => showToast("預覽失敗：" + error.message));
+        showFileEditor(Number(row.dataset.entryId), Number(row.dataset.attId))
+          .catch((error) => showToast("開啟檔案失敗：" + error.message));
         return;
       }
       openImageViewer(link.dataset.imageUrl, link.dataset.imageName || "", link.dataset.imageId, link.dataset.imageRotation);
@@ -4665,15 +4731,9 @@ async function loadRecordingEditor(entryId) {
 }
 
 async function openRecordingManager(entryId) {
-  entryId = Number(entryId || 0);
-  if (!entryId) return;
-  if (!usesDesktopRightPane()) return openRecordingActions(entryId);
-  return withViewLoading("正在載入錄音資料包…", async () => {
-    const entry = await api(`/entries/${entryId}`);
-    const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
-    if (!audio.length) return showEntryEditor(entryId);
-    return renderRecordingManager(entryId, entry, audio);
-  });
+  // 舊呼叫點的相容別名。不可再把右欄換成第二套「錄音管理編輯器」；⋯ 只開
+  // 操作選單，關掉後底下仍是同一份 Word 文件。
+  return openRecordingActions(entryId);
 }
 
 async function renderRecordingManager(entryId, entry, audio) {
@@ -4909,7 +4969,6 @@ async function renderRecordingEditor(entryId, entry, audio) {
 async function openRecordingActions(entryId) {
   entryId = Number(entryId || 0);
   if (!entryId) return;
-  if (usesDesktopRightPane()) return openRecordingManager(entryId);
   FOCUSED_FILE = null;
   const entry = await api(`/entries/${entryId}`);
   const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
@@ -4921,29 +4980,39 @@ async function openRecordingActions(entryId) {
     <div class="modal-close-float"><button class="btn small ghost" id="recording-actions-close" type="button" aria-label="關閉錄音操作">✕</button></div>
     <div class="detail-head"><div><h2 style="margin:0;overflow-wrap:anywhere">${esc(entry.title || "錄音")}</h2><p class="sub">錄音資料包｜${audio.length} 段｜${esc(status.label)}</p></div></div>
     <div class="recording-action-list">
-      <button class="recording-action" id="recording-action-edit" type="button"><span>✏️</span><strong>編輯</strong><small>名稱、速記與逐字稿</small></button>
+      <button class="recording-action" id="recording-action-edit" type="button"><span>✏️</span><strong>返回文件編輯</strong><small>使用同一個 Word 編輯器</small></button>
       <button class="recording-action" id="recording-action-transcribe" type="button"><span>📝</span><strong>重新轉錄</strong><small>覆蓋目前逐字稿，會使用 AI 額度</small></button>
-      <button class="recording-action" id="recording-action-rename" type="button"><span>🏷️</span><strong>重新命名</strong><small>只改資料包名稱</small></button>
+      <button class="recording-action" id="recording-action-compose" type="button"><span>🧩</span><strong>依時間軸整理圖文</strong><small>已有人工修改的文件不會被覆蓋</small></button>
       <button class="recording-action" id="recording-action-move" type="button"><span>📂</span><strong>移動</strong><small>音訊、逐字稿及照片一起移動</small></button>
-      <section class="recording-download-list"><h3>⬇️ 下載錄音</h3>${audio.map((item, index) => `<a href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">${audio.length > 1 ? `第 ${index + 1} 段｜` : ""}${esc(item.filename)} <small>${esc(fmtBytes(item.size))}</small></a>`).join("")}</section>
+      <section class="recording-download-list"><h3>⬇️ 原始錄音</h3>${audio.map((item, index) => `<div class="recording-action-audio-row">
+        <a href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">${audio.length > 1 ? `第 ${index + 1} 段｜` : ""}${esc(item.filename)} <small>${esc(fmtBytes(item.size))}</small></a>
+        <button class="btn small danger recording-action-audio-delete" type="button" data-audio-id="${item.id}" data-filename="${esc(item.filename)}">刪除此段</button>
+      </div>`).join("")}</section>
       <button class="recording-action danger" id="recording-action-delete" type="button"><span>🗑️</span><strong>刪除</strong><small>整個資料包移到垃圾桶，保留 60 天</small></button>
     </div>
     ${legacy ? `<details class="recording-legacy-fallback"><summary>舊資料相容工具</summary><p class="sub">只有這筆帶有舊欄位，因此保留舊版資料框供核對。</p><button class="btn small" id="recording-open-legacy" type="button">開啟舊版資料框</button></details>` : ""}`;
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("recording-actions-close").onclick = closeEntry;
-  $("recording-action-edit").onclick = () => openEntry(entryId).catch((error) => showToast("開啟編輯失敗：" + error.message));
-  $("recording-action-rename").onclick = async () => {
-    const next = prompt("輸入新的錄音名稱", entry.title || "");
-    if (next === null) return;
-    const title = next.trim();
-    if (!title) { showToast("名稱不可空白"); return; }
+  $("recording-action-edit").onclick = () => {
+    closeEntry();
+    openRecordingEditor(entryId).catch((error) => showToast("開啟編輯失敗：" + error.message));
+  };
+  $("recording-action-compose").onclick = async () => {
+    const button = $("recording-action-compose");
+    button.disabled = true;
     try {
-      await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify({ title }) });
-      showToast("錄音名稱已更新");
+      const result = await api(`/entries/${entryId}/compose-timeline`, { method: "POST", body: "{}" });
+      if (result.updated) showToast("已依錄音時間軸整理圖文");
+      else if (result.reason === "manual_body") showToast("文件已有人工修改，已保留原文");
+      else showToast("目前沒有可整理的逐字稿或照片");
+      closeEntry();
       await refreshFolderView();
-      await openRecordingActions(entryId);
-    } catch (error) { showToast("重新命名失敗：" + error.message); }
+      await openRecordingEditor(entryId);
+    } catch (error) {
+      showToast("整理圖文失敗：" + error.message);
+      button.disabled = false;
+    }
   };
   $("recording-action-move").onclick = async () => {
     closeEntry();
@@ -4970,6 +5039,25 @@ async function openRecordingActions(entryId) {
       button.querySelector("small").textContent = "覆蓋目前逐字稿，會使用 AI 額度";
     }
   };
+  modal.querySelectorAll(".recording-action-audio-delete").forEach((button) => {
+    button.onclick = async () => {
+      if (!confirm(`確定刪除「${button.dataset.filename || "這段錄音"}」？此操作無法復原。`)) return;
+      button.disabled = true;
+      try {
+        await api(`/attachments/${button.dataset.audioId}`, { method: "DELETE" });
+        showToast("已刪除錄音段");
+        closeEntry();
+        await refreshFolderView();
+        const fresh = await api(`/entries/${entryId}`);
+        const remaining = (fresh.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+        if (remaining.length) await openRecordingActions(entryId);
+        else await openRecordingEditor(entryId);
+      } catch (error) {
+        showToast("刪除錄音失敗：" + error.message);
+        button.disabled = false;
+      }
+    };
+  });
   $("recording-action-delete").onclick = async () => {
     if (!confirm(`將「${entry.title || "錄音"}」整個資料包移到垃圾桶？\n\n音訊、逐字稿與照片會一起移入，保留 60 天。`)) return;
     try {
@@ -6880,7 +6968,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=168").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=169").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

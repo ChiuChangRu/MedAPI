@@ -68,6 +68,78 @@ body {
   gap: 12px;
 }
 
+/* 最近使用目錄：桌機維持一列五筆，路徑只當第二行提示；用 id 開啟，所以名稱與
+   路徑變動時不會留下失效捷徑。窄畫面改成單欄，避免五張卡被壓成不可讀的小方塊。 */
+.home-recent-folders .home-section-head {
+  margin-bottom: 10px;
+}
+
+.home-recent-folders .home-section-head > small {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.recent-folder-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.recent-folder-list > .sub {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.recent-folder-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--recent-accent, var(--accent));
+  border-radius: 8px;
+  background: #fff;
+  background: color-mix(in srgb, var(--recent-bg, #fff) 38%, #fff);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.recent-folder-card:hover {
+  border-color: var(--recent-accent, var(--accent));
+  background: color-mix(in srgb, var(--recent-bg, #fff) 62%, #fff);
+}
+
+.recent-folder-icon {
+  flex: none;
+  font-size: 18px;
+}
+
+.recent-folder-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.recent-folder-copy strong,
+.recent-folder-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-folder-copy strong {
+  font-size: 13.5px;
+}
+
+.recent-folder-copy small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 /* 開發工具：一整列，橫向排三張連結卡，窄螢幕自動換行 */
 .toolbar-link-list {
   display: flex;
@@ -399,6 +471,14 @@ body {
 
   .home-input-section .cap-tile {
     min-height: 42px;
+  }
+
+  .recent-folder-list {
+    grid-template-columns: 1fr;
+  }
+
+  .recent-folder-card {
+    padding: 9px 10px;
   }
 
   .home-toolbar-files .folders-toolbar {

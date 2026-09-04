@@ -1476,6 +1476,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .recording-download-list a { display: block; padding: 7px 0; overflow-wrap: anywhere; }
 .recording-download-list a + a { border-top: 1px solid var(--border); }
 .recording-download-list small { color: var(--text-muted); }
+.recording-action-audio-row { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); }
+.recording-action-audio-row:first-of-type { border-top: 0; }
+.recording-action-audio-row a { flex: 1; min-width: 0; }
+.recording-action-audio-row button { flex: none; }
 .recording-legacy-fallback { margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px; }
 .recording-legacy-fallback summary { cursor: pointer; color: var(--text-muted); font-size: 13px; }
 

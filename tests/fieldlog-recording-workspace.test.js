@@ -118,32 +118,45 @@ test("Excel 與 CSV 以右欄表格顯示，常用格式有明確降級說明", 
   assert.match(css, /\.preview-editor/);
 });
 
-test("桌機錄音 ⋯ 進右欄，手機相容介面仍提供完整操作", async () => {
+test("錄音 ⋯ 只疊加操作選單，不可再把右欄換成第二套編輯介面", async () => {
   const app = await read("../fieldlog/public/app.js");
   const cards = app.match(/function bindRecordGroupCards\(\)[\s\S]*?\n}\n/)?.[0] || "";
-  assert.match(cards, /openRecordingManager\(entryId\)/,
-    "桌機的 ⋯ 必須進入錄音資料包管理，不可再回到同一個 Word 畫面而看似無反應");
   assert.match(cards, /openRecordingActions\(entryId\)/);
+  assert.doesNotMatch(cards, /openRecordingManager\(entryId\)/,
+    "錄音卡 ⋯ 不可依桌機尺寸切到第二套右欄管理畫面");
   const actions = app.match(/async function openRecordingActions\(entryId\)[\s\S]*?\n}\n/)?.[0] || "";
-  for (const label of ["重新轉錄", "下載錄音", "重新命名", "移動", "刪除"]) {
+  assert.doesNotMatch(actions, /usesDesktopRightPane\(\).*openRecordingManager/,
+    "桌機與手機都應使用同一個非編輯型操作選單");
+  assert.doesNotMatch(actions, /folder-preview-body|renderRecordingManager/,
+    "操作選單不可替換右欄文件內容");
+  for (const label of ["返回文件編輯", "重新轉錄", "依時間軸整理圖文", "原始錄音", "移動", "刪除"]) {
     assert.match(actions, new RegExp(label));
   }
+  assert.match(actions, /closeEntry\(\);\s*openRecordingEditor\(entryId\)/,
+    "從選單返回編輯時必須回到既有統一編輯器");
+  assert.match(actions, /recording-action-audio-delete/,
+    "移除第二套管理畫面後，刪除單一錄音段的功能仍要留在操作選單");
   assert.match(actions, /openMoveEntryDialog\(entryId/,
     "移動必須移動 entry，讓音訊、逐字稿與照片一起走，不可只搬單一 attachment");
   assert.match(actions, /api\(`\/entries\/\$\{entryId\}`,[\s\S]*method: "DELETE"/,
     "刪除必須刪整個錄音資料包並進垃圾桶");
 });
 
-test("桌機檔案列 ⋯ 與右欄 ⋯ 都不再打開舊展場檔案框", async () => {
+test("桌機點檔案名稱與點 ⋯ 都進同一個檔案編輯器，儲存後也不退回唯讀預覽", async () => {
   const app = await read("../fieldlog/public/app.js");
   const rows = app.match(/function bindFileRows\(\)[\s\S]*?\n}\n/)?.[0] || "";
-  const preview = app.match(/async function renderFilePreview\([\s\S]*?\n}\n/)?.[0] || "";
+  const editor = app.match(/async function renderFileEditor\(entryId, attachmentId\)[\s\S]*?\n}\n/)?.[0] || "";
   assert.match(rows, /showFileEditor\(entryId, attachmentId\)/);
   assert.match(rows, /openFileDetail\(entryId, attachmentId\)/,
     "手機仍可使用相容介面");
-  assert.match(preview, /folder-preview-manage/);
-  assert.match(preview, /showFileEditor\(entryId, attachmentId\)/);
-  assert.doesNotMatch(preview, /openFileDetail/);
+  assert.ok((rows.match(/showFileEditor\(/g) || []).length >= 2,
+    "桌機點整列與點 ⋯ 都必須呼叫同一個 showFileEditor");
+  assert.doesNotMatch(rows, /showFilePreview\(/,
+    "點檔案名稱不可再先進另一套唯讀預覽");
+  assert.match(editor, /const restoreSavedFile = \(\) => showFileEditor\(entryId, attachmentId\)/);
+  assert.match(editor, /folder-preview-edit"\)\.textContent = "還原"/);
+  assert.doesNotMatch(editor, /showFilePreview\(/,
+    "還原或儲存後都不可切回第二套檔案預覽介面");
 });
 
 test("人工逐字稿可保存並標記 manual_edit，明確重新轉錄仍可覆寫", async () => {

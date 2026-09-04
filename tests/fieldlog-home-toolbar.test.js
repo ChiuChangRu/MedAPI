@@ -1,10 +1,10 @@
 /**
- * 首頁五列版面（2026-08-09 三次修正）：全部改回直向堆疊的整行區塊，包含
+ * 首頁直向版面（2026-08-09 三次修正）：全部改回直向堆疊的整行區塊，包含
  * 第三列——原本排成左右兩欄（待處理｜Wiki 檔案），使用者要求改回上下順序
  * （待處理在上、已分類的 Wiki 檔案在下）。
  *
- * 五列：①輸入與草稿 ②檢索 ③待處理 → Wiki 檔案 ④開發工具
- * ⑤Cloudflare 用量（摺疊）。檢查接線在不在，不測實際版面渲染（跟其他
+ * 主要區塊：①輸入與草稿 ②檢索 ③最近使用目錄 ④待處理 → Wiki 檔案
+ * ⑤開發工具 ⑥Cloudflare 用量（摺疊）。檢查接線在不在，不測實際版面渲染（跟其他
  * fieldlog UI 測試同一套做法——這裡是純 HTML／CSS 結構檢查）。
  */
 
@@ -14,15 +14,16 @@ import test from "node:test";
 
 const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 
-test("index.html：五列全部整行堆疊，按順序出現——待處理在上、Wiki 檔案在下", async () => {
+test("index.html：首頁各區全部整行堆疊，最近目錄、待處理、Wiki 檔案依序出現", async () => {
   const html = await read("../fieldlog/public/index.html");
   const order = [
     'class="home-section home-input-section"',  // 第一列：輸入與草稿
     'class="home-section home-search-section"', // 第二列：檢索
-    'id="inbox-panel"',                          // 第三列上半：待處理
-    'class="home-section home-toolbar-files"',   // 第三列下半：Wiki 檔案
-    'class="home-section home-tools-section"',   // 第四列：開發工具
-    'id="usage-details"',                        // 第五列：Cloudflare 用量
+    'id="recent-folders-panel"',                 // 第三列：最近使用目錄
+    'id="inbox-panel"',                          // 第四列上半：待處理
+    'class="home-section home-toolbar-files"',   // 第四列下半：Wiki 檔案
+    'class="home-section home-tools-section"',   // 第五列：開發工具
+    'id="usage-details"',                        // 第六列：Cloudflare 用量
   ];
   let cursor = -1;
   for (const marker of order) {
@@ -117,7 +118,7 @@ test("sw.js：CACHE 與所有 UI 資源版本一致，避免舊快取卡住", as
   const sw = await read("../fieldlog/public/sw.js");
   const version = app.match(/const APP_VERSION = "(\d+)"/)[1];
   assert.match(sw, new RegExp(`const CACHE = "fieldlog-v${version}-`));
-  for (const asset of ["app.js", "style.css", "pdf-editor.js", "richtext-editor.js"]) {
+  for (const asset of ["app.js", "style.css", "home.css", "pdf-editor.js", "richtext-editor.js"]) {
     const escaped = asset.replace(".", "\\.");
     assert.match(html, new RegExp(`[\"']${escaped}\\?v=${version}[\"']`), `${asset} 的頁面引用版本不一致`);
     assert.match(sw, new RegExp(`[\"']${escaped}\\?v=${version}[\"']`), `${asset} 的預快取版本不一致`);
