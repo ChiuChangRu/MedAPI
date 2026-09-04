@@ -1404,6 +1404,20 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .recording-status.working { background: #dbeafe; color: #1d4ed8; }
 .recording-status.failed { background: #fee2e2; color: #991b1b; }
 .recording-status.muted { background: #e2e8f0; color: #475569; }
+.recording-status-summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin: 6px 0 0; color: var(--text-muted); font-size: 13px;
+}
+.recording-status-detail { color: var(--text-muted); font-size: 12px; }
+.record-group-card > .recording-card-status {
+  grid-column: 2; justify-self: start; margin-top: 2px;
+}
+.folder-content-list.list-view > .record-group-card > .recording-card-status {
+  display: inline-flex; flex: none; margin: 0 0 0 auto;
+}
+.folder-content-list.grid-view > .record-group-card > .recording-card-status {
+  background: rgba(255, 255, 255, 0.2); color: #fff;
+}
 .recording-preview-summary dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 14px 0 0; }
 .recording-preview-summary dl > div { min-width: 0; }
 .recording-preview-summary dt { color: var(--text-muted); font-size: 11px; }
