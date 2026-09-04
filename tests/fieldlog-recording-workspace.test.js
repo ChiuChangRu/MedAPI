@@ -129,7 +129,7 @@ test("錄音 ⋯ 只疊加操作選單，不可再把右欄換成第二套編輯
     "桌機與手機都應使用同一個非編輯型操作選單");
   assert.doesNotMatch(actions, /folder-preview-body|renderRecordingManager/,
     "操作選單不可替換右欄文件內容");
-  for (const label of ["返回文件編輯", "重新轉錄", "依時間軸整理圖文", "原始錄音", "移動", "刪除"]) {
+  for (const label of ["返回文件編輯", "依時間軸整理圖文", "原始錄音", "移動", "刪除"]) {
     assert.match(actions, new RegExp(label));
   }
   assert.match(actions, /closeEntry\(\);\s*openRecordingEditor\(entryId\)/,
@@ -140,6 +140,28 @@ test("錄音 ⋯ 只疊加操作選單，不可再把右欄換成第二套編輯
     "移動必須移動 entry，讓音訊、逐字稿與照片一起走，不可只搬單一 attachment");
   assert.match(actions, /api\(`\/entries\/\$\{entryId\}`,[\s\S]*method: "DELETE"/,
     "刪除必須刪整個錄音資料包並進垃圾桶");
+});
+
+test("錄音狀態與轉錄按鈕一致，資料夾卡片可直接看出是否已轉錄", async () => {
+  const [app, css] = await Promise.all([
+    read("../fieldlog/public/app.js"),
+    read("../fieldlog/public/style.css"),
+  ]);
+  const status = app.match(/function recordingStatus\(audioAttachments\)[\s\S]*?\n}\n/)?.[0] || "";
+  const action = app.match(/function recordingTranscribeAction\(status, audioAttachments\)[\s\S]*?\n}\n/)?.[0] || "";
+  const cards = app.match(/function recordGroupCardHtml\(e, atts\)[\s\S]*?\n}\n/)?.[0] || "";
+  const actions = app.match(/async function openRecordingActions\(entryId\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(status, /label: "尚未轉錄"/);
+  assert.match(status, /label: "已轉錄"/);
+  assert.match(status, /transcriptChars/);
+  for (const label of ["開始轉錄", "繼續轉錄", "重試轉錄", "重新轉錄", "轉錄中…"]) {
+    assert.match(action, new RegExp(label));
+  }
+  assert.match(cards, /recording-card-status/);
+  assert.match(actions, /recording-status-summary/);
+  assert.match(actions, /transcribeAction\.label/);
+  assert.match(actions, /transcribeAction\.targets/);
+  assert.match(css, /\.recording-card-status/);
 });
 
 test("桌機點檔案名稱與點 ⋯ 都進同一個檔案編輯器，儲存後也不退回唯讀預覽", async () => {

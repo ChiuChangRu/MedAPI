@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "169";
+const APP_VERSION = "170";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -463,16 +463,59 @@ function fmtBytes(size) {
 
 function recordingStatus(audioAttachments) {
   const audio = audioAttachments || [];
-  if (!audio.length) return { tone: "failed", label: "找不到錄音附件" };
-  if (audio.some((item) => item.transcribed_at === "processing")) return { tone: "working", label: "轉錄中" };
-  if (audio.some((item) => item.transcribed_at === "auto_failed")) return { tone: "failed", label: "部分轉錄失敗" };
-  if (audio.every((item) => item.transcribed_at === "skipped")) return { tone: "muted", label: "已設為不轉錄" };
-  if (audio.every((item) => item.transcribed_at)) {
-    return audio.some((item) => String(item.transcript || "").trim())
-      ? { tone: "done", label: "轉錄完成" }
-      : { tone: "done", label: "已轉錄，沒有可辨識語音" };
+  if (!audio.length) return { tone: "failed", label: "找不到錄音附件", detail: "" };
+  const transcriptChars = audio.reduce((sum, item) => sum + String(item.transcript || "").trim().length, 0);
+  const completedTimes = audio
+    .map((item) => Date.parse(String(item.transcribed_at || "")))
+    .filter((value) => Number.isFinite(value));
+  const latestCompletedAt = completedTimes.length ? new Date(Math.max(...completedTimes)).toISOString() : "";
+  const doneDetail = [
+    transcriptChars ? `${transcriptChars.toLocaleString("zh-TW")} 字` : "",
+    latestCompletedAt ? `完成於 ${localDateTime(latestCompletedAt)}` : "",
+  ].filter(Boolean).join("｜");
+  if (audio.some((item) => item.transcribed_at === "processing")) {
+    return { tone: "working", label: "轉錄中", detail: "正在建立逐字稿" };
   }
-  return { tone: "pending", label: "等待轉錄" };
+  if (audio.some((item) => item.transcribed_at === "auto_failed")) {
+    return { tone: "failed", label: "轉錄失敗", detail: "可按「重試轉錄」再次處理" };
+  }
+  if (audio.every((item) => item.transcribed_at === "skipped")) {
+    return { tone: "muted", label: "未啟用轉錄", detail: "這份錄音目前設為不轉錄" };
+  }
+  if (audio.every((item) => item.transcribed_at)) {
+    return transcriptChars
+      ? { tone: "done", label: "已轉錄", detail: doneDetail || "逐字稿已建立" }
+      : { tone: "done", label: "已轉錄", detail: "沒有辨識到可轉成文字的語音" };
+  }
+  const completedCount = audio.filter((item) => item.transcribed_at && !["processing", "auto_failed", "skipped"].includes(item.transcribed_at)).length;
+  if (completedCount) {
+    return { tone: "pending", label: "部分尚未轉錄", detail: `${completedCount}/${audio.length} 段已完成` };
+  }
+  return { tone: "pending", label: "尚未轉錄", detail: "尚未建立逐字稿" };
+}
+
+function recordingTranscribeAction(status, audioAttachments) {
+  const audio = audioAttachments || [];
+  if (status.tone === "working") {
+    return { label: "轉錄中…", description: "錄音正在處理，完成後會自動更新", mode: "working", disabled: true, targets: [] };
+  }
+  if (status.tone === "failed") {
+    const targets = audio.filter((item) => !item.transcribed_at || item.transcribed_at === "auto_failed");
+    return { label: "重試轉錄", description: "重新處理失敗或尚未完成的錄音", mode: "retry", disabled: false, targets: targets.length ? targets : audio };
+  }
+  if (status.tone === "pending") {
+    const targets = audio.filter((item) => !item.transcribed_at);
+    const firstRun = targets.length === audio.length;
+    return {
+      label: firstRun ? "開始轉錄" : "繼續轉錄",
+      description: firstRun ? "建立逐字稿，會使用 AI 額度" : "只處理尚未完成的錄音",
+      mode: "start", disabled: false, targets: targets.length ? targets : audio,
+    };
+  }
+  if (status.tone === "muted") {
+    return { label: "開始轉錄", description: "建立逐字稿，會使用 AI 額度", mode: "start", disabled: false, targets: audio };
+  }
+  return { label: "重新轉錄", description: "覆蓋目前逐字稿，會使用 AI 額度", mode: "repeat", disabled: false, targets: audio };
 }
 
 function fmtUsageNumber(n) {
@@ -2239,6 +2282,7 @@ function recordGroupCardHtml(e, atts) {
   const counts = atts.reduce((acc, a) => { acc[a.kind] = (acc[a.kind] || 0) + 1; return acc; }, {});
   const summary = Object.entries(counts).map(([k, n]) => `${kindLabel[k] || k} ×${n}`).join("、");
   const icon = counts.audio ? "🎙️" : "📁";
+  const status = counts.audio ? recordingStatus(atts.filter((item) => item.kind === "audio")) : null;
   // 刻意不共用 .child-folder-card 這個 class 名稱：bindFolderDropTargets() 用
   // ".child-folder-card[data-id]" 當拖曳檔案的落點，抓的是真正的資料夾 id；
   // 這張卡片的 data-id 其實是記事 id，混進同一個 class 會讓拖檔案誤觸到這裡，
@@ -2252,6 +2296,7 @@ function recordGroupCardHtml(e, atts) {
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
     <small>${esc(localDateTimeShort(e.created_at))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
+    ${status ? `<small class="recording-status recording-card-status ${status.tone}">${esc(status.label)}</small>` : ""}
     ${counts.audio
       ? `<button class="record-group-manage" type="button" data-id="${e.id}" title="錄音操作" aria-label="錄音操作">⋯</button>`
       : `<button class="record-group-rename" type="button" data-id="${e.id}" title="重新命名資料包" aria-label="重新命名這筆紀錄">✏️</button>
@@ -4974,14 +5019,15 @@ async function openRecordingActions(entryId) {
   const audio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
   if (!audio.length) return openEntry(entryId);
   const status = recordingStatus(audio);
+  const transcribeAction = recordingTranscribeAction(status, audio);
   const legacy = hasLegacyRecordingFields(entry);
   const modal = $("entry-modal");
   modal.innerHTML = `
     <div class="modal-close-float"><button class="btn small ghost" id="recording-actions-close" type="button" aria-label="關閉錄音操作">✕</button></div>
-    <div class="detail-head"><div><h2 style="margin:0;overflow-wrap:anywhere">${esc(entry.title || "錄音")}</h2><p class="sub">錄音資料包｜${audio.length} 段｜${esc(status.label)}</p></div></div>
+    <div class="detail-head"><div><h2 style="margin:0;overflow-wrap:anywhere">${esc(entry.title || "錄音")}</h2><p class="recording-status-summary">錄音資料包｜${audio.length} 段 <span class="recording-status ${status.tone}">${esc(status.label)}</span>${status.detail ? `<span class="recording-status-detail">${esc(status.detail)}</span>` : ""}</p></div></div>
     <div class="recording-action-list">
       <button class="recording-action" id="recording-action-edit" type="button"><span>✏️</span><strong>返回文件編輯</strong><small>使用同一個 Word 編輯器</small></button>
-      <button class="recording-action" id="recording-action-transcribe" type="button"><span>📝</span><strong>重新轉錄</strong><small>覆蓋目前逐字稿，會使用 AI 額度</small></button>
+      <button class="recording-action" id="recording-action-transcribe" type="button" ${transcribeAction.disabled ? "disabled" : ""}><span>📝</span><strong>${esc(transcribeAction.label)}</strong><small>${esc(transcribeAction.description)}</small></button>
       <button class="recording-action" id="recording-action-compose" type="button"><span>🧩</span><strong>依時間軸整理圖文</strong><small>已有人工修改的文件不會被覆蓋</small></button>
       <button class="recording-action" id="recording-action-move" type="button"><span>📂</span><strong>移動</strong><small>音訊、逐字稿及照片一起移動</small></button>
       <section class="recording-download-list"><h3>⬇️ 原始錄音</h3>${audio.map((item, index) => `<div class="recording-action-audio-row">
@@ -5019,24 +5065,29 @@ async function openRecordingActions(entryId) {
     await openMoveEntryDialog(entryId, { currentFolderId: entry.folder_id || null, title: entry.title || "錄音" });
   };
   $("recording-action-transcribe").onclick = async () => {
-    if (!confirm(`重新轉錄 ${audio.length} 段錄音？\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。`)) return;
+    if (transcribeAction.disabled) return;
+    const targets = transcribeAction.targets;
+    const overwriteWarning = transcribeAction.mode === "repeat"
+      ? "\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。"
+      : "\n\n會使用 Cloudflare AI 額度。";
+    if (!confirm(`${transcribeAction.label} ${targets.length} 段錄音？${overwriteWarning}`)) return;
     const button = $("recording-action-transcribe");
     button.disabled = true;
     button.querySelector("strong").textContent = "轉錄中…";
     try {
-      for (let index = 0; index < audio.length; index++) {
-        button.querySelector("small").textContent = `正在處理第 ${index + 1} / ${audio.length} 段`;
-        await api(`/attachments/${audio[index].id}/transcribe`, { method: "POST", body: "{}" });
+      for (let index = 0; index < targets.length; index++) {
+        button.querySelector("small").textContent = `正在處理第 ${index + 1} / ${targets.length} 段`;
+        await api(`/attachments/${targets[index].id}/transcribe`, { method: "POST", body: "{}" });
       }
-      showToast("錄音已重新轉錄");
+      showToast(transcribeAction.mode === "repeat" ? "錄音已重新轉錄" : "錄音轉錄完成");
       closeEntry();
       await refreshFolderView();
       if (PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) await showRecordingPreview(entryId);
     } catch (error) {
-      showToast("重新轉錄失敗：" + error.message);
+      showToast("轉錄失敗：" + error.message);
       button.disabled = false;
-      button.querySelector("strong").textContent = "重新轉錄";
-      button.querySelector("small").textContent = "覆蓋目前逐字稿，會使用 AI 額度";
+      button.querySelector("strong").textContent = transcribeAction.label;
+      button.querySelector("small").textContent = transcribeAction.description;
     }
   };
   modal.querySelectorAll(".recording-action-audio-delete").forEach((button) => {
