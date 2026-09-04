@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=167" />
+<link rel="stylesheet" href="style.css?v=168" />
 <link rel="stylesheet" href="home.css" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
@@ -43,7 +43,7 @@
   <div id="view-home">
     <header class="home-app-head">
       <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      <a class="head-link" href="help.html?v=167">📖 使用說明</a>
+      <a class="head-link" href="help.html?v=168">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
@@ -201,6 +201,7 @@
         <div class="folder-preview-head">
           <strong id="folder-preview-title" aria-label="目前項目名稱">預覽</strong>
           <div class="folder-preview-actions">
+            <button class="btn small" id="folder-preview-transcribe" type="button" hidden>📝 擷取文字</button>
             <button class="btn small primary" id="folder-preview-save" type="button" hidden>💾 儲存</button>
             <button class="btn small ghost" id="folder-preview-edit" type="button" hidden>編輯</button>
             <a class="btn small ghost" id="folder-preview-open" href="#" target="_blank" rel="noopener">開啟原檔</a>
@@ -491,12 +492,12 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=167"></script>
+<script src="pdf-editor.js?v=168"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=167"></script>
+<script src="richtext-editor.js?v=168"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
-<script src="app.js?v=167"></script>
+<script src="app.js?v=168"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

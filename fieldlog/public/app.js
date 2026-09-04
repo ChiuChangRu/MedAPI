@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "167";
+const APP_VERSION = "168";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2228,7 +2228,7 @@ function bindRecordGroupCards() {
       ev.stopPropagation();
       const entryId = Number(card.dataset.id);
       const open = PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches
-        ? openRecordingEditor(entryId)
+        ? openRecordingManager(entryId)
         : openRecordingActions(entryId);
       open.catch((error) => showToast("開啟錄音操作失敗：" + error.message));
     };
@@ -2409,6 +2409,44 @@ function clearFolderPreviewEditorToolbar() {
   if (!host) return;
   host.replaceChildren();
   host.hidden = true;
+  const transcribe = $("folder-preview-transcribe");
+  if (transcribe) {
+    transcribe.hidden = true;
+    transcribe.disabled = false;
+    transcribe.textContent = "📝 擷取文字";
+    transcribe.onclick = null;
+  }
+}
+
+// 錄音現在與一般記事共用 Word 編輯器，因此擷取文字必須掛在這個真正會進入的
+// 頂部工具列。不要再只放在舊錄音編輯器或「⋯」管理頁，否則統一編輯器的改動
+// 會讓使用者入口再次失去轉錄按鈕。
+function showRecordingTranscribeButton(entryId, audio) {
+  const button = $("folder-preview-transcribe");
+  if (!button || !audio?.length) return;
+  const hasExistingResult = audio.some((item) => String(item.transcript || "").trim() || item.transcribed_at);
+  button.hidden = false;
+  button.textContent = hasExistingResult ? "📝 重新擷取文字" : "📝 擷取文字";
+  button.onclick = async () => {
+    const warning = hasExistingResult
+      ? `重新擷取 ${audio.length} 段錄音的文字？\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。`
+      : `擷取 ${audio.length} 段錄音的文字？\n\n會使用 Cloudflare AI 額度。`;
+    if (!confirm(warning)) return;
+    button.disabled = true;
+    try {
+      for (let index = 0; index < audio.length; index++) {
+        button.textContent = `擷取中 ${index + 1}/${audio.length}`;
+        await api(`/attachments/${audio[index].id}/transcribe`, { method: "POST", body: "{}" });
+      }
+      showToast("錄音文字已擷取並整理");
+      await refreshFolderView();
+      await showEntryEditor(entryId);
+    } catch (error) {
+      showToast("擷取文字失敗：" + error.message);
+      button.disabled = false;
+      button.textContent = hasExistingResult ? "📝 重新擷取文字" : "📝 擷取文字";
+    }
+  };
 }
 
 function clearFilePreview(message = "選取一份檔案以預覽") {
@@ -2493,6 +2531,7 @@ async function renderEntryEditor(entryId) {
     : textToHtmlForEditor(entry.body || "");
   setFolderPreviewTitle(entry.title || "記事", !isWeeklyReport);
   clearFolderPreviewEditorToolbar();
+  showRecordingTranscribeButton(entryId, recordingAudio);
   body.innerHTML = `<form class="preview-editor word-note-editor" id="entry-preview-editor">
     <main class="word-note-page">
       ${useRichEditor ? `<div id="preview-entry-rich" class="rich-editor word-rich-editor" aria-label="文件內容"></div>` : ""}
@@ -6841,7 +6880,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=167").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=168").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

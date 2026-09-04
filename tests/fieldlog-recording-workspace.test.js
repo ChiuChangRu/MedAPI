@@ -31,7 +31,7 @@ test("錄音編輯與管理固定在桌機右欄，逐字稿可修改及重新�
   const editor = app.match(/async function renderRecordingEditor\(entryId, entry, audio\)[\s\S]*?\n}\n/)?.[0] || "";
   assert.match(editor, /folder-preview-body/);
   assert.match(editor, /recording-preview-editor/);
-  assert.match(editor, /folder-preview-title/);
+  assert.match(editor, /setFolderPreviewTitle/);
   assert.doesNotMatch(editor, /entry-modal/);
   assert.doesNotMatch(editor, /entry-overlay.*classList\.add\("open"\)/s);
   assert.match(editor, /recording-edit-title/);
@@ -45,6 +45,25 @@ test("錄音編輯與管理固定在桌機右欄，逐字稿可修改及重新�
   assert.match(editor, /body_format: "text"/);
   assert.match(editor, /JSON\.stringify\(\{ transcript:/);
   assert.doesNotMatch(editor, /fields:/, "錄音專用編輯不可再送展場模板欄位");
+});
+
+test("錄音實際進入的 Word 畫面固定顯示擷取文字，避免統一編輯器再次移除入口", async () => {
+  const [app, index] = await Promise.all([
+    read("../fieldlog/public/app.js"),
+    read("../fieldlog/public/index.html"),
+  ]);
+  const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
+  const action = app.match(/function showRecordingTranscribeButton\(entryId, audio\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(index, /id="folder-preview-transcribe"[^>]*hidden/);
+  assert.match(editor, /showRecordingTranscribeButton\(entryId, recordingAudio\)/,
+    "共用 Word 編輯器載入錄音附件後，必須直接掛上擷取文字按鈕");
+  assert.match(action, /📝 擷取文字/);
+  assert.match(action, /📝 重新擷取文字/);
+  assert.match(action, /attachments\/\$\{audio\[index\]\.id\}\/transcribe/);
+  assert.match(action, /await showEntryEditor\(entryId\)/,
+    "擷取完成後要回到使用者目前的 Word 畫面");
+  assert.match(app, /function clearFolderPreviewEditorToolbar\([\s\S]*?folder-preview-transcribe[\s\S]*?transcribe\.hidden = true/,
+    "切換到非錄音項目時必須清掉按鈕，避免殘留到一般文件");
 });
 
 test("一般檔案也在右欄編輯名稱、Note、分類與索引文字", async () => {
@@ -102,7 +121,8 @@ test("Excel 與 CSV 以右欄表格顯示，常用格式有明確降級說明", 
 test("桌機錄音 ⋯ 進右欄，手機相容介面仍提供完整操作", async () => {
   const app = await read("../fieldlog/public/app.js");
   const cards = app.match(/function bindRecordGroupCards\(\)[\s\S]*?\n}\n/)?.[0] || "";
-  assert.match(cards, /openRecordingEditor\(entryId\)/);
+  assert.match(cards, /openRecordingManager\(entryId\)/,
+    "桌機的 ⋯ 必須進入錄音資料包管理，不可再回到同一個 Word 畫面而看似無反應");
   assert.match(cards, /openRecordingActions\(entryId\)/);
   const actions = app.match(/async function openRecordingActions\(entryId\)[\s\S]*?\n}\n/)?.[0] || "";
   for (const label of ["重新轉錄", "下載錄音", "重新命名", "移動", "刪除"]) {

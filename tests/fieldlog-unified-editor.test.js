@@ -6,11 +6,11 @@ const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 
 test("首頁先啟動 MyWiki，選用 CDN 不再阻塞 3% 載入畫面", async () => {
   const index = await read("../fieldlog/public/index.html");
-  const appPosition = index.indexOf('<script src="app.js?v=167"></script>');
+  const appPosition = index.indexOf('<script src="app.js?v=168"></script>');
   const pdfPosition = index.indexOf("pdfjs-dist@3.11.174/build/pdf.min.js");
   const quillPosition = index.indexOf("quill@2.0.3/dist/quill.js");
 
-  assert.ok(appPosition >= 0, "應載入 v167 首頁程式");
+  assert.ok(appPosition >= 0, "應載入 v168 首頁程式");
   assert.ok(pdfPosition > appPosition, "PDF.js 必須在首頁程式之後");
   assert.ok(quillPosition > appPosition, "Quill 必須在首頁程式之後");
   assert.match(index, /<script async src="https:\/\/cdn\.jsdelivr\.net\/npm\/pdfjs-dist@3\.11\.174\/build\/pdf\.min\.js"><\/script>/);
