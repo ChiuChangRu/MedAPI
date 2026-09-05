@@ -22,17 +22,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # v167 的 app.js 仍含 iOS hidden => stopAudio() 舊邏輯。先前把 hotfix 放在
-      # richtext-editor.js 會因為它比 app.js 早載入而被 app.js 覆蓋，實際無效。
-      # 部署前把修正附加在 app.js 最後（init() 之後），確保 runtime 真正覆寫
-      # onPageHidden。待 app.js 正式重構後可移除此相容層。
-      - name: Apply iOS background-audio runtime patch
+      # 錄音 runtime hardening 會在 app.js init() 後載入，修正 silent stream、
+      # 0/空音訊段與診斷訊息洗版。app.js v170 本身已有正確的 iOS 背景策略，
+      # 這層不得再覆寫 onPageHidden。
+      - name: Apply recording runtime hardening
         working-directory: fieldlog
         shell: bash
         run: |
           printf '\n\n' >> public/app.js
           cat public/background-audio-fix.js >> public/app.js
-          grep -q "background-audio best-effort patch active" public/app.js
+          grep -q "recording runtime hardening v171 active" public/app.js
+          if grep -q "onPageHidden = function onPageHiddenBestEffortAudio" public/app.js; then
+            echo "stale iOS background override detected"
+            exit 1
+          fi
 
       - name: Deploy Fieldlog Worker
         uses: cloudflare/wrangler-action@v3
