@@ -8,6 +8,17 @@
 // 4. 技術診斷留在 console，記事只留下精簡且去重的使用者可讀警示。
 (() => {
   try {
+    // 2026-09-06 文件編輯器寬版修正：舊版同時有工作區寬度、860px 紙張上限、
+    // page padding、Quill padding，造成真正文字區被重複限縮。CSS 獨立放檔案，
+    // 這裡只是暫時由既有 runtime patch 掛載，之後可直接併回 style.css。
+    if (!document.getElementById("mywiki-editor-layout-fix")) {
+      const link = document.createElement("link");
+      link.id = "mywiki-editor-layout-fix";
+      link.rel = "stylesheet";
+      link.href = "editor-layout-fix.css?v=20260906";
+      document.head.appendChild(link);
+    }
+
     const ORIGINAL = {
       noteAudioInterruption,
       acquireLiveMic,
