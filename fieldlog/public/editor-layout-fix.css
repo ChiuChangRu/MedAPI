@@ -1,0 +1,50 @@
+/* MyWiki 文件編輯器寬版修正（2026-09-06）
+ *
+ * 原本 .word-note-page 用固定文件紙張思維：max 860px + 外層 18px + page 大 padding
+ * + Quill 22px，放進可調寬度的右側工作區後會形成三層左右留白，真正可輸入區只剩
+ * 約七成寬。右側「寬度」選單已經負責控制工作區寬度，文件本身不該再二次限寬。
+ */
+
+/* 一般右側文件編輯：頁面直接吃滿工作區，只留必要操作邊距。 */
+.word-note-editor {
+  padding: 10px 12px 14px;
+}
+
+.word-note-page {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: clamp(16px, 2vw, 28px);
+}
+
+/* Word 頁本身已經有邊框，不要再在裡面套一個厚重的第二層文字框。 */
+.word-rich-editor {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.word-rich-editor .ql-container {
+  border: 0 !important;
+}
+
+.word-rich-editor .ql-editor {
+  min-height: 440px;
+  padding: 10px 4px 18px;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+/* 全螢幕閱讀/編輯時才保留一個較寬的閱讀上限，避免 2K/4K 螢幕一行文字長到難讀。 */
+body.reader-fullscreen .word-note-page {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 較窄桌機/平板橫向時再縮邊距，不讓留白反客為主。 */
+@media (max-width: 1200px) {
+  .word-note-editor { padding-left: 8px; padding-right: 8px; }
+  .word-note-page { padding: 14px 16px; }
+  .word-rich-editor .ql-editor { padding-left: 2px; padding-right: 2px; }
+}
