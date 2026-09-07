@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "171";
+const APP_VERSION = "172";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2271,6 +2271,10 @@ async function openFolder(id) {
   bindEntryRows($("folder-entries"));
   bindFileRows();
   bindRecordGroupCards();
+  // v171 以前已存在的錄音不會經過「錄音結束／上傳完成」事件；開啟所在資料夾時
+  // 補跑一次安全自動轉錄，讓舊待辦逐步清空。此呼叫不阻塞資料夾畫面。
+  autoTranscribeFolderBacklog(id, entries)
+    .catch((error) => console.error("既有錄音自動補轉失敗", error));
   });
 }
 
@@ -3969,12 +3973,55 @@ async function autoTranscribeUploadedEntries(entryIds) {
       summary.processed += Number(result.processed || 0);
       summary.failed += Array.isArray(result.failed) ? result.failed.length : 0;
       summary.stopped = summary.stopped || !!result.stopped;
+      if (summary.stopped) break;
     } catch (error) {
       summary.failed++;
       console.error(`自動轉錄失敗 [entry ${entryId}]`, error);
+      if (/429|budget|額度|上限|費用/i.test(error.message || "")) {
+        summary.stopped = true;
+        break;
+      }
     }
   }
   return summary;
+}
+
+const AUTO_TRANSCRIBE_FOLDER_IDS = new Set();
+
+async function autoTranscribeFolderBacklog(folderId, entries) {
+  folderId = Number(folderId || 0);
+  if (!folderId || !TRANSCRIBE_ENABLED || !navigator.onLine || AUTO_TRANSCRIBE_FOLDER_IDS.has(folderId)) return;
+  const pendingEntryIds = (entries || [])
+    .filter((entry) => (entry.attachments || []).some((item) =>
+      item.kind === "audio"
+      && !item.source_pdf_id
+      && !String(item.transcript || "").trim()
+      && !String(item.transcribed_at || "").trim()))
+    .map((entry) => Number(entry.id))
+    .filter(Boolean);
+  if (!pendingEntryIds.length) return;
+
+  AUTO_TRANSCRIBE_FOLDER_IDS.add(folderId);
+  for (const entryId of pendingEntryIds) {
+    const badge = document.querySelector(`.record-group-card[data-id="${entryId}"] .recording-card-status`);
+    if (!badge) continue;
+    badge.className = "recording-status recording-card-status working";
+    badge.textContent = "轉錄中…";
+  }
+  showToast(`正在自動補轉 ${pendingEntryIds.length} 筆既有錄音…`);
+
+  try {
+    const result = await autoTranscribeUploadedEntries(pendingEntryIds);
+    if (Number(CURRENT_FOLDER?.id) !== folderId) return;
+    if (result.processed) {
+      showToast(`已自動補轉 ${result.processed} 段錄音${result.stopped ? "，其餘項目因額度保護暫停" : ""}`);
+    } else if (result.failed || result.stopped) {
+      showToast("既有錄音自動轉錄未完成，可稍後再試");
+    }
+    if (result.processed || result.failed || result.stopped) await openFolder(folderId);
+  } finally {
+    AUTO_TRANSCRIBE_FOLDER_IDS.delete(folderId);
+  }
 }
 
 /**

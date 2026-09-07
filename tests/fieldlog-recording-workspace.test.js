@@ -181,6 +181,26 @@ test("音檔上傳與離線補傳完成後立即啟動安全自動轉錄", async
   assert.match(sync, /autoTranscribeUploadedEntries\(\[\.\.\.audioEntryIds\]\)/);
 });
 
+test("開啟資料夾會自動補轉既有的尚未轉錄錄音", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const folder = app.match(/async function openFolder\(id\)[\s\S]*?\n}\n\n\/\/ 多檔案記事/)?.[0] || "";
+  const backlog = app.match(/async function autoTranscribeFolderBacklog\(folderId, entries\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(folder, /autoTranscribeFolderBacklog\(id, entries\)/);
+  assert.match(backlog, /item\.kind === "audio"/);
+  assert.match(backlog, /!String\(item\.transcript \|\| ""\)\.trim\(\)/);
+  assert.match(backlog, /!String\(item\.transcribed_at \|\| ""\)\.trim\(\)/);
+  assert.match(backlog, /autoTranscribeUploadedEntries\(pendingEntryIds\)/);
+  assert.match(backlog, /AUTO_TRANSCRIBE_FOLDER_IDS/);
+  assert.match(backlog, /CURRENT_FOLDER\?\.id/);
+});
+
+test("批次補轉遇到額度保護會停止，不會對其餘錄音重複撞限額", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const helper = app.match(/async function autoTranscribeUploadedEntries\(entryIds\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(helper, /if \(summary\.stopped\) break/);
+  assert.match(helper, /429\|budget\|額度\|上限\|費用/);
+});
+
 test("已完成逐字稿不在主工具列顯示重新轉錄", async () => {
   const app = await read("../fieldlog/public/app.js");
   const toolbar = app.match(/function showRecordingTranscribeButton\(entryId, audio\)[\s\S]*?\n}\n/)?.[0] || "";
