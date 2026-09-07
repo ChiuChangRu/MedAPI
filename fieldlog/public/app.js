@@ -4039,7 +4039,12 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
     if (duplicates) parts.push(`略過 ${duplicates} 個重複檔`);
     if (failed) parts.push(`${failed} 個失敗`);
     showToast(parts.join("，"));
-    updateUploadProgress(files.length, files.length, failed ? "上傳完成（部分失敗）" : "上傳與自動轉錄完成");
+    const progressLabel = failed
+      ? "上傳完成（部分失敗）"
+      : (transcription.failed || transcription.stopped
+        ? "上傳完成（部分音檔等待重試）"
+        : (transcription.attempted ? "上傳與自動轉錄完成" : "上傳完成"));
+    updateUploadProgress(files.length, files.length, progressLabel);
     await Promise.all([loadFolders(), loadRecent()]);
     if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === Number(folderId)) await openFolder(Number(folderId));
   } finally {
