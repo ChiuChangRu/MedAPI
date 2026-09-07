@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "170";
+const APP_VERSION = "171";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -515,7 +515,7 @@ function recordingTranscribeAction(status, audioAttachments) {
   if (status.tone === "muted") {
     return { label: "開始轉錄", description: "建立逐字稿，會使用 AI 額度", mode: "start", disabled: false, targets: audio };
   }
-  return { label: "重新轉錄", description: "覆蓋目前逐字稿，會使用 AI 額度", mode: "repeat", disabled: false, targets: audio };
+  return { label: "重新轉錄", description: "僅在辨識異常時使用；會覆蓋目前逐字稿並使用 AI 額度", mode: "repeat", disabled: false, targets: audio };
 }
 
 function fmtUsageNumber(n) {
@@ -2541,27 +2541,29 @@ function clearFolderPreviewEditorToolbar() {
 function showRecordingTranscribeButton(entryId, audio) {
   const button = $("folder-preview-transcribe");
   if (!button || !audio?.length) return;
-  const hasExistingResult = audio.some((item) => String(item.transcript || "").trim() || item.transcribed_at);
+  const status = recordingStatus(audio);
+  const transcribeAction = recordingTranscribeAction(status, audio);
+  // 已完成的逐字稿不再把「重新轉錄」放在主工具列；需要覆蓋時到 ⋯ 的進階操作。
+  // 正在自動處理時也不顯示第二顆按鈕，避免重複送出同一段錄音。
+  if (transcribeAction.mode === "repeat" || transcribeAction.mode === "working") return;
+  const targets = transcribeAction.targets;
   button.hidden = false;
-  button.textContent = hasExistingResult ? "📝 重新擷取文字" : "📝 擷取文字";
+  button.textContent = `📝 ${transcribeAction.label}`;
   button.onclick = async () => {
-    const warning = hasExistingResult
-      ? `重新擷取 ${audio.length} 段錄音的文字？\n\n目前逐字稿會被覆蓋，並使用 Cloudflare AI 額度。`
-      : `擷取 ${audio.length} 段錄音的文字？\n\n會使用 Cloudflare AI 額度。`;
-    if (!confirm(warning)) return;
+    if (!confirm(`${transcribeAction.label} ${targets.length} 段錄音？\n\n會使用 Cloudflare AI 額度。`)) return;
     button.disabled = true;
     try {
-      for (let index = 0; index < audio.length; index++) {
-        button.textContent = `擷取中 ${index + 1}/${audio.length}`;
-        await api(`/attachments/${audio[index].id}/transcribe`, { method: "POST", body: "{}" });
+      for (let index = 0; index < targets.length; index++) {
+        button.textContent = `轉錄中 ${index + 1}/${targets.length}`;
+        await api(`/attachments/${targets[index].id}/transcribe`, { method: "POST", body: "{}" });
       }
-      showToast("錄音文字已擷取並整理");
+      showToast("錄音轉錄完成");
       await refreshFolderView();
       await showEntryEditor(entryId);
     } catch (error) {
-      showToast("擷取文字失敗：" + error.message);
+      showToast("轉錄失敗：" + error.message);
       button.disabled = false;
-      button.textContent = hasExistingResult ? "📝 重新擷取文字" : "📝 擷取文字";
+      button.textContent = `📝 ${transcribeAction.label}`;
     }
   };
 }
@@ -3946,6 +3948,35 @@ async function openEntry(id) {
   });
 }
 
+function isAudioUpload(file) {
+  const mime = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || file?.filename || "");
+  return mime.startsWith("audio/") || /\.(mp3|m4a|wav|ogg|aac|flac|opus|wma)$/i.test(name);
+}
+
+// 所有上傳入口共用同一支安全端點：只處理空白且未轉錄的音檔。
+// 因此人工修改過、已完成或正在處理的逐字稿都不會被自動覆蓋。
+async function autoTranscribeUploadedEntries(entryIds) {
+  const ids = [...new Set((entryIds || []).map(Number).filter(Boolean))];
+  if (!TRANSCRIBE_ENABLED || !navigator.onLine || !ids.length) {
+    return { attempted: 0, processed: 0, failed: 0, stopped: false };
+  }
+  const summary = { attempted: 0, processed: 0, failed: 0, stopped: false };
+  for (const entryId of ids) {
+    summary.attempted++;
+    try {
+      const result = await api(`/entries/${entryId}/auto-transcribe`, { method: "POST", body: "{}" });
+      summary.processed += Number(result.processed || 0);
+      summary.failed += Array.isArray(result.failed) ? result.failed.length : 0;
+      summary.stopped = summary.stopped || !!result.stopped;
+    } catch (error) {
+      summary.failed++;
+      console.error(`自動轉錄失敗 [entry ${entryId}]`, error);
+    }
+  }
+  return summary;
+}
+
 /**
  * 把一批檔案直接上傳到目前資料夾——每個檔案自成一筆記事。
  * 重複檔（後端以 SHA-256 判定）會被略過，並把剛建的空記事收掉，
@@ -3965,6 +3996,7 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
   let uploaded = 0;
   let duplicates = 0;
   let failed = 0;
+  const audioEntryIds = [];
 
   try {
     for (let index = 0; index < files.length; index++) {
@@ -3988,6 +4020,7 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
           await api(`/entries/${entryId}`, { method: "DELETE" }).catch(() => {});
         } else {
           uploaded++;
+          if (isAudioUpload(file)) audioEntryIds.push(entryId);
         }
       } catch (error) {
         failed++;
@@ -3995,11 +4028,23 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
         console.error(`檔案上傳失敗 [${file.name}]`, error);
       }
     }
+    let transcription = { attempted: 0, processed: 0, failed: 0, stopped: false };
+    if (audioEntryIds.length) {
+      updateUploadProgress(files.length, files.length, "音檔已上傳，正在自動轉錄…");
+      transcription = await autoTranscribeUploadedEntries(audioEntryIds);
+    }
     const parts = [`已加入 ${uploaded} 個檔案${destination ? `到${destination}` : ""}`];
+    if (transcription.processed) parts.push(`已自動轉錄 ${transcription.processed} 段`);
+    if (transcription.failed || transcription.stopped) parts.push("部分音檔等待重試");
     if (duplicates) parts.push(`略過 ${duplicates} 個重複檔`);
     if (failed) parts.push(`${failed} 個失敗`);
     showToast(parts.join("，"));
-    updateUploadProgress(files.length, files.length, failed ? "上傳完成（部分失敗）" : "上傳完成");
+    const progressLabel = failed
+      ? "上傳完成（部分失敗）"
+      : (transcription.failed || transcription.stopped
+        ? "上傳完成（部分音檔等待重試）"
+        : (transcription.attempted ? "上傳與自動轉錄完成" : "上傳完成"));
+    updateUploadProgress(files.length, files.length, progressLabel);
     await Promise.all([loadFolders(), loadRecent()]);
     if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === Number(folderId)) await openFolder(Number(folderId));
   } finally {
@@ -5020,6 +5065,10 @@ async function openRecordingActions(entryId) {
   if (!audio.length) return openEntry(entryId);
   const status = recordingStatus(audio);
   const transcribeAction = recordingTranscribeAction(status, audio);
+  const transcribeButton = `<button class="recording-action" id="recording-action-transcribe" type="button" ${transcribeAction.disabled ? "disabled" : ""}><span>📝</span><strong>${esc(transcribeAction.label)}</strong><small>${esc(transcribeAction.description)}</small></button>`;
+  const transcribeControl = transcribeAction.mode === "repeat"
+    ? `<details class="recording-advanced-actions"><summary>進階操作</summary><p class="sub">逐字稿已完成，通常不需要再次轉錄。</p>${transcribeButton}</details>`
+    : transcribeButton;
   const legacy = hasLegacyRecordingFields(entry);
   const modal = $("entry-modal");
   modal.innerHTML = `
@@ -5027,7 +5076,7 @@ async function openRecordingActions(entryId) {
     <div class="detail-head"><div><h2 style="margin:0;overflow-wrap:anywhere">${esc(entry.title || "錄音")}</h2><p class="recording-status-summary">錄音資料包｜${audio.length} 段 <span class="recording-status ${status.tone}">${esc(status.label)}</span>${status.detail ? `<span class="recording-status-detail">${esc(status.detail)}</span>` : ""}</p></div></div>
     <div class="recording-action-list">
       <button class="recording-action" id="recording-action-edit" type="button"><span>✏️</span><strong>返回文件編輯</strong><small>使用同一個 Word 編輯器</small></button>
-      <button class="recording-action" id="recording-action-transcribe" type="button" ${transcribeAction.disabled ? "disabled" : ""}><span>📝</span><strong>${esc(transcribeAction.label)}</strong><small>${esc(transcribeAction.description)}</small></button>
+      ${transcribeControl}
       <button class="recording-action" id="recording-action-compose" type="button"><span>🧩</span><strong>依時間軸整理圖文</strong><small>已有人工修改的文件不會被覆蓋</small></button>
       <button class="recording-action" id="recording-action-move" type="button"><span>📂</span><strong>移動</strong><small>音訊、逐字稿及照片一起移動</small></button>
       <section class="recording-download-list"><h3>⬇️ 原始錄音</h3>${audio.map((item, index) => `<div class="recording-action-audio-row">
@@ -5603,18 +5652,31 @@ async function uploadFiles(entryId, files) {
     : "";
   let done = 0;
   let duplicates = 0;
+  let uploadedAudio = false;
   for (const f of files) {
     if (f.size > 50 * 1024 * 1024) { showToast(`${f.name} 超過 50MB，略過`); continue; }
     if (status) status.textContent = `上傳中…（${done + 1}/${files.length}）`;
     const meta = sourceUrl && isDocLikeFile(f) ? { sourceUrl } : null;
     try {
       const uploaded = await putFile(entryId, f, f.name, null, meta);
-      if (uploaded.duplicate) duplicates++; else done++;
+      if (uploaded.duplicate) duplicates++;
+      else {
+        done++;
+        if (isAudioUpload(f)) uploadedAudio = true;
+      }
     }
     catch { await queueFile(entryId, f, f.name, null); done++; }
   }
+  let transcription = { attempted: 0, processed: 0, failed: 0, stopped: false };
+  if (uploadedAudio) {
+    if (status) status.textContent = "音檔已上傳，正在自動轉錄…";
+    transcription = await autoTranscribeUploadedEntries([entryId]);
+  }
   if (status) status.textContent = "";
-  showToast(`已上傳 ${done} 個檔案${duplicates ? `，略過 ${duplicates} 個重複檔案` : ""}`);
+  const transcriptionNote = transcription.processed
+    ? `，已自動轉錄 ${transcription.processed} 段`
+    : (transcription.failed || transcription.stopped ? "，部分音檔等待重試" : "");
+  showToast(`已上傳 ${done} 個檔案${duplicates ? `，略過 ${duplicates} 個重複檔案` : ""}${transcriptionNote}`);
   openEntry(entryId);
 }
 
@@ -5715,6 +5777,7 @@ async function syncPendingFiles({ entryId = null } = {}) {
   const targets = entryId === null ? all : all.filter((f) => Number(f.entry_id) === Number(entryId));
   let synced = 0;
   let lastError = "";
+  const audioEntryIds = new Set();
   for (const f of targets) {
     try {
       await putFile(f.entry_id, f.blob, f.filename, f.offset_secs, f.meta || null);
@@ -5725,13 +5788,20 @@ async function syncPendingFiles({ entryId = null } = {}) {
         tx.onerror = resolve;
       });
       synced++;
+      if (isAudioUpload({ name: f.filename, type: f.blob?.type })) audioEntryIds.add(Number(f.entry_id));
     } catch (err) {
       lastError = err.message || "上傳失敗";
       break;
     }
   }
-  if (synced) showToast(`已補傳 ${synced} 個離線檔案`);
-  return { synced, pending: Math.max(0, targets.length - synced), error: lastError };
+  const transcription = await autoTranscribeUploadedEntries([...audioEntryIds]);
+  if (synced) {
+    const note = transcription.processed
+      ? `，已自動轉錄 ${transcription.processed} 段`
+      : (transcription.failed || transcription.stopped ? "，部分音檔等待重試" : "");
+    showToast(`已補傳 ${synced} 個離線檔案${note}`);
+  }
+  return { synced, pending: Math.max(0, targets.length - synced), error: lastError, transcription };
 }
 
 // ---------- 現場採集：錄影／拍照／錄音是三個獨立入口，不互相綁定 ----------

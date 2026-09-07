@@ -47,7 +47,7 @@ test("錄音編輯與管理固定在桌機右欄，逐字稿可修改及重新�
   assert.doesNotMatch(editor, /fields:/, "錄音專用編輯不可再送展場模板欄位");
 });
 
-test("錄音實際進入的 Word 畫面固定顯示擷取文字，避免統一編輯器再次移除入口", async () => {
+test("錄音的 Word 畫面只在未完成或失敗時顯示轉錄入口", async () => {
   const [app, index] = await Promise.all([
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/index.html"),
@@ -56,12 +56,13 @@ test("錄音實際進入的 Word 畫面固定顯示擷取文字，避免統一�
   const action = app.match(/function showRecordingTranscribeButton\(entryId, audio\)[\s\S]*?\n}\n/)?.[0] || "";
   assert.match(index, /id="folder-preview-transcribe"[^>]*hidden/);
   assert.match(editor, /showRecordingTranscribeButton\(entryId, recordingAudio\)/,
-    "共用 Word 編輯器載入錄音附件後，必須直接掛上擷取文字按鈕");
-  assert.match(action, /📝 擷取文字/);
-  assert.match(action, /📝 重新擷取文字/);
-  assert.match(action, /attachments\/\$\{audio\[index\]\.id\}\/transcribe/);
+    "共用 Word 編輯器載入錄音附件後，仍要依轉錄狀態配置入口");
+  assert.match(action, /button\.textContent = `📝 \$\{transcribeAction\.label\}`/);
+  assert.match(action, /transcribeAction\.mode === "repeat"/);
+  assert.match(action, /transcribeAction\.mode === "working"/);
+  assert.match(action, /attachments\/\$\{targets\[index\]\.id\}\/transcribe/);
   assert.match(action, /await showEntryEditor\(entryId\)/,
-    "擷取完成後要回到使用者目前的 Word 畫面");
+    "轉錄完成後要回到使用者目前的 Word 畫面");
   assert.match(app, /function clearFolderPreviewEditorToolbar\([\s\S]*?folder-preview-transcribe[\s\S]*?transcribe\.hidden = true/,
     "切換到非錄音項目時必須清掉按鈕，避免殘留到一般文件");
 });
@@ -161,7 +162,31 @@ test("錄音狀態與轉錄按鈕一致，資料夾卡片可直接看出是否�
   assert.match(actions, /recording-status-summary/);
   assert.match(actions, /transcribeAction\.label/);
   assert.match(actions, /transcribeAction\.targets/);
+  assert.match(actions, /recording-advanced-actions/);
+  assert.match(actions, /逐字稿已完成，通常不需要再次轉錄/);
   assert.match(css, /\.recording-card-status/);
+  assert.match(css, /\.recording-advanced-actions/);
+});
+
+test("音檔上傳與離線補傳完成後立即啟動安全自動轉錄", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const helper = app.match(/async function autoTranscribeUploadedEntries\(entryIds\)[\s\S]*?\n}\n/)?.[0] || "";
+  const standalone = app.match(/async function uploadStandaloneFiles\(files, folderId,[\s\S]*?\n}\n/)?.[0] || "";
+  const attached = app.match(/async function uploadFiles\(entryId, files\)[\s\S]*?\n}\n/)?.[0] || "";
+  const sync = app.match(/async function syncPendingFiles\([\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(helper, /\/entries\/\$\{entryId\}\/auto-transcribe/);
+  assert.match(helper, /!TRANSCRIBE_ENABLED \|\| !navigator\.onLine/);
+  assert.match(standalone, /autoTranscribeUploadedEntries\(audioEntryIds\)/);
+  assert.match(attached, /autoTranscribeUploadedEntries\(\[entryId\]\)/);
+  assert.match(sync, /autoTranscribeUploadedEntries\(\[\.\.\.audioEntryIds\]\)/);
+});
+
+test("已完成逐字稿不在主工具列顯示重新轉錄", async () => {
+  const app = await read("../fieldlog/public/app.js");
+  const toolbar = app.match(/function showRecordingTranscribeButton\(entryId, audio\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(toolbar, /transcribeAction\.mode === "repeat"/);
+  assert.match(toolbar, /transcribeAction\.mode === "working"/);
+  assert.doesNotMatch(toolbar, /重新擷取文字/);
 });
 
 test("桌機點檔案名稱與點 ⋯ 都進同一個檔案編輯器，儲存後也不退回唯讀預覽", async () => {
