@@ -1485,6 +1485,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .recording-action small { color: var(--text-muted); }
 .recording-action:hover { border-color: var(--accent); background: #f0fdfa; }
 .recording-action.danger { color: #991b1b; }
+.recording-advanced-actions {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: #f8faf9;
+}
+.recording-advanced-actions > summary { cursor: pointer; font-weight: 750; color: var(--text-muted); }
+.recording-advanced-actions > p { margin: 8px 0 0; }
+.recording-advanced-actions .recording-action { margin-top: 10px; }
 .recording-download-list { padding: 12px; border: 1px solid var(--border); border-radius: 9px; }
 .recording-download-list h3 { margin: 0 0 8px; font-size: 14px; }
 .recording-download-list a { display: block; padding: 7px 0; overflow-wrap: anywhere; }
