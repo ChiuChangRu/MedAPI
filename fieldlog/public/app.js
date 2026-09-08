@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "173";
+const APP_VERSION = "174";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2460,7 +2460,7 @@ function bindFileRows() {
     row.onclick = (event) => {
       if (event.target.closest("button") || !PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
       event.preventDefault();
-      showFileEditor(Number(row.dataset.entryId), Number(row.dataset.attId))
+      showFilePreview(filePreviewArgsFromRow(row))
         .catch((error) => showToast("開啟檔案失敗：" + error.message));
     };
     row.ondblclick = (event) => {
@@ -2509,6 +2509,17 @@ function bindFileRows() {
   bindImageLinks();
 }
 
+function filePreviewArgsFromRow(row) {
+  return {
+    entryId: Number(row.dataset.entryId),
+    attachmentId: Number(row.dataset.attId),
+    filename: row.dataset.filename || "檔案",
+    key: row.dataset.key || "",
+    mime: row.dataset.mime || "",
+    kind: row.dataset.kind || "",
+  };
+}
+
 function setFolderPreviewTitle(text, editable = false) {
   const title = $("folder-preview-title");
   if (!title) return;
@@ -2537,6 +2548,31 @@ function clearFolderPreviewEditorToolbar() {
     transcribe.textContent = "📝 擷取文字";
     transcribe.onclick = null;
   }
+  const modeToggle = $("file-preview-mode-toggle");
+  if (modeToggle) modeToggle.hidden = true;
+  for (const id of ["file-preview-mode-preview", "file-preview-mode-content"]) {
+    const button = $(id);
+    if (!button) continue;
+    button.disabled = false;
+    button.setAttribute("aria-pressed", "false");
+    button.onclick = null;
+  }
+  const manage = $("folder-preview-manage");
+  if (manage) manage.hidden = false;
+}
+
+function setFilePreviewMode(active, { onPreview, onContent }) {
+  const wrap = $("file-preview-mode-toggle");
+  const preview = $("file-preview-mode-preview");
+  const content = $("file-preview-mode-content");
+  if (!wrap || !preview || !content) return;
+  wrap.hidden = false;
+  preview.disabled = active === "preview";
+  content.disabled = active === "content";
+  preview.setAttribute("aria-pressed", active === "preview" ? "true" : "false");
+  content.setAttribute("aria-pressed", active === "content" ? "true" : "false");
+  preview.onclick = active === "preview" ? null : onPreview;
+  content.onclick = active === "content" ? null : onContent;
 }
 
 // 錄音現在與一般記事共用 Word 編輯器，因此擷取文字必須掛在這個真正會進入的
@@ -3068,6 +3104,11 @@ async function renderFilePreview({ entryId, attachmentId, filename, key, mime, k
   pane.dataset.entryId = String(entryId);
   setFolderPreviewTitle(filename);
   clearFolderPreviewEditorToolbar();
+  setFilePreviewMode("preview", {
+    onPreview: null,
+    onContent: () => showFileEditor(entryId, attachmentId)
+      .catch((error) => showToast("開啟檔案內容失敗：" + error.message)),
+  });
   if (typeof body._previewCleanup === "function") body._previewCleanup();
   body.innerHTML = `<p class="folder-preview-empty">載入預覽中…</p>`;
   const url = fileUrlForKey(key);
@@ -3113,13 +3154,11 @@ async function renderFilePreview({ entryId, attachmentId, filename, key, mime, k
   $("folder-preview-open").removeAttribute("download");
   $("folder-preview-open").textContent = "開啟原檔";
   $("folder-preview-open").onclick = null;
-  $("folder-preview-edit").hidden = false;
-  $("folder-preview-edit").textContent = "編輯";
-  $("folder-preview-edit").onclick = () => showFileEditor(entryId, attachmentId)
-    .catch((error) => showToast("開啟檔案編輯失敗：" + error.message));
-  $("folder-preview-manage").disabled = false;
-  $("folder-preview-manage").onclick = () => showFileEditor(entryId, attachmentId)
-    .catch((error) => showToast("開啟檔案編輯失敗：" + error.message));
+  $("folder-preview-edit").hidden = true;
+  $("folder-preview-edit").onclick = null;
+  $("folder-preview-manage").hidden = true;
+  $("folder-preview-manage").disabled = true;
+  $("folder-preview-manage").onclick = null;
 }
 
 async function showFileEditor(entryId, attachmentId) {
@@ -3146,6 +3185,17 @@ async function renderFileEditor(entryId, attachmentId) {
       : attachment.ocr_at ? "已擷取，但未找到文字" : "尚未擷取";
   setFolderPreviewTitle(`編輯｜${attachment.filename}`);
   clearFolderPreviewEditorToolbar();
+  setFilePreviewMode("content", {
+    onPreview: () => showFilePreview({
+      entryId,
+      attachmentId,
+      filename: attachment.filename,
+      key: attachment.key,
+      mime: attachment.mime || "",
+      kind: attachment.kind || "",
+    }).catch((error) => showToast("開啟預覽失敗：" + error.message)),
+    onContent: null,
+  });
   body.innerHTML = `<form class="preview-editor" id="file-preview-editor">
     <label for="preview-file-name">檔案名稱</label>
     <input id="preview-file-name" maxlength="240" value="${esc(attachment.filename || "")}" />
@@ -3196,6 +3246,7 @@ async function renderFileEditor(entryId, attachmentId) {
   $("folder-preview-save").hidden = false;
   $("folder-preview-save").onclick = () => $("file-preview-editor").requestSubmit();
   $("folder-preview-manage").disabled = true;
+  $("folder-preview-manage").hidden = true;
   $("folder-preview-manage").onclick = null;
   $("preview-file-copy").onclick = async () => {
     const text = $("preview-file-index").value;
@@ -4847,7 +4898,7 @@ function bindImageLinks(root = document) {
       event.stopPropagation();
       const row = link.closest(".folder-file-row[data-att-id]");
       if (row && PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches) {
-        showFileEditor(Number(row.dataset.entryId), Number(row.dataset.attId))
+        showFilePreview(filePreviewArgsFromRow(row))
           .catch((error) => showToast("開啟檔案失敗：" + error.message));
         return;
       }
