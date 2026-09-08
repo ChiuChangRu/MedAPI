@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "172";
+const APP_VERSION = "173";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2625,6 +2625,23 @@ function visibleEntryFields(entry) {
   }
 }
 
+function editorPhotoGallery(entry, photos) {
+  if (!photos.length) return "";
+  return `<section class="entry-editor-photo-section" aria-label="${esc(entry.title || "記事")}的照片">
+    <div class="entry-editor-photo-head"><strong>照片（${photos.length} 張）</strong><span>點照片可放大與旋轉</span></div>
+    <div class="entry-editor-photo-grid">${photos.map((item) => {
+      const url = fileUrlForKey(item.key);
+      const rotation = Number(item.rotation) || 0;
+      return `<figure>
+        <a class="entry-editor-photo-link" href="${url}" data-image-url="${url}" data-image-name="${esc(item.filename)}" data-image-id="${item.id}" data-image-rotation="${rotation}">
+          <img class="att-thumb entry-editor-photo" data-id="${item.id}" data-rotation="${rotation}" src="${url}" loading="lazy" alt="${esc(item.filename)}" />
+        </a>
+        <figcaption>${esc(item.filename)}</figcaption>
+      </figure>`;
+    }).join("")}</div>
+  </section>`;
+}
+
 async function showEntryPreview(entryId) {
   // 記事只有一種 Word 文件畫面。過去的唯讀純文字預覽會把標題、清單與換行
   // 壓成一整段，且讓使用者在「查看／編輯」之間反覆切換。
@@ -2639,6 +2656,7 @@ async function showEntryEditor(entryId) {
 async function renderEntryEditor(entryId) {
   const entry = await api(`/entries/${entryId}`);
   const recordingAudio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+  const photos = (entry.attachments || []).filter((item) => isImageAtt(item) && !item.source_pdf_id);
   const body = $("folder-preview-body");
   const fields = visibleEntryFields(entry);
   const rawFields = (() => {
@@ -2652,10 +2670,13 @@ async function renderEntryEditor(entryId) {
   const initialHtml = entry.body_format === "html"
     ? String(entry.body || "")
     : textToHtmlForEditor(entry.body || "");
+  const hasWrittenContent = plainEntryBody(entry).trim().length > 0 || fields.length > 0;
+  const photoGallery = editorPhotoGallery(entry, photos);
   setFolderPreviewTitle(entry.title || "記事", !isWeeklyReport);
   clearFolderPreviewEditorToolbar();
   showRecordingTranscribeButton(entryId, recordingAudio);
   body.innerHTML = `<form class="preview-editor word-note-editor" id="entry-preview-editor">
+    ${photos.length && !hasWrittenContent ? photoGallery : ""}
     <main class="word-note-page">
       ${useRichEditor ? `<div id="preview-entry-rich" class="rich-editor word-rich-editor" aria-label="文件內容"></div>` : ""}
       ${isSynced ? `<div class="word-note-plain">
@@ -2668,7 +2689,9 @@ async function renderEntryEditor(entryId) {
           <textarea id="preview-entry-field-${index}" data-field="${esc(key)}">${esc(String(value || ""))}</textarea>`).join("")}</div>
       </details>` : ""}
     </main>
+    ${photos.length && hasWrittenContent ? photoGallery : ""}
   </form>`;
+  bindImageLinks(body);
   let richEditor = null;
   if (useRichEditor) {
     const editorElement = $("preview-entry-rich");

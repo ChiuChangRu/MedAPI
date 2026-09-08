@@ -1179,6 +1179,32 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .word-note-editor {
     padding: 18px; gap: 0; overflow: visible; background: #eef1f4;
   }
+  .entry-editor-photo-section {
+    width: min(100%, 860px); margin: 0 auto 18px; padding: 16px;
+    border: 1px solid #d9dee5; border-radius: 10px; background: #fff;
+    box-shadow: 0 3px 14px rgba(15, 23, 42, .08);
+  }
+  .entry-editor-photo-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    margin-bottom: 12px;
+  }
+  .entry-editor-photo-head span { color: var(--text-muted); font-size: 12px; }
+  .entry-editor-photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .entry-editor-photo-grid figure { min-width: 0; margin: 0; }
+  .entry-editor-photo-link {
+    display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3;
+    overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #f8faf9;
+    cursor: zoom-in;
+  }
+  .entry-editor-photo {
+    width: 100%; height: 100%; max-width: none; object-fit: contain; border-radius: 0;
+  }
+  .entry-editor-photo-grid figcaption {
+    margin-top: 6px; overflow: hidden; color: var(--text-muted); font-size: 12px;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .entry-editor-photo-section + .word-note-page { margin-top: 0; }
+  .word-note-page + .entry-editor-photo-section { margin-top: 18px; margin-bottom: 0; }
   .word-note-page {
     width: min(100%, 860px); min-height: calc(100vh - 245px); margin: 0 auto;
     padding: clamp(22px, 4vw, 52px); border: 1px solid #d9dee5; background: #fff;
