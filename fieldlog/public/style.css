@@ -1910,3 +1910,13 @@ body:has(#login-overlay.open) .file-action-dock { display: none; }
 #folder-children .child-folder-card > strong { font-weight: 400; }
 .file-selection-help { display: none; margin: 8px 0; color: var(--text-muted); font-size: 14px; }
 @media (hover: hover) and (pointer: fine) { .file-selection-help { display: block; } }
+
+/* v180: a blank gutter starts box selection; rows retain native drag-to-move. */
+@media (hover: hover) and (pointer: fine) {
+  #folder-entries { padding: 8px 12px 44px; min-height: 180px; }
+}
+.file-selection-marquee {
+  position: fixed; z-index: 44; pointer-events: none; box-sizing: border-box;
+  border: 1px solid #2563eb; background: #2563eb24;
+}
+body.file-marquee-active, body.file-marquee-active * { user-select: none !important; cursor: crosshair !important; }

@@ -6,7 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import { trashStandaloneFile, restoreTrashItem } from "../fieldlog/src/lib/trash.js";
 
 function selectionHarness() {
-  const handlers = {}, calls = [], notices = [];
+  const handlers = {}, calls = [], notices = [], frames = new Map();
+  let nextFrame = 1;
   const classList = () => ({ add() {}, remove() {}, toggle() {}, contains() { return false; } });
   const elements = new Map();
   const element = (id) => {
@@ -21,13 +22,29 @@ function selectionHarness() {
     focus() {}, scrollIntoView() {}, setAttribute() {},
   }));
   scope.querySelectorAll = () => rows;
+  scope.querySelector = () => rows[0];
+  scope.closest = (selector) => selector.includes(".folder-content-list") ? scope : null;
+  Object.assign(scope, { isConnected: true, clientWidth: 300, clientHeight: 400, scrollWidth: 300, scrollHeight: 400, scrollTop: 0, scrollLeft: 0 });
+  scope.getBoundingClientRect = () => ({ left: 0, right: 300, top: 0, bottom: scope.clientHeight, width: 300, height: scope.clientHeight });
+  scope.getClientRects = () => [1];
+  scope.focus = () => {};
+  scope.setPointerCapture = () => { scope.captured = true; };
+  scope.hasPointerCapture = () => scope.captured;
+  scope.releasePointerCapture = () => { scope.captured = false; };
+  rows.forEach((row, index) => { row.getBoundingClientRect = () => ({ left: 20, right: 220, top: 20 + index * 50 - scope.scrollTop, bottom: 60 + index * 50 - scope.scrollTop, width: 200, height: 40 }); });
   const document = {
     body: { classList: classList(), appendChild() {} },
     getElementById: element, querySelectorAll: (selector) => selector.includes(".folder-file-row") ? rows : [],
     addEventListener: (type, fn) => { handlers[type] = fn; },
-    createElement: () => ({ remove() {} }),
+    createElement: () => ({ style: {}, setAttribute() {}, remove() {} }),
+    scrollingElement: { scrollTop: 0 },
   };
-  const context = vm.createContext({ document, console, matchMedia: () => ({ matches: true }), CURRENT_FOLDER: { id: 7 }, FOLDERS: [{ id: 8, name: "Target" }],
+  const context = vm.createContext({ document, console,
+    window: { innerWidth: 1000, innerHeight: 800, addEventListener: (type, fn) => { handlers[type] = fn; } },
+    getComputedStyle: () => ({ overflowY: "auto" }),
+    requestAnimationFrame: (fn) => { const id = nextFrame++; frames.set(id, fn); return id; },
+    cancelAnimationFrame: (id) => frames.delete(id),
+    matchMedia: () => ({ matches: true }), CURRENT_FOLDER: { id: 7 }, FOLDERS: [{ id: 8, name: "Target" }],
     confirm: () => true, api: async (path, options) => { calls.push({ path, options }); },
     refreshFolderView: async () => {}, showToast: (message) => notices.push(message),
   });
@@ -35,7 +52,7 @@ function selectionHarness() {
   context.initFileSelection();
   const keys = () => Array.from(context.selectedFileItems(), (item) => item.id);
   const event = (target, extra = {}) => ({ target, preventDefault() { this.prevented = true; }, stopImmediatePropagation() { this.stopped = true; }, ...extra });
-  return { context, rows, handlers, calls, keys, event, notices, scope };
+  return { context, rows, handlers, calls, keys, event, notices, scope, frames };
 }
 
 test("Ctrl toggles individual rows; Shift extends and shrinks from the stable anchor", () => {
@@ -197,4 +214,69 @@ test("batch folder moves use parent_id and trash uses the recoverable folder rou
   await h.context.runFileBatch(items, { id: 22, name: "Child" });
   assert.equal(h.calls.length, 2);
   assert.match(h.notices.at(-1), /不能把資料夾移到自己/);
+});
+
+
+function pointer(h, type, x, y, extra = {}) {
+  h.handlers[type](h.event(h.scope, { pointerType: "mouse", button: 0, buttons: 1, pointerId: 1, clientX: x, clientY: y, ...extra }));
+}
+
+test("marquee selects intersecting rows in both drag directions and leaves them selected after release", () => {
+  for (const reverse of [false, true]) {
+    const h = selectionHarness();
+    pointer(h, "pointerdown", reverse ? 240 : 4, reverse ? 116 : 4);
+    pointer(h, "pointermove", reverse ? 4 : 240, reverse ? 4 : 116);
+    assert.deepEqual(h.keys(), [1, 2]);
+    pointer(h, "pointerup", reverse ? 4 : 240, reverse ? 4 : 116);
+    assert.deepEqual(h.keys(), [1, 2]);
+    assert.equal(h.scope.captured, false);
+    assert.equal(h.frames.size, 0);
+    // The synthetic click after releasing a box must not collapse selection or open a file.
+    const click = h.event(h.rows[1], { detail: 1 });
+    h.handlers.click(click);
+    assert.equal(click.stopped, true);
+    assert.deepEqual(h.keys(), [1, 2]);
+  }
+});
+
+test("Ctrl marquee adds to existing selection; Escape cancels and restores the prior selection", () => {
+  const h = selectionHarness();
+  h.context.selectFileRow(h.rows[3]);
+  pointer(h, "pointerdown", 4, 4, { ctrlKey: true });
+  pointer(h, "pointermove", 240, 116, { ctrlKey: true });
+  assert.deepEqual(h.keys(), [1, 2, 4]);
+  h.handlers.keydown(h.event(h.scope, { key: "Escape" }));
+  assert.deepEqual(h.keys(), [4]);
+  assert.equal(h.scope.captured, false);
+  assert.equal(h.frames.size, 0);
+});
+
+test("row drags and touch scrolling never start marquee; a blank click clears selection", () => {
+  const h = selectionHarness();
+  h.context.selectFileRow(h.rows[0]);
+  h.handlers.pointerdown(h.event(h.rows[0], { pointerType: "mouse", button: 0, pointerId: 1, clientX: 40, clientY: 30 }));
+  assert.notEqual(h.scope.captured, true);
+  pointer(h, "pointerdown", 4, 4, { pointerType: "touch" });
+  assert.notEqual(h.scope.captured, true);
+  pointer(h, "pointerdown", 4, 4);
+  pointer(h, "pointerup", 4, 4);
+  assert.deepEqual(h.keys(), []);
+});
+
+test("edge autoscroll extends the rectangle in content coordinates and cancels its frame on pointer cancellation", () => {
+  const h = selectionHarness();
+  h.scope.clientHeight = 150;
+  h.scope.scrollHeight = 800;
+  pointer(h, "pointerdown", 4, 4);
+  pointer(h, "pointermove", 240, 140);
+  assert.deepEqual(h.keys(), [1, 2, 3]);
+  for (let i = 0; i < 4; i++) {
+    const [id, callback] = h.frames.entries().next().value;
+    h.frames.delete(id); callback();
+  }
+  assert.equal(h.scope.scrollTop, 48);
+  assert.deepEqual(h.keys(), [1, 2, 3, 4]);
+  pointer(h, "pointercancel", 240, 140);
+  assert.deepEqual(h.keys(), []);
+  assert.equal(h.frames.size, 0);
 });

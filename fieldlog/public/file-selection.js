@@ -3,6 +3,145 @@ const FILE_SELECTION_MIME = "application/x-fieldlog-selection";
 const FILE_SELECTION_ROW = ".folder-file-row[data-att-id], .entry-row[data-id], .record-group-card[data-id], .child-folder-card[data-id]";
 const FILE_SELECTION_SCOPE = ".folder-content-list, .entry-list, .child-folder-list";
 const FILE_SELECTION = { scope: null, keys: new Set(), anchor: null, focus: null, busy: false };
+let FILE_MARQUEE = null;
+let FILE_MARQUEE_CLICK_UNTIL = 0;
+
+function marqueePoint(scope, x, y) {
+  const bounds = scope.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(scope.scrollWidth, x - bounds.left + scope.scrollLeft)),
+    y: Math.max(0, Math.min(scope.scrollHeight, y - bounds.top + scope.scrollTop)),
+  };
+}
+
+function marqueeScrollParent(scope) {
+  for (let node = scope; node && node !== document.body; node = node.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight) return node;
+  }
+  return document.scrollingElement;
+}
+
+function updateFileMarquee() {
+  const state = FILE_MARQUEE;
+  if (!state?.active) return;
+  if (!state.scope.isConnected || !state.scope.getClientRects().length || FILE_SELECTION.scope !== state.scope) {
+    finishFileMarquee(true); return;
+  }
+  const bounds = state.scope.getBoundingClientRect();
+  const point = marqueePoint(state.scope, state.x, state.y);
+  const box = { left: Math.min(state.start.x, point.x), right: Math.max(state.start.x, point.x),
+    top: Math.min(state.start.y, point.y), bottom: Math.max(state.start.y, point.y) };
+  const keys = new Set(state.base);
+  const rows = selectionRows();
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect();
+    const left = rect.left - bounds.left + state.scope.scrollLeft;
+    const top = rect.top - bounds.top + state.scope.scrollTop;
+    if (left < box.right && left + rect.width > box.left && top < box.bottom && top + rect.height > box.top) keys.add(selectionItem(row).key);
+  }
+  FILE_SELECTION.keys = keys;
+  const selected = rows.filter((row) => keys.has(selectionItem(row).key));
+  FILE_SELECTION.anchor = selected.length ? selectionItem(selected[0]).key : null;
+  FILE_SELECTION.focus = selected.length ? selectionItem(selected[selected.length - 1]).key : null;
+  renderFileSelection();
+  // Clip the visual box to the content and viewport, while hit-testing in scroll coordinates.
+  const left = Math.max(0, bounds.left, bounds.left + box.left - state.scope.scrollLeft);
+  const top = Math.max(0, bounds.top, bounds.top + box.top - state.scope.scrollTop);
+  const right = Math.min(window.innerWidth, bounds.right, bounds.left + box.right - state.scope.scrollLeft);
+  const bottom = Math.min(window.innerHeight, bounds.bottom, bounds.top + box.bottom - state.scope.scrollTop);
+  Object.assign(state.box.style, { left: `${left}px`, top: `${top}px`, width: `${Math.max(0, right - left)}px`, height: `${Math.max(0, bottom - top)}px` });
+}
+
+function fileMarqueeFrame() {
+  const state = FILE_MARQUEE;
+  if (!state?.active) return;
+  const root = state.scrollParent;
+  const viewport = root === document.scrollingElement ? { top: 0, bottom: window.innerHeight } : root.getBoundingClientRect();
+  const bounds = state.scope.getBoundingClientRect();
+  const top = Math.max(0, viewport.top), bottom = Math.min(window.innerHeight, viewport.bottom);
+  if (state.x >= bounds.left && state.x <= bounds.right) {
+    const delta = state.y < top + 36 ? -12 : state.y > bottom - 36 ? 12 : 0;
+    if (delta) root.scrollTop += delta;
+  }
+  updateFileMarquee();
+  if (FILE_MARQUEE === state) state.frame = requestAnimationFrame(fileMarqueeFrame);
+}
+
+function finishFileMarquee(cancel = false) {
+  const state = FILE_MARQUEE;
+  if (!state) return;
+  FILE_MARQUEE = null;
+  cancelAnimationFrame(state.frame);
+  state.box?.remove();
+  document.body.classList.remove("file-marquee-active");
+  if (state.scope.hasPointerCapture?.(state.pointerId)) state.scope.releasePointerCapture(state.pointerId);
+  if (cancel && FILE_SELECTION.scope === state.scope) {
+    FILE_SELECTION.keys = new Set(state.previous);
+    FILE_SELECTION.anchor = state.previousAnchor;
+    FILE_SELECTION.focus = state.previousFocus;
+    renderFileSelection();
+  }
+  if (state.active) {
+    FILE_MARQUEE_CLICK_UNTIL = Date.now() + 350;
+    if (FILE_SELECTION.scope === state.scope) selectionRows().find((row) => selectionItem(row).key === FILE_SELECTION.focus)?.focus({ preventScroll: true });
+  }
+}
+
+function initFileMarquee() {
+  document.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "mouse" || event.button !== 0 || FILE_SELECTION.busy) return;
+    const target = event.target;
+    // Starting on a row keeps native dragging. Only the surrounding blank area starts a box.
+    if (target.closest(`${FILE_SELECTION_ROW}, button, a, input, textarea, select, [contenteditable='true'], .overlay.open`)) return;
+    const scope = target.closest(FILE_SELECTION_SCOPE) || target.closest(".folder-workspace-main")?.querySelector("#folder-entries");
+    if (!scope || !scope.querySelector(FILE_SELECTION_ROW)) return;
+    const bounds = scope.getBoundingClientRect();
+    if (event.clientX >= bounds.left + scope.clientWidth || event.clientX < bounds.left) return;
+    finishFileMarquee(true);
+    if (FILE_SELECTION.scope !== scope) clearFileSelection();
+    FILE_SELECTION.scope = scope;
+    const previous = new Set(FILE_SELECTION.keys);
+    FILE_MARQUEE = {
+      scope, pointerId: event.pointerId, start: marqueePoint(scope, event.clientX, event.clientY),
+      downX: event.clientX, downY: event.clientY, x: event.clientX, y: event.clientY,
+      previous, previousAnchor: FILE_SELECTION.anchor, previousFocus: FILE_SELECTION.focus,
+      base: event.ctrlKey || event.metaKey || event.shiftKey ? previous : new Set(),
+      active: false, frame: 0, scrollParent: marqueeScrollParent(scope),
+    };
+    scope.tabIndex = -1;
+    scope.focus({ preventScroll: true });
+    scope.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }, true);
+  document.addEventListener("pointermove", (event) => {
+    const state = FILE_MARQUEE;
+    if (!state || event.pointerId !== state.pointerId) return;
+    if (!(event.buttons & 1)) { finishFileMarquee(); return; }
+    state.x = event.clientX; state.y = event.clientY;
+    if (!state.active) {
+      if (Math.hypot(state.x - state.downX, state.y - state.downY) < 5) return;
+      state.active = true;
+      state.box = document.createElement("div");
+      state.box.className = "file-selection-marquee";
+      state.box.setAttribute("aria-hidden", "true");
+      document.body.appendChild(state.box);
+      document.body.classList.add("file-marquee-active");
+      state.frame = requestAnimationFrame(fileMarqueeFrame);
+    }
+    event.preventDefault();
+    updateFileMarquee();
+  }, true);
+  document.addEventListener("pointerup", (event) => {
+    const state = FILE_MARQUEE;
+    if (!state || event.pointerId !== state.pointerId) return;
+    if (state.active) { state.x = event.clientX; state.y = event.clientY; updateFileMarquee(); }
+    else if (!event.ctrlKey && !event.metaKey && !event.shiftKey) clearFileSelection();
+    finishFileMarquee();
+  }, true);
+  document.addEventListener("pointercancel", (event) => { if (event.pointerId === FILE_MARQUEE?.pointerId) finishFileMarquee(true); }, true);
+  document.addEventListener("lostpointercapture", (event) => { if (event.pointerId === FILE_MARQUEE?.pointerId) finishFileMarquee(true); }, true);
+  window.addEventListener("blur", () => finishFileMarquee(true));
+}
 
 function selectionItem(row) {
   const attachment = row.dataset.attId;
@@ -43,6 +182,7 @@ function renderFileSelection() {
 }
 
 function clearFileSelection() {
+  finishFileMarquee();
   FILE_SELECTION.keys.clear();
   FILE_SELECTION.scope = null;
   FILE_SELECTION.anchor = FILE_SELECTION.focus = null;
@@ -181,6 +321,7 @@ function endFileDrag() {
 }
 
 function initFileSelection() {
+  initFileMarquee();
   document.getElementById("file-selection-clear").onclick = clearFileSelection;
   document.getElementById("file-selection-trash").onclick = () => runFileBatch(selectedFileItems());
   document.getElementById("file-selection-move").onclick = async () => {
@@ -189,6 +330,10 @@ function initFileSelection() {
     if (folder) await runFileBatch(items, { id: folder.id, name: folder.name || FOLDERS.find((item) => item.id === folder.id)?.name || "資料夾" });
   };
   document.addEventListener("click", (event) => {
+    if (Date.now() < FILE_MARQUEE_CLICK_UNTIL && event.detail !== 0) {
+      FILE_MARQUEE_CLICK_UNTIL = 0;
+      event.preventDefault(); event.stopImmediatePropagation(); return;
+    }
     if (event.target.closest("#desktop-trash") && selectedFileItems().length) {
       event.preventDefault(); event.stopImmediatePropagation();
       runFileBatch(selectedFileItems());
@@ -205,6 +350,10 @@ function initFileSelection() {
     }
   }, true);
   document.addEventListener("keydown", (event) => {
+    if (FILE_MARQUEE) {
+      if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); finishFileMarquee(true); }
+      return;
+    }
     if (event.target.closest("input, textarea, select, button, [contenteditable='true'], .overlay.open")) return;
     const row = event.target.closest(FILE_SELECTION_ROW);
     if (row?.closest(FILE_SELECTION_SCOPE) && !FILE_SELECTION.busy && FILE_SELECTION.scope !== row.closest(FILE_SELECTION_SCOPE)) selectFileRow(row);
