@@ -70,7 +70,7 @@ test("預覽可開關、可調欄寬並記住設定", async () => {
   assert.match(css, /\.folder-workspace\.preview-off/);
 });
 
-test("桌機點選筆記直接使用同一個 Word 文件畫面", async () => {
+test("桌機點選筆記使用同一個右欄預覽，編輯保留 Word 文件畫面", async () => {
   const [app, html, css] = await Promise.all([
     read("../fieldlog/public/app.js"), read("../fieldlog/public/index.html"), read("../fieldlog/public/style.css"),
   ]);
@@ -80,7 +80,7 @@ test("桌機點選筆記直接使用同一個 Word 文件畫面", async () => {
   assert.match(app, /async function showEntryPreview\(entryId\)/);
   assert.match(app, /function setReaderFullscreen\(enabled\)/);
   const preview = app.match(/async function showEntryPreview\(entryId\)[\s\S]*?\n}/)?.[0] || "";
-  assert.match(preview, /return showEntryEditor\(entryId\)/);
+  assert.match(preview, /return openInspector\(\{ type: "entry", id: Number\(entryId\) \}, "preview"\)/);
   assert.doesNotMatch(app, /async function renderEntryPreview/);
   assert.doesNotMatch(app, /entry-side-preview/);
   assert.match(app, /preview-editor/);

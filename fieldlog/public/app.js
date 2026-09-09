@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "180";
+const APP_VERSION = "181";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1608,6 +1608,7 @@ function bindEntryRows(wrap) {
     btn.onclick = async (ev) => {
       ev.stopPropagation(); // 不要連帶觸發外層 .entry-row 的開啟
       const id = Number(btn.dataset.id);
+      if (!await inspectorGuardAction()) return;
       if (!confirm("將這筆紀錄資料包及其中全部內容移到垃圾桶？垃圾桶保留 60 天。")) return;
       try {
         await api(`/entries/${id}`, { method: "DELETE" });
@@ -1620,7 +1621,7 @@ function bindEntryRows(wrap) {
     btn.onclick = (ev) => {
       ev.stopPropagation();
       if (usesDesktopRightPane()) {
-        showEntryEditor(Number(btn.dataset.id)).catch((err) => showToast("開啟編輯失敗：" + err.message));
+        inspectSingleItem({ type: "entry", id: Number(btn.dataset.id) }, "info").catch((err) => showToast("開啟編輯失敗：" + err.message));
         return;
       }
       const row = btn.closest(".entry-row");
@@ -1823,6 +1824,7 @@ function closeFolderPicker(result = null) {
 
 /** 記事的「移動」：待分類內容與已分類記事共用同一條路 */
 async function openMoveEntryDialog(entryId, { currentFolderId, title } = {}) {
+  if (!await inspectorGuardAction()) return;
   const row = document.querySelector(`.entry-row[data-id="${entryId}"]`);
   const entryTitle = title || row?.querySelector(".entry-title")?.textContent || "這筆記事";
   const previous = currentFolderId !== undefined
@@ -2205,7 +2207,7 @@ function syncFolderSortButtons() {
 
 // ---------- 資料夾內頁 ----------
 async function openFolder(id) {
-  clearFileSelection();
+  if (!await inspectorPrepareNavigation()) return;
   CURRENT_FOLDER = FOLDERS.find((f) => f.id === id);
   if (!CURRENT_FOLDER) return;
   // 從搜尋或右欄直接開啟深層資料夾時，左欄同步展開所有祖先並取消該工作分類收合。
@@ -2357,13 +2359,14 @@ function bindRecordGroupCards() {
       ev.preventDefault();
       ev.stopPropagation();
       const entryId = Number(card.dataset.id);
-      openRecordingActions(entryId)
+      (usesDesktopRightPane() ? inspectSingleItem({ type: "entry", id: entryId }, "info") : openRecordingActions(entryId))
         .catch((error) => showToast("開啟錄音操作失敗：" + error.message));
     };
     const del = card.querySelector(".record-group-del");
     if (del) del.onclick = async (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
+      if (!await inspectorGuardAction()) return;
       if (!confirm("將這筆紀錄資料包及其中全部內容移到垃圾桶？垃圾桶保留 60 天。")) return;
       try {
         await api(`/entries/${card.dataset.id}`, { method: "DELETE" });
@@ -2384,7 +2387,7 @@ function bindRecordGroupCards() {
       ev.preventDefault();
       ev.stopPropagation();
       if (usesDesktopRightPane()) {
-        showEntryEditor(Number(card.dataset.id)).catch((err) => showToast("開啟編輯失敗：" + err.message));
+        inspectSingleItem({ type: "entry", id: Number(card.dataset.id) }, "info").catch((err) => showToast("開啟編輯失敗：" + err.message));
         return;
       }
       renameEntry(Number(card.dataset.id), card.querySelector("strong")?.textContent || "")
@@ -2555,7 +2558,7 @@ function clearFolderPreviewEditorToolbar() {
   }
   const modeToggle = $("file-preview-mode-toggle");
   if (modeToggle) modeToggle.hidden = true;
-  for (const id of ["file-preview-mode-preview", "file-preview-mode-content"]) {
+  for (const id of ["file-preview-mode-preview", "file-preview-mode-content", "file-preview-mode-info"]) {
     const button = $(id);
     if (!button) continue;
     button.disabled = false;
@@ -2613,7 +2616,8 @@ function showRecordingTranscribeButton(entryId, audio) {
   };
 }
 
-function clearFilePreview(message = "選取一份檔案以預覽") {
+function clearFilePreview(message = "單擊檔案可預覽；空白處拖曳可框選") {
+  resetInspectorPane();
   const pane = $("folder-preview");
   const body = $("folder-preview-body");
   if (!pane || !body) return;
@@ -2684,14 +2688,13 @@ function editorPhotoGallery(entry, photos) {
 }
 
 async function showEntryPreview(entryId) {
-  // 記事只有一種 Word 文件畫面。過去的唯讀純文字預覽會把標題、清單與換行
-  // 壓成一整段，且讓使用者在「查看／編輯」之間反覆切換。
-  return showEntryEditor(entryId);
+  if (!usesDesktopRightPane()) return openEntry(entryId);
+  return openInspector({ type: "entry", id: Number(entryId) }, "preview");
 }
 
 async function showEntryEditor(entryId) {
   if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openEntry(entryId);
-  return withViewLoading("正在載入編輯欄…", () => renderEntryEditor(entryId));
+  return openInspector({ type: "entry", id: Number(entryId) }, "content");
 }
 
 async function renderEntryEditor(entryId) {
@@ -2760,12 +2763,12 @@ async function renderEntryEditor(entryId) {
     event.preventDefault();
     const save = $("folder-preview-save");
     const title = String($("folder-preview-title")?.textContent || "").trim();
-    if (!isWeeklyReport && !title) return showToast("名稱不可空白");
+    if (!isWeeklyReport && !title) { showToast("名稱不可空白"); return false; }
     const patch = { fields: {} };
     if (!isWeeklyReport) {
       patch.title = title;
       if (useRichEditor) {
-        if (!richEditor) return showToast("文件編輯器尚未載入，原內容未變更");
+        if (!richEditor) { showToast("文件編輯器尚未載入，原內容未變更"); return false; }
         patch.body = stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("preview-entry-rich")) || "");
         patch.body_format = "html";
       } else if (isSynced) {
@@ -2779,10 +2782,12 @@ async function renderEntryEditor(entryId) {
     try {
       await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify(patch) });
       showToast("記事已儲存");
-      await refreshFolderView();
-      await showEntryEditor(entryId);
+      updateInspectorEntryTitle(entryId, title);
+      return true;
     } catch (error) {
       showToast("儲存失敗：" + error.message);
+      return false;
+    } finally {
       save.disabled = false;
       save.textContent = "儲存";
     }
@@ -3095,7 +3100,7 @@ async function renderHtmlPreview(url, body, filename) {
 
 async function showFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
   if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
-  return withViewLoading("正在載入檔案…", () => renderFilePreview({ entryId, attachmentId, filename, key, mime, kind }));
+  return openInspector({ type: "attachment", id: Number(attachmentId), entryId: Number(entryId), title: filename }, "preview");
 }
 
 async function renderFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
@@ -3168,7 +3173,7 @@ async function renderFilePreview({ entryId, attachmentId, filename, key, mime, k
 
 async function showFileEditor(entryId, attachmentId) {
   if (!PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return openFileDetail(entryId, attachmentId);
-  return withViewLoading("正在載入檔案編輯欄…", () => renderFileEditor(entryId, attachmentId));
+  return inspectSingleItem({ type: "attachment", id: Number(attachmentId), entryId: Number(entryId) }, "info");
 }
 
 async function renderFileEditor(entryId, attachmentId) {
@@ -3446,7 +3451,7 @@ function initPreviewLayout() {
   const expand = $("folder-preview-expand");
   const close = $("folder-preview-close");
   if (expand) expand.onclick = () => setReaderFullscreen(!document.body.classList.contains("reader-fullscreen"));
-  if (close) close.onclick = () => clearFilePreview();
+  if (close) close.onclick = () => inspectorNavigate(() => { clearFileSelection(false); clearFilePreview(); });
   localStorage.setItem("fieldlog_preview_enabled", "1");
   button.hidden = true;
   const savedMode = localStorage.getItem(PREVIEW_WIDTH_MODE_KEY) || "custom";
@@ -3635,7 +3640,7 @@ async function openTrash() {
 }
 
 async function openPendingFromDesktop() {
-  clearFileSelection();
+  if (!await inspectorPrepareNavigation()) return;
   return withViewLoading("正在載入待分類…", async () => {
     await Promise.all([loadFolders(), loadRecent()]);
     $("desktop-pending")?.classList.add("active");
@@ -3649,7 +3654,7 @@ async function openPendingFromDesktop() {
 }
 
 async function backHome(forceHome = false) {
-  clearFileSelection();
+  if (!await inspectorPrepareNavigation()) return;
   if (!forceHome && CURRENT_FOLDER?.parent_id) return openFolder(CURRENT_FOLDER.parent_id);
   return withViewLoading("正在載入首頁…", async () => {
     await Promise.all([loadFolders(), loadRecent()]);
@@ -7204,6 +7209,7 @@ function exportFolder() {
 
 // ---------- init ----------
 function init() {
+  initInspector();
   initFileSelection();
   // 沒接住的檔案拖放，瀏覽器預設行為是直接開啟該檔案、整頁跳走——不管拖去哪
   // 都先擋掉這個預設行為，實際上傳邏輯交給各自的 setupFileDropZone。

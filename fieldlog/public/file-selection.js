@@ -85,6 +85,7 @@ function finishFileMarquee(cancel = false) {
     FILE_MARQUEE_CLICK_UNTIL = Date.now() + 350;
     if (FILE_SELECTION.scope === state.scope) selectionRows().find((row) => selectionItem(row).key === FILE_SELECTION.focus)?.focus({ preventScroll: true });
   }
+  if (typeof syncInspectorSelection === "function") syncInspectorSelection();
 }
 
 function initFileMarquee() {
@@ -150,6 +151,7 @@ function selectionItem(row) {
     key: `${type}:${attachment || row.dataset.id}`,
     type,
     id: Number(attachment || row.dataset.id),
+    entryId: Number(row.dataset.entryId || row.dataset.id),
     title: row.dataset.filename || row.querySelector(".entry-title, strong")?.textContent || "未命名",
   };
 }
@@ -163,7 +165,7 @@ function selectedFileItems() {
   return selectionRows().map(selectionItem).filter((item) => FILE_SELECTION.keys.has(item.key));
 }
 
-function renderFileSelection() {
+function renderFileSelection(syncPreview = true) {
   const items = selectedFileItems();
   FILE_SELECTION.keys = new Set(items.map((item) => item.key));
   document.querySelectorAll(FILE_SELECTION_ROW).forEach((row) => {
@@ -179,14 +181,15 @@ function renderFileSelection() {
   }
   const label = document.getElementById("desktop-trash-label");
   if (label) label.textContent = items.length ? `刪除 ${items.length} 項` : "垃圾桶";
+  if (syncPreview && typeof syncInspectorSelection === "function") syncInspectorSelection();
 }
 
-function clearFileSelection() {
+function clearFileSelection(syncPreview = true) {
   finishFileMarquee();
   FILE_SELECTION.keys.clear();
   FILE_SELECTION.scope = null;
   FILE_SELECTION.anchor = FILE_SELECTION.focus = null;
-  renderFileSelection();
+  renderFileSelection(syncPreview);
 }
 
 function prepareFileSelection(wrap) {
@@ -251,6 +254,7 @@ async function openSelectionRow(row, event) {
 
 async function runFileBatch(items, folder = null) {
   if (FILE_SELECTION.busy || !items.length) return;
+  if (typeof inspectorGuardAction === "function" && !await inspectorGuardAction()) return;
   if (invalidFolderDestination(items, folder)) { showToast("不能把資料夾移到自己或自己的子資料夾內"); return; }
   const action = folder ? `移至「${folder.name}」` : "移到垃圾桶（含資料夾內全部內容，保留 60 天）";
   const names = items.slice(0, 8).map((item) => item.title).join("\n");

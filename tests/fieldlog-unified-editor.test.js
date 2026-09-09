@@ -36,7 +36,7 @@ test("桌機記事只有同一個右欄 Word 畫面，附件仍使用右欄預�
   assert.match(app, /async function showEntryPreview\(entryId\)/);
   assert.match(app, /async function showEntryEditor\(entryId\)/);
   const preview = app.match(/async function showEntryPreview\(entryId\)[\s\S]*?\n}/)?.[0] || "";
-  assert.match(preview, /return showEntryEditor\(entryId\)/);
+  assert.match(preview, /return openInspector\(\{ type: "entry", id: Number\(entryId\) \}, "preview"\)/);
   assert.doesNotMatch(app, /async function renderEntryPreview/);
   assert.doesNotMatch(app, /entry-side-preview/);
   assert.match(app, /async function showFilePreview\(/);
@@ -44,8 +44,8 @@ test("桌機記事只有同一個右欄 Word 畫面，附件仍使用右欄預�
   assert.match(app, /if \(!PREVIEW_ENABLED \|\| !matchMedia\("\(min-width: 1000px\)"\)\.matches\) return openEntry\(entryId\)/);
   assert.match(app, /if \(usesDesktopRightPane\(\)\) return showEntryEditor\(entryId\)/);
   assert.match(app, /if \(usesDesktopRightPane\(\)\) return showFileEditor\(entryId, attachmentId\)/);
-  assert.match(app, /return withViewLoading\("正在載入編輯欄…"/);
-  assert.match(app, /return withViewLoading\("正在載入檔案編輯欄…"/);
+  assert.match(app, /return openInspector\(\{ type: "entry", id: Number\(entryId\) \}, "content"\)/);
+  assert.match(app, /return inspectSingleItem\(\{ type: "attachment", id: Number\(attachmentId\), entryId: Number\(entryId\) \}, "info"\)/);
 });
 
 test("錄音卡直接開啟同一份 Word 文件，原始資料集中在 ⋯ 管理", async () => {

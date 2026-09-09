@@ -18,7 +18,7 @@ test("點 PDF、圖片或其他檔案整列時，桌機右欄預設開啟預覽"
     "圖片檔名也要走同一個右欄預覽入口");
 });
 
-test("右欄有固定的預覽／檔案內容切換，兩邊可往返", async () => {
+test("右欄有預覽／文字內容／檔案資訊三個頁籤", async () => {
   const [app, html, css] = await Promise.all([
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/index.html"),
@@ -26,7 +26,8 @@ test("右欄有固定的預覽／檔案內容切換，兩邊可往返", async ()
   ]);
 
   assert.match(html, /id="file-preview-mode-preview"[^>]*>預覽<\/button>/);
-  assert.match(html, /id="file-preview-mode-content"[^>]*>檔案內容<\/button>/);
+  assert.match(html, /id="file-preview-mode-content"[^>]*>文字內容<\/button>/);
+  assert.match(html, /id="file-preview-mode-info"[^>]*>檔案資訊<\/button>/);
   assert.match(app, /function setFilePreviewMode\(active, \{ onPreview, onContent \}\)/);
   assert.match(app, /setFilePreviewMode\("preview"/);
   assert.match(app, /setFilePreviewMode\("content"/);
