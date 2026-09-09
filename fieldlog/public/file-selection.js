@@ -1,13 +1,15 @@
 // Selection belongs to one visible list. Drag data is a snapshot, never live DOM state.
 const FILE_SELECTION_MIME = "application/x-fieldlog-selection";
-const FILE_SELECTION_ROW = ".folder-file-row[data-att-id], .entry-row[data-id], .record-group-card[data-id]";
+const FILE_SELECTION_ROW = ".folder-file-row[data-att-id], .entry-row[data-id], .record-group-card[data-id], .child-folder-card[data-id]";
+const FILE_SELECTION_SCOPE = ".folder-content-list, .entry-list, .child-folder-list";
 const FILE_SELECTION = { scope: null, keys: new Set(), anchor: null, focus: null, busy: false };
 
 function selectionItem(row) {
   const attachment = row.dataset.attId;
+  const type = attachment ? "attachment" : row.classList.contains("child-folder-card") ? "folder" : "entry";
   return {
-    key: `${attachment ? "attachment" : "entry"}:${attachment || row.dataset.id}`,
-    type: attachment ? "attachment" : "entry",
+    key: `${type}:${attachment || row.dataset.id}`,
+    type,
     id: Number(attachment || row.dataset.id),
     title: row.dataset.filename || row.querySelector(".entry-title, strong")?.textContent || "未命名",
   };
@@ -26,7 +28,7 @@ function renderFileSelection() {
   const items = selectedFileItems();
   FILE_SELECTION.keys = new Set(items.map((item) => item.key));
   document.querySelectorAll(FILE_SELECTION_ROW).forEach((row) => {
-    const selected = row.closest(".folder-content-list, .entry-list") === FILE_SELECTION.scope && FILE_SELECTION.keys.has(selectionItem(row).key);
+    const selected = row.closest(FILE_SELECTION_SCOPE) === FILE_SELECTION.scope && FILE_SELECTION.keys.has(selectionItem(row).key);
     row.classList.toggle("file-selected", selected);
     row.setAttribute("aria-selected", String(selected));
   });
@@ -54,16 +56,16 @@ function prepareFileSelection(wrap) {
     row.draggable = true;
     row.title = selectionItem(row).title;
     row.setAttribute("role", "option");
-    const scope = row.closest(".folder-content-list, .entry-list");
+    const scope = row.closest(FILE_SELECTION_SCOPE);
     scope?.setAttribute("role", "listbox");
     scope?.setAttribute("aria-multiselectable", "true");
-    scope?.setAttribute("aria-label", "檔案；Ctrl 點選多選，Shift 點選或方向鍵連續選取");
+    scope?.setAttribute("aria-label", "檔案與資料夾；單擊選取、雙擊開啟；Ctrl 多選，Shift 連續選取");
   });
   renderFileSelection();
 }
 
 function selectFileRow(row, { range = false, toggle = false } = {}) {
-  const scope = row.closest(".folder-content-list, .entry-list");
+  const scope = row.closest(FILE_SELECTION_SCOPE);
   if (!scope) return;
   if (FILE_SELECTION.scope !== scope) clearFileSelection();
   FILE_SELECTION.scope = scope;
@@ -83,9 +85,34 @@ function selectFileRow(row, { range = false, toggle = false } = {}) {
   renderFileSelection();
 }
 
+function invalidFolderDestination(items, folder) {
+  if (!folder) return false;
+  const selected = new Set(items.filter((item) => item.type === "folder").map((item) => Number(item.id)));
+  const seen = new Set();
+  let id = Number(folder.id);
+  while (id && !seen.has(id)) {
+    if (selected.has(id)) return true;
+    seen.add(id);
+    id = Number(FOLDERS.find((item) => Number(item.id) === id)?.parent_id || 0);
+  }
+  return false;
+}
+
+async function openSelectionRow(row, event) {
+  const item = selectionItem(row);
+  try {
+    if (item.type === "folder") await openFolder(item.id);
+    else if (item.type === "attachment") {
+      if (usesDesktopRightPane()) await showFilePreview(filePreviewArgsFromRow(row));
+      else await openFileDetail(Number(row.dataset.entryId), item.id);
+    } else if (row.onclick) await row.onclick(event);
+  } catch (error) { showToast("開啟失敗：" + error.message); }
+}
+
 async function runFileBatch(items, folder = null) {
   if (FILE_SELECTION.busy || !items.length) return;
-  const action = folder ? `移至「${folder.name}」` : "移到垃圾桶（保留 60 天）";
+  if (invalidFolderDestination(items, folder)) { showToast("不能把資料夾移到自己或自己的子資料夾內"); return; }
+  const action = folder ? `移至「${folder.name}」` : "移到垃圾桶（含資料夾內全部內容，保留 60 天）";
   const names = items.slice(0, 8).map((item) => item.title).join("\n");
   if (!confirm(`將 ${items.length} 項${action}？\n\n${names}${items.length > 8 ? "\n…" : ""}`)) return;
   FILE_SELECTION.busy = true;
@@ -97,12 +124,12 @@ async function runFileBatch(items, folder = null) {
     for (const item of items) {
       try {
         if (folder) {
-          await api(item.type === "attachment" ? `/attachments/${item.id}/move` : `/entries/${item.id}`, {
+          await api(item.type === "folder" ? `/folders/${item.id}` : item.type === "attachment" ? `/attachments/${item.id}/move` : `/entries/${item.id}`, {
             method: item.type === "attachment" ? "POST" : "PUT",
-            body: JSON.stringify({ folder_id: folder.id }),
+            body: JSON.stringify(item.type === "folder" ? { parent_id: folder.id } : { folder_id: folder.id }),
           });
         } else {
-          await api(item.type === "attachment" ? `/attachments/${item.id}/trash` : `/entries/${item.id}`, {
+          await api(item.type === "folder" ? `/folders/${item.id}` : item.type === "attachment" ? `/attachments/${item.id}/trash` : `/entries/${item.id}`, {
             method: item.type === "attachment" ? "POST" : "DELETE",
           });
         }
@@ -130,7 +157,7 @@ function selectionDropItems(event) {
     if (!Array.isArray(items)) return [];
     const seen = new Set();
     return items.filter((item) => {
-      if (!item || !["attachment", "entry"].includes(item.type) || !Number.isSafeInteger(item.id) || item.id < 1) return false;
+      if (!item || !["attachment", "entry", "folder"].includes(item.type) || !Number.isSafeInteger(item.id) || item.id < 1) return false;
       item.key = `${item.type}:${item.id}`;
       if (seen.has(item.key)) return false;
       seen.add(item.key);
@@ -168,22 +195,24 @@ function initFileSelection() {
       return;
     }
     const row = event.target.closest(FILE_SELECTION_ROW);
-    if (!row || !row.closest(".folder-content-list, .entry-list")) return;
+    if (!row || !row.closest(FILE_SELECTION_SCOPE)) return;
     if (event.target.closest("button, input, textarea, select")) return;
     if (FILE_SELECTION.busy) { event.preventDefault(); event.stopImmediatePropagation(); return; }
     selectFileRow(row, { range: event.shiftKey, toggle: event.ctrlKey || event.metaKey });
     row.focus({ preventScroll: true });
-    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+    if (event.shiftKey || event.ctrlKey || event.metaKey || matchMedia("(hover: hover) and (pointer: fine)").matches) {
       event.preventDefault(); event.stopImmediatePropagation();
     }
   }, true);
   document.addEventListener("keydown", (event) => {
     if (event.target.closest("input, textarea, select, button, [contenteditable='true'], .overlay.open")) return;
+    const row = event.target.closest(FILE_SELECTION_ROW);
+    if (row?.closest(FILE_SELECTION_SCOPE) && !FILE_SELECTION.busy && FILE_SELECTION.scope !== row.closest(FILE_SELECTION_SCOPE)) selectFileRow(row);
     const rows = selectionRows();
     if (!rows.length || FILE_SELECTION.busy) return;
-    const row = event.target.closest(FILE_SELECTION_ROW);
     if (!row && event.target !== document.body) return;
     const key = event.key;
+    if (key === "Enter" && row) { event.preventDefault(); openSelectionRow(row, event); return; }
     if (key === "Escape") { clearFileSelection(); return; }
     if (key === "Delete") { event.preventDefault(); runFileBatch(selectedFileItems()); return; }
     if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "a") {
@@ -210,15 +239,17 @@ function initFileSelection() {
     rows[index].scrollIntoView({ block: "nearest" });
   }, true);
   document.addEventListener("dblclick", (event) => {
-    if ((event.ctrlKey || event.metaKey || event.shiftKey) && event.target.closest(FILE_SELECTION_ROW)) {
-      event.preventDefault(); event.stopImmediatePropagation();
-    }
+    const row = event.target.closest(FILE_SELECTION_ROW);
+    if (!row?.closest(FILE_SELECTION_SCOPE) || event.target.closest("button, input, textarea, select")) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (event.ctrlKey || event.metaKey || event.shiftKey || FILE_SELECTION.busy) return;
+    if (matchMedia("(hover: hover) and (pointer: fine)").matches) openSelectionRow(row, event);
   }, true);
   document.addEventListener("dragstart", (event) => {
     const row = event.target.closest(FILE_SELECTION_ROW);
-    if (!row || !row.closest(".folder-content-list, .entry-list")) return;
+    if (!row || !row.closest(FILE_SELECTION_SCOPE)) return;
     if (FILE_SELECTION.busy) { event.preventDefault(); return; }
-    if (!FILE_SELECTION.keys.has(selectionItem(row).key) || FILE_SELECTION.scope !== row.closest(".folder-content-list, .entry-list")) selectFileRow(row);
+    if (!FILE_SELECTION.keys.has(selectionItem(row).key) || FILE_SELECTION.scope !== row.closest(FILE_SELECTION_SCOPE)) selectFileRow(row);
     const items = selectedFileItems();
     event.stopImmediatePropagation();
     event.dataTransfer.clearData();

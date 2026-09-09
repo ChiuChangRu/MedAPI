@@ -27,14 +27,14 @@ function selectionHarness() {
     addEventListener: (type, fn) => { handlers[type] = fn; },
     createElement: () => ({ remove() {} }),
   };
-  const context = vm.createContext({ document, console, CURRENT_FOLDER: { id: 7 }, FOLDERS: [{ id: 8, name: "Target" }],
+  const context = vm.createContext({ document, console, matchMedia: () => ({ matches: true }), CURRENT_FOLDER: { id: 7 }, FOLDERS: [{ id: 8, name: "Target" }],
     confirm: () => true, api: async (path, options) => { calls.push({ path, options }); },
     refreshFolderView: async () => {}, showToast: (message) => notices.push(message),
   });
   vm.runInContext(readFileSync(new URL("../fieldlog/public/file-selection.js", import.meta.url), "utf8"), context);
   context.initFileSelection();
   const keys = () => Array.from(context.selectedFileItems(), (item) => item.id);
-  const event = (target, extra = {}) => ({ target, preventDefault() {}, stopImmediatePropagation() {}, ...extra });
+  const event = (target, extra = {}) => ({ target, preventDefault() { this.prevented = true; }, stopImmediatePropagation() { this.stopped = true; }, ...extra });
   return { context, rows, handlers, calls, keys, event, notices, scope };
 }
 
@@ -135,4 +135,66 @@ test("stale single-file selection refuses deletion after a sibling or child was 
     assert.equal(db.sqlite.prepare("SELECT count(*) AS n FROM trash_items").get().n, 0);
     db.sqlite.close();
   }
+});
+
+
+test("desktop single click selects without opening; double click and Enter open exactly once", () => {
+  const h = selectionHarness();
+  const row = h.rows[0];
+  delete row.dataset.attId; row.dataset.id = "21";
+  row.classList.contains = (name) => name === "child-folder-card";
+  const opened = [];
+  h.context.openFolder = async (id) => { opened.push(id); };
+  const click = h.event(row);
+  h.handlers.click(click);
+  assert.equal(click.stopped, true);
+  assert.equal(click.prevented, true);
+  assert.deepEqual(opened, []);
+  assert.deepEqual(h.keys(), [21]);
+  h.handlers.dblclick(h.event(row));
+  assert.deepEqual(opened, [21]);
+  h.handlers.keydown(h.event(row, { key: "Enter" }));
+  assert.deepEqual(opened, [21, 21]);
+});
+
+test("Ctrl selects folders and files together without navigation; modifier double-click never opens", () => {
+  const h = selectionHarness();
+  const folder = h.rows[1];
+  delete folder.dataset.attId; folder.dataset.id = "21";
+  folder.classList.contains = (name) => name === "child-folder-card";
+  const opened = [];
+  h.context.openFolder = async (id) => { opened.push(id); };
+  h.handlers.click(h.event(h.rows[0], { ctrlKey: true }));
+  const click = h.event(folder, { ctrlKey: true });
+  h.handlers.click(click);
+  assert.equal(click.stopped, true);
+  assert.deepEqual(h.keys(), [1, 21]);
+  assert.deepEqual(Array.from(h.context.selectedFileItems(), (item) => item.type), ["attachment", "folder"]);
+  h.handlers.dblclick(h.event(folder, { ctrlKey: true }));
+  assert.deepEqual(opened, []);
+});
+
+test("touch single tap retains the existing opener", () => {
+  const h = selectionHarness();
+  h.context.matchMedia = () => ({ matches: false });
+  const click = h.event(h.rows[0]);
+  h.handlers.click(click);
+  assert.notEqual(click.stopped, true);
+});
+
+test("batch folder moves use parent_id and trash uses the recoverable folder route", async () => {
+  const h = selectionHarness();
+  const items = [{ key: "folder:21", type: "folder", id: 21, title: "Folder" }];
+  await h.context.runFileBatch(items, { id: 8, name: "Target" });
+  assert.equal(h.calls[0].path, "/folders/21");
+  assert.equal(h.calls[0].options.method, "PUT");
+  assert.deepEqual(JSON.parse(h.calls[0].options.body), { parent_id: 8 });
+  await h.context.runFileBatch(items);
+  assert.equal(h.calls[1].path, "/folders/21");
+  assert.equal(h.calls[1].options.method, "DELETE");
+  h.context.FOLDERS = [{ id: 21 }, { id: 22, parent_id: 21 }];
+  await h.context.runFileBatch(items, { id: 21, name: "Self" });
+  await h.context.runFileBatch(items, { id: 22, name: "Child" });
+  assert.equal(h.calls.length, 2);
+  assert.match(h.notices.at(-1), /不能把資料夾移到自己/);
 });

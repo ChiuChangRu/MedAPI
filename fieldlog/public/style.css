@@ -1901,3 +1901,12 @@ body:has(#login-overlay.open) .file-action-dock { display: none; }
 .folder-card-main { padding: 6px 8px; }
 .folder-drag { height: 34px; }
 .folder-work-section-body { gap: 3px; }
+
+/* v179: names inside the folder use regular weight in all view modes. */
+#folder-entries .folder-file-name,
+#folder-entries .entry-title,
+#folder-entries .child-folder-card > strong,
+#folder-entries .record-group-card > strong,
+#folder-children .child-folder-card > strong { font-weight: 400; }
+.file-selection-help { display: none; margin: 8px 0; color: var(--text-muted); font-size: 14px; }
+@media (hover: hover) and (pointer: fine) { .file-selection-help { display: block; } }
