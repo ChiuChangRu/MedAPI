@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "175";
+const APP_VERSION = "176";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -6273,6 +6273,165 @@ function finishPhoto() {
 // ================= 🎙 錄音（不開鏡頭；浮動控制列，拍照時才臨時開鏡頭預覽） =================
 let AUDIO = null;
 let AUDIO_STARTING = false;
+let AUDIO_TARGET_ENTRY = null;
+let AUDIO_SELECTED_MIC = null;
+let MIC_TEST_CANCEL = null;
+let MIC_TEST_URL = null;
+
+// v176：音軌在真正接上消費端後才檢查，不把「尚未啟動錄音器」當成裝置故障。
+async function probeMicReadiness(stream) {
+  let recorder = null;
+  let recorderError = null;
+  try {
+    recorder = new MediaRecorder(stream);
+    recorder.onerror = (event) => { recorderError = event.error || new Error("試錄失敗"); };
+    recorder.start();
+    const usable = await waitForTrackUsable(stream, AUDIO_MUTE_GRACE_MS);
+    const peak = await probeStreamPeak(stream);
+    const live = stream.getAudioTracks().some((track) => track.readyState === "live");
+    return { usable: live && !recorderError && (usable || peak > AUDIO_SIGNAL_FLOOR), peak };
+  } catch {
+    return { usable: false, peak: null };
+  } finally {
+    if (recorder && recorder.state !== "inactive") {
+      try { recorder.stop(); } catch {}
+    }
+  }
+}
+
+function setAudioPanel(state, message = "") {
+  const panel = $("audio-badge");
+  if (!panel) return;
+  panel.dataset.state = state;
+  panel.style.display = "flex";
+  const active = ["recording", "waiting", "saving"].includes(state);
+  const titles = { connecting: "正在連接麥克風", recording: "錄音中", waiting: "錄音中斷／等待收音", saving: "正在儲存錄音", failed: "未開始錄音", testing: "麥克風試錄中" };
+  $("audio-panel-title").textContent = titles[state] || "準備錄音";
+  $("audio-record-actions").hidden = !active;
+  $("audio-recovery").hidden = !["failed", "testing"].includes(state);
+  $("audio-panel-close").hidden = !["failed", "testing"].includes(state);
+  $("audio-stop-btn").disabled = state === "saving";
+  $("audio-test-btn").disabled = state === "testing";
+  $("audio-retry-btn").disabled = state === "testing";
+  $("audio-mic-select").disabled = state === "testing";
+  if (!active) {
+    $("audio-timer").textContent = "00:00";
+    $("audio-signal").textContent = state === "testing" ? "請說話，3 秒後可以播放" : "尚未開始計時";
+    $("audio-live-transcript").hidden = true;
+  }
+  if (state === "recording") $("audio-signal").textContent = "正在確認收音…";
+  setAudioStatus(message, state === "failed");
+}
+
+function refreshAudioPanel() {
+  if (!AUDIO) return;
+  const peak = readMicPeak();
+  const waiting = AUDIO.recorder?.state !== "recording" || AUDIO.__signalSuspended ||
+    AUDIO.stream.getAudioTracks().every((track) => track.readyState === "ended" || track.muted) ||
+    (AUDIO.deadSince && Date.now() - AUDIO.deadSince > 2500);
+  const state = AUDIO.ending ? "saving" : (waiting ? "waiting" : "recording");
+  const panel = $("audio-badge");
+  if (panel.dataset.state !== state) setAudioPanel(state, $("audio-status").textContent);
+  $("audio-signal").textContent = AUDIO.ending ? "正在完成存檔" : waiting ? "⚠ 目前未收到聲音，請勿當作正常錄音" :
+    peak === null ? "音量暫時無法量測，請留意收音" : peak > AUDIO_SIGNAL_FLOOR ? "● 正在收到聲音" : "目前安靜，請對麥克風說話";
+}
+
+async function loadMicChoices() {
+  const select = $("audio-mic-select");
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    select.replaceChildren(new Option("瀏覽器預設麥克風", ""));
+    devices.filter((d) => d.kind === "audioinput" && d.deviceId).forEach((d, i) => {
+      select.add(new Option(d.label || `麥克風 ${i + 1}`, d.deviceId));
+    });
+    select.value = AUDIO_SELECTED_MIC || "";
+    if (!select.value) AUDIO_SELECTED_MIC = null;
+  } catch { /* 權限不足時仍保留預設裝置選項 */ }
+}
+
+function clearMicTestPlayback() {
+  const player = $("audio-test-playback");
+  player.pause();
+  player.removeAttribute("src");
+  player.load();
+  player.hidden = true;
+  if (MIC_TEST_URL) URL.revokeObjectURL(MIC_TEST_URL);
+  MIC_TEST_URL = null;
+}
+
+function closeAudioPanel() {
+  if (AUDIO) return; // 正式錄音中不可把狀態提示藏掉
+  MIC_TEST_CANCEL?.();
+  clearMicTestPlayback();
+  $("audio-badge").style.display = "none";
+}
+
+// 直接錄瀏覽器交出的原始 stream，不以 muted／音量前置檢查擋住診斷短錄。
+// 短錄只保留在本頁，不建立記事、不上傳、不送轉錄。
+async function testSelectedMic() {
+  if (AUDIO || AUDIO_STARTING) return;
+  AUDIO_STARTING = true;
+  clearMicTestPlayback();
+  setAudioPanel("testing", "短錄中，請說一句話。完成後請按播放確認是否有聲音。");
+  let stream = null;
+  let recorder = null;
+  let cancelled = false;
+  let finishSample = null;
+  MIC_TEST_CANCEL = () => {
+    cancelled = true;
+    finishSample?.(new Error("試錄已取消"));
+    stopStream(stream);
+  };
+  try {
+    stream = await openMicStream(AUDIO_SELECTED_MIC, true);
+    if (cancelled) return;
+    const blob = await new Promise((resolve, reject) => {
+      const chunks = [];
+      let settled = false;
+      let stopTimer = 0;
+      let watchdog = 0;
+      finishSample = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(stopTimer);
+        clearTimeout(watchdog);
+        if (recorder) {
+          recorder.onstop = null;
+          recorder.onerror = null;
+          if (recorder.state !== "inactive") { try { recorder.stop(); } catch {} }
+        }
+        if (error) reject(error);
+        else resolve(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
+      };
+      try {
+        recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+        recorder.onerror = (event) => finishSample(event.error || new Error("瀏覽器試錄失敗"));
+        recorder.onstop = () => finishSample();
+        recorder.start();
+        stopTimer = setTimeout(() => {
+          try { if (recorder.state !== "inactive") recorder.stop(); }
+          catch (error) { finishSample(error); }
+        }, 3000);
+        watchdog = setTimeout(() => finishSample(new Error("瀏覽器未交出試錄檔案")), 5000);
+      } catch (error) { finishSample(error); }
+    });
+    if (cancelled) return;
+    if (!blob.size) throw new Error("試錄未產生音檔，請換一個麥克風再試");
+    MIC_TEST_URL = URL.createObjectURL(blob);
+    const player = $("audio-test-playback");
+    player.src = MIC_TEST_URL;
+    player.hidden = false;
+    setAudioPanel("failed", "試錄完成，尚未開始正式錄音。請按播放確認：有聲音後可按「重新開始錄音」；沒有聲音請換一個麥克風。");
+  } catch (err) {
+    if (!cancelled) setAudioPanel("failed", "短錄失敗：" + (err.message || err.name));
+  } finally {
+    stopStream(stream);
+    MIC_TEST_CANCEL = null;
+    AUDIO_STARTING = false;
+    if (!cancelled) loadMicChoices();
+  }
+}
 
 function setAudioStatus(text = "", interrupted = false) {
   const el = $("audio-status");
@@ -6401,24 +6560,27 @@ async function startAudio(entryId) {
   // 寧可在這裡花一秒鐘擋下來，也不要錄完 40 分鐘才發現整段是空的。
   let mic;
   AUDIO_STARTING = true;
+  AUDIO_TARGET_ENTRY = entryId;
+  if (MIC_TEST_URL) clearMicTestPlayback();
+  setAudioPanel("connecting", "請對麥克風說話，正在檢查收音…");
   try {
-    try { mic = await acquireLiveMic(null); }
-    catch (err) { showToast(audioStartErrorMessage(err)); return; }
+    try { mic = await acquireLiveMic(null, { deviceId: AUDIO_SELECTED_MIC }); }
+    catch (err) { setAudioPanel("failed", audioStartErrorMessage(err)); loadMicChoices(); return; }
     if (mic.silent && !confirm(
       "⚠️ 麥克風目前收不到任何聲音（音量是 0）。\n\n" +
-      "這台電腦上每一個收音裝置都試過了，全部都是靜音。常見原因：Windows 音效設定裡麥克風被靜音、筆電實體靜音鍵、或被其他程式（Teams／Line／Zoom）佔用。\n\n" +
+      "目前測試的收音裝置未測得聲音。常見原因：Windows 音效設定裡麥克風被靜音、筆電實體靜音鍵、或被其他程式（Teams／Line／Zoom）佔用。\n\n" +
       "按「確定」仍要開始錄音（很可能整段都是空的）；建議按「取消」先處理好麥克風再錄。"
-    )) { stopStream(mic.stream); return; }
+    )) { stopStream(mic.stream); setAudioPanel("failed", "未開始錄音：目前未測得聲音。請選擇麥克風並短錄播放確認。"); loadMicChoices(); return; }
     const stream = mic.stream;
     let ref;
     try { ref = await ensureEntryForCapture(entryId, "錄音"); }
-    catch (err) { stopStream(stream); showToast("無法建立紀錄：" + err.message); return; }
+    catch (err) { stopStream(stream); setAudioPanel("failed", "無法建立紀錄：" + err.message); return; }
     AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0, uploadedSegments: 0, pendingSegments: 0, emptySegments: 0 };
     initAudioGraph();
     watchAudioStream(stream);
     startAudioSegRecorder();
     startAudioMeter();
-    setAudioStatus();
+    setAudioPanel("recording");
     resetAudioLiveTranscript();
     $("audio-timer").textContent = "00:00";
     $("audio-badge").style.display = "flex";
@@ -6426,6 +6588,7 @@ async function startAudio(entryId) {
       if (!AUDIO || AUDIO.ending) return;
       $("audio-timer").textContent = fmtSecs(segOffset(AUDIO));
       checkMicSignal();
+      refreshAudioPanel();
       if (AUDIO.recorder.state === "recording" && Date.now() - AUDIO.segStartMs >= AUDIO_LIVE_SEG_SECONDS * 1000) {
         rotateAudioSegment();
       }
@@ -6447,15 +6610,14 @@ async function startAudio(entryId) {
       AUDIO = null;
     }
     stopStream(mic?.stream);
-    if ($("audio-badge")) $("audio-badge").style.display = "none";
-    showToast("錄音啟動失敗：" + (err.message || err.name));
+    setAudioPanel("failed", "錄音啟動失敗：" + (err.message || err.name));
   } finally {
     AUDIO_STARTING = false;
   }
 }
 
 function audioStartErrorMessage(err) {
-  if (err.name === "MicNotReadyError") return "麥克風已開啟，但尚未送出音訊；已重新連線仍無法喚醒。請檢查所選麥克風、實體靜音鍵及系統輸入設定。";
+  if (err.name === "MicNotReadyError") return "未開始錄音：瀏覽器已提供麥克風音軌，但收音檢查未通過。請在下方選擇麥克風，再按「短錄 3 秒」播放確認。";
   if (err.name === "NotAllowedError" || err.name === "SecurityError") return "麥克風存取被拒絕，請檢查網站與系統的麥克風權限。";
   if (err.name === "NotFoundError") return "找不到麥克風，請確認裝置已連接。";
   if (err.name === "NotReadableError") return "麥克風無法讀取，可能被其他程式佔用或裝置異常。";
@@ -6465,6 +6627,7 @@ function audioStartErrorMessage(err) {
 function stopAudio() {
   if (!AUDIO) return;
   AUDIO.ending = true;
+  setAudioPanel("saving", "正在儲存錄音，請稍候…");
   if (AUDIO.recorder && AUDIO.recorder.state !== "inactive") {
     AUDIO.recorder.stop(); // → onstop 走 ending 收尾路徑（會上傳最後一段）
   } else {
@@ -6599,7 +6762,7 @@ function micDeviceIdOf(stream) {
   try { return stream?.getAudioTracks()[0]?.getSettings?.().deviceId || null; } catch { return null; }
 }
 
-function openMicStream(deviceId, simple = false) {
+function openMicStream(deviceId, simple = true) {
   const audio = simple ? {} : AUDIO_CONSTRAINTS.audio;
   const constraints = deviceId
     ? { audio: { ...audio, deviceId: { exact: deviceId } } }
@@ -6613,7 +6776,8 @@ async function probeStreamPeak(stream, ms = AUDIO_PROBE_MS) {
   let ctx = null;
   try {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    await ctx.resume().catch(() => {});
+    await Promise.race([ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 800))]);
+    if (ctx.state !== "running") return null;
     const src = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
@@ -6652,7 +6816,7 @@ async function listMicDeviceIds() {
  * 裝置都試過、全部是靜音（此時仍回傳一條 stream，由呼叫端決定要不要照錄）。
  * 一條都開不起來時，把最後一個錯誤丟出去，讓呼叫端能顯示真正的原因（權限被拒等）。
  */
-async function acquireLiveMic(avoidDeviceId, { singlePass = false } = {}) {
+async function acquireLiveMic(avoidDeviceId, { singlePass = false, deviceId: selectedDeviceId = null } = {}) {
   const ids = (await listMicDeviceIds()).filter((id) => id !== "communications");
   // 實體裝置優先；"default" 會跟著 Windows 預設／通訊裝置跑，放後面；
   // 剛判定死掉的那一條排到最後（真的沒別的選擇時才回頭用它）。
@@ -6663,14 +6827,15 @@ async function acquireLiveMic(avoidDeviceId, { singlePass = false } = {}) {
     ...(avoidDeviceId ? [avoidDeviceId] : []),
   ])];
   if (!order.length) order.push(null); // 還沒授權、拿不到裝置清單：只能要系統預設
-  const candidates = singlePass ? order.slice(0, 1) : order;
+  const candidates = selectedDeviceId ? [selectedDeviceId] : (singlePass ? order.slice(0, 1) : order);
   let fallback = null;
   let lastErr = null;
   for (const deviceId of candidates) {
     let stream = null;
     try { stream = await openMicStream(deviceId); }
     catch (err) { lastErr = err; continue; }
-    if (!(await waitForTrackUsable(stream, AUDIO_MUTE_GRACE_MS))) {
+    let readiness = await probeMicReadiness(stream);
+    if (!readiness.usable) {
       stopStream(stream);
       // 已取得權限但音軌未就緒：釋放後以瀏覽器預設處理參數重試一次。
       // 背景恢復的 singlePass 不增加重試，以免長時間卡在背景。
@@ -6678,14 +6843,15 @@ async function acquireLiveMic(avoidDeviceId, { singlePass = false } = {}) {
         try { stream = await openMicStream(deviceId, true); }
         catch (err) { lastErr = err; continue; }
       }
-      if (singlePass || !(await waitForTrackUsable(stream, AUDIO_MUTE_GRACE_MS))) {
+      if (!singlePass) readiness = await probeMicReadiness(stream);
+      if (singlePass || !readiness.usable) {
         stopStream(stream);
         lastErr = new Error("麥克風音軌喚醒逾時");
         lastErr.name = "MicNotReadyError";
         continue;
       }
     }
-    const peak = await probeStreamPeak(stream);
+    const peak = readiness.peak;
     if (peak === null || peak > AUDIO_SIGNAL_FLOOR) {
       stopStream(fallback?.stream);
       return { stream, deviceId: micDeviceIdOf(stream), peak, silent: false };
@@ -6734,7 +6900,7 @@ function audioRecordStream() {
 
 // 這一瞬間的音量峰值（0–1）。null＝沒有收音圖可量
 function readMicPeak() {
-  if (!AUDIO || !AUDIO.analyser) return null;
+  if (!AUDIO || !AUDIO.analyser || AUDIO.audioCtx?.state !== "running") return null;
   const buf = new Float32Array(AUDIO.analyser.fftSize);
   AUDIO.analyser.getFloatTimeDomainData(buf);
   let peak = 0;
@@ -7223,6 +7389,10 @@ function init() {
   $("audio-photo-btn").onclick = openAudioPhotoPopup;
   $("audio-note-btn").onclick = () => addTimedNote(AUDIO);
   $("audio-stop-btn").onclick = stopAudio;
+  $("audio-retry-btn").onclick = () => startAudio(AUDIO_TARGET_ENTRY);
+  $("audio-test-btn").onclick = testSelectedMic;
+  $("audio-panel-close").onclick = closeAudioPanel;
+  $("audio-mic-select").onchange = () => { AUDIO_SELECTED_MIC = $("audio-mic-select").value || null; clearMicTestPlayback(); };
   $("audio-photo-cancel").onclick = closeAudioPhotoPopup;
   $("audio-photo-snap").onclick = audioPhotoSnap;
 

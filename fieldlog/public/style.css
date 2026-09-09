@@ -1771,3 +1771,41 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .stale-banner[hidden] { display: none; }
 .stale-banner strong { display: block; margin-bottom: 5px; }
 .stale-banner p { margin: 0 0 11px; font-size: 13px; line-height: 1.6; }
+
+/* v176：右下角固定藍框，從連接到存檔皆顯示真實狀態。 */
+.audio-badge {
+  right: 18px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 95;
+  width: min(370px, calc(100vw - 28px)); box-sizing: border-box;
+  max-height: calc(100dvh - 36px); overflow-y: auto;
+  flex-direction: column; align-items: stretch; gap: 12px;
+  padding: 16px; border: 2px solid #2563eb; border-radius: 14px;
+  background: #eff6ff; color: #172554; font-size: 14px;
+  box-shadow: 0 8px 28px #1e40af26;
+}
+.audio-panel-heading { display: flex; align-items: center; gap: 10px; }
+.audio-panel-heading strong { flex: 1; font-size: 17px; }
+.audio-panel-heading #audio-timer { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.audio-badge-dot { width: 10px; height: 10px; }
+.audio-badge:not([data-state="recording"]) .audio-badge-dot { background: #94a3b8; animation: none; transform: none !important; }
+.audio-badge[data-state="waiting"] .audio-badge-dot { background: #d97706; }
+.audio-signal { font-size: 13px; color: #1e40af; }
+.audio-panel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.audio-badge button {
+  width: auto; height: auto; min-height: 38px; padding: 7px 10px;
+  border-radius: 8px; background: #fff; border: 1px solid #bfdbfe;
+  color: #1e3a8a; font: inherit; font-size: 13px;
+}
+.audio-badge button:hover { background: #dbeafe; }
+.audio-badge button:disabled { opacity: .5; cursor: wait; }
+.audio-badge #audio-stop-btn { background: #2563eb; color: white; border-color: #2563eb; font-weight: 700; }
+.audio-badge .audio-status { position: static; width: auto; max-width: none; box-shadow: none; margin: 0; }
+.audio-badge .audio-live-transcript { width: auto; flex: auto; color: #172554; border-color: #bfdbfe; }
+.audio-badge .audio-live-transcript strong, .audio-badge .audio-live-transcript time { color: #1d4ed8; }
+.audio-panel-recovery { display: grid; gap: 8px; }
+.audio-panel-recovery select { width: 100%; min-width: 0; padding: 8px; font: inherit; border: 1px solid #93c5fd; border-radius: 7px; background: white; }
+.audio-test-help { margin: 0; font-size: 12px; color: #475569; }
+.audio-panel-recovery audio { width: 100%; }
+.audio-badge [hidden] { display: none !important; }
+.audio-badge button:focus-visible, .audio-badge select:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
+@media (max-width: 600px) { .audio-badge { right: 14px; padding: 12px; } }
+@media (prefers-reduced-motion: reduce) { .audio-badge-dot { animation: none; transition: none; } }

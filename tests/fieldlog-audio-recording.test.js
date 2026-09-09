@@ -318,7 +318,7 @@ test("取麥克風要逐一驗收實體裝置，避開殭屍裝置且只採用�
   const run = new Function(
     "listMicDeviceIds", "openMicStream", "waitForTrackUsable", "probeStreamPeak",
     "stopStream", "AUDIO_MUTE_GRACE_MS", "AUDIO_SIGNAL_FLOOR",
-    `${src}; return acquireLiveMic;`
+    `async function probeMicReadiness(stream) { return { usable: await waitForTrackUsable(stream), peak: await probeStreamPeak(stream) }; } ${src}; return acquireLiveMic;`
   )(
     async () => ["default", "communications", "dead-mic", "good-mic"],
     async (deviceId) => { opened.push(deviceId); return mkStream(deviceId); },
@@ -340,7 +340,7 @@ test("取麥克風要逐一驗收實體裝置，避開殭屍裝置且只採用�
   const allDead = new Function(
     "listMicDeviceIds", "openMicStream", "waitForTrackUsable", "probeStreamPeak",
     "stopStream", "AUDIO_MUTE_GRACE_MS", "AUDIO_SIGNAL_FLOOR",
-    `${src}; return acquireLiveMic;`
+    `async function probeMicReadiness(stream) { return { usable: await waitForTrackUsable(stream), peak: await probeStreamPeak(stream) }; } ${src}; return acquireLiveMic;`
   )(
     async () => ["default", "communications", "dead-mic", "good-mic"],
     async (deviceId) => { opened.push(deviceId); return mkStream(deviceId); },
