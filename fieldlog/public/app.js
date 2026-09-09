@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "174";
+const APP_VERSION = "175";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -6272,6 +6272,7 @@ function finishPhoto() {
 
 // ================= 🎙 錄音（不開鏡頭；浮動控制列，拍照時才臨時開鏡頭預覽） =================
 let AUDIO = null;
+let AUDIO_STARTING = false;
 
 function setAudioStatus(text = "", interrupted = false) {
   const el = $("audio-status");
@@ -6394,39 +6395,71 @@ function rotateAudioSegment() {
 }
 
 async function startAudio(entryId) {
-  if (AUDIO) return;
+  if (AUDIO || AUDIO_STARTING) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { showToast("這個瀏覽器不支援錄音"); return; }
   // 開錄前先驗聲：真實麥克風連安靜房間都有底噪，量到精確全零就是收不到聲音。
   // 寧可在這裡花一秒鐘擋下來，也不要錄完 40 分鐘才發現整段是空的。
   let mic;
-  try { mic = await acquireLiveMic(null); }
-  catch (err) { showToast("無法開啟麥克風：" + err.message); return; }
-  if (mic.silent && !confirm(
-    "⚠️ 麥克風目前收不到任何聲音（音量是 0）。\n\n" +
-    "這台電腦上每一個收音裝置都試過了，全部都是靜音。常見原因：Windows 音效設定裡麥克風被靜音、筆電實體靜音鍵、或被其他程式（Teams／Line／Zoom）佔用。\n\n" +
-    "按「確定」仍要開始錄音（很可能整段都是空的）；建議按「取消」先處理好麥克風再錄。"
-  )) { stopStream(mic.stream); return; }
-  const stream = mic.stream;
-  let ref;
-  try { ref = await ensureEntryForCapture(entryId, "錄音"); }
-  catch (err) { stopStream(stream); showToast("無法建立紀錄：" + err.message); return; }
-  AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0, uploadedSegments: 0, pendingSegments: 0, emptySegments: 0 };
-  initAudioGraph();
-  watchAudioStream(stream);
-  startAudioSegRecorder();
-  startAudioMeter();
-  setAudioStatus();
-  resetAudioLiveTranscript();
-  $("audio-timer").textContent = "00:00";
-  $("audio-badge").style.display = "flex";
-  AUDIO.timerId = setInterval(() => {
-    if (!AUDIO || AUDIO.ending) return;
-    $("audio-timer").textContent = fmtSecs(segOffset(AUDIO));
-    checkMicSignal();
-    if (AUDIO.recorder.state === "recording" && Date.now() - AUDIO.segStartMs >= AUDIO_LIVE_SEG_SECONDS * 1000) {
-      rotateAudioSegment();
+  AUDIO_STARTING = true;
+  try {
+    try { mic = await acquireLiveMic(null); }
+    catch (err) { showToast(audioStartErrorMessage(err)); return; }
+    if (mic.silent && !confirm(
+      "⚠️ 麥克風目前收不到任何聲音（音量是 0）。\n\n" +
+      "這台電腦上每一個收音裝置都試過了，全部都是靜音。常見原因：Windows 音效設定裡麥克風被靜音、筆電實體靜音鍵、或被其他程式（Teams／Line／Zoom）佔用。\n\n" +
+      "按「確定」仍要開始錄音（很可能整段都是空的）；建議按「取消」先處理好麥克風再錄。"
+    )) { stopStream(mic.stream); return; }
+    const stream = mic.stream;
+    let ref;
+    try { ref = await ensureEntryForCapture(entryId, "錄音"); }
+    catch (err) { stopStream(stream); showToast("無法建立紀錄：" + err.message); return; }
+    AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0, uploadedSegments: 0, pendingSegments: 0, emptySegments: 0 };
+    initAudioGraph();
+    watchAudioStream(stream);
+    startAudioSegRecorder();
+    startAudioMeter();
+    setAudioStatus();
+    resetAudioLiveTranscript();
+    $("audio-timer").textContent = "00:00";
+    $("audio-badge").style.display = "flex";
+    AUDIO.timerId = setInterval(() => {
+      if (!AUDIO || AUDIO.ending) return;
+      $("audio-timer").textContent = fmtSecs(segOffset(AUDIO));
+      checkMicSignal();
+      if (AUDIO.recorder.state === "recording" && Date.now() - AUDIO.segStartMs >= AUDIO_LIVE_SEG_SECONDS * 1000) {
+        rotateAudioSegment();
+      }
+    }, 1000);
+  } catch (err) {
+    // 啟動中任何步驟失敗都釋放裝置，下一次點擊才能重新開始。
+    const session = AUDIO;
+    if (session) {
+      session.ending = true;
+      clearInterval(session.timerId);
+      clearInterval(session.meterTimer);
+      clearTimeout(session.recheckTimer);
+      if (session.recorder?.state === "recording") {
+        session.recorder.onstop = null;
+        try { session.recorder.stop(); } catch {}
+      }
+      try { session.micSource?.disconnect(); } catch {}
+      try { session.audioCtx?.close()?.catch(() => {}); } catch {}
+      AUDIO = null;
     }
-  }, 1000);
+    stopStream(mic?.stream);
+    if ($("audio-badge")) $("audio-badge").style.display = "none";
+    showToast("錄音啟動失敗：" + (err.message || err.name));
+  } finally {
+    AUDIO_STARTING = false;
+  }
+}
+
+function audioStartErrorMessage(err) {
+  if (err.name === "MicNotReadyError") return "麥克風已開啟，但尚未送出音訊；已重新連線仍無法喚醒。請檢查所選麥克風、實體靜音鍵及系統輸入設定。";
+  if (err.name === "NotAllowedError" || err.name === "SecurityError") return "麥克風存取被拒絕，請檢查網站與系統的麥克風權限。";
+  if (err.name === "NotFoundError") return "找不到麥克風，請確認裝置已連接。";
+  if (err.name === "NotReadableError") return "麥克風無法讀取，可能被其他程式佔用或裝置異常。";
+  return "無法開啟麥克風：" + (err.message || err.name || "未知錯誤");
 }
 
 function stopAudio() {
@@ -6566,10 +6599,11 @@ function micDeviceIdOf(stream) {
   try { return stream?.getAudioTracks()[0]?.getSettings?.().deviceId || null; } catch { return null; }
 }
 
-function openMicStream(deviceId) {
+function openMicStream(deviceId, simple = false) {
+  const audio = simple ? {} : AUDIO_CONSTRAINTS.audio;
   const constraints = deviceId
-    ? { audio: { ...AUDIO_CONSTRAINTS.audio, deviceId: { exact: deviceId } } }
-    : AUDIO_CONSTRAINTS;
+    ? { audio: { ...audio, deviceId: { exact: deviceId } } }
+    : (simple ? { audio: true } : AUDIO_CONSTRAINTS);
   return navigator.mediaDevices.getUserMedia(constraints);
 }
 
@@ -6623,6 +6657,7 @@ async function acquireLiveMic(avoidDeviceId, { singlePass = false } = {}) {
   // 實體裝置優先；"default" 會跟著 Windows 預設／通訊裝置跑，放後面；
   // 剛判定死掉的那一條排到最後（真的沒別的選擇時才回頭用它）。
   const order = [...new Set([
+    ...(!avoidDeviceId ? [null] : []), // 開錄先尊重瀏覽器選定的裝置；恢復時才避開故障來源
     ...ids.filter((id) => id !== "default" && id !== avoidDeviceId),
     ...ids.filter((id) => id === "default" && id !== avoidDeviceId),
     ...(avoidDeviceId ? [avoidDeviceId] : []),
@@ -6637,8 +6672,18 @@ async function acquireLiveMic(avoidDeviceId, { singlePass = false } = {}) {
     catch (err) { lastErr = err; continue; }
     if (!(await waitForTrackUsable(stream, AUDIO_MUTE_GRACE_MS))) {
       stopStream(stream);
-      lastErr = new Error("麥克風音軌喚醒逾時");
-      continue;
+      // 已取得權限但音軌未就緒：釋放後以瀏覽器預設處理參數重試一次。
+      // 背景恢復的 singlePass 不增加重試，以免長時間卡在背景。
+      if (!singlePass) {
+        try { stream = await openMicStream(deviceId, true); }
+        catch (err) { lastErr = err; continue; }
+      }
+      if (singlePass || !(await waitForTrackUsable(stream, AUDIO_MUTE_GRACE_MS))) {
+        stopStream(stream);
+        lastErr = new Error("麥克風音軌喚醒逾時");
+        lastErr.name = "MicNotReadyError";
+        continue;
+      }
     }
     const peak = await probeStreamPeak(stream);
     if (peak === null || peak > AUDIO_SIGNAL_FLOOR) {
