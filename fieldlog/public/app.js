@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "177";
+const APP_VERSION = "178";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -7270,6 +7270,7 @@ function init() {
   $("desktop-home-link").onclick = () => backHome(true);
   $("desktop-new-folder").onclick = newFolder;
   $("desktop-trash").onclick = openTrash;
+  $("btn-deleted-items").onclick = openTrash;
   // 桌機左欄的垃圾桶本身就是固定可見的目標，不必再把資料夾拖到畫面底部的
   // 浮動垃圾區。實際刪除仍交給 deleteFolder()，保留確認與 60 天還原機制。
   $("desktop-trash").ondragover = (event) => {
