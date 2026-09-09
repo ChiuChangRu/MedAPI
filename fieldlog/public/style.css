@@ -1809,3 +1809,90 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .audio-badge button:focus-visible, .audio-badge select:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
 @media (max-width: 600px) { .audio-badge { right: 14px; padding: 12px; } }
 @media (prefers-reduced-motion: reduce) { .audio-badge-dot { animation: none; transition: none; } }
+
+/* v177: one viewport dock, independent of either scrolling sidebar. */
+.file-action-dock {
+  position: fixed; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 45;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  max-width: calc(100vw - 24px); pointer-events: none;
+}
+.file-action-dock > * { pointer-events: auto; }
+#desktop-trash.fixed-trash {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; width: 100px; min-height: 88px; padding: 8px 12px;
+  border: 2px solid #cbd5e1; border-radius: 16px; background: #fff;
+  box-shadow: 0 4px 16px #0f172a26; color: #334155; font: inherit; font-size: 14px; cursor: pointer;
+}
+.fixed-trash-icon { font-size: 38px; line-height: 1.15; }
+#desktop-trash-count:not(:empty) {
+  position: absolute; top: -6px; right: -6px; min-width: 24px; padding: 3px 6px;
+  border-radius: 12px; background: #475569; color: white;
+}
+.file-selection-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #94a3b8; border-radius: 10px; background: white; box-shadow: 0 4px 16px #0f172a26; white-space: nowrap; font-size: 14px; }
+.file-selected { background: #dbeafe !important; box-shadow: inset 0 0 0 2px #2563eb !important; }
+[role="option"]:focus-visible { outline: 2px solid #1d4ed8; outline-offset: -2px; }
+[role="option"] { user-select: none; scroll-margin-bottom: 170px; }
+.file-batch-dragging { opacity: .55; }
+.file-batch-target { outline: 3px solid #2563eb !important; outline-offset: -2px; background: #dbeafe !important; }
+#desktop-trash.file-batch-target, #desktop-trash.trash-drop-target { outline: 3px solid #dc2626 !important; background: #fee2e2 !important; color: #b91c1c; }
+#file-drag-badge { position: fixed; left: -1000px; top: 0; padding: 12px 20px; border-radius: 10px; color: white; background: #1d4ed8; font-size: 18px; }
+.container { padding-bottom: 180px; }
+.desktop-explorer-nav { padding-bottom: 120px; }
+/* The old drag-only targets occupied the exact same drop location. */
+.folder-trash-zone { display: none !important; }
+.entry-new-folder-zone { left: auto; right: 16px; transform: translateY(120px); }
+.entry-dragging .entry-new-folder-zone { transform: translateY(0); }
+body:has(#login-overlay.open) .file-action-dock { display: none; }
+@media (max-width: 1000px) {
+  .audio-badge { bottom: calc(180px + env(safe-area-inset-bottom)); max-height: calc(100dvh - 200px); }
+}
+@media (max-width: 480px) {
+  .file-selection-bar { gap: 4px; padding: 6px; }
+  .file-selection-bar .btn { padding: 5px 7px; }
+  #desktop-trash.fixed-trash { width: 82px; min-height: 74px; }
+  .fixed-trash-icon { font-size: 32px; }
+}
+
+/* Compact list/detail rows: icon, name, metadata and actions share one line. */
+.folder-content-list:not(.grid-view) > .child-folder-card,
+.child-folder-list.list-view > .child-folder-card {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
+  min-height: 42px; padding: 4px 8px;
+}
+.folder-content-list:not(.grid-view) > .child-folder-card > span,
+.child-folder-list.list-view > .child-folder-card > span { flex: none; font-size: 26px; }
+.folder-content-list:not(.grid-view) > .child-folder-card > strong,
+.child-folder-list.list-view > .child-folder-card > strong { flex: 0 1 auto; max-width: 45%; min-width: 0; font-size: 16px; }
+.folder-content-list:not(.grid-view) > .child-folder-card > small,
+.child-folder-list.list-view > .child-folder-card > small {
+  display: block; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;
+}
+.folder-content-list:not(.grid-view) .child-folder-edit,
+.folder-content-list:not(.grid-view) .child-folder-move,
+.child-folder-list.list-view .child-folder-edit,
+.child-folder-list.list-view .child-folder-move { display: block; position: static; flex: none; width: 28px; height: 32px; padding: 3px; }
+.folder-content-list:not(.grid-view) .child-folder-move { order: 3; }
+.folder-content-list:not(.grid-view) .child-folder-edit { order: 4; }
+.folder-content-list.details-view > .folder-file-row {
+  min-height: 42px; padding: 4px 8px; grid-template-columns: 24px minmax(0, 1fr) auto 32px 32px;
+  grid-template-areas: "icon name meta delete manage"; gap: 8px;
+}
+.folder-content-list.details-view > .folder-file-row .folder-file-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.folder-content-list.details-view > .folder-file-row .folder-file-delete,
+.folder-content-list.details-view > .folder-file-row .folder-file-manage { width: 32px; height: 32px; }
+.folder-content-list:not(.grid-view) > .record-group-card {
+  display: flex; flex-wrap: nowrap; gap: 8px; min-height: 42px; padding: 4px 100px 4px 34px;
+}
+.folder-content-list:not(.grid-view) > .record-group-card > span { flex: none; font-size: 24px; }
+.folder-content-list:not(.grid-view) > .record-group-card > strong { min-width: 0; flex: 1; }
+.folder-content-list:not(.grid-view) > .record-group-card > small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 35%; }
+@media (min-width: 720px) {
+  .folder-content-list.details-view > .entry-row { display: flex; flex-wrap: nowrap; align-items: center; min-height: 42px; padding: 4px 8px; gap: 8px; }
+  .folder-content-list.details-view > .entry-row .entry-main { min-width: 0; flex: 1; }
+  .folder-content-list.details-view > .entry-row .entry-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .folder-content-list.details-view > .entry-row .entry-secondary { flex: 0 1 auto; min-width: 0; max-width: 30%; white-space: nowrap; overflow: hidden; }
+}
+.folder-card-main { padding: 6px 8px; }
+.folder-drag { height: 34px; }
+.folder-work-section-body { gap: 3px; }

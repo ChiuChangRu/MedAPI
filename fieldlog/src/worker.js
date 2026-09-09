@@ -74,6 +74,7 @@ import {
   permanentlyDeleteTrashItem,
   purgeExpiredTrash,
   restoreTrashItem,
+  trashStandaloneFile,
 } from "./lib/trash.js";
 // 全文搜尋的比對邏輯（斷詞／同義詞展開／簡繁摺疊）跟 medapi-mcp 的
 // search_fieldlog 共用同一份，不重寫第二套——mcp 是讀 D1 的「智慧查詢層」，
@@ -131,7 +132,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "176";
+const UI_VERSION = "177";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -2482,6 +2483,12 @@ async function handleApi(request, env, url, identity = {}) {
   }
 
   // ---- 單一檔案的操作（搬移／附屬記事／檔名整理／醫材分類）----
+  const attTrashMatch = path.match(/^\/attachments\/(\d+)\/trash$/);
+  if (attTrashMatch && method === "POST") {
+    const result = await trashStandaloneFile(db, Number(attTrashMatch[1]), now());
+    if (result.ok) await logHistory(db, result.entry_id, null, "移到垃圾桶", "檔案及附屬內容；保留 60 天");
+    return json(result, result.status || 200);
+  }
   const attMoveMatch = path.match(/^\/attachments\/(\d+)\/move$/);
   if (attMoveMatch && method === "POST") {
     const body = await request.json().catch(() => ({}));

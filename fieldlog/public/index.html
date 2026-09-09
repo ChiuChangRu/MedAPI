@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=176" />
-<link rel="stylesheet" href="home.css?v=176" />
+<link rel="stylesheet" href="style.css?v=177" />
+<link rel="stylesheet" href="home.css?v=177" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -32,10 +32,21 @@
   <div class="desktop-folder-tree" id="desktop-folder-tree"></div>
   <button class="desktop-shortcut desktop-new-folder" id="desktop-new-folder" type="button">＋ <span>新增資料夾</span></button>
   <div class="desktop-nav-spacer"></div>
-  <button class="desktop-shortcut" id="desktop-trash" type="button">🗑 <span>垃圾桶</span><small id="desktop-trash-count"></small></button>
   <!-- 拖曳調整側欄寬度，見 app.js 的 initDesktopSidebarResize() -->
   <div class="desktop-explorer-resize" id="desktop-explorer-resize" role="separator" aria-orientation="vertical" aria-label="調整側欄寬度" tabindex="0"></div>
 </aside>
+<div class="file-action-dock">
+  <div id="file-selection-bar" class="file-selection-bar" hidden>
+    <span id="file-selection-count" role="status" aria-live="polite"></span>
+    <button id="file-selection-move" class="btn small" type="button">移動</button>
+    <button id="file-selection-trash" class="btn small danger" type="button">刪除</button>
+    <button id="file-selection-clear" class="btn small ghost" type="button">取消選取</button>
+  </div>
+  <button id="desktop-trash" class="fixed-trash" type="button" title="拖到這裡刪除；未選取檔案時點擊可開啟垃圾桶">
+    <span class="fixed-trash-icon" aria-hidden="true">🗑️</span>
+    <span id="desktop-trash-label">垃圾桶</span><small id="desktop-trash-count"></small>
+  </button>
+</div>
 <button class="desktop-sidebar-open" id="desktop-sidebar-open" type="button"
         aria-label="展開資料夾側欄" aria-controls="desktop-explorer-nav"
         aria-expanded="true" title="展開左欄">▶</button>
@@ -43,7 +54,7 @@
   <div id="view-home">
     <header class="home-app-head">
       <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      <a class="head-link" href="help.html?v=176">📖 使用說明</a>
+      <a class="head-link" href="help.html?v=177">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
@@ -519,12 +530,13 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=176"></script>
+<script src="pdf-editor.js?v=177"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=176"></script>
+<script src="richtext-editor.js?v=177"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
-<script src="app.js?v=176"></script>
+<script src="file-selection.js?v=177"></script>
+<script src="app.js?v=177"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

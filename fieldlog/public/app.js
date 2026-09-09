@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "176";
+const APP_VERSION = "177";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1569,6 +1569,7 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
 }
 
 function bindEntryRows(wrap) {
+  prepareFileSelection(wrap);
   wrap.querySelectorAll(".entry-row").forEach((el) => {
     el.onclick = () => {
       const entryId = Number(el.dataset.id);
@@ -2203,6 +2204,7 @@ function syncFolderSortButtons() {
 
 // ---------- 資料夾內頁 ----------
 async function openFolder(id) {
+  clearFileSelection();
   CURRENT_FOLDER = FOLDERS.find((f) => f.id === id);
   if (!CURRENT_FOLDER) return;
   // 從搜尋或右欄直接開啟深層資料夾時，左欄同步展開所有祖先並取消該工作分類收合。
@@ -2310,6 +2312,7 @@ function recordGroupCardHtml(e, atts) {
 }
 
 function bindRecordGroupCards() {
+  prepareFileSelection($("folder-entries"));
   document.querySelectorAll(".record-group-card[data-id]").forEach((card) => {
     card.onclick = (ev) => {
       if (ev.target.closest(".record-group-del") || ev.target.closest(".record-group-move") || ev.target.closest(".record-group-rename") || ev.target.closest(".record-group-manage") || ev.target.closest(".record-group-drag")) return;
@@ -2456,6 +2459,7 @@ async function removeOneFile(attachmentId, filename, closeDetail) {
 }
 
 function bindFileRows() {
+  prepareFileSelection($("folder-entries"));
   document.querySelectorAll(".folder-file-row[data-att-id]").forEach((row) => {
     row.onclick = (event) => {
       if (event.target.closest("button") || !PREVIEW_ENABLED || !matchMedia("(min-width: 1000px)").matches) return;
@@ -2486,7 +2490,7 @@ function bindFileRows() {
       deleteButton.onclick = (event) => {
         event.preventDefault();
         event.stopPropagation();
-        removeOneFile(Number(deleteButton.dataset.attId), row.dataset.filename || "這份檔案", false)
+        runFileBatch([selectionItem(row)])
           .catch((error) => showToast("刪除失敗：" + error.message));
       };
     }
@@ -3630,6 +3634,7 @@ async function openTrash() {
 }
 
 async function openPendingFromDesktop() {
+  clearFileSelection();
   return withViewLoading("正在載入待分類…", async () => {
     await Promise.all([loadFolders(), loadRecent()]);
     $("desktop-pending")?.classList.add("active");
@@ -3643,6 +3648,7 @@ async function openPendingFromDesktop() {
 }
 
 async function backHome(forceHome = false) {
+  clearFileSelection();
   if (!forceHome && CURRENT_FOLDER?.parent_id) return openFolder(CURRENT_FOLDER.parent_id);
   return withViewLoading("正在載入首頁…", async () => {
     await Promise.all([loadFolders(), loadRecent()]);
@@ -7197,6 +7203,7 @@ function exportFolder() {
 
 // ---------- init ----------
 function init() {
+  initFileSelection();
   // 沒接住的檔案拖放，瀏覽器預設行為是直接開啟該檔案、整頁跳走——不管拖去哪
   // 都先擋掉這個預設行為，實際上傳邏輯交給各自的 setupFileDropZone。
   window.addEventListener("dragover", (ev) => {

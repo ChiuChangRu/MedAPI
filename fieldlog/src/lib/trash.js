@@ -93,6 +93,30 @@ export async function moveEntryTreeToTrash(db, entry, timestamp) {
   return { entry_count: entryIds.length };
 }
 
+// Explorer file rows represent one primary attachment and its associated entry.
+// Guard the shape again inside the transaction: a stale tab must never trash new siblings.
+export async function trashStandaloneFile(db, attachmentId, timestamp) {
+  const attachment = await db.prepare(
+    `SELECT a.id, a.entry_id FROM attachments a JOIN entries e ON e.id = a.entry_id
+     WHERE a.id = ? AND a.source_pdf_id IS NULL AND ${active("e")}`
+  ).bind(attachmentId).first();
+  if (!attachment) return { error: "找不到檔案", status: 404 };
+  const results = await db.batch([
+    db.prepare(`UPDATE entries SET deleted_at = ?, updated_at = ?
+      WHERE id = ? AND ${active()}
+      AND EXISTS (SELECT 1 FROM attachments WHERE id = ? AND entry_id = entries.id AND source_pdf_id IS NULL)
+      AND (SELECT COUNT(*) FROM attachments WHERE entry_id = entries.id AND source_pdf_id IS NULL) = 1
+      AND NOT EXISTS (SELECT 1 FROM entries child WHERE child.parent_entry_id = entries.id AND ${active("child")})`
+    ).bind(timestamp, timestamp, attachment.entry_id, attachmentId),
+    db.prepare(`INSERT INTO trash_items (item_type, item_id, title, deleted_at, purge_after, state)
+      SELECT 'entry', id, title, deleted_at, ?, 'trashed' FROM entries WHERE id = ? AND deleted_at = ?
+      ON CONFLICT(item_type, item_id) DO NOTHING`
+    ).bind(trashPurgeAfter(timestamp), attachment.entry_id, timestamp),
+  ]);
+  if (!Number(results[0]?.meta?.changes)) return { error: "檔案內容已變動，請重新整理後選取資料包", status: 409 };
+  return { ok: true, trashed: true, entry_id: attachment.entry_id };
+}
+
 async function resolveTree(db, item) {
   if (item.item_type === "folder") {
     const folderIds = await folderSubtreeIds(db, item.item_id, true);
