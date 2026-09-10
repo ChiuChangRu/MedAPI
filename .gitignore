@@ -5,3 +5,6 @@ app/data/inquiries.db
 .wrangler/
 node_modules/
 .dev.vars
+
+# Generated from the pinned npm package by build:preview
+fieldlog/public/vendor/

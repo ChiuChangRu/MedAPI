@@ -7,6 +7,8 @@ on:
     paths:
       - "fieldlog/**"
       - ".github/workflows/deploy-fieldlog.yml"
+      - "package.json"
+      - "package-lock.json"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +23,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build self-hosted visual preview assets
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:preview
+
+      - name: Verify preview and inspector interactions
+        run: node --test tests/fieldlog-pptx-preview-v182.test.js tests/fieldlog-inspector-v181.test.js tests/fieldlog-multiselect-v177.test.js tests/fieldlog-file-preview-v140.test.js
 
       # 錄音 runtime hardening 會在 app.js init() 後載入，修正 silent stream、
       # 0/空音訊段與診斷訊息洗版。app.js v170 本身已有正確的 iOS 背景策略，
