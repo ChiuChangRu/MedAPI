@@ -33,7 +33,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund && npm run build:preview
 
       - name: Verify preview and inspector interactions
-        run: node --test tests/fieldlog-pptx-preview-v182.test.js tests/fieldlog-inspector-v181.test.js tests/fieldlog-multiselect-v177.test.js tests/fieldlog-file-preview-v140.test.js
+        run: node --test tests/fieldlog-pptx-preview-v182.test.js tests/fieldlog-inspector-v181.test.js tests/fieldlog-multiselect-v177.test.js tests/fieldlog-file-preview-v140.test.js tests/fieldlog-url-import-v184.test.js tests/fieldlog-folder-category-ui.test.js
 
       # 錄音 runtime hardening 會在 app.js init() 後載入，修正 silent stream、
       # 0/空音訊段與診斷訊息洗版。app.js v170 本身已有正確的 iOS 背景策略，

@@ -26,6 +26,8 @@
       "/wiki.html", "/patrol.html"
     ]
   },
+  // 公開網頁轉 PDF；PDF 網址本身則直接下載，不會消耗 Browser Run 時數。
+  "browser": { "binding": "BROWSER" },
   "d1_databases": [
     {
       "binding": "DB",

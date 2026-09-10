@@ -44,7 +44,7 @@ test("compareFolders：category 排序優先於 status／type，且 sort_order �
   assert.ok(sortOrderIdx > statusIdx, "sort_order 要在 status 之後、type 之前納入比較");
 });
 
-test("renderFolders 套用 category 底色（不重複掛文字徽章）；renderChildFolders 沒有底色可借，兩者都掛", async () => {
+test("資料夾卡片沿用 category 底色，但不再重複顯示分類文字", async () => {
   const app = await read("../fieldlog/public/app.js");
   // renderFolders() 2026-08-09 起要跟樹狀縮排的 margin-left 合併成同一個
   // style 屬性（同一個元素兩個 style 屬性時瀏覽器只認第一個，這正是樹狀
@@ -57,7 +57,8 @@ test("renderFolders 套用 category 底色（不重複掛文字徽章）；rende
   assert.doesNotMatch(homeRow, /folderCategoryChipHtml\(f\)/);
   const renderChild = app.match(/function childFolderHtml\(f\)[\s\S]*?\n\}/)[0];
   assert.match(renderChild, /folderCategoryStyle\(f\)/);
-  assert.match(renderChild, /folderCategoryChipHtml\(f\)/);
+  assert.doesNotMatch(renderChild, /folderCategoryChipHtml\(f\)|entry_count|folder-level-chip/);
+  assert.match(renderChild, /<strong title="\$\{esc\(f\.name\)\}">\$\{esc\(f\.name\)\}<\/strong>/);
 });
 
 test("folderCategoryChipHtml／folderCategoryBg 對未分類與 misc 都不上色，避免每張卡片都掛暫存徽章", async () => {

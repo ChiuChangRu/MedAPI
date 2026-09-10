@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "183";
+const APP_VERSION = "184";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2080,7 +2080,7 @@ function renderChildFolders(parentId) {
 
 function childFolderHtml(f) {
   return `<div class="child-folder-card explorer-item" draggable="true" data-id="${f.id}"${folderCategoryStyle(f)}>
-    <span>📁</span><strong>${esc(f.name)}</strong><small>${folderCategoryChipHtml(f)}${esc(f.type)}<span class="folder-level-chip">第${folderDepthOf(f)}層</span>｜${f.entry_count} 筆${f.child_count ? `｜${f.child_count} 個子資料夾` : ""}</small>
+    <span>📁</span><strong title="${esc(f.name)}">${esc(f.name)}</strong>
     <button class="child-folder-edit" type="button" data-id="${f.id}" title="編輯資料夾名稱／類型" aria-label="編輯${esc(f.name)}資料夾">✏️</button>
     <button class="child-folder-move" type="button" data-id="${f.id}" title="把這個子資料夾搬到別的地方" aria-label="移動${esc(f.name)}資料夾">📂</button>
   </div>`;
@@ -4232,6 +4232,84 @@ async function uploadFilesToFolder(files) {
     button: $("btn-folder-upload-file"),
     destination: `「${CURRENT_FOLDER.name}」`,
   });
+}
+
+let URL_IMPORT_BUSY = false;
+
+function openUrlImport() {
+  if (!CURRENT_FOLDER) {
+    showToast("請先進入要存放 PDF 的資料夾");
+    return;
+  }
+  const overlay = $("url-import-overlay");
+  $("url-import-destination").textContent = `存入「${CURRENT_FOLDER.name}」`;
+  $("url-import-input").value = "";
+  $("url-import-name").value = "";
+  $("url-import-status").textContent = "";
+  $("url-import-status").classList.remove("error");
+  overlay.classList.add("open");
+  overlay.setAttribute("aria-hidden", "false");
+  requestAnimationFrame(() => $("url-import-input").focus());
+}
+
+function closeUrlImport() {
+  if (URL_IMPORT_BUSY) return;
+  const overlay = $("url-import-overlay");
+  overlay.classList.remove("open");
+  overlay.setAttribute("aria-hidden", "true");
+}
+
+async function submitUrlImport(event) {
+  event?.preventDefault();
+  if (URL_IMPORT_BUSY) return;
+  if (!CURRENT_FOLDER) {
+    closeUrlImport();
+    showToast("請先進入要存放 PDF 的資料夾");
+    return;
+  }
+  const url = $("url-import-input").value.trim();
+  const name = $("url-import-name").value.trim();
+  if (!url) {
+    $("url-import-input").focus();
+    return;
+  }
+
+  const folderId = Number(CURRENT_FOLDER.id);
+  const confirmButton = $("url-import-confirm");
+  const cancelButton = $("url-import-cancel");
+  const modal = $("url-import-form");
+  const status = $("url-import-status");
+  URL_IMPORT_BUSY = true;
+  confirmButton.disabled = true;
+  cancelButton.disabled = true;
+  confirmButton.textContent = "匯入中…";
+  modal.setAttribute("aria-busy", "true");
+  status.classList.remove("error");
+  status.textContent = "正在判斷網址內容；若是網頁，轉成 PDF 可能需要約一分鐘…";
+
+  try {
+    const result = await api("/import-url", {
+      method: "POST",
+      body: JSON.stringify({ url, name, folder_id: folderId }),
+    });
+    URL_IMPORT_BUSY = false;
+    closeUrlImport();
+    showToast(result.format === "pdf"
+      ? `已下載 PDF：${result.filename}`
+      : `已將公開網頁轉成 PDF：${result.filename}`);
+    await Promise.all([loadFolders(), loadRecent()]);
+    if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === folderId) await openFolder(folderId);
+  } catch (error) {
+    status.classList.add("error");
+    status.textContent = error.message;
+    showToast(`網址匯入失敗：${error.message}`);
+  } finally {
+    URL_IMPORT_BUSY = false;
+    confirmButton.disabled = false;
+    cancelButton.disabled = false;
+    confirmButton.textContent = "開始匯入";
+    modal.removeAttribute("aria-busy");
+  }
 }
 
 /** 首頁相簿與檔案沒有指定正式資料夾，所以都先放待分類，但按鈕必須分開。 */
@@ -7266,6 +7344,15 @@ function init() {
     folderUploadInput.value = "";
     uploadFilesToFolder(files);
   };
+  $("btn-folder-import-url").onclick = openUrlImport;
+  $("url-import-form").addEventListener("submit", submitUrlImport);
+  $("url-import-cancel").onclick = closeUrlImport;
+  $("url-import-overlay").addEventListener("click", (event) => {
+    if (event.target === $("url-import-overlay")) closeUrlImport();
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && $("url-import-overlay").classList.contains("open")) closeUrlImport();
+  });
   setupFileDropZone($("view-home"), uploadDroppedFilesToCurrentLocation);
   setupFileDropZone($("view-folder"), uploadDroppedFilesToCurrentLocation);
   setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToCurrentLocation);

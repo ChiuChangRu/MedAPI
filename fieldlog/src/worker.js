@@ -132,7 +132,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "183";
+const UI_VERSION = "184";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -653,16 +653,158 @@ function base64ToBytes(value) {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
-async function storeClipAttachment(db, files, entryId, filename, mime, bytes, sourceUrl) {
+const URL_IMPORT_MAX_BYTES = 50 * 1024 * 1024;
+const URL_IMPORT_MAX_REDIRECTS = 5;
+
+function urlImportError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+function normalizedIpv4(hostname) {
+  if (!/^\d+(?:\.\d+){3}$/.test(hostname)) return null;
+  const parts = hostname.split(".").map(Number);
+  return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)
+    ? parts
+    : null;
+}
+
+function isPrivateOrReservedIpv4(parts) {
+  const [a, b, c] = parts;
+  return a === 0
+    || a === 10
+    || a === 127
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && (b === 0 || b === 168))
+    || (a === 198 && (b === 18 || b === 19))
+    || (a === 198 && b === 51 && c === 100)
+    || (a === 203 && b === 0 && c === 113)
+    || a >= 224;
+}
+
+/**
+ * 網址匯入會由 Worker 主動連線，不能讓輸入碰到本機、私有網路或 metadata 服務。
+ * 每一次重新導向都會重跑這個檢查。IPv6 literal 一律拒絕；一般 IPv6 公開網站仍可
+ * 透過網域名稱使用，不需要開放難以完整列舉的 literal 寫法。
+ */
+export function assertPublicImportUrl(value) {
+  const input = String(value || "").trim();
+  if (!input) throw urlImportError("請輸入 PDF 或公開網頁網址");
+  if (input.length > 2000) throw urlImportError("網址太長，請確認後再試");
+  const withScheme = /^[a-z][a-z\d+.-]*:/i.test(input) ? input : `https://${input}`;
+  let parsed;
+  try { parsed = new URL(withScheme); } catch { throw urlImportError("網址格式不正確"); }
+  if (!/^https?:$/.test(parsed.protocol)) throw urlImportError("只接受 http 或 https 網址");
+  if (parsed.username || parsed.password) throw urlImportError("網址不可包含帳號或密碼");
+  if (parsed.port && parsed.port !== "80" && parsed.port !== "443") {
+    throw urlImportError("為了安全，網址只接受標準的 80 或 443 連接埠");
+  }
+
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  if (!hostname || hostname.includes(":")) throw urlImportError("不接受內部或 IPv6 位址");
+  if (hostname === "localhost" || /\.(?:localhost|local|internal|home|test|example|invalid|onion)$/.test(hostname)) {
+    throw urlImportError("不接受本機或內部網路網址");
+  }
+  const ipv4 = normalizedIpv4(hostname);
+  if (ipv4 && isPrivateOrReservedIpv4(ipv4)) throw urlImportError("不接受私人或保留網路位址");
+  if (!ipv4 && !hostname.includes(".")) throw urlImportError("請輸入可公開連線的完整網域名稱");
+  parsed.hostname = hostname;
+  parsed.hash = "";
+  return parsed;
+}
+
+async function fetchPublicImportUrl(value) {
+  let current = assertPublicImportUrl(value);
+  for (let redirectCount = 0; redirectCount <= URL_IMPORT_MAX_REDIRECTS; redirectCount++) {
+    let response;
+    try {
+      response = await fetch(current.toString(), {
+        redirect: "manual",
+        headers: { accept: "application/pdf,text/html,application/xhtml+xml;q=0.9,*/*;q=0.2" },
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch (error) {
+      if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+        throw urlImportError("來源網站連線逾時，請稍後再試", 504);
+      }
+      throw urlImportError(`無法連線到來源網址：${error.message}`, 502);
+    }
+    if (response.status < 300 || response.status >= 400) return { response, finalUrl: current };
+    const location = response.headers.get("location");
+    if (!location) throw urlImportError("來源網站重新導向不完整", 502);
+    if (redirectCount === URL_IMPORT_MAX_REDIRECTS) throw urlImportError("來源網站重新導向次數過多", 502);
+    current = assertPublicImportUrl(new URL(location, current).toString());
+  }
+  throw urlImportError("來源網站重新導向次數過多", 502);
+}
+
+export async function readUrlImportBytes(response, maxBytes = URL_IMPORT_MAX_BYTES) {
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > maxBytes) throw urlImportError("檔案超過 50MB，無法匯入", 413);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > maxBytes) throw urlImportError("檔案超過 50MB，無法匯入", 413);
+  return bytes;
+}
+
+function isPdfBytes(bytes) {
+  return bytes?.byteLength >= 5
+    && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d;
+}
+
+export function contentDispositionFilename(value) {
+  const header = String(value || "");
+  const encoded = header.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i)?.[1]?.trim().replace(/^"|"$/g, "");
+  if (encoded) {
+    try { return decodeURIComponent(encoded).split(/[\\/]/).pop() || ""; } catch { /* 改讀一般 filename */ }
+  }
+  const plain = header.match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i);
+  return String(plain?.[1] || plain?.[2] || "").trim().split(/[\\/]/).pop() || "";
+}
+
+export function importedPdfFilename(value, fallback = "匯入的文件") {
+  let name = String(value || fallback || "匯入的文件").normalize("NFKC")
+    .split(/[\\/]/).pop()
+    .replace(/[\u0000-\u001f\u007f<>:"|?*]+/g, " ")
+    .replace(/\s+/g, " ").replace(/[. ]+$/g, "").trim();
+  if (!name) name = fallback || "匯入的文件";
+  name = Array.from(name).slice(0, 150).join("");
+  name = name.replace(/\.pdf$/i, "").replace(/[. ]+$/g, "").trim() || "匯入的文件";
+  return `${name}.pdf`;
+}
+
+function urlPathFilename(url) {
+  const last = url.pathname.split("/").filter(Boolean).pop() || "";
+  try { return decodeURIComponent(last); } catch { return last; }
+}
+
+function htmlDocumentTitle(bytes) {
+  const sample = new TextDecoder().decode(bytes.subarray(0, Math.min(bytes.byteLength, 512 * 1024)));
+  const title = sample.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "";
+  return htmlToPlainText(title).replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+async function contentHashForBytes(bytes) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  const contentHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function storeClipAttachment(db, files, entryId, filename, mime, bytes, sourceUrl) {
+  const contentHash = await contentHashForBytes(bytes);
   const safeName = filename.replace(/[^\w.\-一-鿿]+/g, "_");
   const key = `${entryId}/${Date.now()}-${safeName}`;
   await files.put(key, bytes, { httpMetadata: { contentType: mime } });
-  const result = await db.prepare(
-    "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, content_hash, source_url, created_at) VALUES (?, 'file', ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(entryId, filename, filename, key, bytes.byteLength, mime, contentHash, sourceUrl, now()).run();
-  return { id: result.meta.last_row_id, key, filename, mime, size: bytes.byteLength };
+  try {
+    const result = await db.prepare(
+      "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, content_hash, source_url, created_at) VALUES (?, 'file', ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(entryId, filename, filename, key, bytes.byteLength, mime, contentHash, sourceUrl, now()).run();
+    return { id: result.meta.last_row_id, key, filename, mime, size: bytes.byteLength, source_url: sourceUrl };
+  } catch (error) {
+    await files.delete(key).catch(() => {});
+    throw error;
+  }
 }
 
 function randomShareToken() {
@@ -1574,6 +1716,144 @@ async function handleApi(request, env, url, identity = {}) {
       }
       await db.prepare("DELETE FROM entries WHERE id = ?").bind(entryId).run().catch(() => {});
       return bad(error.message, 413);
+    }
+  }
+
+  // ---- 網址匯入：PDF 原檔直接保存；公開 HTML 才交給 Browser Run 轉成 PDF ----
+  if (path === "/import-url" && method === "POST") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const body = await request.json().catch(() => null);
+    if (!body) return bad("網址匯入資料格式錯誤");
+    const folderId = Number(body.folder_id);
+    if (!Number.isSafeInteger(folderId) || folderId <= 0) return bad("請先進入要存放 PDF 的資料夾");
+    const folder = await db.prepare("SELECT id, name FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''")
+      .bind(folderId).first();
+    if (!folder) return bad("找不到指定資料夾", 404);
+
+    let sourceUrl;
+    try { sourceUrl = assertPublicImportUrl(body.url); } catch (error) { return bad(error.message, error.status || 400); }
+    const requestedName = String(body.name || "").trim().slice(0, 160);
+
+    try {
+      const fetched = await fetchPublicImportUrl(sourceUrl.toString());
+      const response = fetched.response;
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw urlImportError("來源網頁需要登入或拒絕存取；請改用 MyWiki Clip 擴充功能", 422);
+        }
+        if (response.status === 404) throw urlImportError("來源網址找不到內容（HTTP 404）", 404);
+        throw urlImportError(`來源網站回應 HTTP ${response.status}`, 502);
+      }
+
+      let sourceBytes = await readUrlImportBytes(response);
+      const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+      let pdfBytes;
+      let format;
+      let suggestedName;
+      if (isPdfBytes(sourceBytes)) {
+        pdfBytes = sourceBytes;
+        format = "pdf";
+        suggestedName = contentDispositionFilename(response.headers.get("content-disposition"))
+          || urlPathFilename(fetched.finalUrl)
+          || fetched.finalUrl.hostname;
+      } else {
+        const sample = new TextDecoder().decode(sourceBytes.subarray(0, Math.min(sourceBytes.byteLength, 4096))).trimStart();
+        const isHtml = /(?:text\/html|application\/xhtml\+xml)/.test(contentType)
+          || /^<!doctype\s+html|^<html\b/i.test(sample);
+        if (!isHtml) throw urlImportError("這個網址不是 PDF 或可轉換的公開網頁", 415);
+        if (!env.BROWSER?.quickAction) throw urlImportError("尚未啟用公開網頁轉 PDF 服務", 501);
+        const extractedTitle = htmlDocumentTitle(sourceBytes);
+        // 最壞情況下來源 HTML 與輸出 PDF 都可能接近 50MB；先釋放 HTML 參照，
+        // 避免兩份大檔同時佔住 Worker 的 128MB isolate 記憶體。
+        sourceBytes = null;
+
+        let rendered;
+        try {
+          rendered = await env.BROWSER.quickAction("pdf", {
+            url: fetched.finalUrl.toString(),
+            gotoOptions: { waitUntil: "networkidle2", timeout: 45000 },
+            pdfOptions: {
+              format: "a4",
+              printBackground: true,
+              preferCSSPageSize: true,
+              margin: { top: "12mm", right: "10mm", bottom: "12mm", left: "10mm" },
+              timeout: 45000,
+            },
+          });
+        } catch (error) {
+          const limited = /429|rate|quota|limit|頻率|額度/i.test(error.message || "");
+          throw urlImportError(limited
+            ? "公開網頁轉 PDF 的使用頻率或額度已達上限，請稍後再試"
+            : `公開網頁轉 PDF 失敗：${error.message}`, limited ? 429 : 502);
+        }
+        if (!rendered.ok) {
+          const detail = (await rendered.text().catch(() => "")).slice(0, 240);
+          throw urlImportError(rendered.status === 429
+            ? "公開網頁轉 PDF 的使用頻率或額度已達上限，請稍後再試"
+            : `公開網頁轉 PDF 失敗${detail ? `：${detail}` : `（HTTP ${rendered.status}）`}`, rendered.status === 429 ? 429 : 502);
+        }
+        pdfBytes = await readUrlImportBytes(rendered);
+        if (!isPdfBytes(pdfBytes)) throw urlImportError("網頁轉換服務沒有回傳有效的 PDF", 502);
+        format = "webpage_pdf";
+        suggestedName = extractedTitle || fetched.finalUrl.hostname;
+      }
+
+      const contentHash = await contentHashForBytes(pdfBytes);
+      const duplicate = await db.prepare(
+        `SELECT a.id AS attachment_id, e.id AS entry_id, a.filename
+         FROM attachments a JOIN entries e ON e.id = a.entry_id
+         WHERE e.folder_id = ? AND a.content_hash = ?
+           AND COALESCE(a.deleted_at, '') = '' AND COALESCE(e.deleted_at, '') = ''
+         LIMIT 1`
+      ).bind(folderId, contentHash).first();
+      if (duplicate) {
+        return json({ error: `相同的 PDF 已存在於目前資料夾：${duplicate.filename}`, duplicate }, 409);
+      }
+
+      const filename = importedPdfFilename(requestedName || suggestedName);
+      const title = filename.replace(/\.pdf$/i, "");
+      const importedAt = now();
+      const finalUrl = fetched.finalUrl.toString();
+      const fields = {
+        source: "url_import",
+        source_url: finalUrl,
+        original_url: sourceUrl.toString(),
+        import_format: format,
+        imported_at: importedAt,
+      };
+      const entryBody = textToHtml([
+        `來源：${sourceUrl.toString()}`,
+        `匯入方式：${format === "pdf" ? "PDF 網址直接下載" : "公開網頁轉 PDF"}`,
+        `匯入時間：${importedAt}`,
+      ].join("\n"));
+      const created = await db.prepare(
+        "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'html', ?)"
+      ).bind(folderId, title, JSON.stringify(fields), sanitizeEntryHtml(entryBody), importedAt).run();
+      const entryId = created.meta.last_row_id;
+      let attachment;
+      try {
+        attachment = await storeClipAttachment(db, env.FILES, entryId, filename, "application/pdf", pdfBytes, finalUrl);
+      } catch (error) {
+        await db.prepare("DELETE FROM entries WHERE id = ?").bind(entryId).run().catch(() => {});
+        throw urlImportError(`PDF 儲存失敗：${error.message}`, 500);
+      }
+      await logHistory(db, entryId, folderId, "網址匯入", `${format === "pdf" ? "PDF 下載" : "網頁轉 PDF"}｜${finalUrl}`);
+      await triggerEmbedding(env, {
+        kind: "entry", id: entryId, entryId,
+        textContent: `${title}\n${sourceUrl.toString()}`,
+        title,
+      });
+      return json({
+        ok: true,
+        entry_id: entryId,
+        attachment,
+        format,
+        filename,
+        source_url: finalUrl,
+        destination: "folder",
+      });
+    } catch (error) {
+      return bad(error.message || "網址匯入失敗", error.status || 502);
     }
   }
   if (path === "/shares" && method === "POST") {
