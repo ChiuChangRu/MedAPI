@@ -200,13 +200,6 @@ async function renderInspectorFile(item, tab) {
   setFolderPreviewTitle(a.filename);
   if (tab === "preview") {
     await renderFilePreview({ entryId: entry.id, attachmentId: a.id, filename: a.filename, key: a.key, mime: a.mime || "", kind: a.kind || "" });
-    const download = document.createElement("a");
-    download.className = "btn small inspector-download"; download.href = fileUrlForKey(a.key); download.download = a.filename; download.textContent = "下載原檔";
-    const content = document.createElement("div");
-    content.className = "inspector-preview-content";
-    while (body.firstChild) content.append(body.firstChild);
-    const wrapper = document.createElement("div"); wrapper.className = "inspector-preview-layout";
-    wrapper.append(download, content); body.append(wrapper);
     if (isImageAtt(a)) body.querySelector(".folder-preview-image")?.addEventListener("click", () => openImageViewer(fileUrlForKey(a.key), a.filename, a.id, a.rotation || 0));
     return;
   }

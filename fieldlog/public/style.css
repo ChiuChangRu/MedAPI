@@ -1944,14 +1944,19 @@ body.file-marquee-active, body.file-marquee-active * { user-select: none !import
 .inspector-dialog h2 { margin-top: 0; font-size: 20px; }
 .inspector-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 
-/* v182: full-width slide canvas; downloads must not squeeze it into a column. */
-.folder-preview-head > strong { flex-basis: 100%; }
-.folder-preview-actions { flex-wrap: wrap; max-width: 100%; }
-.inspector-preview-layout { display: flex; flex-direction: column; width: 100%; min-width: 0; padding: 10px; }
-.inspector-preview-content { width: 100%; min-width: 0; flex: 1; }
-.inspector-preview-content > .folder-preview-frame { width: 100%; height: 100%; min-height: 55vh; }
-.inspector-preview-content > .folder-preview-image { display: block; margin: auto; }
-.inspector-download { white-space: nowrap; flex-shrink: 0; }
+/* v183: keep the inspector controls in one compact row. */
+@media (min-width: 1000px) {
+  .folder-preview-head { flex-wrap: nowrap; gap: 5px; padding: 6px 8px; min-height: 46px; }
+  .folder-preview-head > strong { flex: 1 1 140px; font-size: 15px; }
+  .folder-preview-head > strong.editable { padding: 3px 5px; }
+  .folder-preview-actions { flex: 0 1 auto; flex-wrap: nowrap; gap: 4px; overflow-x: auto; scrollbar-width: thin; }
+  .file-preview-mode-toggle { flex-wrap: nowrap; flex: none; }
+  .folder-preview-actions > .btn, .file-preview-mode-toggle .btn { min-height: 30px; padding: 5px 9px; }
+  .preview-width-select { min-width: 60px; padding-top: 5px; padding-bottom: 5px; }
+  .inspector-save-status:empty { display: none; }
+  .folder-preview-editor-toolbar:not([hidden]) { flex-basis: 100%; }
+  .folder-preview-head:has(.folder-preview-editor-toolbar:not([hidden])) { flex-wrap: wrap; }
+}
 .pptx-preview { width: 100%; min-width: 0; }
 .pptx-preview-nav { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; position: sticky; top: 0; z-index: 2; background: #f8faf9; }
 .pptx-preview-nav label { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 14px; }
