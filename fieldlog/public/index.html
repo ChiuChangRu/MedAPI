@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=185" />
-<link rel="stylesheet" href="home.css?v=185" />
+<link rel="stylesheet" href="style.css?v=186" />
+<link rel="stylesheet" href="home.css?v=186" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -42,7 +42,7 @@
     <button id="file-selection-trash" class="btn small danger" type="button">刪除</button>
     <button id="file-selection-clear" class="btn small ghost" type="button">取消選取</button>
   </div>
-  <button id="desktop-trash" class="fixed-trash" type="button" title="拖到這裡刪除；未選取檔案時點擊可開啟垃圾桶">
+  <button id="desktop-trash" class="fixed-trash" type="button" title="拖到這裡移到垃圾桶">
     <span class="fixed-trash-icon" aria-hidden="true">🗑️</span>
     <span id="desktop-trash-label">垃圾桶</span><small id="desktop-trash-count"></small>
   </button>
@@ -55,7 +55,7 @@
     <header class="home-app-head">
       <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
       <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-      <a class="head-link" href="help.html?v=185">📖 使用說明</a>
+      <a class="head-link" href="help.html?v=186">📖 使用說明</a>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
@@ -553,10 +553,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=185"></script>
+<script src="pdf-editor.js?v=186"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=185"></script>
+<script src="richtext-editor.js?v=186"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -567,9 +567,9 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=185"></script>
-<script src="inspector.js?v=185"></script>
-<script src="app.js?v=185"></script>
+<script src="file-selection.js?v=186"></script>
+<script src="inspector.js?v=186"></script>
+<script src="app.js?v=186"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
