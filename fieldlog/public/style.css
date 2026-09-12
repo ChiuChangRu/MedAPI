@@ -1995,3 +1995,18 @@ body.file-marquee-active, body.file-marquee-active * { user-select: none !import
 .pptx-preview-stage:focus-visible { outline: 2px solid #0f766e; }
 .pptx-preview-note, .pptx-preview-status { font-size: 13px; color: #64748b; line-height: 1.6; }
 .pptx-preview-status:empty { display: none; }
+
+/* Keep the reader exit outside the horizontally scrolling action strip. */
+#folder-preview-expand { flex: 0 0 auto; white-space: nowrap; }
+body.reader-fullscreen #folder-preview-expand {
+  display: inline-flex; position: fixed; top: 16px; right: 20px;
+  z-index: 112; min-height: 36px; padding: 6px 12px;
+}
+body.reader-fullscreen .folder-preview-head { padding-right: 126px; flex-shrink: 0; }
+/* Stay reachable if zooming or resizing crosses the desktop breakpoint. */
+body.reader-fullscreen .folder-preview {
+  display: flex; position: fixed; inset: 8px; z-index: 110;
+  width: auto; max-width: calc(100vw - 16px); min-width: 0;
+  height: auto; min-height: 0; flex-direction: column; overflow: hidden;
+  background: var(--bg, #fff);
+}

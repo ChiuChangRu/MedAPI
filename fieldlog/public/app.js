@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "187";
+const APP_VERSION = "188";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -3395,16 +3395,29 @@ const PREVIEW_WIDTH_MIN = 280;
 // 同時允許分隔線繼續往左拖，把大部分空間交給預覽／編輯。
 const PREVIEW_MAIN_MIN = 280;
 
+let readerScrollPosition = null;
+
 function setReaderFullscreen(enabled) {
   const isFullscreen = !!enabled;
+  const wasFullscreen = document.body.classList.contains("reader-fullscreen");
+  if (isFullscreen && !wasFullscreen) readerScrollPosition = { x: window.scrollX, y: window.scrollY };
   document.body.classList.toggle("reader-fullscreen", isFullscreen);
+  if (!isFullscreen && wasFullscreen && readerScrollPosition) {
+    window.scrollTo(readerScrollPosition.x, readerScrollPosition.y);
+    readerScrollPosition = null;
+  }
   const button = $("folder-preview-expand");
   if (!button) return;
-  button.textContent = isFullscreen ? "▣" : "⛶";
-  button.title = isFullscreen ? "恢復分欄" : "最寬模式";
-  button.setAttribute("aria-label", isFullscreen ? "恢復三欄模式" : "切換右欄最寬模式");
+  button.textContent = isFullscreen ? "退出放大" : "⛶";
+  button.title = isFullscreen ? "退出放大（Esc）" : "最寬模式";
+  button.setAttribute("aria-label", isFullscreen ? "退出放大，恢復原本頁面" : "切換右欄最寬模式");
   button.setAttribute("aria-pressed", isFullscreen ? "true" : "false");
 }
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.defaultPrevented || !document.body.classList.contains("reader-fullscreen")) return;
+  setReaderFullscreen(false);
+});
 
 function syncPreviewLayout() {
   const workspace = document.querySelector(".folder-workspace");

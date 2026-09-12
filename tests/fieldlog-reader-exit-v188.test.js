@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
+
+test('reader exit and Escape preserve the draft, selection DOM and page position', () => {
+  const html = readFileSync('fieldlog/public/index.html', 'utf8');
+  const app = readFileSync('fieldlog/public/app.js', 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'outside-only' });
+  const w = dom.window, doc = w.document;
+  let restored;
+  w.scrollTo = (x, y) => { restored = [x, y]; };
+  w.scrollY = 320;
+  w.eval('const $ = id => document.getElementById(id);' + app.slice(app.indexOf('let readerScrollPosition'), app.indexOf('function syncPreviewLayout()')));
+  const body = doc.getElementById('folder-preview-body');
+  body.innerHTML = '<textarea>unsaved draft</textarea>';
+  const draft = body.firstChild;
+  const button = doc.getElementById('folder-preview-expand');
+  assert.equal(button.closest('.folder-preview-actions'), null);
+  button.onclick = () => w.setReaderFullscreen(!doc.body.classList.contains('reader-fullscreen'));
+  button.click();
+  assert.equal(button.textContent, '退出放大');
+  button.click();
+  assert.equal(doc.body.classList.contains('reader-fullscreen'), false);
+  assert.deepEqual(restored, [0, 320]);
+  w.setReaderFullscreen(true);
+  draft.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(doc.body.classList.contains('reader-fullscreen'), false);
+  assert.equal(body.firstChild, draft);
+  assert.equal(draft.value, 'unsaved draft');
+  dom.window.close();
+});
