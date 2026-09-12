@@ -145,17 +145,20 @@ test("公開 HTML 才呼叫 Browser Run 並把結果存成 PDF", async () => {
   }
 });
 
-test("v184 介面、快取與 Browser binding 都已接上", async () => {
-  const [html, app, sw, config] = await Promise.all([
+test("v185 網址匯入查重不會查詢 attachments.deleted_at", async () => {
+  const [html, app, sw, config, worker] = await Promise.all([
     readFile(new URL("../fieldlog/public/index.html", import.meta.url), "utf8"),
     readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8"),
     readFile(new URL("../fieldlog/public/sw.js", import.meta.url), "utf8"),
     readFile(new URL("../fieldlog/wrangler.jsonc", import.meta.url), "utf8"),
+    readFile(new URL("../fieldlog/src/worker.js", import.meta.url), "utf8"),
   ]);
   assert.match(html, /id="btn-folder-import-url"/);
   assert.match(html, /id="url-import-overlay"/);
   assert.match(app, /api\("\/import-url"/);
   assert.doesNotMatch(app.match(/function childFolderHtml[\s\S]*?\n\}/)?.[0] || "", /folderCategoryChipHtml|entry_count|folder-level-chip/);
-  assert.match(sw, /fieldlog-v184-url-import/);
+  assert.match(sw, /fieldlog-v185-url-import-fix/);
   assert.match(config, /"browser"\s*:\s*\{\s*"binding"\s*:\s*"BROWSER"/);
+  assert.doesNotMatch(worker, /a\.deleted_at/);
+  assert.match(worker, /WHERE e\.folder_id = \? AND a\.content_hash = \?[\s\S]*COALESCE\(e\.deleted_at, ''\) = ''/);
 });

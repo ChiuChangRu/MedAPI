@@ -132,7 +132,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "184";
+const UI_VERSION = "185";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1803,7 +1803,7 @@ async function handleApi(request, env, url, identity = {}) {
         `SELECT a.id AS attachment_id, e.id AS entry_id, a.filename
          FROM attachments a JOIN entries e ON e.id = a.entry_id
          WHERE e.folder_id = ? AND a.content_hash = ?
-           AND COALESCE(a.deleted_at, '') = '' AND COALESCE(e.deleted_at, '') = ''
+           AND COALESCE(e.deleted_at, '') = ''
          LIMIT 1`
       ).bind(folderId, contentHash).first();
       if (duplicate) {
