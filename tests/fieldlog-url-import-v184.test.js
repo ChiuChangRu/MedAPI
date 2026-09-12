@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import fieldlogWorker, {
   assertPublicImportUrl,
   contentDispositionFilename,
+  directDownloadUrlForGoogleDrive,
   importedPdfFilename,
   readUrlImportBytes,
 } from "../fieldlog/src/worker.js";
@@ -83,6 +84,39 @@ test("檔名解析支援 UTF-8 Content-Disposition 並清掉不安全字元", ()
   assert.equal(importedPdfFilename('../季報:最終版?.PDF'), "季報 最終版.pdf");
 });
 
+test("Google Drive 公開預覽網址改抓原始檔，不列印成單頁預覽", async () => {
+  const shared = "https://drive.google.com/file/d/1LaI0mfxej4u2UmFJkncYeTz4vYAfRFKT/view?usp=sharing";
+  const direct = directDownloadUrlForGoogleDrive(shared);
+  assert.equal(direct.origin + direct.pathname, "https://drive.google.com/uc");
+  assert.equal(direct.searchParams.get("export"), "download");
+  assert.equal(direct.searchParams.get("id"), "1LaI0mfxej4u2UmFJkncYeTz4vYAfRFKT");
+
+  const originalFetch = globalThis.fetch;
+  const DB = makeDb();
+  let requestedUrl = "", browserCalls = 0;
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url);
+    return new Response(new TextEncoder().encode("%PDF-1.7 all pages"), {
+      headers: { "content-type": "application/octet-stream", "content-disposition": "attachment; filename=training.pdf" },
+    });
+  };
+  try {
+    const result = await importUrl({
+      FIELD_PIN: "pin", DB,
+      FILES: { async put() {}, async delete() {} },
+      BROWSER: { async quickAction() { browserCalls++; throw new Error("不應呼叫"); } },
+    }, { url: shared });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.format, "pdf");
+    assert.equal(result.data.filename, "training.pdf");
+    assert.equal(browserCalls, 0);
+    assert.match(requestedUrl, /^https:\/\/drive\.google\.com\/uc\?/);
+    assert.equal(DB.state.entries[0].fields.original_url, shared);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("讀取網址內容會在宣告大小超過 50MB 時先拒絕", async () => {
   const response = new Response("", { headers: { "content-length": String(50 * 1024 * 1024 + 1) } });
   await assert.rejects(readUrlImportBytes(response), (error) => error.status === 413 && /50MB/.test(error.message));
@@ -145,7 +179,7 @@ test("公開 HTML 才呼叫 Browser Run 並把結果存成 PDF", async () => {
   }
 });
 
-test("v186 網址匯入查重不會查詢 attachments.deleted_at", async () => {
+test("v187 網址匯入查重不會查詢 attachments.deleted_at", async () => {
   const [html, app, sw, config, worker] = await Promise.all([
     readFile(new URL("../fieldlog/public/index.html", import.meta.url), "utf8"),
     readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8"),
@@ -157,7 +191,7 @@ test("v186 網址匯入查重不會查詢 attachments.deleted_at", async () => {
   assert.match(html, /id="url-import-overlay"/);
   assert.match(app, /api\("\/import-url"/);
   assert.doesNotMatch(app.match(/function childFolderHtml[\s\S]*?\n\}/)?.[0] || "", /folderCategoryChipHtml|entry_count|folder-level-chip/);
-  assert.match(sw, /fieldlog-v186-drag-trash/);
+  assert.match(sw, /fieldlog-v187-drive-pdf-reader/);
   assert.match(config, /"browser"\s*:\s*\{\s*"binding"\s*:\s*"BROWSER"/);
   assert.doesNotMatch(worker, /a\.deleted_at/);
   assert.match(worker, /WHERE e\.folder_id = \? AND a\.content_hash = \?[\s\S]*COALESCE\(e\.deleted_at, ''\) = ''/);

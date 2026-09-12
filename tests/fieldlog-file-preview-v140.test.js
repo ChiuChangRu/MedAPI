@@ -67,7 +67,10 @@ test("舊檔 MIME 依副檔名補正，涵蓋 HTML、圖片、影音與 Office",
 test("全螢幕編輯隱藏資料夾操作列並補滿垂直空間", async () => {
   const css = await read("../fieldlog/public/style.css");
   assert.match(css, /body\.reader-fullscreen \.folder-actions \{ display: none; \}/);
-  assert.match(css, /body\.reader-fullscreen \.folder-preview \{[\s\S]*?top: 70px;[\s\S]*?height: calc\(100vh - 86px\);/);
+  assert.match(css, /body\.reader-fullscreen \.folder-preview \{[\s\S]*?position: fixed; inset: 8px;[\s\S]*?height: auto; min-height: 0;/);
+  assert.match(css, /body\.reader-fullscreen \.folder-preview-head \{[\s\S]*?min-height: 42px;[\s\S]*?padding: 5px 8px;/);
+  assert.match(css, /body\.reader-fullscreen \.pdf-sidebar-toolbar \{[\s\S]*?min-height: 40px;[\s\S]*?padding: 4px 6px;/);
+  assert.match(css, /body\.reader-fullscreen #folder-preview-width \{ display: none; \}/);
 });
 
 test("常用純文字與程式檔都走文字預覽", async () => {

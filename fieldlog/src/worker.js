@@ -132,7 +132,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "186";
+const UI_VERSION = "187";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -714,6 +714,26 @@ export function assertPublicImportUrl(value) {
   parsed.hostname = hostname;
   parsed.hash = "";
   return parsed;
+}
+
+/**
+ * Google Drive 的 /file/d/.../view 是檔案預覽頁，不是檔案本身。若把該頁交給
+ * Browser Run 列印，只會得到當下畫面裡的一頁預覽。公開檔案改走 Drive 的下載
+ * 入口，後續仍由 fetchPublicImportUrl() 對每次轉址做公開網址檢查。
+ */
+export function directDownloadUrlForGoogleDrive(value) {
+  const source = value instanceof URL ? new URL(value.toString()) : assertPublicImportUrl(value);
+  if (source.hostname !== "drive.google.com") return source;
+  const pathMatch = source.pathname.match(/^\/file\/d\/([A-Za-z0-9_-]{10,})(?:\/|$)/);
+  const queryId = ["/open", "/uc"].includes(source.pathname) ? source.searchParams.get("id") : "";
+  const fileId = pathMatch?.[1] || (queryId && /^[A-Za-z0-9_-]{10,}$/.test(queryId) ? queryId : "");
+  if (!fileId) return source;
+  const direct = new URL("https://drive.google.com/uc");
+  direct.searchParams.set("export", "download");
+  direct.searchParams.set("id", fileId);
+  const resourceKey = source.searchParams.get("resourcekey");
+  if (resourceKey) direct.searchParams.set("resourcekey", resourceKey);
+  return direct;
 }
 
 async function fetchPublicImportUrl(value) {
@@ -1735,7 +1755,8 @@ async function handleApi(request, env, url, identity = {}) {
     const requestedName = String(body.name || "").trim().slice(0, 160);
 
     try {
-      const fetched = await fetchPublicImportUrl(sourceUrl.toString());
+      const downloadUrl = directDownloadUrlForGoogleDrive(sourceUrl);
+      const fetched = await fetchPublicImportUrl(downloadUrl.toString());
       const response = fetched.response;
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
