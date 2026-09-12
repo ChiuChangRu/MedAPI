@@ -2010,3 +2010,27 @@ body.reader-fullscreen .folder-preview {
   height: auto; min-height: 0; flex-direction: column; overflow: hidden;
   background: var(--bg, #fff);
 }
+
+/* v189: controls keep their horizontal labels instead of stretching the header. */
+.folder-preview-actions { align-items: center; }
+.folder-preview-actions > *, .file-preview-mode-toggle > .btn {
+  flex-shrink: 0; white-space: nowrap; word-break: normal; overflow-wrap: normal;
+}
+.folder-preview-actions > .btn, .file-preview-mode-toggle > .btn,
+.pdf-sidebar-toolbar .btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 30px; height: 32px; padding: 4px 8px; line-height: 1.2;
+  white-space: nowrap; flex-shrink: 0;
+}
+@media (min-width: 1000px) {
+  .folder-preview-head > strong { flex: 0 1 150px; }
+  .folder-preview-head .folder-preview-actions {
+    flex: 1 1 0; min-width: 0; align-items: center;
+    justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto;
+  }
+}
+.pdf-sidebar-toolbar {
+  flex-wrap: nowrap; justify-content: flex-start; gap: 10px;
+  padding: 5px 8px; overflow-x: auto; flex-shrink: 0;
+}
+.pdf-page-controls, .pdf-zoom-controls, .pdf-file-controls { flex: 0 0 auto; }
