@@ -1810,6 +1810,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .audio-panel-heading { display: flex; align-items: center; gap: 10px; }
 .audio-panel-heading strong { flex: 1; font-size: 17px; }
 .audio-panel-heading #audio-timer { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.audio-badge .audio-minimize-btn {
+  flex: 0 0 auto; min-width: 34px; min-height: 34px; padding: 4px 8px;
+  font-size: 18px; line-height: 1;
+}
 .audio-badge-dot { width: 10px; height: 10px; }
 .audio-badge:not([data-state="recording"]) .audio-badge-dot { background: #94a3b8; animation: none; transform: none !important; }
 .audio-badge[data-state="waiting"] .audio-badge-dot { background: #d97706; }
@@ -1832,6 +1836,22 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .audio-panel-recovery audio { width: 100%; }
 .audio-badge [hidden] { display: none !important; }
 .audio-badge button:focus-visible, .audio-badge select:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
+.audio-badge.is-minimized {
+  width: auto; min-width: 245px; max-width: calc(100vw - 28px);
+  max-height: none; overflow: visible; gap: 6px; padding: 9px 10px;
+}
+.audio-badge.is-minimized .audio-signal,
+.audio-badge.is-minimized .audio-status,
+.audio-badge.is-minimized .audio-live-transcript,
+.audio-badge.is-minimized .audio-panel-recovery,
+.audio-badge.is-minimized #audio-folder-btn,
+.audio-badge.is-minimized #audio-photo-btn,
+.audio-badge.is-minimized #audio-note-btn,
+.audio-badge.is-minimized #audio-rename-btn { display: none !important; }
+.audio-badge.is-minimized .audio-panel-actions { justify-content: flex-end; }
+.audio-badge.is-minimized #audio-stop-btn { min-height: 34px; padding: 5px 9px; }
+/* 閱讀模式本身是 z-index 110；錄音狀態必須固定顯示在它上方。 */
+body.reader-fullscreen .audio-badge { z-index: 120; }
 @media (max-width: 600px) { .audio-badge { right: 14px; padding: 12px; } }
 @media (prefers-reduced-motion: reduce) { .audio-badge-dot { animation: none; transition: none; } }
 

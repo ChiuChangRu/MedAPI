@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "189";
+const APP_VERSION = "190";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -6128,17 +6128,17 @@ async function stagingFolderId() {
 }
 
 async function ensureEntryForCapture(entryId, titlePrefix) {
-  if (entryId) return { entryId, folderId: CURRENT_FOLDER ? CURRENT_FOLDER.id : null };
+  if (entryId) return { entryId, folderId: CURRENT_FOLDER ? CURRENT_FOLDER.id : null, title: "" };
   // 沒指定 entryId 時，若已有進行中的錄音／錄影，併入同一次採集——例如
   // 錄音中誤按主畫面較顯眼的「📷 拍照」，而不是浮動列裡的小相機鈕
   const active = AUDIO || VIDEO;
-  if (active) return { entryId: active.entryId, folderId: active.folderId };
+  if (active) return { entryId: active.entryId, folderId: active.folderId, title: active.title || "" };
   // 在資料夾裡採集＝當下就選好位置；從首頁採集則先進待分類。
   const folderId = CURRENT_FOLDER ? CURRENT_FOLDER.id : await stagingFolderId();
   const d = new Date();
   const title = `${titlePrefix} ${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   const newId = await createEntry(folderId, title);
-  return { entryId: newId, folderId };
+  return { entryId: newId, folderId, title };
 }
 
 // 採集中「記一句」：走後端的原子附加端點（POST /entries/:id/notes）。
@@ -6411,10 +6411,11 @@ function setAudioPanel(state, message = "") {
   if (!panel) return;
   panel.dataset.state = state;
   panel.style.display = "flex";
-  const active = ["recording", "waiting", "saving"].includes(state);
-  const titles = { connecting: "正在連接麥克風", recording: "錄音中", waiting: "錄音中斷／等待收音", saving: "正在儲存錄音", failed: "未開始錄音", testing: "麥克風試錄中" };
+  const active = ["recording", "waiting", "saving", "naming"].includes(state);
+  const hasControls = ["recording", "waiting"].includes(state);
+  const titles = { connecting: "正在連接麥克風", recording: "錄音中", waiting: "錄音中斷／等待收音", naming: "錄音已暫停", saving: "正在儲存錄音", failed: "未開始錄音", testing: "麥克風試錄中" };
   $("audio-panel-title").textContent = titles[state] || "準備錄音";
-  $("audio-record-actions").hidden = !active;
+  $("audio-record-actions").hidden = !hasControls;
   $("audio-recovery").hidden = !["failed", "testing"].includes(state);
   $("audio-panel-close").hidden = !["failed", "testing"].includes(state);
   $("audio-stop-btn").disabled = state === "saving";
@@ -6428,6 +6429,22 @@ function setAudioPanel(state, message = "") {
   }
   if (state === "recording") $("audio-signal").textContent = "正在確認收音…";
   setAudioStatus(message, state === "failed");
+}
+
+function setAudioPanelMinimized(minimized) {
+  const panel = $("audio-badge");
+  const button = $("audio-minimize-btn");
+  if (!panel || !button) return;
+  panel.classList.toggle("is-minimized", minimized);
+  button.textContent = minimized ? "▣" : "—";
+  button.title = minimized ? "展開" : "縮小";
+  button.setAttribute("aria-label", minimized ? "展開錄音控制" : "縮小錄音控制");
+  button.setAttribute("aria-expanded", minimized ? "false" : "true");
+}
+
+function toggleAudioPanelMinimized() {
+  if (!AUDIO || AUDIO.ending) return;
+  setAudioPanelMinimized(!$("audio-badge").classList.contains("is-minimized"));
 }
 
 function refreshAudioPanel() {
@@ -6682,7 +6699,7 @@ async function startAudio(entryId) {
     let ref;
     try { ref = await ensureEntryForCapture(entryId, "錄音"); }
     catch (err) { stopStream(stream); setAudioPanel("failed", "無法建立紀錄：" + err.message); return; }
-    AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0, uploadedSegments: 0, pendingSegments: 0, emptySegments: 0 };
+    AUDIO = { stream, micDeviceId: mic.deviceId, recorder: null, startedAt: Date.now(), segIndex: 1, segStartMs: Date.now(), photos: 0, entryId: ref.entryId, folderId: ref.folderId, title: ref.title || "", ending: false, autoStopped: false, timerId: 0, backgroundAt: 0, backgroundSecs: 0, interrupted: false, resuming: false, recorderFailed: false, recheckTimer: 0, audioCtx: null, analyser: null, micSource: null, deadSince: 0, lastSignalAt: Date.now(), lastSwapAt: 0, swapping: false, meterTimer: 0, diagPeakMax: 0, diagWarnedThisDeath: false, liveLines: [], liveTranscriptionStopped: false, silentSegStreak: 0, uploadedSegments: 0, pendingSegments: 0, emptySegments: 0 };
     initAudioGraph();
     watchAudioStream(stream);
     startAudioSegRecorder();
@@ -6739,6 +6756,43 @@ function stopAudio() {
     AUDIO.recorder.stop(); // → onstop 走 ending 收尾路徑（會上傳最後一段）
   } else {
     finalizeAudioStop(); // recorder 已被系統停掉（背景中斷）：沒有新段可傳，直接收尾
+  }
+}
+
+async function renameActiveAudio(message = "輸入錄音檔名（留空或取消會保留原名稱）") {
+  if (!AUDIO) return false;
+  const session = AUDIO;
+  const entered = prompt(message, session.title || "");
+  if (entered === null || !entered.trim()) return false;
+  const title = entered.trim();
+  if (title === session.title) return false;
+  try {
+    await api(`/entries/${session.entryId}`, { method: "PUT", body: JSON.stringify({ title }) });
+    if (AUDIO === session) session.title = title;
+    showToast("錄音檔名已更新");
+    return true;
+  } catch (err) {
+    showToast("檔名更新失敗，錄音仍會保存：" + err.message);
+    return false;
+  }
+}
+
+// 手動停止時先暫停收音，再詢問檔名；留空或取消不阻擋存檔。
+async function requestAudioStop() {
+  if (!AUDIO || AUDIO.ending) return;
+  const session = AUDIO;
+  session.ending = true;
+  if (session.recorder?.state === "recording" && typeof session.recorder.pause === "function") {
+    try { session.recorder.pause(); } catch {}
+  }
+  setAudioPanel("naming", "可修改檔名；留空或取消會直接保存原名稱。");
+  await renameActiveAudio("錄音已暫停。請修改檔名（留空或取消會保留原名稱）");
+  if (AUDIO !== session) return;
+  setAudioPanel("saving", "正在儲存錄音，請稍候…");
+  if (session.recorder && session.recorder.state !== "inactive") {
+    session.recorder.stop();
+  } else {
+    finalizeAudioStop();
   }
 }
 
@@ -7507,7 +7561,9 @@ function init() {
   };
   $("audio-photo-btn").onclick = openAudioPhotoPopup;
   $("audio-note-btn").onclick = () => addTimedNote(AUDIO);
-  $("audio-stop-btn").onclick = stopAudio;
+  $("audio-rename-btn").onclick = () => renameActiveAudio();
+  $("audio-minimize-btn").onclick = toggleAudioPanelMinimized;
+  $("audio-stop-btn").onclick = requestAudioStop;
   $("audio-retry-btn").onclick = () => startAudio(AUDIO_TARGET_ENTRY);
   $("audio-test-btn").onclick = testSelectedMic;
   $("audio-panel-close").onclick = closeAudioPanel;
@@ -7544,7 +7600,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=169").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=190").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
