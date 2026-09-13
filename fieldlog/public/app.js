@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "190";
+const APP_VERSION = "191";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -489,9 +489,9 @@ function recordingStatus(audioAttachments) {
   }
   const completedCount = audio.filter((item) => item.transcribed_at && !["processing", "auto_failed", "skipped"].includes(item.transcribed_at)).length;
   if (completedCount) {
-    return { tone: "pending", label: "部分尚未轉錄", detail: `${completedCount}/${audio.length} 段已完成` };
+    return { tone: "pending", label: "等待自動轉錄", detail: `${completedCount}/${audio.length} 段已完成；額度恢復後自動接續` };
   }
-  return { tone: "pending", label: "尚未轉錄", detail: "尚未建立逐字稿" };
+  return { tone: "pending", label: "等待自動轉錄", detail: "額度恢復後會依錄音時間自動處理" };
 }
 
 function recordingTranscribeAction(status, audioAttachments) {
@@ -2661,6 +2661,44 @@ function recordingPreviewTranscript(audioAttachments) {
     .join("\n\n");
 }
 
+function openRecordingTranscriptDialog(title, audioAttachments) {
+  document.querySelector(".recording-transcript-dialog")?.remove();
+  const audio = (audioAttachments || [])
+    .slice()
+    .sort((a, b) => Number(a.offset_secs || 0) - Number(b.offset_secs || 0) || Number(a.id) - Number(b.id));
+  const transcript = recordingPreviewTranscript(audio);
+  const completed = audio.filter((item) => String(item.transcript || "").trim()).length;
+  const dialog = document.createElement("dialog");
+  dialog.className = "recording-transcript-dialog";
+  dialog.innerHTML = `<div class="recording-transcript-dialog-head">
+      <div><strong>完整轉錄</strong><span>${esc(title || "錄音")}｜${completed}/${audio.length} 段已完成</span></div>
+      <button class="btn small ghost recording-transcript-close" type="button" aria-label="關閉完整轉錄">✕</button>
+    </div>
+    <textarea class="recording-transcript-all" readonly placeholder="尚無已完成的逐字稿">${esc(transcript)}</textarea>
+    ${completed < audio.length ? `<p class="recording-transcript-waiting">其餘 ${audio.length - completed} 段等待額度恢復後自動接續，完成後會依時間順序加入這裡。</p>` : ""}
+    <div class="recording-transcript-dialog-actions">
+      <button class="btn primary recording-transcript-copy" type="button" ${transcript ? "" : "disabled"}>一鍵複製全部文字</button>
+      <button class="btn recording-transcript-done" type="button">關閉</button>
+    </div>`;
+  document.body.appendChild(dialog);
+  const close = () => { dialog.close(); dialog.remove(); };
+  dialog.querySelector(".recording-transcript-close").onclick = close;
+  dialog.querySelector(".recording-transcript-done").onclick = close;
+  dialog.addEventListener("cancel", (event) => { event.preventDefault(); close(); });
+  dialog.querySelector(".recording-transcript-copy").onclick = async () => {
+    const textarea = dialog.querySelector(".recording-transcript-all");
+    try {
+      await navigator.clipboard.writeText(transcript);
+    } catch {
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+    }
+    showToast("已複製完整轉錄");
+  };
+  dialog.showModal();
+}
+
 function visibleEntryFields(entry) {
   try {
     return Object.entries(JSON.parse(entry.fields_json || "{}"))
@@ -2839,7 +2877,7 @@ async function renderRecordingPreview(entryId) {
       <audio controls preload="metadata" src="${fileUrlForKey(item.key)}"></audio>
       <a class="recording-download" href="${fileUrlForKey(item.key)}" download="${esc(item.filename)}">下載 ${esc(item.filename)}</a>
     </section>`).join("")}</div>
-    <section class="recording-preview-section"><h3>逐字稿</h3>
+    <section class="recording-preview-section"><div class="recording-preview-section-head"><h3>完整轉錄</h3><button class="btn small" id="recording-preview-transcript-dialog" type="button" ${transcript ? "" : "disabled"}>開啟／一鍵複製</button></div>
       ${transcript ? `<pre>${esc(transcript)}</pre>` : `<p class="folder-preview-empty compact">${esc(status.label)}</p>`}
     </section>
     ${note ? `<section class="recording-preview-section"><h3>速記</h3><pre>${esc(note)}</pre></section>` : ""}
@@ -2859,6 +2897,7 @@ async function renderRecordingPreview(entryId) {
   $("folder-preview-manage").disabled = false;
   $("folder-preview-manage").onclick = () => openRecordingEditor(entryId)
     .catch((error) => showToast("開啟錄音編輯失敗：" + error.message));
+  $("recording-preview-transcript-dialog").onclick = () => openRecordingTranscriptDialog(entry.title, audio);
 }
 
 function parseCsvPreviewRow(line) {
@@ -3834,7 +3873,7 @@ async function openEntry(id) {
     </div>
     <p class="sub">${esc(localDateTime(e.created_at))}｜${folder ? esc(folder.name) : "⏳ 待分類"}</p>
     <section class="merged-transcript ${mergedTranscript ? "" : "empty"}">
-      <div><strong>📝 合併逐字稿</strong><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>複製</button></div>
+      <div><strong>📝 完整轉錄</strong><span><button class="btn small" id="e-open-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>開啟</button><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>一鍵複製</button></span></div>
       ${mergedTranscript
         ? `<details class="ai-fold"><summary>展開逐字稿全文（${mergedTranscript.length} 字，AI 轉錄）</summary><pre>${esc(mergedTranscript)}</pre></details>`
         : `<p class="sub" id="e-auto-status">新錄音會在每日免費額度內自動轉錄並合併；舊錄音請使用下方「Cloudflare AI 整理」。</p>`}
@@ -3921,6 +3960,7 @@ async function openEntry(id) {
     await navigator.clipboard.writeText(mergedTranscript);
     showToast("已複製合併逐字稿");
   };
+  $("e-open-transcript").onclick = () => openRecordingTranscriptDialog(e.title, (e.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id));
   $("e-delete").onclick = async () => {
     const childCount = (e.children || []).length;
     if (!confirm(`將「${e.title || "（未命名）"}」整個資料包移到垃圾桶？${childCount ? `\n\n內含的 ${childCount} 個子資料包也會一起移入。` : ""}\n垃圾桶保留 60 天。`)) return;
@@ -5146,6 +5186,10 @@ async function renderRecordingEditor(entryId, entry, audio) {
   body.innerHTML = `<form class="recording-editor preview-editor" id="recording-preview-editor">
       <label for="recording-edit-title">名稱</label>
       <input id="recording-edit-title" maxlength="160" value="${esc(entry.title || "")}" />
+      <section class="recording-editor-combined">
+        <div><strong>完整轉錄</strong><span>${audio.filter((item) => String(item.transcript || "").trim()).length}/${audio.length} 段已完成</span></div>
+        <button class="btn small" id="recording-edit-full-transcript" type="button" ${recordingPreviewTranscript(audio) ? "" : "disabled"}>開啟／一鍵複製</button>
+      </section>
       <details class="recording-edit-fold">
         <summary>✏️ 速記</summary>
         <div class="recording-edit-fold-body"><textarea id="recording-edit-note" placeholder="會議重點、待辦或錄音備註">${esc(plainEntryBody(entry))}</textarea></div>
@@ -5188,6 +5232,7 @@ async function renderRecordingEditor(entryId, entry, audio) {
   $("folder-preview-save").onclick = () => $("recording-preview-editor").requestSubmit();
   $("folder-preview-manage").disabled = true;
   $("folder-preview-manage").onclick = null;
+  $("recording-edit-full-transcript").onclick = () => openRecordingTranscriptDialog(entry.title, audio);
   body.querySelectorAll(".recording-audio-delete").forEach((button) => {
     button.onclick = async () => {
       const filename = button.dataset.filename || "這段錄音";
@@ -7600,7 +7645,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=190").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=191").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

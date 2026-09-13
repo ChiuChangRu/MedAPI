@@ -132,7 +132,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "190";
+const UI_VERSION = "191";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -149,6 +149,31 @@ const INLINE_RAW_MAX_BYTES = 4 * 1024 * 1024;
 
 function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
+}
+
+const TRANSCRIPTION_QUOTA_PAUSE_KEY = "transcription.quota_pause_utc_date";
+const TRANSCRIPTION_RETRY_CRON = "15,45 0-1 * * *";
+
+function utcUsageDate(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+export function isRetryableTranscriptionError(error) {
+  const message = String(error?.message || error || "");
+  return error?.code === "AI_BUDGET_REACHED" || /429|rate|quota|limit|額度|頻率|預算|neuron/i.test(message);
+}
+
+async function transcriptionPausedToday(db, date = new Date()) {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = ?")
+    .bind(TRANSCRIPTION_QUOTA_PAUSE_KEY).first();
+  return row?.value === utcUsageDate(date);
+}
+
+async function pauseTranscriptionForToday(db, date = new Date()) {
+  await db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).bind(TRANSCRIPTION_QUOTA_PAUSE_KEY, utcUsageDate(date), now()).run();
 }
 
 const WEEKLY_REPORT_FOLDER_ROLE = "weekly_reports";
@@ -3079,6 +3104,9 @@ async function handleApi(request, env, url, identity = {}) {
       "SELECT * FROM attachments WHERE entry_id = ? AND kind = 'audio' AND COALESCE(transcript, '') = '' AND COALESCE(transcribed_at, '') = '' AND (duration_secs > 0 OR (duration_secs IS NULL AND size > 0)) ORDER BY offset_secs, id"
     ).bind(entryId).all();
     if (!candidates.length) return json({ processed: 0, reason: "沒有可安全自動轉錄的新錄音" });
+    if (await transcriptionPausedToday(db)) {
+      return json({ processed: 0, stopped: true, queued: true, reason: "今日轉錄額度已滿，已排入隔日自動轉錄" });
+    }
     let usage;
     try { usage = await enforceAiSoftBudget(env); }
     catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
@@ -3100,12 +3128,25 @@ async function handleApi(request, env, url, identity = {}) {
       // 10,000」、實際上 7,000 就停——白白少用 30% 的免費額度，而且從訊息完全
       // 看不出來。訊息與實際門檻必須同一個來源。
       if (cloudUsed + reserved + estimate > AI_AUTO_SAFE_NEURONS) {
+        await pauseTranscriptionForToday(db);
         const document = await composeRecordingDocument(env, db, entryId);
-        return json({ processed, stopped: true, reason: `預估將超過安全門檻（${AI_AUTO_SAFE_NEURONS.toLocaleString()} Neurons）`, cloudUsed, reserved, transcripts, document });
+        return json({ processed, stopped: true, queued: true, reason: `今日安全額度已滿，剩餘錄音已排入隔日自動轉錄`, cloudUsed, reserved, transcripts, document });
       }
-      const claim = await db.prepare(
+      let claim = await db.prepare(
         "INSERT OR IGNORE INTO ai_usage_reservations (attachment_id, usage_date, estimated_neurons, status, created_at) VALUES (?, ?, ?, 'reserved', ?)"
       ).bind(audio.id, today, estimate, now()).run();
+      // attachment_id 是主鍵：昨天因額度排隊留下的 reservation，今天必須更新日期
+      // 才能重新取得處理權；同一天的既有 reservation 則維持不動，阻止重複送件。
+      if (!claim.meta.changes) {
+        const previous = await db.prepare(
+          "SELECT usage_date, status FROM ai_usage_reservations WHERE attachment_id = ?"
+        ).bind(audio.id).first();
+        if (previous && previous.usage_date !== today && ["queued", "failed"].includes(previous.status)) {
+          claim = await db.prepare(
+            "UPDATE ai_usage_reservations SET usage_date = ?, estimated_neurons = ?, status = 'reserved', created_at = ? WHERE attachment_id = ? AND usage_date != ? AND status IN ('queued', 'failed')"
+          ).bind(today, estimate, now(), audio.id, today).run();
+        }
+      }
       if (!claim.meta.changes) continue;
       const lock = await db.prepare("UPDATE attachments SET transcribed_at = 'processing' WHERE id = ? AND COALESCE(transcribed_at, '') = ''").bind(audio.id).run();
       if (!lock.meta.changes) continue;
@@ -3125,9 +3166,19 @@ async function handleApi(request, env, url, identity = {}) {
         // 兩者分開：額度保護還是提早 return＋stopped:true（上面那個 if），
         // 這裡單純繼續跑下一個候選段落。
         const message = friendlyAiError(err);
+        if (isRetryableTranscriptionError(err)) {
+          // 額度或頻率限制不是音檔失敗。清掉 processing 鎖、保留當日 reservation
+          // 當防重標記，隔日日期改變後才允許重新 claim，避免每半小時重複送件。
+          await db.prepare("UPDATE attachments SET transcribed_at = '' WHERE id = ?").bind(audio.id).run();
+          await db.prepare("UPDATE ai_usage_reservations SET status = 'queued' WHERE attachment_id = ?").bind(audio.id).run();
+          await pauseTranscriptionForToday(db);
+          await logHistory(db, entryId, null, "等待隔日自動轉錄", `${audio.filename}：${message}`);
+          const document = await composeRecordingDocument(env, db, entryId);
+          return json({ processed, stopped: true, queued: true, reason: "今日轉錄額度已滿，已排入隔日自動轉錄", cloudUsed, reserved, transcripts, failed, document });
+        }
         await db.prepare("UPDATE attachments SET transcribed_at = 'auto_failed' WHERE id = ?").bind(audio.id).run();
         await db.prepare("UPDATE ai_usage_reservations SET status = 'failed' WHERE attachment_id = ?").bind(audio.id).run();
-        await logHistory(db, entryId, null, "自動轉錄失敗", `${audio.filename}：${message}（不會自動重試，可在附件上手動重試）`);
+        await logHistory(db, entryId, null, "自動轉錄失敗", `${audio.filename}：${message}（可在附件上手動重試）`);
         failed.push({ attachmentId: audio.id, reason: message });
       }
     }
@@ -3389,6 +3440,54 @@ async function runFilenameMaintenanceOnce(env) {
   return { ...result, version: FILENAME_MAINTENANCE_VERSION };
 }
 
+/**
+ * 每日免費額度在 00:00 UTC（台灣 08:00）重置後，依最舊錄音優先補跑。
+ * 每個 entry 仍走既有 auto-transcribe 端點，沿用額度預估、reservation 防重與
+ * 逐字稿文件重建，不另寫一套會逐漸分岔的轉錄邏輯。
+ */
+export async function runPendingAudioTranscriptions(env) {
+  if (!env.AI || !env.FILES) return { processed: 0, skipped: "not_configured" };
+  if (await transcriptionPausedToday(env.DB)) return { processed: 0, stopped: true, reason: "paused_today" };
+
+  const { results: entries } = await env.DB.prepare(
+    `SELECT a.entry_id, MIN(a.created_at) AS first_audio_at
+       FROM attachments a
+       JOIN entries e ON e.id = a.entry_id
+      WHERE a.kind = 'audio'
+        AND COALESCE(a.transcript, '') = ''
+        AND COALESCE(a.transcribed_at, '') = ''
+        AND (a.duration_secs > 0 OR (a.duration_secs IS NULL AND a.size > 0))
+        AND COALESCE(e.deleted_at, '') = ''
+      GROUP BY a.entry_id
+      ORDER BY first_audio_at, a.entry_id
+      LIMIT 100`
+  ).all();
+
+  let processed = 0;
+  let visited = 0;
+  for (const row of entries || []) {
+    visited++;
+    const request = new Request(`https://fieldlog.internal/api/entries/${row.entry_id}/auto-transcribe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const response = await handleApi(request, env, new URL(request.url), { email: "scheduled-transcription" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 429 || isRetryableTranscriptionError(result.error)) {
+        await pauseTranscriptionForToday(env.DB);
+        return { processed, visited, stopped: true, reason: result.error || "quota" };
+      }
+      console.error(JSON.stringify({ event: "scheduled_transcription_entry_failed", entry_id: row.entry_id, error: result.error || response.status }));
+      continue;
+    }
+    processed += Number(result.processed || 0);
+    if (result.stopped) return { processed, visited, stopped: true, reason: result.reason || "quota" };
+  }
+  return { processed, visited, stopped: false };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -3419,8 +3518,17 @@ export default {
   // 0 18 * * * UTC＝台灣時間 02:00）。「記得手動跑同步」不是機制——沒人記得跑，
   // 資料就永遠停在最後一次手動的那天。錯誤處理在 syncSources 裡：單一來源失敗
   // 不中斷其他來源，結果一律記進 sync_log，事後用 MCP 的 sync_status 就查得到。
-  async scheduled(_event, env) {
+  async scheduled(event, env) {
     await ensureSchema(env.DB, now());
+    if (event?.cron === TRANSCRIPTION_RETRY_CRON) {
+      try {
+        const transcription = await runPendingAudioTranscriptions(env);
+        console.log(JSON.stringify({ event: "scheduled_transcription_complete", ...transcription }));
+      } catch (err) {
+        console.error(JSON.stringify({ event: "scheduled_transcription_failed", error: err.message }));
+      }
+      return;
+    }
     try {
       await syncSources(env.DB, {});
     } catch (err) {

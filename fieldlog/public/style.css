@@ -1492,6 +1492,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .recording-download { display: inline-block; margin-top: 8px; font-size: 12px; }
 .recording-preview-section { margin-top: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
 .recording-preview-section h3 { margin: 0 0 10px; font-size: 14px; }
+.recording-preview-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.recording-preview-section-head h3 { margin: 0; }
 .recording-preview-section pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.65; }
 .folder-preview-empty.compact { padding: 10px; }
 
@@ -1522,6 +1524,37 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .recording-editor-transcripts section { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #f8faf9; }
 .recording-editor-transcripts audio { width: 100%; margin: 10px 0; }
 .recording-transcript-input { min-height: 220px; background: #fff; }
+.recording-editor-combined {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px; background: #eef6ff;
+}
+.recording-editor-combined > div { display: grid; gap: 2px; }
+.recording-editor-combined span { color: var(--text-muted); font-size: 12px; }
+.recording-transcript-dialog {
+  width: min(780px, calc(100vw - 28px)); max-height: min(820px, calc(100vh - 28px));
+  padding: 0; border: 1px solid var(--border); border-radius: 14px; background: #fff; color: var(--text);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, .32);
+}
+.recording-transcript-dialog::backdrop { background: rgba(15, 23, 42, .56); }
+.recording-transcript-dialog-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 16px 18px; border-bottom: 1px solid var(--border);
+}
+.recording-transcript-dialog-head > div { display: grid; gap: 3px; min-width: 0; }
+.recording-transcript-dialog-head strong { font-size: 18px; }
+.recording-transcript-dialog-head span { color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
+.recording-transcript-all {
+  display: block; width: calc(100% - 36px); min-height: min(54vh, 520px); margin: 18px;
+  padding: 14px; resize: vertical; border: 1px solid var(--border); border-radius: 9px;
+  background: #f8fafc; color: var(--text); font: inherit; font-size: 16px; line-height: 1.65;
+}
+.recording-transcript-waiting { margin: -6px 18px 14px; color: #92400e; font-size: 13px; }
+.recording-transcript-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 18px 18px; }
+@media (max-width: 600px) {
+  .recording-editor-combined { align-items: stretch; flex-direction: column; }
+  .recording-transcript-all { min-height: 50vh; }
+  .recording-transcript-dialog-actions { flex-direction: column; }
+}
 .recording-editor-segment-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .recording-editor-segment-head span { min-width: 0; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; text-align: right; }
 .recording-edit-fold { border: 1px solid var(--border); border-radius: 9px; background: #f8faf9; }
