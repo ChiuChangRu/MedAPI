@@ -132,7 +132,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "191";
+const UI_VERSION = "192";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -174,6 +174,43 @@ async function pauseTranscriptionForToday(db, date = new Date()) {
     `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
   ).bind(TRANSCRIPTION_QUOTA_PAUSE_KEY, utcUsageDate(date), now()).run();
+}
+
+/**
+ * Worker 若在送出 AI 後、寫回結果前中斷，附件會留在 processing，原本所有候選
+ * 查詢都會永遠略過它。當天不能立刻清鎖（AI 可能仍在完成，重送會重複扣額度）；
+ * 只在 UTC 日期已跨日後，把上一日仍為 reserved 的孤兒鎖改回 queued，交給既有
+ * reservation 日期更新機制重新取得處理權。
+ */
+export async function recoverPreviousDayTranscriptionClaims(db, date = new Date()) {
+  const today = utcUsageDate(date);
+  const unlocked = await db.prepare(
+    `UPDATE attachments
+        SET transcribed_at = ''
+      WHERE kind = 'audio'
+        AND COALESCE(transcript, '') = ''
+        AND transcribed_at = 'processing'
+        AND EXISTS (
+          SELECT 1 FROM ai_usage_reservations r
+           WHERE r.attachment_id = attachments.id
+             AND r.usage_date < ?
+             AND r.status = 'reserved'
+        )`
+  ).bind(today).run();
+  await db.prepare(
+    `UPDATE ai_usage_reservations
+        SET status = 'queued'
+      WHERE usage_date < ?
+        AND status = 'reserved'
+        AND EXISTS (
+          SELECT 1 FROM attachments a
+           WHERE a.id = ai_usage_reservations.attachment_id
+             AND a.kind = 'audio'
+             AND COALESCE(a.transcript, '') = ''
+             AND COALESCE(a.transcribed_at, '') = ''
+        )`
+  ).bind(today).run();
+  return Number(unlocked?.meta?.changes || 0);
 }
 
 const WEEKLY_REPORT_FOLDER_ROLE = "weekly_reports";
@@ -3448,6 +3485,7 @@ async function runFilenameMaintenanceOnce(env) {
 export async function runPendingAudioTranscriptions(env) {
   if (!env.AI || !env.FILES) return { processed: 0, skipped: "not_configured" };
   if (await transcriptionPausedToday(env.DB)) return { processed: 0, stopped: true, reason: "paused_today" };
+  const recovered = await recoverPreviousDayTranscriptionClaims(env.DB);
 
   const { results: entries } = await env.DB.prepare(
     `SELECT a.entry_id, MIN(a.created_at) AS first_audio_at
@@ -3477,15 +3515,15 @@ export async function runPendingAudioTranscriptions(env) {
     if (!response.ok) {
       if (response.status === 429 || isRetryableTranscriptionError(result.error)) {
         await pauseTranscriptionForToday(env.DB);
-        return { processed, visited, stopped: true, reason: result.error || "quota" };
+        return { processed, visited, recovered, stopped: true, reason: result.error || "quota" };
       }
       console.error(JSON.stringify({ event: "scheduled_transcription_entry_failed", entry_id: row.entry_id, error: result.error || response.status }));
       continue;
     }
     processed += Number(result.processed || 0);
-    if (result.stopped) return { processed, visited, stopped: true, reason: result.reason || "quota" };
+    if (result.stopped) return { processed, visited, recovered, stopped: true, reason: result.reason || "quota" };
   }
-  return { processed, visited, stopped: false };
+  return { processed, visited, recovered, stopped: false };
 }
 
 export default {

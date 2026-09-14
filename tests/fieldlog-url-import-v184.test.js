@@ -191,7 +191,9 @@ test("v187 網址匯入查重不會查詢 attachments.deleted_at", async () => {
   assert.match(html, /id="url-import-overlay"/);
   assert.match(app, /api\("\/import-url"/);
   assert.doesNotMatch(app.match(/function childFolderHtml[\s\S]*?\n\}/)?.[0] || "", /folderCategoryChipHtml|entry_count|folder-level-chip/);
-  assert.match(sw, /fieldlog-v189-drive-pdf-reader/);
+  const appVersion = app.match(/const APP_VERSION = "(\d+)"/)?.[1];
+  assert.ok(appVersion, "app.js 必須宣告前端版本");
+  assert.match(sw, new RegExp(`fieldlog-v${appVersion}-`));
   assert.match(config, /"browser"\s*:\s*\{\s*"binding"\s*:\s*"BROWSER"/);
   assert.doesNotMatch(worker, /a\.deleted_at/);
   assert.match(worker, /WHERE e\.folder_id = \? AND a\.content_hash = \?[\s\S]*COALESCE\(e\.deleted_at, ''\) = ''/);

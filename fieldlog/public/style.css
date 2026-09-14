@@ -2021,6 +2021,29 @@ body.file-marquee-active, body.file-marquee-active * { user-select: none !import
 .inspector-entry-preview h3 { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .inspector-entry-preview audio, .inspector-entry-preview video { width: 100%; max-height: 60vh; }
 .inspector-entry-preview + iframe { min-height: 55vh; width: 100%; }
+.inspector-recording-preview { width: 100%; min-width: 0; padding: 0 14px 18px; }
+.recording-progress-summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; margin-bottom: 14px;
+  padding: 11px 12px; border: 1px solid #dbe3ea; border-radius: 10px; background: #f8fafc;
+}
+.recording-progress-summary > strong { font-size: 14px; }
+.recording-progress-summary > small { flex-basis: 100%; color: #64748b; line-height: 1.5; }
+.recording-interleaved-preview { display: grid; gap: 14px; }
+.recording-interleaved-segment {
+  min-width: 0; padding: 14px; border: 1px solid #dbe3ea; border-radius: 10px; background: #fff;
+}
+.recording-interleaved-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.recording-interleaved-head > span { min-width: 0; color: #64748b; font-size: 13px; overflow-wrap: anywhere; text-align: right; }
+.recording-interleaved-segment audio { display: block; width: 100%; margin: 10px 0 8px; }
+.recording-interleaved-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.recording-interleaved-transcript { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
+.recording-interleaved-transcript > p { margin: 7px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.recording-other-attachments { margin-top: 14px; }
+.recording-entry-note { display: block; width: 100%; min-height: 40vh; margin-top: 14px; }
+@media (max-width: 600px) {
+  .recording-interleaved-head { display: block; }
+  .recording-interleaved-head > span { display: block; margin-top: 3px; text-align: left; }
+}
 .inspector-download { align-self: flex-start; margin-bottom: 8px; }
 .inspector-dialog { border: 0; border-radius: 16px; padding: 24px; width: min(480px, calc(100vw - 32px)); box-shadow: 0 20px 60px #0004; }
 .inspector-dialog::backdrop { background: #0f172a80; }

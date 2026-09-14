@@ -326,16 +326,53 @@ async function renderInspectorEntry(item, tab) {
     return;
   }
   if (tab === "preview") {
-    body.innerHTML = `<div class="inspector-entry-preview">${attachments.map((a) => {
+    const audio = attachments.filter((a) => a.kind === "audio")
+      .sort((a, b) => Number(a.offset_secs || 0) - Number(b.offset_secs || 0) || Number(a.id) - Number(b.id));
+    const otherAttachments = attachments.filter((a) => a.kind !== "audio");
+    const attachmentHtml = (a) => {
       const url = fileUrlForKey(a.key);
-      return `<section><h3>${esc(a.filename)}</h3>${a.kind === "audio" ? `<audio controls preload="metadata" src="${url}"></audio>` : a.kind === "video" ? `<video controls preload="metadata" src="${url}"></video>` : isImageAtt(a) ? `<img class="folder-preview-image" src="${url}" alt="${esc(a.filename)}">` : ""}<div><a class="btn small" href="${url}" download="${esc(a.filename)}">下載原檔</a><button class="btn small" data-inspect="${a.id}">檢視檔案</button></div></section>`;
-    }).join("")}</div>`;
-    if (entry.body) {
-      const frame = document.createElement("iframe"); frame.className = "folder-preview-frame"; frame.title = "記事內容（保留 AI 整理標示）"; frame.setAttribute("sandbox", "");
-      frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : `<pre>${esc(entry.body)}</pre>`); body.appendChild(frame);
-    } else if (!attachments.length && !visibleEntryFields(entry).length) body.innerHTML = '<p class="folder-preview-empty">尚無內容，可切到「文字內容」編輯。</p>';
+      return `<section><h3>${esc(a.filename)}</h3>${a.kind === "video" ? `<video controls preload="metadata" src="${url}"></video>` : isImageAtt(a) ? `<img class="folder-preview-image" src="${url}" alt="${esc(a.filename)}">` : ""}<div><a class="btn small" href="${url}" download="${esc(a.filename)}">下載原檔</a><button class="btn small" data-inspect="${a.id}">檢視檔案</button></div></section>`;
+    };
+    if (audio.length) {
+      const recordingProgress = recordingStatus(audio);
+      // 一段錄音必須緊接自己的逐字稿。不能再把全部播放器與整份文字當成
+      // folder-preview-body 的兩個 flex 子元素，否則桌機右欄會被排成左右兩欄。
+      body.innerHTML = `<div class="inspector-recording-preview">
+        <div class="recording-progress-summary">
+          <span class="recording-status ${recordingProgress.tone}">${esc(recordingProgress.label)}</span>
+          <strong>已轉錄 ${recordingProgress.completedCount} 段</strong>
+          <strong>未轉錄 ${recordingProgress.remainingCount} 段</strong>
+          ${recordingProgress.remainingCount ? `<small>當日額度用完時，隔日台灣時間 08:15 起自動接續；已完成段落不會重複轉錄。</small>` : ""}
+        </div>
+        <div class="recording-interleaved-preview">${audio.map((a, index) => {
+          const url = fileUrlForKey(a.key);
+          const transcript = String(a.transcript || "").trim();
+          return `<section class="recording-interleaved-segment">
+            <div class="recording-interleaved-head"><strong>語音檔案 ${index + 1}</strong><span>${esc(a.filename)}</span></div>
+            <audio controls preload="metadata" src="${url}"></audio>
+            <div class="recording-interleaved-actions"><a class="btn small" href="${url}" download="${esc(a.filename)}">下載原檔</a><button class="btn small" data-inspect="${a.id}">檢視檔案</button></div>
+            <div class="recording-interleaved-transcript"><strong>轉錄 ${index + 1}</strong>${transcript ? `<p>${esc(transcript)}</p>` : `<p class="sub">${a.transcribed_at === "processing" ? "轉錄中…" : "尚未完成轉錄"}</p>`}</div>
+          </section>`;
+        }).join("")}</div>
+        ${otherAttachments.length ? `<div class="inspector-entry-preview recording-other-attachments">${otherAttachments.map(attachmentHtml).join("")}</div>` : ""}
+      </div>`;
+      let recordingFields = {};
+      try { recordingFields = JSON.parse(entry.fields_json || "{}"); } catch { /* 壞 JSON 當成一般記事內容 */ }
+      // 自動產生的錄音文件和上方逐段轉錄是同一份內容，不再重複顯示；人工速記或
+      // 結論則留在所有錄音／轉錄之後，仍維持單欄閱讀順序。
+      if (entry.body && !recordingFields._recording_document_hash) {
+        const frame = document.createElement("iframe"); frame.className = "folder-preview-frame recording-entry-note"; frame.title = "速記／結論"; frame.setAttribute("sandbox", "");
+        frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : `<pre>${esc(entry.body)}</pre>`); body.querySelector(".inspector-recording-preview").appendChild(frame);
+      }
+    } else {
+      body.innerHTML = `<div class="inspector-entry-preview">${otherAttachments.map(attachmentHtml).join("")}</div>`;
+      if (entry.body) {
+        const frame = document.createElement("iframe"); frame.className = "folder-preview-frame"; frame.title = "記事內容（保留 AI 整理標示）"; frame.setAttribute("sandbox", "");
+        frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : `<pre>${esc(entry.body)}</pre>`); body.appendChild(frame);
+      } else if (!attachments.length && !visibleEntryFields(entry).length) body.innerHTML = '<p class="folder-preview-empty">尚無內容，可切到「文字內容」編輯。</p>';
+    }
     const fields = visibleEntryFields(entry);
-    if (fields.length) body.insertAdjacentHTML("beforeend", `<dl class="inspector-metadata">${fields.map(([key, value]) => `<div><dt>${esc(key)}</dt><dd>${esc(String(value ?? ""))}</dd></div>`).join("")}</dl>`);
+    if (fields.length) (body.querySelector(".inspector-recording-preview") || body).insertAdjacentHTML("beforeend", `<dl class="inspector-metadata">${fields.map(([key, value]) => `<div><dt>${esc(key)}</dt><dd>${esc(String(value ?? ""))}</dd></div>`).join("")}</dl>`);
     body.querySelectorAll("[data-inspect]").forEach((button) => { button.onclick = () => openInspector({ type: "attachment", id: Number(button.dataset.inspect), entryId: entry.id }, "preview"); });
     return;
   }
