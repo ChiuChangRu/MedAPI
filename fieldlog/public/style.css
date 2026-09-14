@@ -2028,6 +2028,10 @@ body.file-marquee-active, body.file-marquee-active * { user-select: none !import
 }
 .recording-progress-summary > strong { font-size: 14px; }
 .recording-progress-summary > small { flex-basis: 100%; color: #64748b; line-height: 1.5; }
+.recording-download-all-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: -2px 0 14px;
+}
+.recording-download-all-row > small { color: #64748b; line-height: 1.5; }
 .recording-interleaved-preview { display: grid; gap: 14px; }
 .recording-interleaved-segment {
   min-width: 0; padding: 14px; border: 1px solid #dbe3ea; border-radius: 10px; background: #fff;
@@ -2041,6 +2045,7 @@ body.file-marquee-active, body.file-marquee-active * { user-select: none !import
 .recording-other-attachments { margin-top: 14px; }
 .recording-entry-note { display: block; width: 100%; min-height: 40vh; margin-top: 14px; }
 @media (max-width: 600px) {
+  .recording-download-all-row > .btn { width: 100%; justify-content: center; }
   .recording-interleaved-head { display: block; }
   .recording-interleaved-head > span { display: block; margin-top: 3px; text-align: left; }
 }

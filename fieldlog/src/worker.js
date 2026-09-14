@@ -42,6 +42,7 @@ import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
 import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
+import { createAudioZipStream, recordingZipFilename } from "./lib/audio-zip.js";
 import {
   deleteAttachmentDeep,
   folderDepth,
@@ -132,7 +133,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "192";
+const UI_VERSION = "193";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -2002,6 +2003,36 @@ async function handleApi(request, env, url, identity = {}) {
                   FROM entries e WHERE e.parent_entry_id = ? AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`).bind(id).all(),
     ]);
     return json({ ...entry, body: canonicalEntryBody(entry), attachments: atts, children });
+  }
+  const entryAudioZipMatch = path.match(/^\/entries\/(\d+)\/audio\.zip$/);
+  if (entryAudioZipMatch && method === "GET") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const entryId = Number(entryAudioZipMatch[1]);
+    const entry = await db.prepare(
+      `SELECT e.id, e.title FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+       WHERE e.id = ? AND COALESCE(e.deleted_at, '') = '' AND (f.id IS NULL OR COALESCE(f.deleted_at, '') = '')`
+    ).bind(entryId).first();
+    if (!entry) return bad("找不到錄音紀錄", 404);
+    const { results } = await db.prepare(
+      `SELECT id, filename, key, size, created_at FROM attachments
+       WHERE entry_id = ? AND kind = 'audio' AND source_pdf_id IS NULL
+       ORDER BY COALESCE(offset_secs, 0), id`
+    ).bind(entryId).all();
+    const audio = results || [];
+    if (!audio.length) return bad("這筆紀錄沒有錄音檔", 404);
+    if (audio.length > 65535) return bad("錄音分段過多，無法建立 ZIP", 413);
+    const heads = await Promise.all(audio.map((item) => env.FILES.head(item.key)));
+    const missing = heads.findIndex((item) => !item);
+    if (missing >= 0) return bad(`找不到錄音檔：${audio[missing].filename}`, 404);
+
+    const filename = recordingZipFilename(entry.title);
+    const stream = createAudioZipStream(audio, (item) => env.FILES.get(item.key));
+    return new Response(stream, { headers: {
+      "content-type": "application/zip",
+      "content-disposition": `attachment; filename="recordings.zip"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "cache-control": "private, no-store",
+      "x-content-type-options": "nosniff",
+    } });
   }
   // 一筆記事的操作履歷（history 表是 append-only 的稽核軌跡）。
   // 這張表從第一版就在寫，但一直沒有任何地方讀得到——等於白記。前台的

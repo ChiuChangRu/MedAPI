@@ -344,6 +344,10 @@ async function renderInspectorEntry(item, tab) {
           <strong>未轉錄 ${recordingProgress.remainingCount} 段</strong>
           ${recordingProgress.remainingCount ? `<small>當日額度用完時，隔日台灣時間 08:15 起自動接續；已完成段落不會重複轉錄。</small>` : ""}
         </div>
+        <div class="recording-download-all-row">
+          <a class="btn primary recording-download-all" href="/api/entries/${entry.id}/audio.zip" download>⬇ 一鍵下載全部錄音（${audio.length} 段 ZIP）</a>
+          <small>依錄音順序編號，保留每一段原始格式。</small>
+        </div>
         <div class="recording-interleaved-preview">${audio.map((a, index) => {
           const url = fileUrlForKey(a.key);
           const transcript = String(a.transcript || "").trim();
