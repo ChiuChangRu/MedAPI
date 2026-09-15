@@ -312,6 +312,43 @@ async function renderInspectorAttachmentText(entry, attachments, { append = fals
   }); });
 }
 
+// 一般文字記事也要有「閱讀預覽」，不能把 Markdown 與內部同步註解原樣塞進
+// <pre>。這裡只處理記事常用的標題、項目、粗體與行內程式碼；內容先經 esc()，
+// 最後仍交給 safeHtmlPreviewDocument() 做第二層清理。
+function entryTextPreviewHtml(source) {
+  const text = String(source || "").replace(/<!--[\s\S]*?-->/g, "").trim();
+  const inline = (value) => esc(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  const output = [];
+  let listOpen = false;
+  const closeList = () => { if (listOpen) { output.push("</ul>"); listOpen = false; } };
+  text.split(/\r?\n/).forEach((line) => {
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    const item = line.match(/^\s*[-*]\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      output.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+    } else if (item) {
+      if (!listOpen) { output.push("<ul>"); listOpen = true; }
+      output.push(`<li>${inline(item[1])}</li>`);
+    } else if (line.trim()) {
+      closeList();
+      output.push(`<p>${inline(line.trim())}</p>`);
+    } else closeList();
+  });
+  closeList();
+  return `<style>
+    body{font-size:16px;line-height:1.75;color:#1f2937}
+    article{max-width:900px;margin:0 auto}
+    h1,h2,h3,h4,h5,h6{margin:1.2em 0 .45em;line-height:1.35;color:#111827}
+    h1:first-child,h2:first-child,h3:first-child{margin-top:0}
+    p{margin:.55em 0}ul{margin:.45em 0 1em;padding-left:1.5em}li{margin:.3em 0}
+    code{padding:.1em .35em;border-radius:4px;background:#f1f5f9;font-family:ui-monospace,monospace}
+  </style><article>${output.join("")}</article>`;
+}
+
 async function renderInspectorEntry(item, tab) {
   const entry = await api(`/entries/${item.id}`);
   const attachments = (entry.attachments || []).filter((a) => !a.source_pdf_id);
@@ -366,17 +403,20 @@ async function renderInspectorEntry(item, tab) {
       // 結論則留在所有錄音／轉錄之後，仍維持單欄閱讀順序。
       if (entry.body && !recordingFields._recording_document_hash) {
         const frame = document.createElement("iframe"); frame.className = "folder-preview-frame recording-entry-note"; frame.title = "速記／結論"; frame.setAttribute("sandbox", "");
-        frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : `<pre>${esc(entry.body)}</pre>`); body.querySelector(".inspector-recording-preview").appendChild(frame);
+        frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : entryTextPreviewHtml(entry.body)); body.querySelector(".inspector-recording-preview").appendChild(frame);
       }
     } else {
-      body.innerHTML = `<div class="inspector-entry-preview">${otherAttachments.map(attachmentHtml).join("")}</div>`;
+      // folder-preview-body 本身是橫向 flex，文件內容與資訊表必須包在同一個直向
+      // 容器；否則它們會變成並排兄弟元素，窄欄時資訊表就會壓在本文上。
+      body.innerHTML = `<div class="inspector-document-preview"><div class="inspector-entry-preview">${otherAttachments.map(attachmentHtml).join("")}</div></div>`;
+      const documentPreview = body.querySelector(".inspector-document-preview");
       if (entry.body) {
         const frame = document.createElement("iframe"); frame.className = "folder-preview-frame"; frame.title = "記事內容（保留 AI 整理標示）"; frame.setAttribute("sandbox", "");
-        frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : `<pre>${esc(entry.body)}</pre>`); body.appendChild(frame);
+        frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : entryTextPreviewHtml(entry.body)); documentPreview.appendChild(frame);
       } else if (!attachments.length && !visibleEntryFields(entry).length) body.innerHTML = '<p class="folder-preview-empty">尚無內容，可切到「文字內容」編輯。</p>';
     }
     const fields = visibleEntryFields(entry);
-    if (fields.length) (body.querySelector(".inspector-recording-preview") || body).insertAdjacentHTML("beforeend", `<dl class="inspector-metadata">${fields.map(([key, value]) => `<div><dt>${esc(key)}</dt><dd>${esc(String(value ?? ""))}</dd></div>`).join("")}</dl>`);
+    if (fields.length) (body.querySelector(".inspector-recording-preview") || body.querySelector(".inspector-document-preview") || body).insertAdjacentHTML("beforeend", `<dl class="inspector-metadata">${fields.map(([key, value]) => `<div><dt>${esc(key)}</dt><dd>${esc(String(value ?? ""))}</dd></div>`).join("")}</dl>`);
     body.querySelectorAll("[data-inspect]").forEach((button) => { button.onclick = () => openInspector({ type: "attachment", id: Number(button.dataset.inspect), entryId: entry.id }, "preview"); });
     return;
   }
