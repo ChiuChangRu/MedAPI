@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "194";
+const APP_VERSION = "195";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -6640,7 +6640,10 @@ function appendAudioLiveTranscripts(items = []) {
 }
 
 function startAudioSegRecorder() {
-  const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"]
+  // WebM/Opus 可以安全合併 MediaRecorder 每次 dataavailable 交出的區塊。
+  // MP4 放在最後：fMP4 區塊直接拼成 Blob 時，Chrome 播放器可能只把第一個
+  // 5 秒 fragment 當成完整長度，但 Whisper 仍能解出後續內容。
+  const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"]
     .find((m) => MediaRecorder.isTypeSupported(m)) || "";
   // 2026-08-19：改回直接錄麥克風原始 stream（audioRecordStream() = AUDIO.stream）
   // ——跟錄影一律直接錄 track、不經過 AudioContext 是同一招。原本讓 recorder
@@ -6665,7 +6668,10 @@ function startAudioSegRecorder() {
   recorder.onstop = () => onAudioSegmentStop(recorder, chunks, seg);
   AUDIO.recorder = recorder;
   AUDIO.segStartMs = Date.now();
-  recorder.start(AUDIO_DATA_SLICE_MS);
+  // MP4/fMP4 不以 timeslice 切成多個 fragment 後再直接串接；那會讓瀏覽器
+  // duration 只剩第一個約 5 秒的片段。WebM/Opus 維持五秒交付資料的防遺失機制。
+  if (/^audio\/mp4(?:;|$)/i.test(recorder.mimeType || mimeType)) recorder.start();
+  else recorder.start(AUDIO_DATA_SLICE_MS);
   return recorder;
 }
 
@@ -7657,7 +7663,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=193").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=195").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
