@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "193";
+const APP_VERSION = "194";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -461,13 +461,17 @@ function fmtBytes(size) {
   return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
+function attachmentHasTranscript(item) {
+  return Boolean(String(item?.transcript || "").trim()) || Number(item?.has_transcript || 0) === 1;
+}
+
 function recordingStatus(audioAttachments) {
   const audio = audioAttachments || [];
   if (!audio.length) return { tone: "failed", label: "找不到錄音附件", detail: "" };
   const transcriptChars = audio.reduce((sum, item) => sum + String(item.transcript || "").trim().length, 0);
   // 不能只用 transcript 是否有字判斷：正常完成但該段沒有語音時，逐字稿會是空的，
   // transcribed_at 仍有完成時間。processing／失敗／略過都不算已完成轉錄。
-  const completedCount = audio.filter((item) => String(item.transcript || "").trim()
+  const completedCount = audio.filter((item) => attachmentHasTranscript(item)
     || (item.transcribed_at && !["processing", "auto_failed", "skipped"].includes(item.transcribed_at))).length;
   const remainingCount = Math.max(0, audio.length - completedCount);
   const progress = { completedCount, remainingCount, totalCount: audio.length };
@@ -4144,7 +4148,7 @@ async function autoTranscribeFolderBacklog(folderId, entries) {
     .filter((entry) => (entry.attachments || []).some((item) =>
       item.kind === "audio"
       && !item.source_pdf_id
-      && !String(item.transcript || "").trim()
+      && !attachmentHasTranscript(item)
       && !String(item.transcribed_at || "").trim()))
     .map((entry) => Number(entry.id))
     .filter(Boolean);
@@ -4167,7 +4171,9 @@ async function autoTranscribeFolderBacklog(folderId, entries) {
     } else if (result.failed || result.stopped) {
       showToast("既有錄音自動轉錄未完成，可稍後再試");
     }
-    if (result.processed || result.failed || result.stopped) await openFolder(folderId);
+    // 清單快照與排程可能同時變動；不論這次是否實際處理，都重新讀一次真實狀態。
+    // 否則「後端剛好已完成、processed=0」時，前面暫時設的轉錄中徽章會永久殘留。
+    await openFolder(folderId);
   } finally {
     AUTO_TRANSCRIBE_FOLDER_IDS.delete(folderId);
   }

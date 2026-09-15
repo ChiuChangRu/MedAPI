@@ -133,7 +133,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "193";
+const UI_VERSION = "194";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1690,7 +1690,8 @@ async function handleApi(request, env, url, identity = {}) {
       const ids = results.map((e) => e.id);
       const { results: atts } = await db.prepare(
         `SELECT id, entry_id, kind, filename, key, mime, created_at, offset_secs,
-                source_pdf_id, rotation
+                source_pdf_id, rotation, transcribed_at,
+                CASE WHEN COALESCE(transcript, '') != '' THEN 1 ELSE 0 END AS has_transcript
          FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
       ).bind(...ids).all();
       const byEntry = new Map();
