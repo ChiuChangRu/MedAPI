@@ -133,7 +133,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "197";
+const UI_VERSION = "198";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -2801,6 +2801,40 @@ async function handleApi(request, env, url, identity = {}) {
       renamed: renamed + standardCleanup.renamed,
       duplicates_removed: duplicatesRemoved + standardCleanup.duplicates_removed,
     });
+  }
+  const attContentMatch = path.match(/^\/attachments\/(\d+)\/content$/);
+  if (attContentMatch && method === "PUT") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const id = Number(attContentMatch[1]);
+    const old = await activeAttachment(db, id);
+    if (!old) return bad("找不到附件", 404);
+    if (!/\.xlsx$/i.test(String(old.filename || "")) && !/spreadsheetml\.sheet/i.test(String(old.mime || ""))) {
+      return bad("只有 .xlsx 檔案可以直接編輯");
+    }
+    const body = await request.arrayBuffer();
+    if (!body.byteLength) return bad("空檔案");
+    if (body.byteLength > 50 * 1024 * 1024) return bad("檔案過大（上限 50MB）");
+    const digest = await crypto.subtle.digest("SHA-256", body);
+    const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const duplicate = await db.prepare(
+      "SELECT id, filename FROM attachments WHERE entry_id = ? AND id <> ? AND content_hash = ?"
+    ).bind(old.entry_id, id, contentHash).first();
+    if (duplicate) return json({ ok: false, error: `相同檔案已存在：${duplicate.filename || "另一份附件"}` }, 409);
+    const safeFilename = String(old.filename || "file.xlsx").replace(/[^\w.\-一-鿿]+/g, "_");
+    const key = `${old.entry_id}/${Date.now()}-${id}-${safeFilename}`;
+    const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    await env.FILES.put(key, body, { httpMetadata: { contentType: mime } });
+    try {
+      await db.prepare(
+        "UPDATE attachments SET key = ?, size = ?, mime = ?, content_hash = ?, ocr_text = '', ocr_at = '' WHERE id = ?"
+      ).bind(key, body.byteLength, mime, contentHash, id).run();
+    } catch (error) {
+      await env.FILES.delete(key).catch(() => {});
+      throw error;
+    }
+    if (old.key && old.key !== key) await env.FILES.delete(old.key).catch(() => {});
+    await logHistory(db, old.entry_id, null, "編輯 Excel 檔案", `${old.filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
+    return json({ ok: true, id, key, filename: old.filename, size: body.byteLength, mime, content_hash: contentHash });
   }
   const attMatch = path.match(/^\/attachments\/(\d+)$/);
   if (attMatch && method === "PUT") {
