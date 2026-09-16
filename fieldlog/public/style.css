@@ -1179,6 +1179,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .spreadsheet-preview h3 { margin: 0 0 8px; font-size: 14px; }
   .spreadsheet-scroll { max-width: 100%; overflow: auto; border: 1px solid var(--border); background: #fff; }
   .spreadsheet-scroll table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
+  .xlsx-editor-help { width: 100%; padding: 10px 12px 18px; overflow: auto; background: #fff; color: var(--text-muted); line-height: 1.6; }
+  .xlsx-editor-help code { padding: 1px 4px; border-radius: 4px; background: #eef3f1; }
+  .xlsx-editor-help .spreadsheet-preview { padding: 0; color: var(--text); }
+  .xlsx-grid td[contenteditable="true"], .xlsx-grid th[contenteditable="true"] { cursor: text; outline: none; }
+  .xlsx-grid td[contenteditable="true"]:focus, .xlsx-grid th[contenteditable="true"]:focus { box-shadow: inset 0 0 0 2px var(--accent); background: #fffef0; }
   .spreadsheet-scroll th, .spreadsheet-scroll td {
     min-width: 72px; max-width: 320px; padding: 7px 9px; border: 1px solid var(--border);
     white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; vertical-align: top;
