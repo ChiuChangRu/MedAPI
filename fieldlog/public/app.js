@@ -5929,6 +5929,33 @@ function setupFileDropZone(el, onFiles) {
   };
 }
 
+// 資料夾頁的檔案拖放要在捕獲階段接住：內層的檔案列、子資料夾卡片
+// 也有自己的站內拖曳事件，若等冒泡階段才處理，作業系統檔案可能被內層
+// 元件吃掉，導致「拖進去卻沒有檔案」。只給 view-home/view-folder 使用，
+// 不套到記事編輯器，避免圖片拖入編輯框時被外層附件流程攔截。
+function setupFolderFileDropZone(el, onFiles) {
+  if (!el) return;
+  const isFileDrag = (ev) => Array.from(ev.dataTransfer?.types || []).includes("Files");
+  el.addEventListener("dragover", (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.dataTransfer.dropEffect = "copy";
+    el.classList.add("file-drag-over");
+  }, true);
+  el.addEventListener("dragleave", (ev) => {
+    if (ev.target === el || !el.contains(ev.relatedTarget)) el.classList.remove("file-drag-over");
+  }, true);
+  el.addEventListener("drop", (ev) => {
+    if (!isFileDrag(ev)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    el.classList.remove("file-drag-over");
+    const files = Array.from(ev.dataTransfer.files || []);
+    if (files.length) onFiles(files);
+  }, true);
+}
+
 async function uploadFiles(entryId, files) {
   if (!files || !files.length) return;
   const status = $("e-upload-status");
@@ -7483,8 +7510,8 @@ function init() {
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && $("url-import-overlay").classList.contains("open")) closeUrlImport();
   });
-  setupFileDropZone($("view-home"), uploadDroppedFilesToCurrentLocation);
-  setupFileDropZone($("view-folder"), uploadDroppedFilesToCurrentLocation);
+  setupFolderFileDropZone($("view-home"), uploadDroppedFilesToCurrentLocation);
+  setupFolderFileDropZone($("view-folder"), uploadDroppedFilesToCurrentLocation);
   setupFileDropZone($("desktop-explorer-nav"), uploadDroppedFilesToCurrentLocation);
   initDesktopSidebarCollapse();
   initDesktopSidebarResize();
