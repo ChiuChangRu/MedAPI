@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "197";
+const APP_VERSION = "198";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2948,6 +2948,108 @@ function renderDelimitedTable(text, { spreadsheet = false } = {}) {
   }).join("")}</div>`;
 }
 
+function isXlsxAttachment(attachment) {
+  const filename = typeof attachment === "string" ? attachment : attachment?.filename;
+  const mime = typeof attachment === "string" ? "" : attachment?.mime;
+  return /\.xlsx$/i.test(String(filename || "")) || /spreadsheetml\.sheet/i.test(String(mime || ""));
+}
+
+function xlsxCellText(sheet, row, column) {
+  const address = XLSX.utils.encode_cell({ r: row, c: column });
+  const cell = sheet[address];
+  if (!cell) return "";
+  try { return String(XLSX.utils.format_cell(cell) ?? ""); }
+  catch { return String(cell.w ?? cell.v ?? ""); }
+}
+
+function renderXlsxWorkbook(workbook, { editable = false, maxRows = 1000, maxCols = 80 } = {}) {
+  if (!workbook?.SheetNames?.length) return '<p class="folder-preview-empty">這份 Excel 沒有工作表。</p>';
+  const sheets = workbook.SheetNames.map((name) => {
+    const sheet = workbook.Sheets[name];
+    const rows = XLSX.utils.sheet_to_json(sheet, {
+      header: 1, raw: false, defval: "", blankrows: true,
+      range: { s: { r: 0, c: 0 }, e: { r: maxRows - 1, c: maxCols - 1 } },
+    });
+    const range = sheet?.["!ref"] ? XLSX.utils.decode_range(sheet["!ref"]) : null;
+    const clipped = Boolean(range && (range.e.r + 1 > maxRows || range.e.c + 1 > maxCols));
+    if (!rows.length) return `<section><h3>${esc(name)}</h3><p class="folder-preview-empty">空白工作表</p></section>`;
+    const width = Math.max(1, ...rows.map((row) => row.length));
+    const normalized = rows.map((row) => [...row, ...Array(Math.max(0, width - row.length)).fill("")]);
+    return `<section><h3>${esc(name)}</h3><div class="spreadsheet-scroll"><table class="xlsx-grid"><tbody>${normalized.map((row, rowIndex) => {
+      const tag = rowIndex === 0 ? "th" : "td";
+      return `<tr>${row.map((value, columnIndex) => {
+        const cellText = String(value ?? "");
+        const attrs = editable
+          ? ` data-xlsx-cell="1" data-sheet="${esc(name)}" data-row="${rowIndex}" data-col="${columnIndex}" data-original="${esc(cellText)}" contenteditable="true" spellcheck="false"`
+          : "";
+        return `<${tag}${attrs}>${esc(cellText)}</${tag}>`;
+      }).join("")}</tr>`;
+    }).join("")}</tbody></table></div>${clipped ? `<p class="sub preview-limit-note">目前顯示前 ${maxRows} 列 × ${maxCols} 欄；未顯示內容會保留。</p>` : ""}</section>`;
+  });
+  return `<div class="spreadsheet-preview xlsx-workbook-preview">${sheets.join("")}</div>`;
+}
+
+async function fetchXlsxWorkbook(url) {
+  if (!window.XLSX?.read) throw new Error("Excel 預覽程式尚未載入，請重新整理頁面");
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Excel 讀取失敗（HTTP ${response.status}）`);
+  return XLSX.read(await response.arrayBuffer(), { type: "array", cellStyles: true, cellFormula: true });
+}
+
+async function replaceXlsxAttachment(attachmentId, filename, bytes) {
+  const response = await fetch(`/api/attachments/${attachmentId}/content`, {
+    method: "PUT",
+    headers: {
+      "x-pin": pin(),
+      "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "x-filename": encodeURIComponent(filename),
+    },
+    body: bytes,
+  });
+  if (response.status === 401) { showLogin(); throw new Error("PIN 錯誤"); }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+  return result;
+}
+
+function xlsxEditorSnapshot(body) {
+  return JSON.stringify([...body.querySelectorAll("[data-xlsx-cell]")].map((cell) => [
+    cell.dataset.sheet, cell.dataset.row, cell.dataset.col, cell.textContent.replace(/\u00a0/g, " "),
+  ]));
+}
+
+async function renderXlsxEditor(entryId, attachment) {
+  const body = $("folder-preview-body");
+  const workbook = await fetchXlsxWorkbook(fileUrlForKey(attachment.key));
+  body.innerHTML = `<div class="xlsx-editor-help">可直接修改儲存格；按右上角「儲存」回寫原始 Excel。公式請以 <code>=</code> 開頭。${renderXlsxWorkbook(workbook, { editable: true })}</div>`;
+  const persist = async () => {
+    const changed = [...body.querySelectorAll("[data-xlsx-cell]")].filter((cell) =>
+      cell.textContent.replace(/\u00a0/g, " ") !== cell.dataset.original
+    );
+    if (!changed.length) return;
+    for (const cellElement of changed) {
+      const sheet = workbook.Sheets[cellElement.dataset.sheet];
+      const address = XLSX.utils.encode_cell({ r: Number(cellElement.dataset.row), c: Number(cellElement.dataset.col) });
+      const value = cellElement.textContent.replace(/\u00a0/g, " ");
+      const cell = sheet[address] || {};
+      delete cell.f;
+      if (!value.trim()) { cell.v = ""; cell.t = "s"; }
+      else if (/^=/.test(value.trim())) { cell.f = value.trim().slice(1); cell.v = 0; cell.t = "n"; }
+      else if (cell.t === "n" && Number.isFinite(Number(value.trim()))) { cell.v = Number(value.trim()); cell.t = "n"; }
+      else { cell.v = value; cell.t = "s"; }
+      sheet[address] = cell;
+      cellElement.dataset.original = value;
+    }
+    const bytes = XLSX.write(workbook, { bookType: "xlsx", type: "array", cellStyles: true });
+    const result = await replaceXlsxAttachment(attachment.id, attachment.filename, bytes);
+    attachment.key = result.key || attachment.key;
+    attachment.size = result.size || bytes.byteLength;
+    document.querySelectorAll(`.folder-file-row[data-att-id="${attachment.id}"]`).forEach((row) => { row.dataset.key = attachment.key; });
+    showToast("Excel 已儲存");
+  };
+  inspectorTrack(() => xlsxEditorSnapshot(body), persist);
+}
+
 async function attachmentWithText(entryId, attachmentId, { extract = false } = {}) {
   const entry = await api(`/entries/${entryId}`);
   let attachment = (entry.attachments || []).find((item) => Number(item.id) === Number(attachmentId));
@@ -3195,6 +3297,9 @@ async function renderFilePreview({ entryId, attachmentId, filename, key, mime, k
   } else if (plain) {
     const { text, truncated } = await fetchTextPreview(url, 200000);
     body.innerHTML = `<pre class="folder-preview-text">${esc(text)}${truncated ? "\n\n［預覽只顯示前 200,000 字］" : ""}</pre>`;
+  } else if (ext === "xlsx") {
+    const workbook = await fetchXlsxWorkbook(url);
+    body.innerHTML = renderXlsxWorkbook(workbook);
   } else if (modernOffice) {
     const loaded = await attachmentWithText(entryId, attachmentId, { extract: true });
     const extracted = String(loaded.attachment.ocr_text || "").trim();
@@ -7690,7 +7795,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=197").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=198").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
