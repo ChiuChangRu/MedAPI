@@ -162,6 +162,7 @@ async function openInspector(item, tab = "preview", { selection, onCancel, reloa
 function installInspectorTabs(item, tab) {
   const hasTabs = ["attachment", "entry"].includes(item.type);
   $("file-preview-mode-toggle").hidden = !hasTabs;
+  $("file-preview-mode-content").textContent = item.type === "attachment" && /\.xlsx$/i.test(String(item.title || "")) ? "編輯 Excel" : "文字內容";
   for (const mode of ["preview", "content", "info"]) {
     const button = $(`file-preview-mode-${mode}`);
     button.disabled = mode === tab;
@@ -208,6 +209,10 @@ async function renderInspectorFile(item, tab) {
   $("folder-preview-open").textContent = "開啟原檔"; $("folder-preview-open").onclick = null;
   $("folder-preview-open").removeAttribute("download");
   if (tab === "content") {
+    if (isXlsxAttachment(a)) {
+      await renderXlsxEditor(entry.id, a);
+      return;
+    }
     await renderInspectorAttachmentText(entry, [a]);
     return;
   }
