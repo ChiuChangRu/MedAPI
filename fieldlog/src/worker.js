@@ -2612,7 +2612,7 @@ async function handleApi(request, env, url, identity = {}) {
       : db.prepare(
         `SELECT a.id, a.key, a.filename, a.size, a.content_hash
          FROM attachments a JOIN entries e ON e.id = a.entry_id
-         WHERE a.source_pdf_id IS NULL AND e.folder_id IS ?
+         WHERE a.source_pdf_id IS NULL AND COALESCE(e.deleted_at, '') = '' AND e.folder_id IS ?
            AND (a.content_hash = ? OR (COALESCE(a.content_hash, '') = '' AND a.filename = ? AND a.size = ?))`
       ).bind(entry.folder_id ?? null, contentHash, filename, body.byteLength);
     const { results: candidates } = await candidateQuery.all();
