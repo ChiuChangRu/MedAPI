@@ -120,6 +120,11 @@ ciif-2026/
     "binding": "ASSETS",
     "run_worker_first": true
   },
+  // 每天 UTC 12:00 = 台北/上海晚上 8 點，推播 LINE 每日摘要（見第 5.6 節，
+  // 長儒指定必做，不是選用）
+  "triggers": {
+    "crons": ["0 12 * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -249,12 +254,15 @@ CREATE TABLE IF NOT EXISTS highlights (
 );
 ```
 
+`line_recipients` 表（LINE 每日摘要用，**這個是必做項目**）的 schema 見下方
+第 5.6 節，不算在下面這批選用表裡。
+
 選用進階表（**不急，等核心功能穩了再看要不要加**，Medtec 那邊分別對應
-附件上傳、LINE 每日摘要、論壇議程、參訪前報告、自訂展商、出發前清單）：
-`attachments`、`line_recipients`、`custom_exhibitors`、`sessions` /
-`session_notes`、`prep_notes` / `prep_overrides`、`pretrip_checklist`、
-`help_requests`（廠商協尋看板，AI 幫忙從展商目錄挑候選）。這些表的完整欄位
-定義直接讀 `cloudflare/src/worker.js` 第 17–172 行照抄即可，這裡不重複貼。
+附件上傳、論壇議程、參訪前報告、自訂展商、出發前清單）：
+`attachments`、`custom_exhibitors`、`sessions` / `session_notes`、
+`prep_notes` / `prep_overrides`、`pretrip_checklist`、`help_requests`
+（廠商協尋看板，AI 幫忙從展商目錄挑候選）。這些表的完整欄位定義直接讀
+`cloudflare/src/worker.js` 第 17–172 行照抄即可，這裡不重複貼。
 
 ### 5.4 API 認證機制（一定要照做，不要簡化掉）
 
@@ -280,6 +288,56 @@ Dashboard → Settings → Variables and Secrets 設定 `TEAM_PIN`（Secret 類�
 `/api/upload`、`/api/attachments`、`/api/sessions`、`/api/prep-notes`、
 `/api/pretrip-checklist` 等）等核心功能穩定後再依需求加，做法直接照抄
 `cloudflare/src/worker.js` 對應區塊。
+
+### 5.6 啟用 LINE 每日摘要（長儒指定要開，不是選用）
+
+長儒要求這個功能一定要做（跟 Medtec 那邊是選用不同，CIIF 這邊直接當必做
+項目）：**每天固定時間把「今天有哪些指派異動、哪些廠商填了拜訪成果」推播
+到 LINE**，收件人至少要包含長儒本人（LINE 帳號 **gogoyankee**）。做法完全
+比照 `cloudflare/src/worker.js` 既有的 LINE 整合邏輯（webhook 收好友/訊息
+事件記下 `userId`、排程每天推播摘要），照抄即可，不用重新設計：
+
+**資料表**（比照 `cloudflare/src/worker.js` 第 66–69 行）：
+
+```sql
+CREATE TABLE IF NOT EXISTS line_recipients (
+  user_id TEXT PRIMARY KEY,
+  added_at TEXT NOT NULL
+);
+```
+
+**Worker 端要做的事**（照抄 `cloudflare/src/worker.js` 對應函式）：
+
+1. `POST /line/webhook`：驗證 `x-line-signature`（HMAC-SHA256，用
+   `LINE_CHANNEL_SECRET` 當 key），收到「加好友」事件就把 `userId` 存進
+   `line_recipients`，並回覆一則確認訊息。
+2. 排程（`wrangler.jsonc` 的 `triggers.crons`）每天觸發一次，組出過去
+   24 小時的「負責人指派異動」與「拜訪成果儲存」兩類紀錄（查 `history`
+   表，邏輯比照 `buildDailyDigest()`），推播給 `line_recipients` 裡所有人。
+3. 推播時間：**每天 UTC 12:00 = 台北/上海（UTC+8）晚上 8 點**，`wrangler.jsonc`
+   要加：
+
+   ```jsonc
+   "triggers": { "crons": ["0 12 * * *"] }
+   ```
+
+**Cloudflare Dashboard 設定步驟**（部署後手動做一次，跟 Medtec 那份
+`cloudflare/README.md`「啟用 LINE 每日摘要」章節完全一樣，這裡照抄步驟）：
+
+1. 到 [LINE Developers Console](https://developers.line.biz/console/) 建立一個
+   **Provider**，底下新增一個 **Messaging API** 頻道（免費）——**這是 CIIF
+   專用的新頻道，不要沿用 Medtec 那個**，避免兩個展的推播混在一起。
+2. 頻道設定頁面找到：**Channel secret**（Basic settings）、**Channel access
+   token**（Messaging API 分頁，按 Issue 產生長期 token）。
+3. 到 CIIF 這個 Cloudflare Worker 的 Settings → Variables and Secrets，新增
+   兩個 **Secret**：`LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN`。
+4. 回到 LINE Developers 頻道的 Messaging API 分頁，**Webhook URL** 填
+   `https://<CIIF 的網址>.workers.dev/line/webhook`，並開啟 **Use webhook**。
+5. 用手機掃頻道頁面的 QR Code 加這個官方帳號好友——**長儒（gogoyankee）
+   要加這個好友**才收得到摘要；其他想收的人也各自加好友即可，不限一人。
+
+摘要內容只列「負責人指派異動」與「拜訪成果儲存」兩類，其他瀏覽/篩選等操作
+不列入，避免每天收到一長串雜訊（跟 Medtec 那版邏輯一致）。
 
 ## 6. `exhibitors.json` 目標格式（展商資料要轉成這個形狀）
 
