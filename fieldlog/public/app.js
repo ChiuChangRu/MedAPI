@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "198";
+const APP_VERSION = "199";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2809,6 +2809,7 @@ async function renderEntryEditor(entryId) {
     : null;
   $("entry-preview-editor").onsubmit = async (event) => {
     event.preventDefault();
+    const automatic = !!event.automatic;
     const save = $("folder-preview-save");
     const title = String($("folder-preview-title")?.textContent || "").trim();
     if (!isWeeklyReport && !title) { showToast("名稱不可空白"); return false; }
@@ -2829,11 +2830,11 @@ async function renderEntryEditor(entryId) {
     save.textContent = "儲存中…";
     try {
       await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify(patch) });
-      showToast("記事已儲存");
+      if (!automatic) showToast("記事已儲存");
       updateInspectorEntryTitle(entryId, title);
       return true;
     } catch (error) {
-      showToast("儲存失敗：" + error.message);
+      if (!automatic) showToast("儲存失敗：" + error.message);
       return false;
     } finally {
       save.disabled = false;
@@ -7795,7 +7796,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=198").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=199").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

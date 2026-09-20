@@ -5,16 +5,22 @@ import { readFileSync } from "node:fs";
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 function harness() {
-  const nodes = new Map(), renders = [], notices = [];
+  const nodes = new Map(), renders = [], notices = [], timers = new Map();
+  let timerId = 0;
   const node = (id) => {
-    if (!nodes.has(id)) nodes.set(id, { id, textContent: "", hidden: false, disabled: false,
+    if (!nodes.has(id)) nodes.set(id, { id, textContent: "", hidden: false, disabled: false, listeners: new Map(),
       dataset: {}, attributes: {}, value: "", setAttribute(k, v) { this.attributes[k] = v; },
       querySelectorAll() { return []; }, focus() {}, showModal() { this.open = true; }, close() { this.open = false; },
+      addEventListener(name, handler) { if (!this.listeners.has(name)) this.listeners.set(name, new Set()); this.listeners.get(name).add(handler); },
+      removeEventListener(name, handler) { this.listeners.get(name)?.delete(handler); },
+      emit(name, event = {}) { for (const handler of this.listeners.get(name) || []) handler({ type: name, target: this, ...event }); },
     });
     return nodes.get(id);
   };
   const context = vm.createContext({ console, $: node,
     document: { getElementById: node, querySelectorAll: () => [] },
+    setTimeout: (handler) => { const id = ++timerId; timers.set(id, handler); return id; },
+    clearTimeout: (id) => timers.delete(id),
     showToast: (text) => notices.push(text), esc: String,
     setFolderPreviewTitle: (text) => { node("folder-preview-title").textContent = text; },
     clearFolderPreviewEditorToolbar() {}, usesDesktopRightPane: () => true,
@@ -27,8 +33,45 @@ function harness() {
   const renderFile = context.renderInspectorFile;
   context.renderInspectorEntry = async (item, tab) => { renders.push([item.id, tab]); node("folder-preview-body").innerHTML = `${item.id}:${tab}`; };
   context.renderInspectorFile = context.renderInspectorEntry;
-  return { c: context, node, renders, notices, renderFile, state: () => vm.runInContext("INSPECTOR", context) };
+  const runTimers = async () => {
+    const pending = [...timers.values()]; timers.clear();
+    for (const handler of pending) handler();
+    await flush();
+    if (vm.runInContext("INSPECTOR.saving", context)) await vm.runInContext("INSPECTOR.saving", context);
+  };
+  return { c: context, node, renders, notices, timers, runTimers, renderFile, state: () => vm.runInContext("INSPECTOR", context) };
 }
+
+test("text edits debounce into autosave while the manual save button remains available", async () => {
+  const h = harness(); let value = "before", writes = [];
+  h.c.inspectorTrack(() => value, async ({ automatic }) => { writes.push({ value, automatic }); });
+  value = "first"; h.node("folder-preview").emit("input");
+  value = "second"; h.node("folder-preview").emit("input");
+  assert.equal(h.timers.size, 1);
+  assert.equal(h.node("inspector-save-status").textContent, "等待自動儲存…");
+  await h.runTimers();
+  assert.deepEqual(writes, [{ value: "second", automatic: true }]);
+  assert.equal(h.node("inspector-save-status").textContent, "已自動儲存");
+  assert.equal(h.node("folder-preview-save").hidden, false);
+  assert.equal(h.node("folder-preview-save").textContent, "儲存");
+
+  value = "third"; h.node("folder-preview").emit("input");
+  await h.node("folder-preview-save").onclick();
+  assert.deepEqual(writes.at(-1), { value: "third", automatic: false });
+  assert.equal(h.timers.size, 0);
+});
+
+test("leaving during the debounce window flushes autosave without an unsaved prompt", async () => {
+  const h = harness(); let value = "saved", writes = 0;
+  h.c.renderInspectorEntry = async (item, tab) => { h.renders.push([item.id, tab]); };
+  await h.c.openInspector({ type: "entry", id: 1 });
+  h.c.inspectorTrack(() => value, async () => { writes++; });
+  value = "draft"; h.node("folder-preview").emit("input");
+  await h.c.openInspector({ type: "entry", id: 2 });
+  assert.equal(writes, 1);
+  assert.equal(h.node("inspector-unsaved").open, undefined);
+  assert.equal(h.state().item.id, 2);
+});
 
 test("single selection opens preview; multiple selection exposes batch actions without editable tabs", async () => {
   const h = harness();

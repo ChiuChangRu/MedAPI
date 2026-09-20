@@ -264,6 +264,11 @@
     }, true);
     if (initialHtml) quill.clipboard.dangerouslyPasteHTML(initialHtml);
     container.__fieldlogQuill = quill;
+    quill.on("text-change", (_delta, _oldDelta, source) => {
+      if (source !== "user") return;
+      const ChangeEvent = window.CustomEvent || window.Event;
+      container.dispatchEvent(new ChangeEvent("fieldlog-editor-change", { bubbles: true }));
+    });
     if (typeof opts.onImagePaste === "function") {
       quill.root.addEventListener("paste", (ev) => {
         const items = Array.from(ev.clipboardData?.items || []);

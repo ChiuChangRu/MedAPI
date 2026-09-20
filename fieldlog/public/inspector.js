@@ -1,7 +1,9 @@
 // A single right pane owns navigation, pending renders, and unsaved changes.
+const INSPECTOR_AUTOSAVE_DELAY = 1200;
 const INSPECTOR = { item: null, tab: null, seq: 0, queue: Promise.resolve(),
   baseline: "", snapshot: null, persist: null, saving: null, prompt: null,
-  selection: null, selectionSignature: "", loaded: false };
+  selection: null, selectionSignature: "", loaded: false,
+  autosaveTimer: null, autosaveTarget: null, autosaveHandler: null };
 
 function inspectorHasUnsaved() {
   return !!INSPECTOR.snapshot && INSPECTOR.snapshot() !== INSPECTOR.baseline;
@@ -12,45 +14,93 @@ function inspectorStatus(message) {
   if (status) status.textContent = message || (inspectorHasUnsaved() ? "尚未儲存" : INSPECTOR.persist ? "已儲存" : "");
 }
 
+function clearInspectorAutosaveTimer() {
+  if (INSPECTOR.autosaveTimer !== null) clearTimeout(INSPECTOR.autosaveTimer);
+  INSPECTOR.autosaveTimer = null;
+}
+
+function stopInspectorAutosaveTracking() {
+  clearInspectorAutosaveTimer();
+  if (INSPECTOR.autosaveTarget && INSPECTOR.autosaveHandler) {
+    for (const name of ["input", "change", "compositionend", "fieldlog-editor-change"]) {
+      INSPECTOR.autosaveTarget.removeEventListener?.(name, INSPECTOR.autosaveHandler);
+    }
+  }
+  INSPECTOR.autosaveTarget = INSPECTOR.autosaveHandler = null;
+}
+
+function scheduleInspectorAutosave() {
+  if (!INSPECTOR.persist || !inspectorHasUnsaved()) return inspectorStatus();
+  clearInspectorAutosaveTimer();
+  inspectorStatus("等待自動儲存…");
+  INSPECTOR.autosaveTimer = setTimeout(() => {
+    INSPECTOR.autosaveTimer = null;
+    saveInspector({ automatic: true });
+  }, INSPECTOR_AUTOSAVE_DELAY);
+}
+
 function resetInspectorEditor() {
+  stopInspectorAutosaveTracking();
   INSPECTOR.snapshot = INSPECTOR.persist = null;
   INSPECTOR.baseline = "";
   inspectorStatus("");
 }
 
 function inspectorTrack(snapshot, persist) {
+  stopInspectorAutosaveTracking();
   INSPECTOR.snapshot = snapshot;
   INSPECTOR.baseline = snapshot();
   INSPECTOR.persist = persist;
   const save = $("folder-preview-save");
   save.hidden = false; save.disabled = false; save.textContent = "儲存";
-  save.onclick = () => saveInspector();
+  save.onclick = () => saveInspector({ automatic: false });
+  const target = $("folder-preview");
+  const handler = (event) => {
+    if (event?.isComposing) return;
+    scheduleInspectorAutosave();
+  };
+  for (const name of ["input", "change", "compositionend", "fieldlog-editor-change"]) {
+    target?.addEventListener?.(name, handler);
+  }
+  INSPECTOR.autosaveTarget = target;
+  INSPECTOR.autosaveHandler = handler;
   inspectorStatus();
 }
 
-async function saveInspector() {
+async function saveInspector({ automatic = false } = {}) {
+  clearInspectorAutosaveTimer();
   if (INSPECTOR.saving) return INSPECTOR.saving;
   if (!INSPECTOR.persist || !inspectorHasUnsaved()) return true;
   const snapshot = INSPECTOR.snapshot, persist = INSPECTOR.persist;
   const submitted = snapshot();
   $("folder-preview-save").disabled = true;
-  inspectorStatus("儲存中…");
+  inspectorStatus(automatic ? "自動儲存中…" : "儲存中…");
+  let succeeded = false;
   INSPECTOR.saving = (async () => {
     try {
-      if (await persist() === false) throw new Error("請檢查欄位或連線後重試");
+      if (await persist({ automatic }) === false) throw new Error("請檢查欄位或連線後重試");
       if (INSPECTOR.snapshot === snapshot) INSPECTOR.baseline = submitted;
-      inspectorStatus();
+      succeeded = true;
+      inspectorStatus(inspectorHasUnsaved() ? "尚有修改，等待自動儲存…" : automatic ? "已自動儲存" : "已儲存");
       return true;
     } catch (error) {
-      inspectorStatus("儲存失敗，修改仍保留");
-      showToast("儲存失敗：" + error.message);
+      inspectorStatus(automatic ? "自動儲存失敗，請按「儲存」重試" : "儲存失敗，修改仍保留");
+      if (!automatic) showToast("儲存失敗：" + error.message);
       return false;
-    } finally { INSPECTOR.saving = null; $("folder-preview-save").disabled = false; }
+    } finally {
+      INSPECTOR.saving = null;
+      $("folder-preview-save").disabled = false;
+      if (succeeded && inspectorHasUnsaved()) scheduleInspectorAutosave();
+    }
   })();
   return INSPECTOR.saving;
 }
 
 async function inspectorMayLeave() {
+  if (INSPECTOR.autosaveTimer !== null) {
+    clearInspectorAutosaveTimer();
+    await saveInspector({ automatic: true });
+  }
   if (INSPECTOR.saving && !await INSPECTOR.saving) return false;
   if (!inspectorHasUnsaved()) return true;
   if (INSPECTOR.prompt) return INSPECTOR.prompt;
@@ -60,7 +110,7 @@ async function inspectorMayLeave() {
     $("inspector-unsaved-save").onclick = async () => {
       const buttons = Array.from(dialog.querySelectorAll("button"));
       buttons.forEach((button) => { button.disabled = true; });
-      const saved = await saveInspector();
+      const saved = await saveInspector({ automatic: false });
       buttons.forEach((button) => { button.disabled = false; });
       if (saved && !inspectorHasUnsaved()) done(true);
       else $("inspector-unsaved-message").textContent = "尚未儲存成功，修改仍保留。請重試、放棄修改或取消切換。";
@@ -191,7 +241,7 @@ function inspectorFormSnapshot(form) {
 
 function inspectorBindForm(form, persist) {
   inspectorTrack(() => inspectorFormSnapshot(form), persist);
-  form.onsubmit = (event) => { event.preventDefault(); saveInspector(); };
+  form.onsubmit = (event) => { event.preventDefault(); saveInspector({ automatic: false }); };
 }
 
 async function renderInspectorFile(item, tab) {
@@ -285,16 +335,16 @@ async function renderInspectorAttachmentText(entry, attachments, { append = fals
   };
   const previousSnapshot = INSPECTOR.snapshot, previousPersist = INSPECTOR.persist;
   let previousBaseline = INSPECTOR.baseline;
-  if (append && previousSnapshot) inspectorTrack(() => previousSnapshot() + inspectorFormSnapshot(form), async () => {
+  if (append && previousSnapshot) inspectorTrack(() => previousSnapshot() + inspectorFormSnapshot(form), async (context) => {
     const submitted = previousSnapshot();
     if (submitted !== previousBaseline) {
-      if (await previousPersist() === false) return false;
+      if (await previousPersist(context) === false) return false;
       previousBaseline = submitted;
     }
     await persist();
   });
   else inspectorBindForm(form, persist);
-  form.onsubmit = (event) => { event.preventDefault(); saveInspector(); };
+  form.onsubmit = (event) => { event.preventDefault(); saveInspector({ automatic: false }); };
   form.querySelectorAll("[data-deep]").forEach((button) => { button.onclick = () => inspectorNavigate(async () => {
     const a = source.find((item) => String(item.id) === button.dataset.deep);
     const currentItem = { ...INSPECTOR.item };
@@ -362,8 +412,8 @@ async function renderInspectorEntry(item, tab) {
   if (tab === "content") {
     await renderEntryEditor(entry.id);
     const form = $("entry-preview-editor"), originalSave = form.onsubmit;
-    inspectorTrack(() => JSON.stringify({ title: $("folder-preview-title").textContent, form: inspectorFormSnapshot(form), rich: $("preview-entry-rich") ? window.fieldlogRichEditor?.getHtml($("preview-entry-rich")) : "" }), () => originalSave({ preventDefault() {} }));
-    form.onsubmit = (event) => { event.preventDefault(); saveInspector(); };
+    inspectorTrack(() => JSON.stringify({ title: $("folder-preview-title").textContent, form: inspectorFormSnapshot(form), rich: $("preview-entry-rich") ? window.fieldlogRichEditor?.getHtml($("preview-entry-rich")) : "" }), ({ automatic } = {}) => originalSave({ preventDefault() {}, automatic }));
+    form.onsubmit = (event) => { event.preventDefault(); saveInspector({ automatic: false }); };
     if (attachments.length) await renderInspectorAttachmentText(entry, attachments, { append: true });
     return;
   }
