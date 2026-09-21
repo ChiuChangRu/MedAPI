@@ -164,6 +164,11 @@ function cookieValue(request, name) {
   return "";
 }
 
+function isSameOriginFormPost(request) {
+  const origin = request.headers.get("origin") || "";
+  return origin === new URL(request.url).origin;
+}
+
 function securityHeaders(setCookie) {
   return {
     "content-type": "text/html; charset=utf-8",
@@ -294,6 +299,7 @@ async function authorizationGet(request, env) {
     code_challenge: codeChallenge,
     resource,
     scope: scopes.join(" "),
+    csrf_hash: await sha256(csrf),
   }, secret);
   const clientName = escapeHtml(client.client_name || "MCP client");
   const scopeText = escapeHtml(scopes.join("、"));
@@ -316,7 +322,10 @@ async function authorizationPost(request, env) {
   const authRequest = await verifyPayload(requestToken, secret, "request");
   if (!authRequest) return oauthError("invalid_request", "authorization request expired; start again");
   const csrf = String(form.get("csrf_token") || "");
-  if (!csrf || !constantTimeEqual(csrf, cookieValue(request, CONSENT_COOKIE))) {
+  const csrfSigned = csrf && authRequest.csrf_hash
+    && constantTimeEqual(await sha256(csrf), authRequest.csrf_hash);
+  const csrfCookie = csrf && constantTimeEqual(csrf, cookieValue(request, CONSENT_COOKIE));
+  if (!csrfSigned || (!csrfCookie && !isSameOriginFormPost(request))) {
     return oauthError("invalid_request", "CSRF validation failed");
   }
   const redirect = new URL(authRequest.redirect_uri);
