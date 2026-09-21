@@ -3,6 +3,7 @@ name: 部署 MyWiki MCP 到 Cloudflare Workers
 on:
   push:
     branches:
+      - main
       - codex/kiwi-integration
     paths:
       - "mcp/**"
