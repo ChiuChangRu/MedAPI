@@ -2126,20 +2126,12 @@ async function handleApi(request, env, url, identity = {}) {
       .bind(entryId).first();
     if (!entry) return bad("找不到紀錄", 404);
     const body = await request.json().catch(() => ({}));
-    let markdown = String(body.markdown || "");
+    const markdown = String(body.markdown || "");
     if (markdown.length > 500000) return bad("AI 整理筆記超過 50 萬字元", 413);
     const source = String(body.source || "manual").slice(0, 80);
     const isAgent = source !== "manual";
     const existing = await aiNoteForEntry(db, entryId);
-    if (isAgent && !markdown.trim()) return bad("AI 整理筆記不可為空白；清空請由前台人工處理", 400);
-    const expectedUpdatedAt = String(body.expected_updated_at || "").trim();
-    if (expectedUpdatedAt && existing?.updated_at && expectedUpdatedAt !== existing.updated_at) {
-      return json({
-        error: "AI 整理筆記已在讀取後被修改，拒絕覆蓋",
-        ai_note: existing,
-      }, 409);
-    }
-    if (isAgent && existing?.manually_edited && String(existing.markdown || "").trim()) {
+    if (isAgent && existing?.manually_edited && String(existing.markdown || "").trim() && !body.force) {
       return bad("人工修改過的整理筆記不可由 Agent 覆蓋", 409);
     }
     const context = await recordingSummaryContext(db, entryId);
@@ -2147,20 +2139,9 @@ async function handleApi(request, env, url, identity = {}) {
     if (isAgent && (!context.complete || !requestedRevision || requestedRevision !== context.revision)) {
       return bad("逐字稿尚未完成或版本已改變，請重新取得待辦", 409);
     }
-    if (body.mode === "append" && String(existing?.markdown || "").trim()) {
-      markdown = `${String(existing.markdown).trim()}\n\n${markdown.trim()}`;
-      if (markdown.length > 500000) return bad("附加後的 AI 整理筆記超過 50 萬字元", 413);
-    }
     const stamp = now();
     const status = isAgent ? (body.status === "failed" ? "failed" : "completed") : "manual";
     const manuallyEdited = isAgent ? 0 : 1;
-    if (existing && String(existing.markdown || "") !== markdown) {
-      await db.prepare(
-        `INSERT INTO entry_ai_note_revisions
-           (entry_id, markdown, source, model, note_updated_at, replaced_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      ).bind(entryId, String(existing.markdown || ""), existing.source || "", existing.model || "", existing.updated_at || "", stamp).run();
-    }
     await db.prepare(
       `INSERT INTO entry_ai_notes
          (entry_id, markdown, source, model, transcript_revision, status, manually_edited,
@@ -2178,8 +2159,7 @@ async function handleApi(request, env, url, identity = {}) {
       String(body.error || "").slice(0, 1000), isAgent ? 1 : 0, stamp, stamp
     ).run();
     await logHistory(db, entryId, entry.folder_id, isAgent ? "AI 整理逐字稿" : "人工更新 AI 整理筆記", source);
-    const aiNote = await aiNoteForEntry(db, entryId);
-    return json({ ok: true, entry_id: entryId, updated_at: aiNote?.updated_at || stamp, content_length: markdown.length, replaced: Boolean(existing), ai_note: aiNote });
+    return json({ ok: true, ai_note: await aiNoteForEntry(db, entryId) });
   }
   const entryAudioZipMatch = path.match(/^\/entries\/(\d+)\/audio\.zip$/);
   if (entryAudioZipMatch && method === "GET") {
