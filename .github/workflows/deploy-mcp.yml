@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/kiwi-integration
+      - main
     paths:
       - "mcp/**"
       - "fieldlog/src/lib/render.js"
