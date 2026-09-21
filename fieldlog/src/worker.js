@@ -133,7 +133,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "199";
+const UI_VERSION = "200";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1090,6 +1090,88 @@ async function activeAttachment(db, id) {
   ).bind(id).first();
 }
 
+const AI_SUMMARY_CUTOFF_KEY = "ai_summary.cutoff";
+
+function transcriptFinished(attachment) {
+  const state = String(attachment?.transcribed_at || "");
+  return Boolean(state) && !["processing", "auto_failed"].includes(state);
+}
+
+async function recordingSummaryContext(db, entryId) {
+  const { results } = await db.prepare(
+    `SELECT id, filename, transcript, transcribed_at, offset_secs, created_at
+       FROM attachments
+      WHERE entry_id = ? AND kind = 'audio' AND source_pdf_id IS NULL
+      ORDER BY COALESCE(offset_secs, 0), id`
+  ).bind(entryId).all();
+  const audio = results || [];
+  const completed = audio.filter(transcriptFinished).length;
+  const revisionInput = audio.map((item) => [item.id, item.transcribed_at || "", String(item.transcript || "").length]);
+  return {
+    audio,
+    completed,
+    remaining: Math.max(0, audio.length - completed),
+    complete: audio.length > 0 && completed === audio.length,
+    revision: audio.length ? await sha256Hex(JSON.stringify(revisionInput)) : "",
+    transcript: audio.map((item, index) => {
+      const text = String(item.transcript || "").trim();
+      return text ? `## 錄音 ${index + 1}｜${item.filename}\n\n${text}` : "";
+    }).filter(Boolean).join("\n\n"),
+  };
+}
+
+// 只建立功能切斷點之後的新錄音工作。判斷基準固定用 entries.created_at，
+// 舊資料日後改名、移動或補附件都不會突然進入 Agent 佇列。
+async function refreshAiSummaryQueue(db) {
+  const cutoffRow = await db.prepare("SELECT value FROM settings WHERE key = ?")
+    .bind(AI_SUMMARY_CUTOFF_KEY).first();
+  const cutoff = String(cutoffRow?.value || "");
+  if (!cutoff) return { cutoff: "", scanned: 0 };
+  const { results } = await db.prepare(
+    `SELECT DISTINCT e.id
+       FROM entries e
+       JOIN attachments a ON a.entry_id = e.id
+       LEFT JOIN entry_ai_notes n ON n.entry_id = e.id
+      WHERE e.created_at >= ?
+        AND COALESCE(e.deleted_at, '') = ''
+        AND a.kind = 'audio' AND a.source_pdf_id IS NULL
+        AND (n.entry_id IS NULL OR n.status IN ('waiting_transcription', 'pending', 'failed'))
+      ORDER BY e.id LIMIT 250`
+  ).bind(cutoff).all();
+  for (const row of results || []) {
+    const context = await recordingSummaryContext(db, row.id);
+    const status = context.complete ? "pending" : "waiting_transcription";
+    const stamp = now();
+    await db.prepare(
+      `INSERT INTO entry_ai_notes
+         (entry_id, status, transcript_revision, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(entry_id) DO UPDATE SET
+         status = CASE
+           WHEN entry_ai_notes.status = 'waiting_transcription' AND excluded.status = 'pending' THEN 'pending'
+           ELSE entry_ai_notes.status
+         END,
+         transcript_revision = CASE
+           WHEN entry_ai_notes.status IN ('waiting_transcription', 'pending', 'failed') THEN excluded.transcript_revision
+           ELSE entry_ai_notes.transcript_revision
+         END,
+         updated_at = CASE
+           WHEN entry_ai_notes.status = 'waiting_transcription' AND excluded.status = 'pending' THEN excluded.updated_at
+           ELSE entry_ai_notes.updated_at
+         END`
+    ).bind(row.id, status, context.revision, stamp, stamp).run();
+  }
+  return { cutoff, scanned: (results || []).length };
+}
+
+async function aiNoteForEntry(db, entryId) {
+  return db.prepare(
+    `SELECT entry_id, markdown, source, model, transcript_revision, status,
+            manually_edited, error, attempts, created_at, updated_at
+       FROM entry_ai_notes WHERE entry_id = ?`
+  ).bind(entryId).first();
+}
+
 // 貼上的 Notion 頁面網址 → 32 碼 page ID（補回標準 UUID 格式的連字號）
 function parseNotionPageId(input) {
   const raw = (input || "").trim();
@@ -1113,6 +1195,37 @@ async function handleApi(request, env, url, identity = {}) {
   }
   if (path === "/usage" && method === "GET") {
     return json(await cloudflareUsage(env));
+  }
+
+  // Claude Agent 每晚只讀這個待辦端點；回傳母體已受 cutoff 限制，不會掃舊檔。
+  if (path === "/ai-summary/jobs" && method === "GET") {
+    const queue = await refreshAiSummaryQueue(db);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 20) || 20, 1), 50);
+    const { results } = await db.prepare(
+      `SELECT n.entry_id, n.status, n.transcript_revision, n.attempts,
+              e.title, e.created_at
+         FROM entry_ai_notes n JOIN entries e ON e.id = n.entry_id
+        WHERE n.status IN ('pending', 'failed')
+          AND n.manually_edited = 0
+          AND COALESCE(e.deleted_at, '') = ''
+        ORDER BY e.created_at, e.id LIMIT ?`
+    ).bind(limit).all();
+    const jobs = [];
+    for (const row of results || []) {
+      const context = await recordingSummaryContext(db, row.entry_id);
+      if (!context.complete) continue;
+      jobs.push({
+        job_id: `ai-summary-${row.entry_id}-${context.revision.slice(0, 12)}`,
+        entry_id: row.entry_id,
+        title: row.title,
+        created_at: row.created_at,
+        status: row.status,
+        attempts: Number(row.attempts || 0),
+        transcript_revision: context.revision,
+        transcript: context.transcript,
+      });
+    }
+    return json({ cutoff: queue.cutoff, jobs });
   }
 
   // ---- 垃圾桶：一般刪除只進這裡，手動永久刪除與 60 天排程共用同一套清理 ----
@@ -1997,13 +2110,56 @@ async function handleApi(request, env, url, identity = {}) {
     const id = Number(entryMatch[1]);
     const entry = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
     if (!entry) return bad("找不到紀錄", 404);
-    const [{ results: atts }, { results: children }] = await Promise.all([
+    const [{ results: atts }, { results: children }, aiNote] = await Promise.all([
       db.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all(),
       db.prepare(`SELECT e.*, (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count,
                   (SELECT COUNT(*) FROM entries c WHERE c.parent_entry_id = e.id AND COALESCE(c.deleted_at, '') = '') AS child_count
                   FROM entries e WHERE e.parent_entry_id = ? AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`).bind(id).all(),
+      aiNoteForEntry(db, id),
     ]);
-    return json({ ...entry, body: canonicalEntryBody(entry), attachments: atts, children });
+    return json({ ...entry, body: canonicalEntryBody(entry), attachments: atts, children, ai_note: aiNote || null });
+  }
+  const entryAiNoteMatch = path.match(/^\/entries\/(\d+)\/ai-note$/);
+  if (entryAiNoteMatch && method === "PUT") {
+    const entryId = Number(entryAiNoteMatch[1]);
+    const entry = await db.prepare("SELECT id, folder_id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''")
+      .bind(entryId).first();
+    if (!entry) return bad("找不到紀錄", 404);
+    const body = await request.json().catch(() => ({}));
+    const markdown = String(body.markdown || "");
+    if (markdown.length > 500000) return bad("AI 整理筆記超過 50 萬字元", 413);
+    const source = String(body.source || "manual").slice(0, 80);
+    const isAgent = source !== "manual";
+    const existing = await aiNoteForEntry(db, entryId);
+    if (isAgent && existing?.manually_edited && String(existing.markdown || "").trim() && !body.force) {
+      return bad("人工修改過的整理筆記不可由 Agent 覆蓋", 409);
+    }
+    const context = await recordingSummaryContext(db, entryId);
+    const requestedRevision = String(body.transcript_revision || "");
+    if (isAgent && (!context.complete || !requestedRevision || requestedRevision !== context.revision)) {
+      return bad("逐字稿尚未完成或版本已改變，請重新取得待辦", 409);
+    }
+    const stamp = now();
+    const status = isAgent ? (body.status === "failed" ? "failed" : "completed") : "manual";
+    const manuallyEdited = isAgent ? 0 : 1;
+    await db.prepare(
+      `INSERT INTO entry_ai_notes
+         (entry_id, markdown, source, model, transcript_revision, status, manually_edited,
+          error, attempts, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(entry_id) DO UPDATE SET
+         markdown = excluded.markdown, source = excluded.source, model = excluded.model,
+         transcript_revision = excluded.transcript_revision, status = excluded.status,
+         manually_edited = excluded.manually_edited, error = excluded.error,
+         attempts = entry_ai_notes.attempts + CASE WHEN excluded.source = 'manual' THEN 0 ELSE 1 END,
+         updated_at = excluded.updated_at`
+    ).bind(
+      entryId, markdown, source, String(body.model || "").slice(0, 120),
+      isAgent ? context.revision : (context.revision || requestedRevision), status, manuallyEdited,
+      String(body.error || "").slice(0, 1000), isAgent ? 1 : 0, stamp, stamp
+    ).run();
+    await logHistory(db, entryId, entry.folder_id, isAgent ? "AI 整理逐字稿" : "人工更新 AI 整理筆記", source);
+    return json({ ok: true, ai_note: await aiNoteForEntry(db, entryId) });
   }
   const entryAudioZipMatch = path.match(/^\/entries\/(\d+)\/audio\.zip$/);
   if (entryAudioZipMatch && method === "GET") {
@@ -3476,6 +3632,16 @@ async function privateIdentity(request, env, url) {
   return given === pin ? { ok: true, email: "legacy-pin" } : { ok: false, error: "PIN 錯誤或未提供" };
 }
 
+function aiSummaryAgentIdentity(request, env, url) {
+  const allowed = url.pathname === "/api/ai-summary/jobs"
+    || /^\/api\/entries\/\d+\/ai-note$/.test(url.pathname);
+  if (!allowed) return null;
+  const configured = String(env.AI_SUMMARY_TOKEN || "").trim();
+  const authorization = String(request.headers.get("authorization") || "");
+  const given = authorization.replace(/^Bearer\s+/i, "").trim();
+  return configured && given === configured ? { ok: true, email: "claude-ai-agent" } : null;
+}
+
 async function handleSession(request, env) {
   if (env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD) return bad("已啟用 Cloudflare Access，不接受 PIN Session", 404);
   await ensureSchema(env.DB, now());
@@ -3607,7 +3773,9 @@ export default {
       return secureResponse(await noStoreAsset(request, env));
     }
     if (url.pathname.startsWith("/api/")) {
-      const identity = await privateIdentity(request, env, url);
+      // Claude Agent 只能用專用 token 存取待整理清單與 AI 筆記寫回；其餘 API
+      // 仍走原有 Access/PIN，不因外部自動化而擴權。
+      const identity = aiSummaryAgentIdentity(request, env, url) || await privateIdentity(request, env, url);
       if (!identity.ok) return secureResponse(bad(identity.error, 401));
       try {
         return secureResponse(await handleApi(request, env, url, identity));

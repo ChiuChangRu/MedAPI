@@ -430,6 +430,7 @@ async function renderInspectorEntry(item, tab) {
       // 一段錄音必須緊接自己的逐字稿。不能再把全部播放器與整份文字當成
       // folder-preview-body 的兩個 flex 子元素，否則桌機右欄會被排成左右兩欄。
       body.innerHTML = `<div class="inspector-recording-preview">
+        ${aiNotePreviewHtml(entry.ai_note)}
         <div class="recording-progress-summary">
           <span class="recording-status ${recordingProgress.tone}">${esc(recordingProgress.label)}</span>
           <strong>已轉錄 ${recordingProgress.completedCount} 段</strong>

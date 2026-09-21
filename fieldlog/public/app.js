@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "199";
+const APP_VERSION = "200";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2671,6 +2671,57 @@ function recordingPreviewTranscript(audioAttachments) {
     .join("\n\n");
 }
 
+function aiNoteStatusLabel(note) {
+  const labels = {
+    waiting_transcription: "等待逐字稿完成",
+    pending: "等待 Claude 整理",
+    failed: "整理失敗，等待重試",
+    completed: "AI 已整理",
+    manual: "人工已修改",
+  };
+  return labels[note?.status] || "尚未整理";
+}
+
+function aiNoteEditorHtml(note, prefix) {
+  const markdown = String(note?.markdown || "");
+  const source = note?.source ? `｜來源：${esc(note.source)}` : "";
+  const updated = note?.updated_at ? `｜${esc(localDateTime(note.updated_at))}` : "";
+  return `<section class="ai-summary-note" data-ai-note-editor>
+    <div class="ai-summary-note-head"><div><strong>✨ AI 整理筆記（Markdown）</strong><small>${esc(aiNoteStatusLabel(note))}${source}${updated}</small></div>
+      <label class="btn small">上傳 .md<input id="${prefix}-ai-note-file" type="file" accept=".md,text/markdown,text/plain" hidden></label>
+    </div>
+    <textarea id="${prefix}-ai-note" class="ai-summary-note-input" placeholder="可直接貼上整理後的 Markdown，或等待 Claude Agent 自動寫入。">${esc(markdown)}</textarea>
+  </section>`;
+}
+
+function aiNotePreviewHtml(note) {
+  const markdown = String(note?.markdown || "").trim();
+  const rendered = markdown
+    ? (window.fieldlogRichEditor?.mdToHtml?.(markdown) || `<pre>${esc(markdown)}</pre>`)
+    : `<p class="sub">${esc(aiNoteStatusLabel(note))}</p>`;
+  return `<section class="ai-summary-note ai-summary-note-preview">
+    <div class="ai-summary-note-head"><div><strong>✨ AI 整理筆記</strong><small>${esc(aiNoteStatusLabel(note))}${note?.updated_at ? `｜${esc(localDateTime(note.updated_at))}` : ""}</small></div></div>
+    <div class="ai-summary-markdown">${rendered}</div>
+  </section>`;
+}
+
+function bindAiNoteFileInput(prefix) {
+  const picker = $(`${prefix}-ai-note-file`);
+  const textarea = $(`${prefix}-ai-note`);
+  if (!picker || !textarea) return;
+  picker.onchange = async () => {
+    const file = picker.files?.[0];
+    picker.value = "";
+    if (!file) return;
+    if (!/\.md$/i.test(file.name) && !/^(text\/markdown|text\/plain)/i.test(file.type || "")) {
+      showToast("只接受 Markdown（.md）檔案");
+      return;
+    }
+    textarea.value = await file.text();
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+}
+
 function openRecordingTranscriptDialog(title, audioAttachments) {
   document.querySelector(".recording-transcript-dialog")?.remove();
   const audio = (audioAttachments || [])
@@ -2748,6 +2799,7 @@ async function showEntryEditor(entryId) {
 async function renderEntryEditor(entryId) {
   const entry = await api(`/entries/${entryId}`);
   const recordingAudio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
+  let initialAiNoteMarkdown = String(entry.ai_note?.markdown || "");
   const photos = (entry.attachments || []).filter((item) => isImageAtt(item) && !item.source_pdf_id);
   const body = $("folder-preview-body");
   const fields = visibleEntryFields(entry);
@@ -2770,6 +2822,7 @@ async function renderEntryEditor(entryId) {
   body.innerHTML = `<form class="preview-editor word-note-editor" id="entry-preview-editor">
     ${photos.length && !hasWrittenContent ? photoGallery : ""}
     <main class="word-note-page">
+      ${recordingAudio.length ? aiNoteEditorHtml(entry.ai_note, "preview-entry") : ""}
       ${useRichEditor ? `<div id="preview-entry-rich" class="rich-editor word-rich-editor" aria-label="文件內容"></div>` : ""}
       ${isSynced ? `<div class="word-note-plain">
         <p class="sub">🔒 此記事由外部來源同步管理，保留純文字以免同步標記遺失。</p>
@@ -2783,6 +2836,7 @@ async function renderEntryEditor(entryId) {
     </main>
     ${photos.length && hasWrittenContent ? photoGallery : ""}
   </form>`;
+  if (recordingAudio.length) bindAiNoteFileInput("preview-entry");
   bindImageLinks(body);
   let richEditor = null;
   if (useRichEditor) {
@@ -2830,6 +2884,14 @@ async function renderEntryEditor(entryId) {
     save.textContent = "儲存中…";
     try {
       await api(`/entries/${entryId}`, { method: "PUT", body: JSON.stringify(patch) });
+      const aiMarkdown = recordingAudio.length ? String($("preview-entry-ai-note")?.value || "") : initialAiNoteMarkdown;
+      if (recordingAudio.length && aiMarkdown !== initialAiNoteMarkdown) {
+        await api(`/entries/${entryId}/ai-note`, {
+          method: "PUT",
+          body: JSON.stringify({ markdown: aiMarkdown, source: "manual" }),
+        });
+        initialAiNoteMarkdown = aiMarkdown;
+      }
       if (!automatic) showToast("記事已儲存");
       updateInspectorEntryTitle(entryId, title);
       return true;
@@ -3976,6 +4038,8 @@ async function openEntry(id) {
         </span>
       </div>
       <textarea id="e-body">${esc(e.body)}</textarea>`;
+  const entryAudio = (e.attachments || []).filter((a) => a.kind === "audio" && !a.source_pdf_id);
+  let initialAiNoteMarkdown = String(e.ai_note?.markdown || "");
   const mergedTranscript = (e.attachments || [])
     .filter((a) => a.kind === "audio" && (a.transcript || "").trim())
     .sort((a, b) => (a.offset_secs ?? 0) - (b.offset_secs ?? 0) || a.id - b.id)
@@ -3988,6 +4052,7 @@ async function openEntry(id) {
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
     </div>
     <p class="sub">${esc(localDateTime(e.created_at))}｜${folder ? esc(folder.name) : "⏳ 待分類"}</p>
+    ${entryAudio.length ? aiNoteEditorHtml(e.ai_note, "e") : ""}
     <section class="merged-transcript ${mergedTranscript ? "" : "empty"}">
       <div><strong>📝 完整轉錄</strong><span><button class="btn small" id="e-open-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>開啟</button><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>一鍵複製</button></span></div>
       ${mergedTranscript
@@ -4040,6 +4105,7 @@ async function openEntry(id) {
       <p class="sub">整個資料包會移到垃圾桶，保留 60 天。</p>
     </div>
   `;
+  if (entryAudio.length) bindAiNoteFileInput("e");
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("e-close").onclick = closeEntry;
@@ -4148,6 +4214,14 @@ async function openEntry(id) {
     if (!isWeeklyReport && bodyFormat === "html" && storedAsText) patch.body_format = "html";
     if (pendingFolderId !== undefined) patch.folder_id = pendingFolderId;
     await api(`/entries/${id}`, { method: "PUT", body: JSON.stringify(patch) });
+    const aiMarkdown = entryAudio.length ? String($("e-ai-note")?.value || "") : initialAiNoteMarkdown;
+    if (entryAudio.length && aiMarkdown !== initialAiNoteMarkdown) {
+      await api(`/entries/${id}/ai-note`, {
+        method: "PUT",
+        body: JSON.stringify({ markdown: aiMarkdown, source: "manual" }),
+      });
+      initialAiNoteMarkdown = aiMarkdown;
+    }
     showToast("已儲存");
     closeEntry();
     if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id); else { loadRecent(); loadFolders(); }
@@ -7796,7 +7870,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=199").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=200").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

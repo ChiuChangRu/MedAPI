@@ -74,6 +74,21 @@ export const SCHEMA = [
     status TEXT DEFAULT 'reserved',
     created_at TEXT NOT NULL
   )`,
+  // 錄音逐字稿的第二層內容：人工或外部 AI Agent 整理後的 Markdown。
+  // 與 entries.body、attachments.transcript 分開，避免整理稿覆蓋原始紀錄。
+  `CREATE TABLE IF NOT EXISTS entry_ai_notes (
+    entry_id INTEGER PRIMARY KEY,
+    markdown TEXT DEFAULT '',
+    source TEXT DEFAULT '',
+    model TEXT DEFAULT '',
+    transcript_revision TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'waiting_transcription',
+    manually_edited INTEGER NOT NULL DEFAULT 0,
+    error TEXT DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
   // 記事與記事之間的關聯（例：這次實驗引用了這份 ISO 標準、這份專利對照這家廠商的產品）。
   // 刻意不分「主從」、也不限制 relation_type 的字典——用途橫跨標準/實驗/廠商/專利，
   // 關係種類會一直長，寫死列表反而綁死用法。方向性用 relation_type 的文字本身表達
@@ -225,6 +240,7 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_trash_purge ON trash_items(purge_after)`,
   `CREATE INDEX IF NOT EXISTS idx_filing_suggestions_status ON filing_suggestions(status, updated_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_entry_ai_notes_status ON entry_ai_notes(status, updated_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique ON categories(kind, level, name)`,
 ];
 
@@ -461,6 +477,12 @@ export async function ensureSchema(db, timestamp) {
   await seedCategories(db, timestamp);
   await seedSources(db, timestamp);
   await ensurePatrolCategory(db, timestamp);
+  // 只在這個功能首次上線時寫入切斷點。排程永遠以 entries.created_at 判斷，
+  // 因此舊紀錄日後被編輯也不會被 Claude Agent 誤掃。
+  await db.prepare(
+    `INSERT OR IGNORE INTO settings (key, value, updated_at)
+     VALUES ('ai_summary.cutoff', ?, ?)`
+  ).bind(timestamp, timestamp).run();
   schemaReady = true;
 }
 

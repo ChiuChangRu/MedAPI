@@ -129,3 +129,19 @@ body 給 `{"folder_id": 42}` 或 `{"entry_id": 100}`（擇一），可選 `limit
 照片這邊同樣有保護：跑 AI 前先過 `enforceAiSoftBudget`（過不了直接 429／503，
 且不會動到任何資料），每張用 `ocr_at` 搶鎖避免重複跑，單張失敗標成 `failed`
 而不是還原成待辦（還原的話下次批次又會重跑同一張、再失敗一次，白白耗額度）。
+
+## Claude Agent：錄音整理稿
+
+首次部署 v200 時，系統把當下時間寫入 `settings.ai_summary.cutoff`。只有
+`entries.created_at >= cutoff` 的新錄音會進佇列；舊錄音即使日後編輯也不會被掃描。
+
+- `GET /api/ai-summary/jobs?limit=20`：取得逐字稿已全部完成、尚待整理的工作。
+- `PUT /api/entries/:id/ai-note`：寫回 Markdown。Agent 必須送回工作中的
+  `transcript_revision`，版本不同時回 409，避免根據舊逐字稿覆蓋。
+- Agent 寫回 body 範例：
+  `{"markdown":"# 整理","source":"claude-agent","model":"claude-...","transcript_revision":"..."}`。
+- 失敗可送 `status:"failed"` 與 `error`；下次仍會出現在待辦。
+- 人工貼上／上傳 `.md` 後會標記 `manually_edited=1`，Agent 預設不可覆蓋。
+
+Claude 可使用既有 `x-pin`，或在 Worker 設定 `AI_SUMMARY_TOKEN` Secret 後，以
+`Authorization: Bearer <token>` 存取上述兩支端點；專用 token 不能存取其他 API。

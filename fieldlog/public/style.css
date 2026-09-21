@@ -2129,3 +2129,30 @@ body.reader-fullscreen .folder-preview {
   padding: 5px 8px; overflow-x: auto; flex-shrink: 0;
 }
 .pdf-page-controls, .pdf-zoom-controls, .pdf-file-controls { flex: 0 0 auto; }
+
+/* v200: 錄音頁最上方的獨立 AI 整理稿，不與原始逐字稿或人工速記混存。 */
+.ai-summary-note {
+  width: 100%; box-sizing: border-box; margin: 0 0 18px; padding: 14px;
+  border: 1px solid #a7d8d0; border-radius: 10px; background: #f0fdfa;
+}
+.ai-summary-note-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 10px;
+}
+.ai-summary-note-head > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ai-summary-note-head small { color: #52646a; font-size: 12px; overflow-wrap: anywhere; }
+.ai-summary-note-input {
+  display: block; width: 100%; min-height: 220px; resize: vertical; box-sizing: border-box;
+  padding: 12px; border: 1px solid #9ebbb6; border-radius: 7px; background: #fff;
+  color: #172321; font: 14px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.ai-summary-note-preview { order: -1; }
+.ai-summary-markdown { line-height: 1.7; overflow-wrap: anywhere; }
+.ai-summary-markdown > :first-child { margin-top: 0; }
+.ai-summary-markdown > :last-child { margin-bottom: 0; }
+.ai-summary-markdown pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (prefers-color-scheme: dark) {
+  .ai-summary-note { background: #12302d; border-color: #356d67; }
+  .ai-summary-note-input { background: #101b1a; color: #edf7f5; border-color: #477c75; }
+  .ai-summary-note-head small { color: #b5ceca; }
+}
