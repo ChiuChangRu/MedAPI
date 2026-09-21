@@ -89,6 +89,17 @@ export const SCHEMA = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  // AI 整理筆記的可還原稽核版本。前台與 MCP 都只能改目前版本；每次覆寫前
+  // 都把原稿存一份，避免排程或人工誤覆蓋後無法追查。
+  `CREATE TABLE IF NOT EXISTS entry_ai_note_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_id INTEGER NOT NULL,
+    markdown TEXT NOT NULL,
+    source TEXT DEFAULT '',
+    model TEXT DEFAULT '',
+    note_updated_at TEXT DEFAULT '',
+    replaced_at TEXT NOT NULL
+  )`,
   // 記事與記事之間的關聯（例：這次實驗引用了這份 ISO 標準、這份專利對照這家廠商的產品）。
   // 刻意不分「主從」、也不限制 relation_type 的字典——用途橫跨標準/實驗/廠商/專利，
   // 關係種類會一直長，寫死列表反而綁死用法。方向性用 relation_type 的文字本身表達
@@ -241,6 +252,7 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_trash_purge ON trash_items(purge_after)`,
   `CREATE INDEX IF NOT EXISTS idx_filing_suggestions_status ON filing_suggestions(status, updated_at)`,
   `CREATE INDEX IF NOT EXISTS idx_entry_ai_notes_status ON entry_ai_notes(status, updated_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_entry_ai_note_revisions_entry ON entry_ai_note_revisions(entry_id, id DESC)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_unique ON categories(kind, level, name)`,
 ];
 

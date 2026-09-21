@@ -166,6 +166,50 @@ function capLimit(args, dflt = 10, max = 30) {
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : dflt;
 }
 
+function isoFilter(value, name) {
+  if (value === undefined || value === null || value === "") return null;
+  const raw = String(value);
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(raw)) throw new Error(`${name} 必須帶時區（Z 或 +08:00），避免台灣日期跨日誤判`);
+  const time = Date.parse(raw);
+  if (!Number.isFinite(time)) throw new Error(`${name} 必須是含時區的 ISO 8601 時間，例如 2026-09-21T00:00:00+08:00`);
+  return new Date(time).toISOString();
+}
+
+function transcriptionSummary(audio) {
+  const rows = audio || [];
+  const total = rows.length;
+  const completed = rows.filter((a) => {
+    const state = String(a.transcribed_at || "");
+    return Boolean(state) && !["processing", "auto_failed", "skipped"].includes(state);
+  }).length;
+  const failed = rows.filter((a) => String(a.transcribed_at || "") === "auto_failed").length;
+  const processing = rows.filter((a) => String(a.transcribed_at || "") === "processing").length;
+  const status = !total ? "none" : completed === total ? "complete" : completed ? "partial" : "pending";
+  return {
+    transcription_status: status,
+    audio_segments_total: total,
+    audio_segments_transcribed: completed,
+    audio_segments_failed: failed,
+    audio_segments_processing: processing,
+    // 排程時間不是 D1 的既有事實，不能憑 UI 文案捏造；未知就明確回 null。
+    next_auto_transcribe_at: null,
+  };
+}
+
+function aiNoteMetadata(note) {
+  const markdown = String(note?.markdown || "").trim();
+  return {
+    ai_notes: markdown || null,
+    ai_notes_updated_at: note?.updated_at || null,
+    ai_notes_source: note ? (note.manually_edited ? "human" : "ai") : null,
+  };
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 // ---------- D1 schema 落後時的自我修復 ----------
 
 // fieldlog 與這支 MCP 是兩個獨立的 Worker，綁同一個 D1，但只有 fieldlog 帶
@@ -602,11 +646,18 @@ const TOOLS = [
   },
   {
     name: "list_fieldlog_entries",
-    description: "列出隨身記的紀錄清單（含每筆紀錄底下的附件檔名）。用途：檔名本身通常就承載了大部分判斷資訊（例如 ISO_10555-8_2024_血管內導管-無菌及單次使用導管-第8部_體外血液處理用導管.pdf，光看檔名就知道要不要讀），與其對 search_fieldlog 反覆猜關鍵字、猜不中就誤判成「沒有這份資料」，不如先用這個看資料夾裡實際有什麼。folder_id 用 list_fieldlog_folders 查。回傳有分頁，total 是總筆數，has_more 是否還有更多。",
+    description: "列出隨身記紀錄，並回傳建立／更新時間、AI 整理筆記是否存在，以及錄音轉錄狀態與段數。可依建立時間（ISO 8601，必須含時區）、資料夾類型、音檔、AI 筆記是否空白、轉錄狀態篩選；created_at 才是判斷『昨天錄的』的依據，updated_at 可能因補轉錄而改變。folder_id 預設不含子資料夾，include_subfolders=true 才展開。",
     inputSchema: {
       type: "object",
       properties: {
         folder_id: { type: "number", description: "選填：只列這個資料夾（不含子資料夾）；不給就列全庫，建議先用 list_fieldlog_folders 查 id" },
+        include_subfolders: { type: "boolean", description: "搭配 folder_id：是否連同所有子資料夾（預設 false）" },
+        folder_type: { type: "string", description: "選填：只列指定活動類型的資料夾，例如 上課、會議、實驗" },
+        created_after: { type: "string", description: "選填：建立時間下限（含），ISO 8601 且必須含時區；台灣一天可用 +08:00" },
+        created_before: { type: "string", description: "選填：建立時間上限（不含），ISO 8601 且必須含時區" },
+        has_audio: { type: "boolean", description: "選填：true 只列有錄音附件；false 只列沒有錄音附件" },
+        ai_notes_empty: { type: "boolean", description: "選填：true 只列尚未有 AI 整理筆記；false 只列已有筆記" },
+        transcription_status: { type: "string", enum: ["complete", "partial", "pending", "none"], description: "選填：錄音轉錄狀態；complete=全部完成、partial=部分完成、pending=尚待處理、none=無錄音" },
         limit: { type: "number", description: "每頁最多幾筆（預設 30，上限 100）" },
         offset: { type: "number", description: "分頁位移，預設 0" },
       },
@@ -616,49 +667,64 @@ const TOOLS = [
         ? Number(args.folder_id) : null;
       const limit = Math.min(100, Math.max(1, Number(args.limit) || 30));
       const offset = Math.max(0, Number(args.offset) || 0);
-
-      const where = folderId !== null
-        ? "WHERE e.folder_id = ? AND COALESCE(e.deleted_at, '') = ''"
-        : "WHERE COALESCE(e.deleted_at, '') = ''";
-      const binds = folderId !== null ? [folderId] : [];
-      const totalRow = await env.DB_FIELDLOG.prepare(
-        `SELECT COUNT(*) AS c FROM entries e ${where}`
-      ).bind(...binds).first();
-      const total = Number(totalRow?.c || 0);
-      if (!total) {
-        return folderId !== null
-          ? `資料夾 ${folderId} 裡沒有任何紀錄（folder_id 存在的話代表是空資料夾；不存在就是查無此資料夾，先用 list_fieldlog_folders 確認）。`
-          : "隨身記目前沒有任何紀錄。";
+      const createdAfter = isoFilter(args.created_after, "created_after");
+      const createdBefore = isoFilter(args.created_before, "created_before");
+      const requestedStatus = args.transcription_status ? String(args.transcription_status) : "";
+      const clauses = ["COALESCE(e.deleted_at, '') = ''"];
+      const binds = [];
+      let cte = "";
+      if (folderId !== null) {
+        if (args.include_subfolders) {
+          cte = "WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id = ? UNION ALL SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id WHERE COALESCE(f.deleted_at, '') = '')";
+          clauses.push("e.folder_id IN (SELECT id FROM subtree)"); binds.push(folderId);
+        } else { clauses.push("e.folder_id = ?"); binds.push(folderId); }
       }
-
+      if (args.folder_type !== undefined && args.folder_type !== null && String(args.folder_type).trim()) { clauses.push("f.type = ?"); binds.push(String(args.folder_type).trim()); }
+      if (createdAfter) { clauses.push("e.created_at >= ?"); binds.push(createdAfter); }
+      if (createdBefore) { clauses.push("e.created_at < ?"); binds.push(createdBefore); }
+      if (args.ai_notes_empty === true) clauses.push("COALESCE(TRIM(n.markdown), '') = ''");
+      if (args.ai_notes_empty === false) clauses.push("COALESCE(TRIM(n.markdown), '') <> ''");
+      const where = `WHERE ${clauses.join(" AND ")}`;
       const { results: entries } = await env.DB_FIELDLOG.prepare(
-        `SELECT e.id, e.title, e.created_at, e.updated_at, e.folder_id, f.name AS folder_name, f.type AS folder_type
-         FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
-         ${where}
-         ORDER BY e.id DESC LIMIT ? OFFSET ?`
-      ).bind(...binds, limit, offset).all();
-
-      const ids = entries.map((e) => e.id);
+        `${cte}
+         SELECT e.id, e.title, e.created_at, e.updated_at, e.folder_id, f.name AS folder_name, f.type AS folder_type,
+                n.markdown AS ai_markdown, n.updated_at AS ai_notes_updated_at, n.manually_edited AS ai_notes_manually_edited
+           FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+           LEFT JOIN entry_ai_notes n ON n.entry_id = e.id
+           ${where}
+          ORDER BY e.created_at DESC, e.id DESC LIMIT 1000`
+      ).bind(...binds).all();
+      const ids = (entries || []).map((e) => e.id);
       const attMap = new Map(ids.map((id) => [id, []]));
       if (ids.length) {
         const placeholders = ids.map(() => "?").join(",");
         const { results: atts } = await env.DB_FIELDLOG.prepare(
-          `SELECT entry_id, id, filename, kind FROM attachments WHERE entry_id IN (${placeholders}) AND source_pdf_id IS NULL ORDER BY id`
+          `SELECT entry_id, id, filename, kind, transcribed_at FROM attachments WHERE entry_id IN (${placeholders}) AND source_pdf_id IS NULL ORDER BY id`
         ).bind(...ids).all();
         for (const a of atts) attMap.get(a.entry_id)?.push(a);
       }
 
-      const lines = entries.map((e) => {
+      let rows = (entries || []).map((e) => {
+        const audio = (attMap.get(e.id) || []).filter((a) => a.kind === "audio");
+        return { ...e, ...aiNoteMetadata({ markdown: e.ai_markdown, updated_at: e.ai_notes_updated_at, manually_edited: e.ai_notes_manually_edited }), ...transcriptionSummary(audio), attachments: attMap.get(e.id) || [] };
+      });
+      if (args.has_audio === true) rows = rows.filter((e) => e.audio_segments_total > 0);
+      if (args.has_audio === false) rows = rows.filter((e) => e.audio_segments_total === 0);
+      if (requestedStatus) rows = rows.filter((e) => e.transcription_status === requestedStatus);
+      const total = rows.length;
+      const page = rows.slice(offset, offset + limit);
+      if (!total) return "沒有符合篩選條件的紀錄。";
+      const lines = page.map((e) => {
         const where2 = e.folder_name ? `${e.folder_type}｜${e.folder_name}` : "待分類";
-        const files = attMap.get(e.id) || [];
+        const files = e.attachments;
         // 檔名是主要判斷依據，不截斷；用逐行列出而不是逗號接成一串，長檔名才不會混在一起看不清
         const fileLines = files.length
           ? files.map((a) => `    - [attachment ${a.id}] ${a.kind}｜${a.filename}`).join("\n")
           : "    （沒有附件）";
-        return `- [entry ${e.id}] ${e.title || "（未命名）"}｜${where2}｜建立 ${e.created_at}${e.updated_at ? `｜更新 ${e.updated_at}` : ""}\n${fileLines}`;
+        return `- [entry ${e.id}] ${e.title || "（未命名）"}｜${where2}｜建立 ${e.created_at}${e.updated_at ? `｜更新 ${e.updated_at}` : ""}｜AI筆記 ${e.ai_notes ? "已有" : "空白"}｜轉錄 ${e.transcription_status}（${e.audio_segments_transcribed}/${e.audio_segments_total} 段）\n${fileLines}`;
       });
 
-      const shown = offset + entries.length;
+      const shown = offset + page.length;
       const hasMore = shown < total;
       const header = `共 ${total} 筆，目前顯示第 ${offset + 1}–${shown} 筆${hasMore ? `（還有更多，加 offset: ${shown} 繼續拉）` : "（已到底）"}`;
       return [header, ...lines].join("\n");
@@ -899,10 +965,13 @@ const TOOLS = [
   },
   {
     name: "get_fieldlog_entry",
-    description: "讀取隨身記單筆紀錄的完整內容：欄位、內文、所有附件的逐字稿與照片/PDF擷取文字（每個附件有長度上限，超過會截斷並提示；附件內容截斷時改用 get_fieldlog_attachment 拉那一個附件的完整全文，例如一份完整的 ISO 標準條文）。",
+    description: "讀取隨身記單筆紀錄：原始欄位與內文、AI 整理筆記（未整理為 null）、筆記更新時間／來源，以及錄音轉錄狀態與段數。transcript_view 可避免把記事內文的合併逐字稿與附件逐段文字重複送出。",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "number", description: "entry id（search_fieldlog 回傳的編號）" } },
+      properties: {
+        id: { type: "number", description: "entry id（search_fieldlog 回傳的編號）" },
+        transcript_view: { type: "string", enum: ["segments", "none"], description: "逐字稿呈現方式；segments（預設）列各音檔，none 不回傳逐字稿以節省內容" },
+      },
       required: ["id"],
     },
     async handler(env, args) {
@@ -910,8 +979,16 @@ const TOOLS = [
       if (!id) throw new Error("id 為必填");
       const e = await env.DB_FIELDLOG.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
       if (!e) throw new Error(`找不到 entry ${id}`);
-      const { results: atts } = await env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all();
+      const [{ results: atts }, aiNote] = await Promise.all([
+        env.DB_FIELDLOG.prepare("SELECT * FROM attachments WHERE entry_id = ? ORDER BY id").bind(id).all(),
+        env.DB_FIELDLOG.prepare("SELECT markdown, updated_at, manually_edited FROM entry_ai_notes WHERE entry_id = ?").bind(id).first(),
+      ]);
       const lines = [`# ${e.title || "（未命名紀錄）"}`, `建立：${e.created_at}${e.updated_at ? `｜更新：${e.updated_at}` : ""}`];
+      const note = aiNoteMetadata(aiNote);
+      const transcription = transcriptionSummary((atts || []).filter((a) => a.kind === "audio" && !a.source_pdf_id));
+      lines.push(`AI 整理筆記：${note.ai_notes === null ? "null" : "已有內容"}｜AI筆記更新：${note.ai_notes_updated_at || "null"}｜AI筆記來源：${note.ai_notes_source || "null"}`);
+      lines.push(`轉錄狀態：${transcription.transcription_status}｜音檔段數：${transcription.audio_segments_transcribed}/${transcription.audio_segments_total}｜下次自動轉錄：null（系統未提供可驗證時間）`);
+      if (note.ai_notes) lines.push("", "## AI 整理筆記（AI 產出，非原始紀錄）", note.ai_notes);
       const allFields = JSON.parse(e.fields_json || "{}");
       if (allFields._orphaned) lines.push("⚠ 此筆的來源資料已從外部知識庫移除——記事保留，但之後不會再更新。");
       // _ 開頭是同步機制的內部欄位（_sid／_content_hash…），對讀者是雜訊
@@ -932,7 +1009,7 @@ const TOOLS = [
         const off = a.offset_secs !== null && a.offset_secs !== undefined ? `（錄音 ${fmtSecs(a.offset_secs)}）` : "";
         lines.push("", `## 附件 [${a.id}]：${a.filename}｜${a.kind}${off}`);
         const ocrBody = stripPdfMetadata(a.ocr_text || ""); // 修正：先前這裡漏了剝 PDF metadata，會show出一堆 Creator=/PDFFormatVersion= 雜訊
-        if (a.transcript) {
+        if (a.transcript && args.transcript_view !== "none") {
           lines.push(`逐字稿：${clip(a.transcript, PREVIEW_CAP)}`);
           if (a.transcript.length > PREVIEW_CAP) lines.push(`（逐字稿共 ${a.transcript.length} 字，above 已截斷，完整全文用 get_fieldlog_attachment(${a.id})）`);
         }
@@ -940,6 +1017,7 @@ const TOOLS = [
           lines.push(`擷取文字：${clip(ocrBody, PREVIEW_CAP)}`);
           if (ocrBody.length > PREVIEW_CAP) lines.push(`（擷取文字共 ${ocrBody.length} 字，above 已截斷，完整全文用 get_fieldlog_attachment(${a.id})）`);
         }
+        if (a.transcript && args.transcript_view === "none") lines.push("（逐字稿依 transcript_view=none 省略）");
         if (!a.transcript && !ocrBody) lines.push("（尚未轉文字／擷取，或該檔案本身沒有可擷取的文字內容）");
       }
       return lines.join("\n");
@@ -1045,6 +1123,64 @@ const TOOLS = [
         lines.push(`- ${arrow} [entry ${otherId}] ${r.relation_type}：${r.other_title || "（未命名）"}｜${where}${r.note ? `（${r.note}）` : ""}`);
       }
       return lines.join("\n");
+    },
+  },
+  {
+    name: "update_ai_notes",
+    description: "只寫入既有記事最上方的「AI 整理筆記」欄位，不會修改標題、原始內文、附件、逐字稿、資料夾或關聯。內容必須非空白，最大 500,000 字元。預設覆寫；append 只會附加到既有 AI 筆記。expected_updated_at 可作樂觀鎖：人工或其他 Agent 已修改時，寫入會被拒絕並回傳目前版本，避免覆蓋。每次覆寫都保存上一版稽核紀錄。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entry_id: { type: "number", description: "既有記事 id（先用 get_fieldlog_entry 或 list_fieldlog_entries 確認）" },
+        content: { type: "string", description: "要寫入的 Markdown 或純文字；不可空白，最大 500,000 字元" },
+        mode: { type: "string", enum: ["replace", "append"], description: "replace（預設）覆寫 AI 筆記；append 附加於既有筆記末尾" },
+        expected_updated_at: { type: "string", description: "選填：上次 get_fieldlog_entry 回傳的 ai_notes_updated_at；不一致即拒絕覆寫" },
+        source: { type: "string", description: "選填：稽核來源，例如 scheduled-agent；預設 scheduled-agent" },
+      },
+      required: ["entry_id", "content"],
+    },
+    async handler(env, args) {
+      const entryId = Number(args.entry_id);
+      const content = String(args.content || "");
+      if (!entryId) throw new Error("entry_id 為必填");
+      if (!content.trim()) throw new Error("content 不可為空白；清空請由隨身記前台人工處理");
+      if (content.length > 500000) throw new Error("content 超過 500,000 字元上限");
+      if (!env.FIELDLOG) throw new Error("尚未設定 FIELDLOG Service Binding（見 mcp/README.md）");
+      const entry = await env.DB_FIELDLOG.prepare("SELECT id, title FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(entryId).first();
+      if (!entry) throw new Error(`找不到記事 ${entryId}`);
+      const { results: audio } = await env.DB_FIELDLOG.prepare(
+        `SELECT id, transcribed_at, transcript FROM attachments
+          WHERE entry_id = ? AND kind = 'audio' AND source_pdf_id IS NULL
+          ORDER BY COALESCE(offset_secs, 0), id`
+      ).bind(entryId).all();
+      const progress = transcriptionSummary(audio || []);
+      if (progress.audio_segments_total && progress.transcription_status !== "complete") {
+        throw new Error(`記事 ${entryId} 的逐字稿尚未完整（${progress.transcription_status}：${progress.audio_segments_transcribed}/${progress.audio_segments_total} 段）；請等待後再整理，避免漏掉最後片段`);
+      }
+      const revision = (audio || []).length
+        ? await sha256Hex(JSON.stringify((audio || []).map((a) => [a.id, a.transcribed_at || "", String(a.transcript || "").length])))
+        : "";
+      const u = new URL(`https://fieldlog.internal/api/entries/${entryId}/ai-note`);
+      u.searchParams.set("pin", (env.FIELD_PIN || "").trim());
+      const res = await env.FIELDLOG.fetch(u.toString(), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          markdown: content,
+          mode: args.mode === "append" ? "append" : "replace",
+          expected_updated_at: args.expected_updated_at || "",
+          source: String(args.source || "scheduled-agent").slice(0, 80),
+          transcript_revision: revision,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409 && payload.ai_note) {
+          throw new Error(`拒絕覆寫：${payload.error || "AI 筆記已更新"}；目前 updated_at=${payload.ai_note.updated_at || ""}；目前內容：${String(payload.ai_note.markdown || "").slice(0, 2000)}`);
+        }
+        throw new Error(`AI 整理筆記寫入失敗（HTTP ${res.status}）：${payload.error || "未知錯誤"}`);
+      }
+      return JSON.stringify({ entry_id: payload.entry_id, updated_at: payload.updated_at, content_length: payload.content_length, replaced: payload.replaced });
     },
   },
   {
@@ -1766,6 +1902,7 @@ const IMAGE_PROBE_PNG_BASE64 =
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 const WRITE_TOOL_NAMES = new Set([
   "create_fieldlog_entry",
+  "update_ai_notes",
   "update_weekly_report",
   "create_fieldlog_attachment",
   "create_relation",
@@ -1792,6 +1929,7 @@ const TOOL_TITLES = {
   get_fieldlog_attachment: "讀取附件",
   get_related: "查詢關聯紀錄",
   create_fieldlog_entry: "新增隨身記紀錄",
+  update_ai_notes: "寫入 AI 整理筆記",
   update_weekly_report: "更新工作週報",
   create_fieldlog_attachment: "新增附件",
   create_relation: "建立紀錄關聯",
@@ -1872,7 +2010,7 @@ async function handleMcp(request, env, auth = {}) {
       capabilities: { tools: { listChanged: true } },
       serverInfo: { name: "medapi-mcp", version: "1.1.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。update_weekly_report 是唯一可更新記事內容的例外，而且只能寫入前台建立並標記為 weekly_report 的週報欄位。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。update_weekly_report 只能寫入前台建立並標記為 weekly_report 的週報欄位；update_ai_notes 是另一個窄範圍例外，只能寫入指定記事最上方的 AI 整理筆記，會保護人工修改並保留上一版稽核稿，絕不改動原始內文或附件。另 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " category 是「色系分組」（project／qa_reg／literature／training／admin／misc），跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，回應裡提到這兩者時不要混為一談。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
         " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。組內嵌照片的 HTML 報告請用 get_fieldlog_image_base64 拿純文字 base64，不要用 get_fieldlog_image 的圖片內容硬抄。" +

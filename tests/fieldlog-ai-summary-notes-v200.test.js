@@ -24,6 +24,28 @@ test("AI Agent 不可直接覆蓋人工修改稿", async () => {
   assert.match(worker, /人工修改過的整理筆記不可由 Agent 覆蓋/);
 });
 
+test("MCP 可只寫 AI 整理筆記，並提供樂觀鎖與稽核版本", async () => {
+  const mcp = await read("../mcp/src/worker.js");
+  const fieldlog = await read("../fieldlog/src/worker.js");
+  const schema = await read("../fieldlog/src/lib/schema.js");
+  assert.match(mcp, /name: "update_ai_notes"/);
+  assert.match(mcp, /expected_updated_at/);
+  assert.match(mcp, /AI 整理筆記寫入失敗/);
+  assert.match(fieldlog, /AI 整理筆記已在讀取後被修改，拒絕覆蓋/);
+  assert.match(fieldlog, /entry_ai_note_revisions/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS entry_ai_note_revisions/);
+});
+
+test("MCP 讀取與清單提供 AI 筆記、轉錄狀態與建立時間篩選", async () => {
+  const mcp = await read("../mcp/src/worker.js");
+  assert.match(mcp, /ai_notes_updated_at/);
+  assert.match(mcp, /transcription_status/);
+  assert.match(mcp, /audio_segments_transcribed/);
+  assert.match(mcp, /created_after/);
+  assert.match(mcp, /include_subfolders/);
+  assert.match(mcp, /transcript_view/);
+});
+
 test("錄音右欄最上方可貼上或上傳 Markdown", async () => {
   const app = await read("../fieldlog/public/app.js");
   const inspector = await read("../fieldlog/public/inspector.js");
