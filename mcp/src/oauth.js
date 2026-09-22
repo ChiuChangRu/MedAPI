@@ -200,7 +200,13 @@ function securityHeaders(setCookie) {
     "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
     "x-frame-options": "DENY",
     "x-content-type-options": "nosniff",
-    "referrer-policy": "no-referrer",
+    // "no-referrer" makes browsers null out the Origin header on this page's
+    // consent-form POST too (Fetch spec: non-GET/HEAD navigation + referrer
+    // policy "no-referrer" => Origin is forced to "null"), which silently
+    // defeats isSameOriginFormPost()'s same-origin fallback below. "same-origin"
+    // keeps that fallback working for the same-origin form submit while still
+    // sending no referrer/origin cross-site.
+    "referrer-policy": "same-origin",
     ...(setCookie ? { "set-cookie": setCookie } : {}),
   };
 }
