@@ -169,30 +169,6 @@ function isSameOriginFormPost(request) {
   return origin === new URL(request.url).origin;
 }
 
-// Temporary diagnostic logging for the Claude DCR consent-flow CSRF failure
-// (see MCP_OAUTH_HANDOFF_FOR_CLAUDE_CODE.md). Only booleans/enums/coarse
-// branch names are logged — never PIN, tokens, codes, client_id, cookie
-// values, query strings, or request bodies. Remove once the real failure
-// branch is confirmed from production logs.
-function diagLog(route, request, fields = {}) {
-  const id = randomToken(6);
-  try {
-    console.log(JSON.stringify({
-      diag: "oauth_csrf_repro",
-      id,
-      route,
-      method: request.method,
-      hasOrigin: request.headers.has("origin"),
-      hasSecFetchSite: request.headers.has("sec-fetch-site"),
-      hasCookieHeader: request.headers.has("cookie"),
-      ...fields,
-    }));
-  } catch {
-    // logging must never break the OAuth flow
-  }
-  return id;
-}
-
 function securityHeaders(setCookie, formActionOrigin) {
   // Chrome enforces "form-action" against the *entire* navigation chain
   // triggered by a form submission, not just the immediate action URL - so a
@@ -284,14 +260,11 @@ async function registerClient(request, env) {
     return oauthError("invalid_client_metadata", "request body must be JSON");
   }
   if (!Array.isArray(body.redirect_uris) || body.redirect_uris.length === 0 || !body.redirect_uris.every(validRedirectUri)) {
-    diagLog("POST /register", request, { branch: "invalid_redirect_uri" });
     return oauthError("invalid_redirect_uri", "redirect_uris must contain valid HTTPS URLs");
   }
   if (body.token_endpoint_auth_method && body.token_endpoint_auth_method !== "none") {
-    diagLog("POST /register", request, { branch: "invalid_client_metadata" });
     return oauthError("invalid_client_metadata", "only public PKCE clients are supported");
   }
-  diagLog("POST /register", request, { branch: "client_registered" });
   const issuedAt = Math.floor(Date.now() / 1000);
   const clientId = await signPayload({
     typ: "client",
@@ -322,10 +295,7 @@ async function authorizationGet(request, env) {
   const scopes = normalizeScopes(url.searchParams.get("scope"));
   const resource = url.searchParams.get("resource") || "";
   const codeChallenge = url.searchParams.get("code_challenge") || "";
-  if (!client) {
-    diagLog("GET /authorize", request, { branch: "invalid_client", clientIdPresent: Boolean(clientId) });
-    return oauthError("invalid_client", "unknown or expired client_id");
-  }
+  if (!client) return oauthError("invalid_client", "unknown or expired client_id");
   if (!client.redirect_uris.includes(redirectUri)) return oauthError("invalid_request", "redirect_uri does not match the registered client");
   if (url.searchParams.get("response_type") !== "code") return oauthError("unsupported_response_type", "response_type must be code");
   if (url.searchParams.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43,128}$/.test(codeChallenge)) {
@@ -333,7 +303,6 @@ async function authorizationGet(request, env) {
   }
   if (resource !== info.resource) return oauthError("invalid_target", "resource does not match this MCP server");
   if (!scopes) return oauthError("invalid_scope", "unsupported scope requested");
-  diagLog("GET /authorize", request, { branch: "consent_page_rendered" });
   const csrf = randomToken();
   const requestToken = await signPayload({
     typ: "request",
@@ -348,7 +317,7 @@ async function authorizationGet(request, env) {
   }, secret);
   const clientName = escapeHtml(client.client_name || "MCP client");
   const scopeText = escapeHtml(scopes.join("、"));
-  const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>授權 MyWiki</title><style>body{font-family:system-ui,sans-serif;background:#f3f6f5;color:#123;margin:0;padding:32px}.card{max-width:520px;margin:6vh auto;background:#fff;border:1px solid #d8e1df;border-radius:16px;padding:28px;box-shadow:0 12px 35px #1232}h1{margin-top:0;color:#087f72}label{display:block;margin:18px 0 8px;font-weight:700}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #9aa;border-radius:9px;font-size:16px}.scope{background:#eef7f5;padding:12px;border-radius:9px}.actions{display:flex;gap:10px;margin-top:22px}button{border:0;border-radius:9px;padding:12px 18px;font-size:16px;cursor:pointer}.allow{background:#087f72;color:white}.deny{background:#e7eceb;color:#234}.note{color:#526;font-size:14px}</style></head><body><main class="card"><h1>授權連接 MyWiki</h1><p><strong>${clientName}</strong> 要求存取你的私人 MyWiki。</p><p class="scope">權限：${scopeText}</p><form method="post" action="/authorize"><input type="hidden" name="request_token" value="${escapeHtml(requestToken)}"><input type="hidden" name="csrf_token" value="${escapeHtml(csrf)}"><label for="pin">MyWiki MCP PIN</label><input id="pin" name="pin" type="password" autocomplete="current-password" required><p class="note">PIN 只在此安全頁面驗證，不會傳給 ChatGPT。</p><div class="actions"><button class="allow" name="decision" value="allow" type="submit">允許</button><button class="deny" name="decision" value="deny" type="submit" formnovalidate>取消</button></div></form></main></body></html>`;
+  const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>授權 MyWiki</title><style>body{font-family:system-ui,sans-serif;background:#f3f6f5;color:#123;margin:0;padding:32px}.card{max-width:520px;margin:6vh auto;background:#fff;border:1px solid #d8e1df;border-radius:16px;padding:28px;box-shadow:0 12px 35px #1232}h1{margin-top:0;color:#087f72}label{display:block;margin:18px 0 8px;font-weight:700}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #9aa;border-radius:9px;font-size:16px}.scope{background:#eef7f5;padding:12px;border-radius:9px}.actions{display:flex;gap:10px;margin-top:22px}button{border:0;border-radius:9px;padding:12px 18px;font-size:16px;cursor:pointer}.allow{background:#087f72;color:white}.deny{background:#e7eceb;color:#234}.note{color:#526;font-size:14px}</style></head><body><main class="card"><h1>授權連接 MyWiki</h1><p><strong>${clientName}</strong> 要求存取你的私人 MyWiki。</p><p class="scope">權限：${scopeText}</p><form method="post" action="/authorize"><input type="hidden" name="request_token" value="${escapeHtml(requestToken)}"><input type="hidden" name="csrf_token" value="${escapeHtml(csrf)}"><label for="pin">MyWiki MCP PIN</label><input id="pin" name="pin" type="password" autocomplete="current-password" required><p class="note">PIN 只在此安全頁面驗證，不會傳給連接的應用程式。</p><div class="actions"><button class="allow" name="decision" value="allow" type="submit">允許</button><button class="deny" name="decision" value="deny" type="submit" formnovalidate>取消</button></div></form></main></body></html>`;
   return new Response(html, {
     headers: securityHeaders(consentCookie(csrf, 600), new URL(redirectUri).origin),
   });
@@ -365,45 +334,28 @@ async function authorizationPost(request, env) {
   }
   const requestToken = String(form.get("request_token") || "");
   const authRequest = await verifyPayload(requestToken, secret, "request");
-  if (!authRequest) {
-    diagLog("POST /authorize", request, { branch: "request_token_invalid_or_expired" });
-    return oauthError("invalid_request", "authorization request expired; start again");
-  }
+  if (!authRequest) return oauthError("invalid_request", "authorization request expired; start again");
   const csrf = String(form.get("csrf_token") || "");
   const csrfSigned = csrf && authRequest.csrf_hash
     && constantTimeEqual(await sha256(csrf), authRequest.csrf_hash);
   const csrfCookie = csrf && constantTimeEqual(csrf, cookieValue(request, CONSENT_COOKIE));
-  const sameOrigin = isSameOriginFormPost(request);
-  if (!csrfSigned || (!csrfCookie && !sameOrigin)) {
-    diagLog("POST /authorize", request, {
-      branch: "csrf_validation_failed",
-      csrfFieldPresent: Boolean(csrf),
-      csrfSigned: Boolean(csrfSigned),
-      csrfCookieMatched: Boolean(csrfCookie),
-      sameOriginFallbackUsed: sameOrigin,
-    });
+  if (!csrfSigned || (!csrfCookie && !isSameOriginFormPost(request))) {
     return oauthError("invalid_request", "CSRF validation failed");
   }
   const redirect = new URL(authRequest.redirect_uri);
   if (form.get("decision") !== "allow") {
-    diagLog("POST /authorize", request, { branch: "user_denied" });
     redirect.searchParams.set("error", "access_denied");
     if (authRequest.state) redirect.searchParams.set("state", authRequest.state);
     return Response.redirect(redirect.toString(), 302);
   }
-  if (await isRateLimited(request, env)) {
-    diagLog("POST /authorize", request, { branch: "rate_limited" });
-    return oauthError("temporarily_unavailable", "too many attempts; try again later", 429);
-  }
+  if (await isRateLimited(request, env)) return oauthError("temporarily_unavailable", "too many attempts; try again later", 429);
   const given = String(form.get("pin") || "");
   const [givenHash, expectedHash] = await Promise.all([sha256(given), sha256(secret)]);
   if (!constantTimeEqual(givenHash, expectedHash)) {
     await recordFailedAttempt(request, env);
-    diagLog("POST /authorize", request, { branch: "pin_mismatch" });
     return oauthError("access_denied", "PIN 不正確；請回到連接器重新授權", 403);
   }
   await clearFailedAttempts(request, env);
-  diagLog("POST /authorize", request, { branch: "consent_allowed_code_issued" });
   const now = Math.floor(Date.now() / 1000);
   const jti = randomToken();
   await ensureOAuthTables(env);
@@ -458,10 +410,7 @@ async function tokenEndpoint(request, env) {
   const grantType = String(form.get("grant_type") || "");
   const clientId = String(form.get("client_id") || "");
   const client = await clientMetadata(clientId, secret);
-  if (!client) {
-    diagLog("POST /token", request, { branch: "invalid_client", grantType });
-    return oauthError("invalid_client", "unknown or expired client_id", 401);
-  }
+  if (!client) return oauthError("invalid_client", "unknown or expired client_id", 401);
   const info = serverInfo(request);
   const resource = String(form.get("resource") || "");
   if (resource !== info.resource) return oauthError("invalid_target", "resource does not match this MCP server");
@@ -469,37 +418,28 @@ async function tokenEndpoint(request, env) {
   if (grantType === "authorization_code") {
     const code = await verifyPayload(String(form.get("code") || ""), secret, "code");
     if (!code || code.client_id !== clientId || code.redirect_uri !== String(form.get("redirect_uri") || "") || code.resource !== resource) {
-      diagLog("POST /token", request, { branch: "authorization_code_invalid_or_expired", grantType });
       return oauthError("invalid_grant", "authorization code is invalid or expired");
     }
     const verifier = String(form.get("code_verifier") || "");
     if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || !constantTimeEqual(await sha256(verifier), code.code_challenge)) {
-      diagLog("POST /token", request, { branch: "pkce_verification_failed", grantType });
       return oauthError("invalid_grant", "PKCE verification failed");
     }
     await ensureOAuthTables(env);
     const used = await env.DB_FIELDLOG.prepare(
       "UPDATE mcp_oauth_codes SET used_at = ? WHERE jti_hash = ? AND used_at IS NULL AND expires_at >= ?",
     ).bind(Math.floor(Date.now() / 1000), await sha256(code.jti), Math.floor(Date.now() / 1000)).run();
-    if (Number(used?.meta?.changes || 0) !== 1) {
-      diagLog("POST /token", request, { branch: "authorization_code_already_used", grantType });
-      return oauthError("invalid_grant", "authorization code was already used");
-    }
-    diagLog("POST /token", request, { branch: "tokens_issued", grantType });
+    if (Number(used?.meta?.changes || 0) !== 1) return oauthError("invalid_grant", "authorization code was already used");
     return json(await issueTokens(secret, clientId, resource, code.scope));
   }
 
   if (grantType === "refresh_token") {
     const refresh = await verifyPayload(String(form.get("refresh_token") || ""), secret, "refresh");
     if (!refresh || refresh.client_id !== clientId || refresh.aud !== resource) {
-      diagLog("POST /token", request, { branch: "refresh_token_invalid_or_expired", grantType });
       return oauthError("invalid_grant", "refresh token is invalid or expired");
     }
     const tokens = await issueTokens(secret, clientId, resource, refresh.scope);
-    diagLog("POST /token", request, { branch: "tokens_refreshed", grantType });
     return json(tokens);
   }
-  diagLog("POST /token", request, { branch: "unsupported_grant_type", grantType });
   return oauthError("unsupported_grant_type", "supported grants: authorization_code, refresh_token");
 }
 
