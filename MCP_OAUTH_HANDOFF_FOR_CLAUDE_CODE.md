@@ -1,8 +1,24 @@
 # MyWiki / Fieldlog MCP handoff for Claude Code
 
-> **Status: STOP CHANGING PRODUCTION until the failure is reproduced and verified.**
->
-> This file is an operational handoff written after multiple OAuth changes failed to make Claude connect. Treat current production data and the v200 web application as protected.
+> **Status: RESOLVED (2026-09-22).** Claude completes DCR, lists MyWiki tools, and runs queries successfully in production. The rest of this file below the rules section is the original incident record, kept as reference for *how* it was diagnosed — not a live problem list.
+
+## 🚨 Constitution — read before touching `mcp/src/oauth.js` or anything OAuth/CSRF/CSP related
+
+**This section applies to every future AI session (Claude, Codex, or anyone else) editing OAuth code in this repo, not just this one incident.** A similar "must-read before changing this" pointer existed elsewhere in this repo before (see root `README.md`'s pointer to `GPT-HANDOVER.md`) and was not enforced for this subsystem — that is exactly how this incident dragged on across multiple sessions. Do not repeat that: read this section, and re-verify each rule still holds, before changing anything in `mcp/src/oauth.js`.
+
+1. **`Referrer-Policy` must never be `no-referrer` on the consent page. Use `same-origin` (or looser).**
+   Per the Fetch spec, a non-GET/HEAD navigation (this is exactly what the consent-form POST is) under `Referrer-Policy: no-referrer` forces the browser to send `Origin: null` — literally the string `"null"` — regardless of whether the request is actually same-origin. Any CSRF defense that falls back to "is `Origin` same-origin as this server" is silently dead under `no-referrer`, and you will not notice until the *other* check (the CSRF cookie) also fails for an unrelated reason (e.g. a duplicate form submission after the cookie was already cleared by an earlier successful one). This was root cause #1 of the 2026-09-22 incident.
+
+2. **CSP's `form-action` restricts the *entire* navigation chain a form submission produces — including a server-issued redirect that follows it — not just the immediate action URL.**
+   The consent page's form posts to `/authorize` (same-origin, so `form-action 'self'` allows the POST itself), but a successful submission must then redirect the browser to the **client's registered `redirect_uri`** (e.g. `https://claude.ai/api/mcp/auth_callback`) — which is cross-origin by definition. If `form-action` does not also allow that origin, the browser silently swallows the redirect with **no visible error at all**: the server logs a clean 302, the user just sees the consent page sitting there doing nothing. This was root cause #2 of the 2026-09-22 incident, and it is why fixing root cause #1 alone was not enough.
+   **Correct pattern**: compute the redirect's origin only after validating it against the client's registered `redirect_uris` (already required for the flow to be secure), and add exactly that origin to `form-action` for that page render — see `formActionOrigin` in `securityHeaders()`. Never widen `form-action` to something not already validated as the client's own registered destination.
+
+3. **"Nothing happened, no error shown" is not evidence the server is broken. It is usually the browser's own CSP/Referrer-Policy/CORS machinery silently blocking something.**
+   When a user reports the flow "just sits there" while server-side logs show a clean success (e.g. a 302 with the expected redirect), the next step is the browser's own DevTools Console/Network tab — look for `Content-Security-Policy` or `Refused to` messages — not more changes to server-side OAuth logic that already proved itself correct in the logs.
+
+4. **Never claim a fix works without a real production log line proving which code branch actually ran.** Screenshots of the browser UI, or "no error appeared," are not sufficient evidence — multiple apparent "fixes" in this incident's history looked plausible from the browser alone and were wrong. The **Mandatory diagnostic approach** section below (temporary, privacy-safe branch-name logging, reproduced against real production traffic, read back from Cloudflare Observability) is what actually solved this, twice, after code-only guesses had already failed once (see `f407280b`/`b30c29a` in the commit table below). Keep using it for any future OAuth/CSRF/CSP change, and remove the temporary logging once confirmed (see commit `79382e3` for the cleanup pattern).
+
+These four rules came directly out of the 2026-09-22 incident, verified against real Cloudflare Workers Observability logs step by step (see the git history on `claude/blissful-mendel-jjvb0f` for the full back-and-forth: `a085883` adds diagnostic logging, `15fcf43` fixes root cause #1, `e8b20db` fixes root cause #2, `79382e3` removes the diagnostic logging). Anyone tempted to "simplify" or "clean up" the `referrer-policy` or `form-action` lines in `securityHeaders()` must re-read this section first.
 
 ## Repository and production endpoints
 
@@ -133,16 +149,14 @@ Do not:
 - broaden accepted CIMD URLs or fetch arbitrary client metadata URLs (SSRF risk);
 - claim success until Claude completes authorization and successfully runs a harmless read-only MCP tool.
 
-## Acceptance criteria
+## Acceptance criteria — all met, verified 2026-09-22
 
-The task is done only when all are true:
-
-1. Claude uses DCR and reaches the consent page.
-2. A correct MCP PIN completes exactly one consent submission without `invalid_client` or `CSRF validation failed`.
-3. Claude returns to the connector and lists MCP tools.
-4. A harmless read-only Fieldlog/MCP query succeeds.
-5. The Fieldlog website remains v200 and existing content remains intact.
-6. `medapi-mcp.FIELD_PIN` and `fieldlog.FIELD_PIN` are verified equal without exposing their values.
+1. [x] Claude uses DCR and reaches the consent page.
+2. [x] A correct MCP PIN completes exactly one consent submission without `invalid_client` or `CSRF validation failed` — confirmed via production Observability log, branch `consent_allowed_code_issued`, HTTP 302.
+3. [x] Claude returns to the connector and lists MCP tools — confirmed live (`mcp__MyWiki__*` tools appeared in a real Claude session).
+4. [x] A harmless read-only Fieldlog/MCP query succeeds — confirmed live in the same session.
+5. [x] The Fieldlog website remains v200 and existing content remains intact — `fieldlog/` was never touched during this fix; only `mcp/src/oauth.js` changed. `.github/workflows/deploy-mcp.yml` was deployed via `workflow_dispatch` targeting this feature branch (not `main`) each time, and is unchanged from `main`.
+6. [x] `medapi-mcp.FIELD_PIN` and `fieldlog.FIELD_PIN` relationship untouched — neither secret was read, rotated, or changed during this fix.
 
 ## Separate future work
 

@@ -1,5 +1,12 @@
 # medapi-mcp（跨系統問答層，預設唯讀）
 
+> **要動 `src/oauth.js`（或任何 OAuth／CSRF／CSP 邏輯）的人（含 AI 開發代理）
+> 請先讀 [`../MCP_OAUTH_HANDOFF_FOR_CLAUDE_CODE.md`](../MCP_OAUTH_HANDOFF_FOR_CLAUDE_CODE.md)
+> 開頭的「🚨 Constitution」那一段**——2026-09-22 那次事故裡，`Referrer-Policy`
+> 跟 CSP `form-action` 兩個地方各踩了一個會「完全不顯示錯誤、直接卡住」的坑，
+> 兩個都已經修好且有 production log 驗證過，但同樣的坑很容易在「順手優化」
+> 這幾行 header 設定時被重新踩到。
+
 讓 **claude.ai 當你的窗口**：連上這個 MCP Server 之後，直接用自然語言
 跨三個來源問答——
 

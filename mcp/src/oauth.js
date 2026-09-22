@@ -6,6 +6,22 @@
  * HMAC key for short-lived OAuth artifacts. Rotating MCP_PIN invalidates all
  * clients and tokens, which is the desired emergency-revocation behavior for
  * this single-owner service.
+ *
+ * BEFORE CHANGING ANYTHING IN THIS FILE (any AI session, Claude or Codex
+ * included): read the "🚨 Constitution" section at the top of
+ * ../../MCP_OAUTH_HANDOFF_FOR_CLAUDE_CODE.md first. Two rules from it, in
+ * short:
+ *   - `referrer-policy` in securityHeaders() must stay "same-origin", never
+ *     "no-referrer" - the latter forces Origin to literal "null" on this
+ *     page's own form POST and silently kills isSameOriginFormPost().
+ *   - CSP `form-action` must keep including the request's already-validated
+ *     redirect_uri origin (the formActionOrigin param) - browsers enforce
+ *     form-action against the redirect that follows a form submission too,
+ *     not just the POST target, so dropping this makes the consent flow
+ *     silently hang with no error after a correct PIN.
+ * Both were production incidents (2026-09-22) that took multiple sessions to
+ * diagnose because they fail silently. Don't reintroduce them while
+ * "simplifying" these headers.
  */
 
 const SCOPES = ["mywiki:read", "mywiki:write"];
