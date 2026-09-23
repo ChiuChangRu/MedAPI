@@ -2159,9 +2159,6 @@ body.reader-fullscreen .folder-preview {
 .ai-summary-markdown > :first-child { margin-top: 0; }
 .ai-summary-markdown > :last-child { margin-bottom: 0; }
 .ai-summary-markdown pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-@media (prefers-color-scheme: dark) {
-  .ai-summary-note { background: #12302d; border-color: #356d67; }
-  .ai-summary-note-input { background: #101b1a; color: #edf7f5; border-color: #477c75; }
-  .ai-summary-note-head small { color: #b5ceca; }
-  .ai-summary-note-collapsible > summary::before { color: #b5ceca; }
-}
+/* 不要單獨給這個區塊加 prefers-color-scheme: dark——整個 App 沒有深色模式，
+   v200 只把這塊的背景調暗、標題與內文卻沿用淺色主題的深色字，系統切深色時
+   整塊幾乎看不見（v201 修正）。 */

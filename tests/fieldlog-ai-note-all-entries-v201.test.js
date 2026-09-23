@@ -80,6 +80,12 @@ test("右欄預覽的非錄音分支也顯示 AI 整理筆記，且「尚無內�
   assert.match(inspector, /!visibleEntryFields\(entry\)\.length && !String\(entry\.ai_note\?\.markdown \|\| ""\)\.trim\(\)\) body\.innerHTML = '<p class="folder-preview-empty">/);
 });
 
+test("AI 整理筆記區塊不可單獨套深色模式（整個 App 沒有深色模式，v200 在系統深色時整塊看不見）", async () => {
+  const css = await read("../fieldlog/public/style.css");
+  const darkBlocks = css.match(/@media \(prefers-color-scheme: dark\)\s*\{[\s\S]*?\n\}/g) || [];
+  assert.ok(!darkBlocks.some((block) => block.includes("ai-summary-note")), "ai-summary-note 不應出現在 prefers-color-scheme: dark 區塊內");
+});
+
 test("後端：Agent 寫入的逐字稿版本檢查只套用在錄音記事", async () => {
   const worker = await read("../fieldlog/src/worker.js");
   assert.match(worker, /if \(isAgent && context\.audio\.length && \(!context\.complete \|\| !requestedRevision \|\| requestedRevision !== context\.revision\)\)/);
