@@ -35,8 +35,17 @@ test("AI 整理筆記預覽：沒內容時「尚未整理」只出現一次（�
 test("預覽欄明確指定字級：內文 14px，不再繼承 body 的 16px", async () => {
   const css = await read("../fieldlog/public/style.css");
   assert.match(css, /\.inspector-recording-preview \{[^}]*font-size: 14px;/);
-  assert.match(css, /\.ai-summary-note \{[^}]*font-size: 14px;/);
-  assert.match(css, /\.ai-summary-note-head strong \{ font-size: 14px; \}/);
+  assert.match(css, /\.ai-summary-note\.ai-summary-note-preview \{[^}]*font-size: 14px;/);
+  assert.match(css, /\.ai-summary-note-preview \.ai-summary-note-head strong \{ font-size: 14px; \}/);
   assert.match(css, /\.recording-interleaved-head > strong \{ font-size: 14px; \}/);
   assert.match(css, /\.ai-summary-markdown :is\(h1, h2, h3\) \{[^}]*font-size: 15px;/);
+});
+
+test("手機記事編輯畫面的 AI 整理筆記不跟著縮小（周圍都是 16px，縮了反而不一致）", async () => {
+  const css = await read("../fieldlog/public/style.css");
+  const base = css.match(/\n\.ai-summary-note \{[^}]*\}/)?.[0];
+  assert.ok(base, "找不到 .ai-summary-note 基本規則");
+  assert.doesNotMatch(base, /font-size/);
+  assert.doesNotMatch(css, /\n\.ai-summary-note-head strong \{/, "標題縮字只能套在 .ai-summary-note-preview 底下");
+  assert.match(css, /\.ai-summary-note-head > \.btn \{ flex: none; white-space: nowrap; \}/);
 });

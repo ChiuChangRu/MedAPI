@@ -2136,16 +2136,16 @@ body.reader-fullscreen .folder-preview {
 
 /* v200: 錄音頁最上方的獨立 AI 整理稿，不與原始逐字稿或人工速記混存。 */
 .ai-summary-note {
-  width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 10px 12px;
-  border: 1px solid #a7d8d0; font-size: 14px; border-radius: 10px; background: #f0fdfa;
+  width: 100%; box-sizing: border-box; margin: 0 0 18px; padding: 14px;
+  border: 1px solid #a7d8d0; border-radius: 10px; background: #f0fdfa;
 }
 .ai-summary-note-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 10px;
 }
-.ai-summary-note-head:last-child { margin-bottom: 0; }
-.ai-summary-note-head strong { font-size: 14px; }
-.ai-summary-note-head > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* 手機窄欄時標題會換行，上傳按鈕不要跟著被擠成兩行 */
+.ai-summary-note-head > .btn { flex: none; white-space: nowrap; }
+.ai-summary-note-head > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ai-summary-note-head small { color: #52646a; font-size: 12px; overflow-wrap: anywhere; }
 .ai-summary-note-input {
   display: block; width: 100%; min-height: 220px; resize: vertical; box-sizing: border-box;
@@ -2153,8 +2153,15 @@ body.reader-fullscreen .folder-preview {
   color: #172321; font: 14px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 .ai-summary-note-preview { order: -1; }
+/* v202：只有電腦版右欄預覽縮成 14px；手機記事編輯畫面周圍都是 16px，維持原大小才一致 */
+.ai-summary-note.ai-summary-note-preview { margin-bottom: 12px; padding: 10px 12px; font-size: 14px; }
+.ai-summary-note-preview .ai-summary-note-head { gap: 10px; margin-bottom: 8px; }
+.ai-summary-note-preview .ai-summary-note-head:last-child { margin-bottom: 0; }
+.ai-summary-note-preview .ai-summary-note-head > div { gap: 2px; }
+.ai-summary-note-preview .ai-summary-note-head strong { font-size: 14px; }
+.ai-summary-note-preview.ai-summary-note-collapsible:not([open]) { padding-top: 8px; padding-bottom: 8px; }
 /* 非錄音記事的 AI 整理筆記：可收合，沒內容時預設收起來只剩一行標題 */
-.ai-summary-note-collapsible:not([open]) { padding-top: 8px; padding-bottom: 8px; }
+.ai-summary-note-collapsible:not([open]) { padding-top: 10px; padding-bottom: 10px; }
 .ai-summary-note-collapsible > summary { cursor: pointer; list-style: none; justify-content: flex-start; }
 .ai-summary-note-collapsible > summary::-webkit-details-marker { display: none; }
 .ai-summary-note-collapsible > summary::before { content: "▸"; color: #52646a; flex: none; transition: transform .15s; }
