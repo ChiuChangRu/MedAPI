@@ -15,7 +15,7 @@ test("錄音預覽依語音檔案、該段轉錄的順序交錯顯示", () => {
 
 test("錄音預覽本身是單欄容器，人工速記只接在全部段落之後", () => {
   assert.match(css, /\.inspector-recording-preview \{ width: 100%; min-width: 0;/);
-  assert.match(css, /\.recording-interleaved-preview \{ display: grid; gap: 14px; \}/);
+  assert.match(css, /\.recording-interleaved-preview \{ display: grid; gap: \d+px; \}/);
   assert.match(inspector, /!recordingFields\._recording_document_hash/);
   assert.match(inspector, /querySelector\("\.inspector-recording-preview"\)\.appendChild\(frame\)/);
 });

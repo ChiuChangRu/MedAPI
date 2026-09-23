@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "201";
+const APP_VERSION = "202";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2709,19 +2709,20 @@ function aiNoteEditorHtml(note, prefix, { collapsible = false } = {}) {
 
 function aiNotePreviewHtml(note, { collapsible = false } = {}) {
   const markdown = String(note?.markdown || "").trim();
+  // 沒內容時不另外放內文段落：標題下的小字已經寫「尚未整理」，再放一次只是重複佔高度。
   const rendered = markdown
-    ? (window.fieldlogRichEditor?.mdToHtml?.(markdown) || `<pre>${esc(markdown)}</pre>`)
-    : `<p class="sub">${esc(aiNoteStatusLabel(note))}</p>`;
+    ? `<div class="ai-summary-markdown">${window.fieldlogRichEditor?.mdToHtml?.(markdown) || `<pre>${esc(markdown)}</pre>`}</div>`
+    : "";
   const title = `<div><strong>✨ AI 整理筆記</strong><small>${esc(aiNoteStatusLabel(note))}${note?.updated_at ? `｜${esc(localDateTime(note.updated_at))}` : ""}</small></div>`;
   if (collapsible) {
     return `<details class="ai-summary-note ai-summary-note-preview ai-summary-note-collapsible"${markdown ? " open" : ""}>
     <summary class="ai-summary-note-head">${title}</summary>
-    <div class="ai-summary-markdown">${rendered}</div>
+    ${rendered}
   </details>`;
   }
   return `<section class="ai-summary-note ai-summary-note-preview">
     <div class="ai-summary-note-head">${title}</div>
-    <div class="ai-summary-markdown">${rendered}</div>
+    ${rendered}
   </section>`;
 }
 
@@ -7890,7 +7891,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=201").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=202").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

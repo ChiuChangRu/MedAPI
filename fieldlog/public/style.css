@@ -2035,28 +2035,32 @@ body.file-marquee-active, body.file-marquee-active * { user-select: none !import
 .inspector-document-preview > .inspector-metadata {
   flex: none; margin: 0; padding: 12px 18px 18px; border-top: 1px solid #e2e8f0; background: #f8fafc;
 }
-.inspector-recording-preview { width: 100%; min-width: 0; padding: 0 14px 18px; }
+/* v202：預覽欄統一 14px 內文、12–13px 輔助字；body 沒設字級，沒指定的元素原本都繼承 16px，
+   跟 App 其他地方（12–14px）比起來忽大忽小。 */
+.inspector-recording-preview { width: 100%; min-width: 0; padding: 0 12px 14px; font-size: 14px; }
 .recording-progress-summary {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; margin-bottom: 14px;
-  padding: 11px 12px; border: 1px solid #dbe3ea; border-radius: 10px; background: #f8fafc;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; margin-bottom: 10px;
+  padding: 8px 10px; border: 1px solid #dbe3ea; border-radius: 10px; background: #f8fafc;
 }
-.recording-progress-summary > strong { font-size: 14px; }
-.recording-progress-summary > small { flex-basis: 100%; color: #64748b; line-height: 1.5; }
+.recording-progress-summary > strong { font-size: 13px; }
+.recording-progress-summary > small { flex-basis: 100%; color: #64748b; font-size: 12px; line-height: 1.45; }
 .recording-download-all-row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: -2px 0 14px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px;
 }
-.recording-download-all-row > small { color: #64748b; line-height: 1.5; }
-.recording-interleaved-preview { display: grid; gap: 14px; }
+.recording-download-all-row > small { color: #64748b; font-size: 12px; line-height: 1.45; }
+.recording-interleaved-preview { display: grid; gap: 10px; }
 .recording-interleaved-segment {
-  min-width: 0; padding: 14px; border: 1px solid #dbe3ea; border-radius: 10px; background: #fff;
+  min-width: 0; padding: 10px 12px; border: 1px solid #dbe3ea; border-radius: 10px; background: #fff;
 }
-.recording-interleaved-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.recording-interleaved-head > span { min-width: 0; color: #64748b; font-size: 13px; overflow-wrap: anywhere; text-align: right; }
-.recording-interleaved-segment audio { display: block; width: 100%; margin: 10px 0 8px; }
+.recording-interleaved-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.recording-interleaved-head > strong { font-size: 14px; }
+.recording-interleaved-head > span { min-width: 0; color: #64748b; font-size: 12px; overflow-wrap: anywhere; text-align: right; }
+.recording-interleaved-segment audio { display: block; width: 100%; height: 40px; margin: 8px 0 6px; }
 .recording-interleaved-actions { display: flex; flex-wrap: wrap; gap: 7px; }
-.recording-interleaved-transcript { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
-.recording-interleaved-transcript > p { margin: 7px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
-.recording-other-attachments { margin-top: 14px; }
+.recording-interleaved-transcript { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+.recording-interleaved-transcript > strong { font-size: 13px; color: #334155; }
+.recording-interleaved-transcript > p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.recording-other-attachments { margin-top: 10px; }
 .recording-entry-note { display: block; width: 100%; min-height: 40vh; margin-top: 14px; }
 @media (max-width: 600px) {
   .recording-download-all-row > .btn { width: 100%; justify-content: center; }
@@ -2132,14 +2136,16 @@ body.reader-fullscreen .folder-preview {
 
 /* v200: 錄音頁最上方的獨立 AI 整理稿，不與原始逐字稿或人工速記混存。 */
 .ai-summary-note {
-  width: 100%; box-sizing: border-box; margin: 0 0 18px; padding: 14px;
-  border: 1px solid #a7d8d0; border-radius: 10px; background: #f0fdfa;
+  width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 10px 12px;
+  border: 1px solid #a7d8d0; font-size: 14px; border-radius: 10px; background: #f0fdfa;
 }
 .ai-summary-note-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-bottom: 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 8px;
 }
-.ai-summary-note-head > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ai-summary-note-head:last-child { margin-bottom: 0; }
+.ai-summary-note-head strong { font-size: 14px; }
+.ai-summary-note-head > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ai-summary-note-head small { color: #52646a; font-size: 12px; overflow-wrap: anywhere; }
 .ai-summary-note-input {
   display: block; width: 100%; min-height: 220px; resize: vertical; box-sizing: border-box;
@@ -2148,14 +2154,18 @@ body.reader-fullscreen .folder-preview {
 }
 .ai-summary-note-preview { order: -1; }
 /* 非錄音記事的 AI 整理筆記：可收合，沒內容時預設收起來只剩一行標題 */
-.ai-summary-note-collapsible:not([open]) { padding-top: 10px; padding-bottom: 10px; }
+.ai-summary-note-collapsible:not([open]) { padding-top: 8px; padding-bottom: 8px; }
 .ai-summary-note-collapsible > summary { cursor: pointer; list-style: none; justify-content: flex-start; }
 .ai-summary-note-collapsible > summary::-webkit-details-marker { display: none; }
 .ai-summary-note-collapsible > summary::before { content: "▸"; color: #52646a; flex: none; transition: transform .15s; }
 .ai-summary-note-collapsible[open] > summary::before { transform: rotate(90deg); }
 .ai-summary-note-collapsible:not([open]) > summary { margin-bottom: 0; }
 .ai-summary-note-tools { display: flex; justify-content: flex-end; margin-bottom: 10px; }
-.ai-summary-markdown { line-height: 1.7; overflow-wrap: anywhere; }
+.ai-summary-markdown { line-height: 1.6; overflow-wrap: anywhere; }
+.ai-summary-markdown :is(h1, h2, h3) { margin: 12px 0 6px; font-size: 15px; }
+.ai-summary-markdown :is(h4, h5, h6) { margin: 10px 0 4px; font-size: 14px; }
+.ai-summary-markdown :is(p, ul, ol) { margin: 6px 0; }
+.ai-summary-markdown :is(ul, ol) { padding-left: 20px; }
 .ai-summary-markdown > :first-child { margin-top: 0; }
 .ai-summary-markdown > :last-child { margin-bottom: 0; }
 .ai-summary-markdown pre { white-space: pre-wrap; overflow-wrap: anywhere; }
