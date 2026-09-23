@@ -21,8 +21,8 @@
  * Service Binding 打 fieldlog 自己的 PUT／DELETE /api/folders、/api/entries，
  * 重用同一套已經上線、有巢狀深度檢查與歷史紀錄的邏輯，MCP 這邊沒有另外
  * 寫一份會分歧的版本。記事內容只有兩個窄例外：update_weekly_report（只改
- * _kind=weekly_report 週報模板的兩個欄位）與 update_ai_note（只寫錄音記事的
- * entry_ai_notes 一列，透過 fieldlog 的 PUT /api/entries/:id/ai-note）。
+ * _kind=weekly_report 週報模板的兩個欄位）與 update_ai_note（只寫該記事在
+ * entry_ai_notes 的一列，透過 fieldlog 的 PUT /api/entries/:id/ai-note）。
  * 除此之外，entries／attachments／relations／synonyms 的實際內容沒有任何
  * UPDATE／DELETE 碰得到——改內容、刪記事、wiki 收錄一律要回各自的前台／
  * git 人審。（外部來源的同步更新走 fieldlog worker 內部的 cron，不經過 MCP。）
@@ -955,8 +955,8 @@ const TOOLS = [
       if (bodyText) lines.push("", bodyText);
       const analysis = analysisSection(e);
       if (analysis) lines.push("", analysis);
-      // 「✨ AI 整理筆記」在 App 裡只出現在錄音記事上（fieldlog/public/app.js），
-      // 這裡照同樣規則呈現，讓呼叫端寫入 update_ai_note 前能先讀到目前版本。
+      // 每筆記事都有「✨ AI 整理筆記」（fieldlog v201 起），呈現目前版本，
+      // 讓呼叫端寫入 update_ai_note 前能先讀到。
       const aiNote = await env.DB_FIELDLOG.prepare(
         "SELECT markdown, source, manually_edited, updated_at FROM entry_ai_notes WHERE entry_id = ?"
       ).bind(id).first();
@@ -966,7 +966,7 @@ const TOOLS = [
         const origin = aiNote.manually_edited ? "人工修改（update_ai_note 無法覆寫）" : (aiNote.source || "AI");
         lines.push("", `## AI 整理筆記（AI 產出，非原始紀錄）｜來源：${origin}｜更新：${aiNote.updated_at}`, clip(aiNoteText, AI_NOTE_CAP));
         if (aiNoteText.length > AI_NOTE_CAP) lines.push(`（AI 整理筆記共 ${aiNoteText.length} 字，以上已截斷；不要拿截斷版本當基礎整份覆寫）`);
-      } else if (atts.some((a) => a.kind === "audio" && !a.source_pdf_id)) {
+      } else {
         lines.push("", "## AI 整理筆記：尚未整理（可用 update_ai_note 寫入）");
       }
       // 單筆紀錄常見多個附件，每個給預覽長度上限（避免一次撈爆整個回應）；
@@ -1175,11 +1175,11 @@ const TOOLS = [
     // 「寫操作履歷」這些規則只在 fieldlog 維護一份，這裡不重抄。
     // 不送 force：fieldlog 的 force 會繞過人工修改保護，MCP 不該有這個權力。
     name: "update_ai_note",
-    description: "把整理好的摘要整段寫入既有錄音記事的「✨ AI 整理筆記」欄位（覆寫，不是合併）。這是除了 update_weekly_report 之外，唯一可以更新既有記事內容的例外，而且只限這一個欄位：不會修改標題、內文、附件、逐字稿、自訂欄位、資料夾或關聯。限制：只適用於「錄音記事」且逐字稿已全部完成（App 只在錄音記事顯示這個欄位）；使用者在 App 裡人工改過的 AI 筆記不能被覆寫；內容不可空白，上限 500,000 字元。要接續既有內容時，先用 get_fieldlog_entry 讀出目前的 AI 整理筆記，自己合併後再整段寫入。寫入來源會記為 mcp_api。",
+    description: "把整理好的摘要整段寫入既有記事的「✨ AI 整理筆記」欄位（覆寫，不是合併）。這是除了 update_weekly_report 之外，唯一可以更新既有記事內容的例外，而且只限這一個欄位：不會修改標題、內文、附件、逐字稿、自訂欄位、資料夾或關聯。每一筆記事都有這個欄位；錄音記事必須等逐字稿全部完成才能寫入。使用者在 App 裡人工改過的 AI 筆記不能被覆寫；內容不可空白，上限 500,000 字元。要接續既有內容時，先用 get_fieldlog_entry 讀出目前的 AI 整理筆記，自己合併後再整段寫入。寫入來源會記為 mcp_api。",
     inputSchema: {
       type: "object",
       properties: {
-        entry_id: { type: "number", description: "錄音記事的 entry id（先用 get_fieldlog_entry 或 list_fieldlog_entries 確認）" },
+        entry_id: { type: "number", description: "記事的 entry id（先用 get_fieldlog_entry 或 list_fieldlog_entries 確認）" },
         ai_note: { type: "string", description: "要寫入「AI 整理筆記」的完整內容（Markdown 純文字），會整段覆蓋既有內容" },
       },
       required: ["entry_id", "ai_note"],
@@ -1196,10 +1196,7 @@ const TOOLS = [
       ).bind(entryId).first();
       if (!entry) throw new Error(`找不到記事 ${entryId}（不存在或已刪除），未寫入任何資料`);
       const transcript = await recordingTranscriptState(env.DB_FIELDLOG, entryId);
-      if (!transcript.total) {
-        throw new Error(`記事 ${entryId} 不是錄音記事——「AI 整理筆記」只存在於錄音記事上，未寫入任何資料。要保存這份摘要，請改用 create_fieldlog_entry 新增一筆，再用 create_relation 關聯回 ${entryId}`);
-      }
-      if (!transcript.complete) {
+      if (transcript.total && !transcript.complete) {
         throw new Error(`記事 ${entryId} 的逐字稿尚未全部完成（${transcript.finished}/${transcript.total} 段），未寫入任何資料；請等轉錄完成後再整理，避免漏掉後段內容`);
       }
       const u = new URL(`https://fieldlog.internal/api/entries/${entryId}/ai-note`);
@@ -1971,7 +1968,7 @@ async function handleMcp(request, env, auth = {}) {
       capabilities: { tools: { listChanged: true } },
       serverInfo: { name: "medapi-mcp", version: "1.1.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。可更新既有記事內容的例外只有兩支：update_weekly_report 只能寫入前台建立並標記為 weekly_report 的週報欄位；update_ai_note 只能整段覆寫錄音記事的「AI 整理筆記」欄位（逐字稿需已完成、人工改過的筆記不可覆寫）。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。可更新既有記事內容的例外只有兩支：update_weekly_report 只能寫入前台建立並標記為 weekly_report 的週報欄位；update_ai_note 只能整段覆寫記事的「AI 整理筆記」欄位（錄音記事需等逐字稿完成、人工改過的筆記不可覆寫）。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " category 是「色系分組」（project／qa_reg／literature／training／admin／misc），跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，回應裡提到這兩者時不要混為一談。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
         " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。組內嵌照片的 HTML 報告請用 get_fieldlog_image_base64 拿純文字 base64，不要用 get_fieldlog_image 的圖片內容硬抄。" +

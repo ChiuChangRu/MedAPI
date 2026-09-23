@@ -133,7 +133,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "200";
+const UI_VERSION = "201";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -2136,7 +2136,9 @@ async function handleApi(request, env, url, identity = {}) {
     }
     const context = await recordingSummaryContext(db, entryId);
     const requestedRevision = String(body.transcript_revision || "");
-    if (isAgent && (!context.complete || !requestedRevision || requestedRevision !== context.revision)) {
+    // 逐字稿版本檢查只對錄音記事有意義：確保 Agent 摘要的是最新、完整的逐字稿。
+    // 非錄音記事（v201 起每筆記事都有 AI 整理筆記）沒有逐字稿可比對，直接放行。
+    if (isAgent && context.audio.length && (!context.complete || !requestedRevision || requestedRevision !== context.revision)) {
       return bad("逐字稿尚未完成或版本已改變，請重新取得待辦", 409);
     }
     const stamp = now();
@@ -2158,7 +2160,8 @@ async function handleApi(request, env, url, identity = {}) {
       isAgent ? context.revision : (context.revision || requestedRevision), status, manuallyEdited,
       String(body.error || "").slice(0, 1000), isAgent ? 1 : 0, stamp, stamp
     ).run();
-    await logHistory(db, entryId, entry.folder_id, isAgent ? "AI 整理逐字稿" : "人工更新 AI 整理筆記", source);
+    const action = !isAgent ? "人工更新 AI 整理筆記" : context.audio.length ? "AI 整理逐字稿" : "AI 寫入整理筆記";
+    await logHistory(db, entryId, entry.folder_id, action, source);
     return json({ ok: true, ai_note: await aiNoteForEntry(db, entryId) });
   }
   const entryAudioZipMatch = path.match(/^\/entries\/(\d+)\/audio\.zip$/);

@@ -92,14 +92,16 @@ test("不存在的 entry_id 回傳明確錯誤，不打到 FIELDLOG（不會建�
   assert.equal(fieldlog.calls.length, 0);
 });
 
-test("非錄音記事沒有 AI 整理筆記欄位：報錯並建議改用 create_fieldlog_entry＋create_relation", async () => {
+test("非錄音記事（v201 起每筆記事都有 AI 整理筆記）：直接寫入，transcript_revision 為空字串", async () => {
   const fieldlog = makeFieldlogBinding();
   const env = { DB_FIELDLOG: makeDB({ entries: [{ id: 8, title: "文字記事" }] }), FIELDLOG: fieldlog };
   const result = await callTool(env, "update_ai_note", { entry_id: 8, ai_note: "摘要" });
-  assert.ok(result.isError);
-  assert.match(text(result), /不是錄音記事/);
-  assert.match(text(result), /create_relation/);
-  assert.equal(fieldlog.calls.length, 0);
+  assert.ok(!result.isError, text(result));
+  assert.equal(fieldlog.calls.length, 1);
+  assert.equal(new URL(fieldlog.calls[0].url).pathname, "/api/entries/8/ai-note");
+  const body = JSON.parse(fieldlog.calls[0].init.body);
+  assert.equal(body.source, "mcp_api");
+  assert.equal(body.transcript_revision, "");
 });
 
 test("逐字稿還有段落在轉錄中（processing／auto_failed）就不寫入", async () => {
@@ -163,7 +165,7 @@ test("transcript_revision 算法沒有跟 fieldlog 分歧（fieldlog 改了這�
   assert.match(mcp, /\["processing", "auto_failed"\]\.includes\(state\)/);
 });
 
-test("get_fieldlog_entry：錄音記事呈現目前的 AI 整理筆記與來源；沒有時標示尚未整理；非錄音記事不出現", async () => {
+test("get_fieldlog_entry：呈現目前的 AI 整理筆記與來源；沒有時標示尚未整理（錄音、非錄音記事都一樣）", async () => {
   const entries = [
     { id: 7, title: "錄音逐字稿", created_at: DONE, fields_json: "{}" },
     { id: 9, title: "另一段錄音", created_at: DONE, fields_json: "{}" },
@@ -184,5 +186,5 @@ test("get_fieldlog_entry：錄音記事呈現目前的 AI 整理筆記與來源�
   assert.match(noNote, /AI 整理筆記：尚未整理/);
 
   const notRecording = text(await callTool({ DB_FIELDLOG: db }, "get_fieldlog_entry", { id: 8 }));
-  assert.doesNotMatch(notRecording, /AI 整理筆記/);
+  assert.match(notRecording, /AI 整理筆記：尚未整理/);
 });

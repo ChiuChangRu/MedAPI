@@ -2147,6 +2147,14 @@ body.reader-fullscreen .folder-preview {
   color: #172321; font: 14px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 .ai-summary-note-preview { order: -1; }
+/* 非錄音記事的 AI 整理筆記：可收合，沒內容時預設收起來只剩一行標題 */
+.ai-summary-note-collapsible:not([open]) { padding-top: 10px; padding-bottom: 10px; }
+.ai-summary-note-collapsible > summary { cursor: pointer; list-style: none; justify-content: flex-start; }
+.ai-summary-note-collapsible > summary::-webkit-details-marker { display: none; }
+.ai-summary-note-collapsible > summary::before { content: "▸"; color: #52646a; flex: none; transition: transform .15s; }
+.ai-summary-note-collapsible[open] > summary::before { transform: rotate(90deg); }
+.ai-summary-note-collapsible:not([open]) > summary { margin-bottom: 0; }
+.ai-summary-note-tools { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 .ai-summary-markdown { line-height: 1.7; overflow-wrap: anywhere; }
 .ai-summary-markdown > :first-child { margin-top: 0; }
 .ai-summary-markdown > :last-child { margin-bottom: 0; }
@@ -2155,4 +2163,5 @@ body.reader-fullscreen .folder-preview {
   .ai-summary-note { background: #12302d; border-color: #356d67; }
   .ai-summary-note-input { background: #101b1a; color: #edf7f5; border-color: #477c75; }
   .ai-summary-note-head small { color: #b5ceca; }
+  .ai-summary-note-collapsible > summary::before { color: #b5ceca; }
 }

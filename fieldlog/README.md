@@ -143,5 +143,18 @@ body 給 `{"folder_id": 42}` 或 `{"entry_id": 100}`（擇一），可選 `limit
 - 失敗可送 `status:"failed"` 與 `error`；下次仍會出現在待辦。
 - 人工貼上／上傳 `.md` 後會標記 `manually_edited=1`，Agent 預設不可覆蓋。
 
+### v201：每一筆記事都有 AI 整理筆記
+
+- 非錄音記事也有「✨ AI 整理筆記」，主要由 MyWiki MCP 的 `update_ai_note`
+  寫入（`source: "mcp_api"`）。自動整理佇列（上面的 `/api/ai-summary/jobs`）
+  仍然只處理錄音，非錄音記事不會被自動整理。
+- `PUT /api/entries/:id/ai-note`：`transcript_revision` 版本檢查**只套用在
+  錄音記事**；非錄音記事沒有逐字稿可比對，Agent 可直接寫入。人工修改保護
+  不分記事類型，一律有效。操作履歷記為「AI 寫入整理筆記」（錄音記事仍記
+  「AI 整理逐字稿」）。
+- 畫面：錄音記事的區塊維持一律展開；非錄音記事的區塊沒內容時收合成一行
+  （點標題展開）、有內容時自動展開——避免透過 Claude 寫入後打開記事看到的
+  是收合區塊，誤以為沒寫進去。
+
 Claude 可使用既有 `x-pin`，或在 Worker 設定 `AI_SUMMARY_TOKEN` Secret 後，以
 `Authorization: Bearer <token>` 存取上述兩支端點；專用 token 不能存取其他 API。
