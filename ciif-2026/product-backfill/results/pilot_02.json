@@ -1,0 +1,17 @@
+[
+ {"source_id":"CIIF26-R1686","found":true,
+  "products":["人形機器人「小天」","人形機器人自動化解決方案","機械臂 SDK／運動控制介面"],
+  "description":"人形機器人、複合機器人與機器人客製開發",
+  "evidence_url":"https://www.tlibot.com/news_d/48.html",
+  "note":"官方網域首頁標題「人形機器人自動化解決方案」、新聞頁「新款人形機器人—超級物種-小天」"},
+ {"source_id":"CIIF26-R1689","found":true,
+  "products":["SCARA 機器人","高精度大導程滾珠絲槓"],
+  "description":"SCARA 機器人與滾珠絲槓傳動元件",
+  "evidence_url":"https://www.scs-i.com/productinfo/5987900.html?templateId=1133605",
+  "note":"產品名稱取自官方網域產品頁標題"},
+ {"source_id":"CIIF26-R1739","found":true,
+  "products":["工業機器人離線程式設計軟體（PQArt）","教學實訓工作站"],
+  "description":"工業機器人離線程式設計軟體與職業教育實訓設備",
+  "evidence_url":"https://www-prepro.chlrob.com/ProductCenter/Index",
+  "note":"官方網域「產品中心」頁標題為「離線編程」與「WorkStations」；PQArt 名稱出自搜尋摘要"}
+]

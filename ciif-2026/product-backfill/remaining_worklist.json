@@ -1,0 +1,6636 @@
+{
+ "tier_a_not_searched": [
+  {
+   "source_id": "CIIF26-R1381",
+   "name_zh": "惠州市台烨电子科技有限公司",
+   "website": "https://www.jason-tw.com/"
+  },
+  {
+   "source_id": "CIIF26-R1409",
+   "name_zh": "赣州赋安连电气有限公司",
+   "website": "https://www.szforany.com/"
+  },
+  {
+   "source_id": "CIIF26-R1413",
+   "name_zh": "深圳中科德能科技有限公司",
+   "website": "https://www.scodeno.com/"
+  },
+  {
+   "source_id": "CIIF26-R1415",
+   "name_zh": "广州研盟智控科技有限公司",
+   "website": "https://www.ymzkpc.com/"
+  },
+  {
+   "source_id": "CIIF26-R1422",
+   "name_zh": "果栗智造（上海）技术股份有限公司",
+   "website": "https://www.golytec.com/index.php"
+  },
+  {
+   "source_id": "CIIF26-R1430",
+   "name_zh": "南京金泰电气有限公司",
+   "website": "https://www.chinakingtai.com/"
+  },
+  {
+   "source_id": "CIIF26-R1433",
+   "name_zh": "江苏启盛线缆有限公司",
+   "website": "https://www.jsqsxl.com/"
+  },
+  {
+   "source_id": "CIIF26-R1436",
+   "name_zh": "杭州米格电机有限公司",
+   "website": "https://www.mege.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1438",
+   "name_zh": "易尔拓工具（上海）有限公司",
+   "website": "https://www.yato-sh.com/"
+  },
+  {
+   "source_id": "CIIF26-R1440",
+   "name_zh": "江苏海濎智能科技有限公司",
+   "website": "https://www.highdevice.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1441",
+   "name_zh": "上海森克电子科技有限公司",
+   "website": "https://www.senkepj.com/"
+  },
+  {
+   "source_id": "CIIF26-R1448",
+   "name_zh": "深圳市友拓伟业科技有限公司",
+   "website": "https://www.youtop-e.com/"
+  },
+  {
+   "source_id": "CIIF26-R1449",
+   "name_zh": "深圳力控智能科技有限公司",
+   "website": "https://www.likongzhineng.com/"
+  },
+  {
+   "source_id": "CIIF26-R1452",
+   "name_zh": "东莞市润达散热风扇有限公司",
+   "website": "https://szrunda.com/"
+  },
+  {
+   "source_id": "CIIF26-R1455",
+   "name_zh": "金恒山电气无锡有限公司",
+   "website": "https://www.k-hangsang.com/"
+  },
+  {
+   "source_id": "CIIF26-R1457",
+   "name_zh": "宁波能元电气技术有限公司",
+   "website": "https://www.nbnydq.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1458",
+   "name_zh": "北海永星电子有限公司",
+   "website": "https://www.sie-yongxing.com/"
+  },
+  {
+   "source_id": "CIIF26-R1459",
+   "name_zh": "宁波盈科工业自动化有限公司",
+   "website": "https://www.nbyingke.com/"
+  },
+  {
+   "source_id": "CIIF26-R1463",
+   "name_zh": "广东零动智能科技有限公司",
+   "website": "https://www.izeromotion.com/"
+  },
+  {
+   "source_id": "CIIF26-R1465",
+   "name_zh": "上海浜田实业有限公司",
+   "website": "https://www.harmonicdrivee.com/home.aspx"
+  },
+  {
+   "source_id": "CIIF26-R1467",
+   "name_zh": "苏州德力智慧物流科技有限公司",
+   "website": "https://www.zzdelitech.com/"
+  },
+  {
+   "source_id": "CIIF26-R1468",
+   "name_zh": "四川志方科技有限公司",
+   "website": "https://www.sczfun.com/"
+  },
+  {
+   "source_id": "CIIF26-R1474",
+   "name_zh": "上海浔泽实业有限公司",
+   "website": "https://www.shxunze.com.cn/intro/1.html"
+  },
+  {
+   "source_id": "CIIF26-R1477",
+   "name_zh": "赛那德科技有限公司",
+   "website": "https://www.senad.com/"
+  },
+  {
+   "source_id": "CIIF26-R1580",
+   "name_zh": "宁波辰凌自动化科技有限公司",
+   "website": "https://www.clzdh.cn/html/cn/"
+  },
+  {
+   "source_id": "CIIF26-R1581",
+   "name_zh": "上海魏德电气有限公司",
+   "website": "https://www.shwdir.com/"
+  },
+  {
+   "source_id": "CIIF26-R1582",
+   "name_zh": "浙江新艺传动科技有限公司",
+   "website": "https://www.innotecdrive.com/"
+  },
+  {
+   "source_id": "CIIF26-R1585",
+   "name_zh": "矽瞻科技（成都）有限公司",
+   "website": "https://www.xizcn.com/"
+  },
+  {
+   "source_id": "CIIF26-R1589",
+   "name_zh": "上海载科智能科技有限公司",
+   "website": "https://www.zaiketech.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1596",
+   "name_zh": "德柔电缆（上海）有限公司",
+   "website": "https://www.dorou.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1602",
+   "name_zh": "新雅电线电缆（深圳）有限公司",
+   "website": "https://www.xycable.com/"
+  },
+  {
+   "source_id": "CIIF26-R1606",
+   "name_zh": "长沙吉天环保科技有限公司",
+   "website": "https://www.csjitian.com/pages/31.html"
+  },
+  {
+   "source_id": "CIIF26-R1609",
+   "name_zh": "无锡江南奕帆电力传动科技股份有限公司",
+   "website": "https://www.301023.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1610",
+   "name_zh": "朗信智能装备（宁波）有限公司",
+   "website": "https://www.nb-langxin.com/"
+  },
+  {
+   "source_id": "CIIF26-R1611",
+   "name_zh": "深圳市聚力传感科技有限公司",
+   "website": "https://www.julisensor.com/"
+  },
+  {
+   "source_id": "CIIF26-R1619",
+   "name_zh": "常熟市东联电器制造有限责任公司",
+   "website": "https://cn.cosharetools.com/"
+  },
+  {
+   "source_id": "CIIF26-R1620",
+   "name_zh": "上海玉贲智能科技有限公司",
+   "website": "https://www.yobiai.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1623",
+   "name_zh": "宁波荷花电器有限公司",
+   "website": "https://www.yyjiefeng.com/about_xxjs/"
+  },
+  {
+   "source_id": "CIIF26-R1628",
+   "name_zh": "墨现科技（东莞）有限公司",
+   "website": "https://www.moxiantech.com/"
+  },
+  {
+   "source_id": "CIIF26-R1631",
+   "name_zh": "控制工程中文版杂志&控制工程网",
+   "website": "https://www.cechina.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1636",
+   "name_zh": "深圳市汇川技术股份有限公司",
+   "website": "https://www.inovance.com/"
+  },
+  {
+   "source_id": "CIIF26-R1638",
+   "name_zh": "智身科技",
+   "website": "https://www.genisomai.com/"
+  },
+  {
+   "source_id": "CIIF26-R1642",
+   "name_zh": "宇树科技股份有限公司",
+   "website": "https://www.unitree.com/"
+  },
+  {
+   "source_id": "CIIF26-R1643",
+   "name_zh": "蚂蚁灵波科技",
+   "website": "https://technology.robbyant.com/"
+  },
+  {
+   "source_id": "CIIF26-R1644",
+   "name_zh": "浙江沃德尔科技集团股份有限公司",
+   "website": "https://www.wodeer.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1645",
+   "name_zh": "赛索德（上海）智能科技有限公司",
+   "website": "https://www.synthoid.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1651",
+   "name_zh": "深圳果力智能科技有限公司",
+   "website": "https://www.glitech.com/"
+  },
+  {
+   "source_id": "CIIF26-R1654",
+   "name_zh": "道臣（天津）自动化设备有限公司",
+   "website": "https://www.doson-inc.com/"
+  },
+  {
+   "source_id": "CIIF26-R1655",
+   "name_zh": "泰瑞达机器人（上海）有限公司",
+   "website": "https://teradyne.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1656",
+   "name_zh": "广州市昊志机电股份有限公司",
+   "website": "https://www.haozhihs.com/"
+  },
+  {
+   "source_id": "CIIF26-R1725",
+   "name_zh": "上海纳博特斯克传动设备有限公司",
+   "website": "https://www.nabtesco-motion.cn/cn/"
+  },
+  {
+   "source_id": "CIIF26-R1726",
+   "name_zh": "哈默纳科（上海）商贸有限公司",
+   "website": "https://www.harmonicdrive.net.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1727",
+   "name_zh": "宁波纬诚科技有限责任公司",
+   "website": "https://www.vichnet.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1728",
+   "name_zh": "上海羿弓精密科技有限公司",
+   "website": "https://www.wingbow.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1729",
+   "name_zh": "威灵机器人部件",
+   "website": "https://robotparts.wellingmotor.com/cn"
+  },
+  {
+   "source_id": "CIIF26-R1730",
+   "name_zh": "尼得科传动技术（浙江）有限公司",
+   "website": "https://www.nidec.com/cn/nidec-drivetechnology/corporate/network/sales/nidec-drivetechnology_zhejiang_sa/"
+  },
+  {
+   "source_id": "CIIF26-R1731",
+   "name_zh": "苏州绿的谐波传动科技股份有限公司",
+   "website": "https://www.leaderdrive.cn/home"
+  },
+  {
+   "source_id": "CIIF26-R1732",
+   "name_zh": "考世美（上海）贸易有限公司",
+   "website": "https://www2.kosmek.co.jp/chinese/index.html"
+  },
+  {
+   "source_id": "CIIF26-R1733",
+   "name_zh": "陕西秦川高精传动科技有限公司",
+   "website": "https://www.qinchuan.com/list-319-1.html"
+  },
+  {
+   "source_id": "CIIF26-R1734",
+   "name_zh": "江苏泰隆减速机（集团）股份有限公司",
+   "website": "https://www.tailong.com/index.php"
+  },
+  {
+   "source_id": "CIIF26-R1736",
+   "name_zh": "上海秀昭泷源贸易有限公司",
+   "website": "https://www.takigen.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1738",
+   "name_zh": "PRIORITYGROUPCREATIVETOWERPawelGalecki",
+   "website": "https://www.creative-tower.pl/index.php/kontakt/"
+  },
+  {
+   "source_id": "CIIF26-R1740",
+   "name_zh": "创意电子有限公司",
+   "website": "https://www.weltronics.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1746",
+   "name_zh": "华创智驱（上海）科技有限公司",
+   "website": "https://www.huatechon.com/"
+  },
+  {
+   "source_id": "CIIF26-R1749",
+   "name_zh": "国华（青岛）智能装备有限公司",
+   "website": "https://www.guohuaintel.com/"
+  },
+  {
+   "source_id": "CIIF26-R1750",
+   "name_zh": "清能德创电气技术（北京）有限公司",
+   "website": "https://www.tsino-dynatron.com/"
+  },
+  {
+   "source_id": "CIIF26-R1755",
+   "name_zh": "盘起工业（大连）有限公司",
+   "website": "https://www.punch.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1757",
+   "name_zh": "星精机械（上海）有限公司",
+   "website": "https://www.starseiki.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1758",
+   "name_zh": "浙江斯菱智能驱动集团股份有限公司",
+   "website": "https://www.slingbearings.com/"
+  },
+  {
+   "source_id": "CIIF26-R1762",
+   "name_zh": "江苏云枢哲创动力科技有限公司",
+   "website": "https://yunshuzhechuang.com/"
+  },
+  {
+   "source_id": "CIIF26-R1763",
+   "name_zh": "洛阳轴承研究所有限公司",
+   "website": "https://www.zys.com.cn/home/"
+  },
+  {
+   "source_id": "CIIF26-R1770",
+   "name_zh": "上海捷丰流体技术有限公司",
+   "website": "https://jflt.cn/index.php"
+  },
+  {
+   "source_id": "CIIF26-R1840",
+   "name_zh": "上海振华重工（集团）股份有限公司",
+   "website": "https://www.zpmc.com/"
+  },
+  {
+   "source_id": "CIIF26-R1844",
+   "name_zh": "浙江南普电器有限公司",
+   "website": "https://www.nhp.top/"
+  },
+  {
+   "source_id": "CIIF26-R1847",
+   "name_zh": "江苏衡融实业有限公司",
+   "website": "https://www.jshrsy.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1848",
+   "name_zh": "宁德时代新能源科技股份有限公司",
+   "website": "https://www.catl.com/index.html"
+  },
+  {
+   "source_id": "CIIF26-R1849",
+   "name_zh": "深圳市杰科数码有限公司",
+   "website": "https://www.giec.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1851",
+   "name_zh": "广东脉联智能电气有限公司",
+   "website": "https://www.mael.com.cn/index.html"
+  },
+  {
+   "source_id": "CIIF26-R1854",
+   "name_zh": "斯科智能五金（绍兴）有限公司",
+   "website": "https://www.thcoom.com/about/"
+  },
+  {
+   "source_id": "CIIF26-R1856",
+   "name_zh": "德力西电气",
+   "website": "https://www.delixi-electric.com/"
+  },
+  {
+   "source_id": "CIIF26-R1857",
+   "name_zh": "玛堡工业元件（上海）有限公司",
+   "website": "https://mar-bal.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1860",
+   "name_zh": "宁波欧堡科技有限公司",
+   "website": "https://www.bellsuo.com/"
+  },
+  {
+   "source_id": "CIIF26-R1862",
+   "name_zh": "庚霖国际贸易（上海）有限公司",
+   "website": "https://www.maxepc.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1863",
+   "name_zh": "江苏凝视科技有限公司",
+   "website": "https://www.ns-strato.com/"
+  },
+  {
+   "source_id": "CIIF26-R1865",
+   "name_zh": "赫克尔密封技术（南京）有限公司",
+   "website": "https://www.hkrseal.com/"
+  },
+  {
+   "source_id": "CIIF26-R1869",
+   "name_zh": "常州艾恩替机械科技有限公司",
+   "website": "https://www.ant-mwl.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1878",
+   "name_zh": "浙江罗卡电气有限公司",
+   "website": "https://www.zjlok.com/"
+  },
+  {
+   "source_id": "CIIF26-R1887",
+   "name_zh": "慈溪市一品电子有限公司",
+   "website": "https://www.cxyipin.com/Home/about/"
+  },
+  {
+   "source_id": "CIIF26-R1890",
+   "name_zh": "上海电气",
+   "website": "https://www.chinasec.cn/forward/"
+  },
+  {
+   "source_id": "CIIF26-R1892",
+   "name_zh": "上海蔚蓝支点能源科技有限公司",
+   "website": "https://www.nuenergy.com.cn/m/index.php/page/2/"
+  },
+  {
+   "source_id": "CIIF26-R1893",
+   "name_zh": "上海钧合原子科技有限公司",
+   "website": "https://www.jhatom.com/en/"
+  },
+  {
+   "source_id": "CIIF26-R1901",
+   "name_zh": "杭州福朗机电科技有限公司",
+   "website": "https://www.fromo.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1904",
+   "name_zh": "宁波精研良造新能源科技有限公司",
+   "website": "https://jingyanbattery.com/product/cn/"
+  },
+  {
+   "source_id": "CIIF26-R1907",
+   "name_zh": "鸿鹄未来能源（上海）有限公司",
+   "website": "https://www.honghufusion.cn/en_index.html"
+  },
+  {
+   "source_id": "CIIF26-R1913",
+   "name_zh": "中国电气装备集团有限公司",
+   "website": "https://www.cee-group.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1919",
+   "name_zh": "上海昱章电气股份有限公司",
+   "website": "https://www.regeon.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1924",
+   "name_zh": "华能核能技术研究院有限公司",
+   "website": "https://www.chng.com.cn/detail_cygs/-/article/Z1xDkiiMZwaW/v/984608.html"
+  },
+  {
+   "source_id": "CIIF26-R1927",
+   "name_zh": "宁波贝德尔电讯电机有限公司",
+   "website": "https://www.beder.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R1930",
+   "name_zh": "申浪信息科技（江苏）有限公司",
+   "website": "https://www.sl2500.com/"
+  },
+  {
+   "source_id": "CIIF26-R1931",
+   "name_zh": "深圳市大雅新科技有限公司",
+   "website": "https://www.dayapc.com/"
+  },
+  {
+   "source_id": "CIIF26-R1940",
+   "name_zh": "苏州智承自动化设备有限公司",
+   "website": "https://www.zhicheng-auto.com/about_details.php?classID=2&id=1"
+  },
+  {
+   "source_id": "CIIF26-R1947",
+   "name_zh": "平湖西科电子有限公司",
+   "website": "https://semar.com/zh/semar_cina/"
+  },
+  {
+   "source_id": "CIIF26-R1948",
+   "name_zh": "思安控股（集团）有限公司",
+   "website": "https://siact.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2021",
+   "name_zh": "中国电信股份有限公司上海分公司",
+   "website": "https://www.shtel.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2022",
+   "name_zh": "中国联合网络通信有限公司",
+   "website": "https://www.chinaunicom.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2028",
+   "name_zh": "丽声实业（东莞）有限公司",
+   "website": "https://www.dgrhythm.com/index.php"
+  },
+  {
+   "source_id": "CIIF26-R2029",
+   "name_zh": "广汽埃安新能源汽车股份有限公司",
+   "website": "https://www.aion.com.cn/?ref=failory"
+  },
+  {
+   "source_id": "CIIF26-R2037",
+   "name_zh": "博泰车联网科技（上海）股份有限公司",
+   "website": "https://www.pateo.com.cn/zh/index.html"
+  },
+  {
+   "source_id": "CIIF26-R2041",
+   "name_zh": "上海芯旺微电子技术股份有限公司",
+   "website": "https://www.chipon-ic.com/"
+  },
+  {
+   "source_id": "CIIF26-R2046",
+   "name_zh": "上海芯必达微电子有限公司",
+   "website": "https://immorta.com/"
+  },
+  {
+   "source_id": "CIIF26-R2050",
+   "name_zh": "智马达汽车有限公司",
+   "website": "https://www.smart.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2055",
+   "name_zh": "文远知行",
+   "website": "https://zh.weride.ai/"
+  },
+  {
+   "source_id": "CIIF26-R2057",
+   "name_zh": "上海汽车集团股份有限公司",
+   "website": "https://www.saicmotor.com/m/index.shtml"
+  },
+  {
+   "source_id": "CIIF26-R2069",
+   "name_zh": "上海正尔智能科技股份有限公司",
+   "website": "https://www.zrefs.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2072",
+   "name_zh": "深圳市飞业泰电子有限公司",
+   "website": "https://www.fytled.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2073",
+   "name_zh": "中山市福瑞特科技产业有限公司",
+   "website": "https://www.frigate.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2076",
+   "name_zh": "上海提创电子科技有限公司",
+   "website": "https://www.tichuangndj.com/"
+  },
+  {
+   "source_id": "CIIF26-R2085",
+   "name_zh": "甘肃金亿微粉体材料科技有限公司",
+   "website": "https://www.jywft.com/a/chanpinzhongxin/"
+  },
+  {
+   "source_id": "CIIF26-R2088",
+   "name_zh": "宁波文凯研磨工具有限公司",
+   "website": "https://www.wenkaipads.com/index_cn.asp"
+  },
+  {
+   "source_id": "CIIF26-R2089",
+   "name_zh": "江苏奥神新材料股份有限公司",
+   "website": "https://www.asxc.com.cn/gb2312/guanyuwomen/qiyejianjie/"
+  },
+  {
+   "source_id": "CIIF26-R2092",
+   "name_zh": "福建三邦硅材料有限公司",
+   "website": "https://www.fjsanbang.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2099",
+   "name_zh": "厦门听涛新材料有限公司",
+   "website": "https://tingtaochina.com/news/2"
+  },
+  {
+   "source_id": "CIIF26-R2104",
+   "name_zh": "珠海经开产业发展有限公司",
+   "website": "https://www.investjingkai.com/policy/"
+  },
+  {
+   "source_id": "CIIF26-R2105",
+   "name_zh": "无锡聚合高新材料科技有限公司",
+   "website": "https://www.si-c-n.com/"
+  },
+  {
+   "source_id": "CIIF26-R2109",
+   "name_zh": "上海榕融新材料技术有限公司",
+   "website": "https://www.rongrongnm.com.cn/"
+  },
+  {
+   "source_id": "CIIF26-R2111",
+   "name_zh": "上海阿莱德实业集团股份有限公司",
+   "website": "https://www.allied-corp.com/"
+  },
+  {
+   "source_id": "CIIF26-R2113",
+   "name_zh": "维联传热技术（上海）有限公司",
+   "website": "https://zlt.net/index.php?homepage=wlcr2019"
+  },
+  {
+   "source_id": "CIIF26-R2115",
+   "name_zh": "康达新材料（集团）股份有限公司",
+   "website": "https://shkdchem.com/"
+  },
+  {
+   "source_id": "CIIF26-R2118",
+   "name_zh": "大韩道恩高分子材料（上海）有限公司",
+   "website": "https://www.kpicdawn.com/"
+  },
+  {
+   "source_id": "CIIF26-R2119",
+   "name_zh": "大金新材料（上海）有限公司",
+   "website": "https://www.daikincoating.com/zh/home"
+  },
+  {
+   "source_id": "CIIF26-R2122",
+   "name_zh": "上海建材（集团）有限公司",
+   "website": "https://www.chinasbm.com/"
+  },
+  {
+   "source_id": "CIIF26-R2124",
+   "name_zh": "上海市金山区经济委员会",
+   "website": "https://www.jinshan.gov.cn/zhengwu/bmwj-qjw/index.html"
+  },
+  {
+   "source_id": "CIIF26-R2126",
+   "name_zh": "上海红双喜股份有限公司",
+   "website": "https://shop.dhs-sports.com/"
+  },
+  {
+   "source_id": "CIIF26-R2130",
+   "name_zh": "上海肇民新材料科技股份有限公司",
+   "website": "https://www.hps-sh.com/"
+  },
+  {
+   "source_id": "CIIF26-R2134",
+   "name_zh": "上海一郎合金材料有限公司",
+   "website": "https://www.eraum.cn/?qiyerongyu%2F="
+  },
+  {
+   "source_id": "CIIF26-R2135",
+   "name_zh": "上海德福伦新材料科技有限公司",
+   "website": "https://www.zsdfl.com/"
+  }
+ ],
+ "tier_b_no_website_not_searched": [
+  {
+   "source_id": "CIIF26-R0004",
+   "name_zh": "无锡穿山甲金属制品有限公司",
+   "booth_no": "2.1H-A007"
+  },
+  {
+   "source_id": "CIIF26-R0007",
+   "name_zh": "武汉玛吉工业设计有限公司",
+   "booth_no": "2.1H-A010"
+  },
+  {
+   "source_id": "CIIF26-R0011",
+   "name_zh": "瓦尔拓（广东）科技有限公司",
+   "booth_no": "2.1H-A060"
+  },
+  {
+   "source_id": "CIIF26-R0012",
+   "name_zh": "上海率炜实业有限公司",
+   "booth_no": "2.1H-A063"
+  },
+  {
+   "source_id": "CIIF26-R0022",
+   "name_zh": "盛高精密机械（苏州）有限公司",
+   "booth_no": "2.1H-A098"
+  },
+  {
+   "source_id": "CIIF26-R0033",
+   "name_zh": "山东巨铭自动化设备有限公司",
+   "booth_no": "2.1H-A212"
+  },
+  {
+   "source_id": "CIIF26-R0039",
+   "name_zh": "新昌县槃古环保科技有限公司",
+   "booth_no": "2.1H-B013"
+  },
+  {
+   "source_id": "CIIF26-R0044",
+   "name_zh": "金骐自动化（杭州）有限公司",
+   "booth_no": "2.1H-B018"
+  },
+  {
+   "source_id": "CIIF26-R0048",
+   "name_zh": "河北喆源机械制造有限公司",
+   "booth_no": "2.1H-B022"
+  },
+  {
+   "source_id": "CIIF26-R0051",
+   "name_zh": "中锐智造（苏州）自动化科技有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0056",
+   "name_zh": "青岛马森特机械科技有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0057",
+   "name_zh": "东莞安达电机有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0063",
+   "name_zh": "雷姆焊接科技（河北）有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0064",
+   "name_zh": "上海宝舟电器有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0065",
+   "name_zh": "邢台亚联机械制造有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0066",
+   "name_zh": "苏州市禾锐冷弯科技有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0068",
+   "name_zh": "湖北省爱晨思光学科技有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0069",
+   "name_zh": "杰姆凯欧智能装备（上海）有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0070",
+   "name_zh": "常州市龙卷风焊割设备有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0081",
+   "name_zh": "欧士尔智能设备（苏州）有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0084",
+   "name_zh": "南京泽茂机械制造有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0086",
+   "name_zh": "东莞市尘之净智能环保科技有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0087",
+   "name_zh": "济南金印数控设备有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0088",
+   "name_zh": "纳承实业（上海）有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0089",
+   "name_zh": "新河县浩诺工程塑料制品有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0091",
+   "name_zh": "东莞市精诚激光科技有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0092",
+   "name_zh": "連勝物流資材五金（昆山）有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0095",
+   "name_zh": "盐城众图安防产品有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0096",
+   "name_zh": "上海连合钢塑模具有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0101",
+   "name_zh": "深圳翼天达航空科技有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0103",
+   "name_zh": "嘉兴市喆利阳智能设备有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0106",
+   "name_zh": "山东省深远金属制造有限公司",
+   "booth_no": ""
+  },
+  {
+   "source_id": "CIIF26-R0146",
+   "name_zh": "上海祥龙光学科技有限公司",
+   "booth_no": "2.1H-E060"
+  },
+  {
+   "source_id": "CIIF26-R0147",
+   "name_zh": "上海翼青科技股份有限公司",
+   "booth_no": "2.1H-E065"
+  },
+  {
+   "source_id": "CIIF26-R0148",
+   "name_zh": "浙江创宏激光科技有限公司",
+   "booth_no": "2.1H-E070"
+  },
+  {
+   "source_id": "CIIF26-R0149",
+   "name_zh": "浙江京速激光科技有限公司",
+   "booth_no": "2.1H-E075"
+  },
+  {
+   "source_id": "CIIF26-R0155",
+   "name_zh": "山东莱博锐激光科技有限公司",
+   "booth_no": "2.1H-E098"
+  },
+  {
+   "source_id": "CIIF26-R0156",
+   "name_zh": "广东佳禾东方智能装备有限公司",
+   "booth_no": "2.1H-E100"
+  },
+  {
+   "source_id": "CIIF26-R0160",
+   "name_zh": "上海极昌机电设备有限公司",
+   "booth_no": "2.1H-E112"
+  },
+  {
+   "source_id": "CIIF26-R0163",
+   "name_zh": "金利天精密机械（东莞）有限公司",
+   "booth_no": "2.1H-E116"
+  },
+  {
+   "source_id": "CIIF26-R0165",
+   "name_zh": "东莞市长长激光智能设备有限公司",
+   "booth_no": "2.1H-E118"
+  },
+  {
+   "source_id": "CIIF26-R0166",
+   "name_zh": "上海雍睿诚电气有限公司",
+   "booth_no": "2.1H-E120"
+  },
+  {
+   "source_id": "CIIF26-R0168",
+   "name_zh": "扬州瑞兆丰进出口有限公司",
+   "booth_no": "2.1H-F010"
+  },
+  {
+   "source_id": "CIIF26-R0169",
+   "name_zh": "江苏良机智能装备有限公司",
+   "booth_no": "2.1H-F020"
+  },
+  {
+   "source_id": "CIIF26-R0174",
+   "name_zh": "《锻压装备与制造技术》杂志社",
+   "booth_no": "2.1H-F067"
+  },
+  {
+   "source_id": "CIIF26-R0184",
+   "name_zh": "上海精锐动自动化科技有限公司",
+   "booth_no": "2.1H-F125"
+  },
+  {
+   "source_id": "CIIF26-R0187",
+   "name_zh": "沧州冠威机械设备制造有限公司",
+   "booth_no": "2.1H-F137"
+  },
+  {
+   "source_id": "CIIF26-R0190",
+   "name_zh": "《机床工具》杂志社",
+   "booth_no": "2.1H-F158"
+  },
+  {
+   "source_id": "CIIF26-R0191",
+   "name_zh": "《机床工具制造业》杂志社",
+   "booth_no": "2.1H-F159"
+  },
+  {
+   "source_id": "CIIF26-R0193",
+   "name_zh": "《机械制造》杂志社",
+   "booth_no": "2.1H-F162"
+  },
+  {
+   "source_id": "CIIF26-R0194",
+   "name_zh": "《机床制造产业》",
+   "booth_no": "2.1H-F163"
+  },
+  {
+   "source_id": "CIIF26-R0198",
+   "name_zh": "德州中源机械制造有限公司",
+   "booth_no": "2.1H-F226"
+  },
+  {
+   "source_id": "CIIF26-R0200",
+   "name_zh": "邢台瑞骏宝机械制造有限公司",
+   "booth_no": "2.1H-F260"
+  },
+  {
+   "source_id": "CIIF26-R0201",
+   "name_zh": "任丘市奥博焊接设备有限公司",
+   "booth_no": "2.1H-F280"
+  },
+  {
+   "source_id": "CIIF26-R0205",
+   "name_zh": "马鞍山市拓甲精密机械配件有限公司",
+   "booth_no": "3H-A003"
+  },
+  {
+   "source_id": "CIIF26-R0206",
+   "name_zh": "帕斯德（上海）机电科技有限公司",
+   "booth_no": "3H-A005"
+  },
+  {
+   "source_id": "CIIF26-R0226",
+   "name_zh": "苏州海锐宝机械有限公司",
+   "booth_no": "3H-A219"
+  },
+  {
+   "source_id": "CIIF26-R0232",
+   "name_zh": "常州市润渊精密机械科技有限公司奥斯玛智能装备（广东）有限公司东莞顶鑫智能装备有限公司",
+   "booth_no": "3H-B019"
+  },
+  {
+   "source_id": "CIIF26-R0234",
+   "name_zh": "扬力集团股份有限公司江苏雪隆智能装备有限公司上海博牧数控模具制造有限公司常州市领协智能装备有限公司",
+   "booth_no": "3H-B108"
+  },
+  {
+   "source_id": "CIIF26-R0236",
+   "name_zh": "中创数控设备科技（江苏）有限公司",
+   "booth_no": "3H-C001"
+  },
+  {
+   "source_id": "CIIF26-R0245",
+   "name_zh": "斯瓦洛格动力技术（太仓）有限公司",
+   "booth_no": "3H-C035"
+  },
+  {
+   "source_id": "CIIF26-R0248",
+   "name_zh": "昆山荣展精密模具有限公司",
+   "booth_no": "3H-C041"
+  },
+  {
+   "source_id": "CIIF26-R0249",
+   "name_zh": "东莞市肖家砂布磨具有限公司",
+   "booth_no": "3H-C042"
+  },
+  {
+   "source_id": "CIIF26-R0255",
+   "name_zh": "河北睿高机器人科技有限公司安徽盛泰重工机械制造有限公司马鞍山悦创科技有限公司",
+   "booth_no": "3H-C088"
+  },
+  {
+   "source_id": "CIIF26-R0261",
+   "name_zh": "上海意瑟贸易有限公司",
+   "booth_no": "3H-C126"
+  },
+  {
+   "source_id": "CIIF26-R0300",
+   "name_zh": "昆山易莎钣金机械有限公司",
+   "booth_no": "3H-F026"
+  },
+  {
+   "source_id": "CIIF26-R0307",
+   "name_zh": "广西先导激光科技有限公司",
+   "booth_no": "3H-F078"
+  },
+  {
+   "source_id": "CIIF26-R0324",
+   "name_zh": "天津普瑞赛思焊接设备有限公司",
+   "booth_no": "3H-F229"
+  },
+  {
+   "source_id": "CIIF26-R0326",
+   "name_zh": "上海荣昀五金有限公司",
+   "booth_no": "4.1H-A003"
+  },
+  {
+   "source_id": "CIIF26-R0330",
+   "name_zh": "江苏泰塔传动技术有限公司",
+   "booth_no": "4.1H-A009"
+  },
+  {
+   "source_id": "CIIF26-R0334",
+   "name_zh": "凡图工业产品（上海）有限公司",
+   "booth_no": "4.1H-A014"
+  },
+  {
+   "source_id": "CIIF26-R0342",
+   "name_zh": "佳慧许愿（浙江）智能电气股份有限公司",
+   "booth_no": "4.1H-A032"
+  },
+  {
+   "source_id": "CIIF26-R0351",
+   "name_zh": "玉环亿凯动力有限公司",
+   "booth_no": "4.1H-A055"
+  },
+  {
+   "source_id": "CIIF26-R0354",
+   "name_zh": "鑫罗拉金属制品（东台）有限公司",
+   "booth_no": "4.1H-A062"
+  },
+  {
+   "source_id": "CIIF26-R0356",
+   "name_zh": "常州市荣光工具制造有限公司",
+   "booth_no": "4.1H-A070"
+  },
+  {
+   "source_id": "CIIF26-R0359",
+   "name_zh": "速博机械（苏州）有限公司",
+   "booth_no": "4.1H-A075"
+  },
+  {
+   "source_id": "CIIF26-R0369",
+   "name_zh": "台州市米诺传动机械有限公司",
+   "booth_no": "4.1H-A103"
+  },
+  {
+   "source_id": "CIIF26-R0371",
+   "name_zh": "浙江纳智金属科技有限公司",
+   "booth_no": "4.1H-A110"
+  },
+  {
+   "source_id": "CIIF26-R0380",
+   "name_zh": "亿贝",
+   "booth_no": "4.1H-A141"
+  },
+  {
+   "source_id": "CIIF26-R0385",
+   "name_zh": "张家港市金鹿电子设备有限公司",
+   "booth_no": "4.1H-A182"
+  },
+  {
+   "source_id": "CIIF26-R0390",
+   "name_zh": "上海卓大精密减速机有限公司",
+   "booth_no": "4.1H-A221"
+  },
+  {
+   "source_id": "CIIF26-R0399",
+   "name_zh": "武汉大鱼工业设计有限公司",
+   "booth_no": "4.1H-A305"
+  },
+  {
+   "source_id": "CIIF26-R0400",
+   "name_zh": "上海旭达特种电缆有限公司",
+   "booth_no": "4.1H-A306"
+  },
+  {
+   "source_id": "CIIF26-R0413",
+   "name_zh": "浙江天骄轴承制造有限公司",
+   "booth_no": "4.1H-B016"
+  },
+  {
+   "source_id": "CIIF26-R0416",
+   "name_zh": "安徽洁来利擦拭用品有限公司",
+   "booth_no": "4.1H-B022"
+  },
+  {
+   "source_id": "CIIF26-R0418",
+   "name_zh": "山东天舟精密机械有限公司",
+   "booth_no": "4.1H-B028"
+  },
+  {
+   "source_id": "CIIF26-R0425",
+   "name_zh": "苏州金亿精密齿轮有限公司",
+   "booth_no": "4.1H-B051"
+  },
+  {
+   "source_id": "CIIF26-R0434",
+   "name_zh": "柯尔玛（常州）机械设备科技有限公司",
+   "booth_no": "4.1H-B108"
+  },
+  {
+   "source_id": "CIIF26-R0436",
+   "name_zh": "东莞市羽辰精密机械有限公司",
+   "booth_no": "4.1H-B128"
+  },
+  {
+   "source_id": "CIIF26-R0443",
+   "name_zh": "德力西锐擎传动科技（常州）有限公司常州市久多工具有限公司",
+   "booth_no": "4.1H-B168"
+  },
+  {
+   "source_id": "CIIF26-R0452",
+   "name_zh": "临清市基鼎自动化科技有限公司",
+   "booth_no": "4.1H-B227"
+  },
+  {
+   "source_id": "CIIF26-R0463",
+   "name_zh": "常州市京拓精密切削工具有限公司",
+   "booth_no": "4.1H-C001"
+  },
+  {
+   "source_id": "CIIF26-R0467",
+   "name_zh": "佛山进生精密机械制造有限公司",
+   "booth_no": "4.1H-C007"
+  },
+  {
+   "source_id": "CIIF26-R0471",
+   "name_zh": "江苏誉爵服饰有限公司",
+   "booth_no": "4.1H-C011"
+  },
+  {
+   "source_id": "CIIF26-R0472",
+   "name_zh": "苏州麦柯威斯工贸有限公司",
+   "booth_no": "4.1H-C012"
+  },
+  {
+   "source_id": "CIIF26-R0473",
+   "name_zh": "苏州金亿精密齿轮有限公司",
+   "booth_no": "4.1H-C013"
+  },
+  {
+   "source_id": "CIIF26-R0481",
+   "name_zh": "苏州友连贸易有限公司",
+   "booth_no": "4.1H-C035"
+  },
+  {
+   "source_id": "CIIF26-R0497",
+   "name_zh": "聊城泰银自动化科技有限公司",
+   "booth_no": "4.1H-C062"
+  },
+  {
+   "source_id": "CIIF26-R0498",
+   "name_zh": "昆山零壹智感科技有限公司",
+   "booth_no": "4.1H-C063"
+  },
+  {
+   "source_id": "CIIF26-R0508",
+   "name_zh": "苏州磨易达研磨科技有限公司",
+   "booth_no": "4.1H-C105"
+  },
+  {
+   "source_id": "CIIF26-R0510",
+   "name_zh": "徽帅精工科技（江苏）有限公司",
+   "booth_no": "4.1H-C110"
+  },
+  {
+   "source_id": "CIIF26-R0514",
+   "name_zh": "临沂市金川机械制造有限公司",
+   "booth_no": "4.1H-C115"
+  },
+  {
+   "source_id": "CIIF26-R0515",
+   "name_zh": "山东庆昌传动科技有限公司",
+   "booth_no": "4.1H-C115"
+  },
+  {
+   "source_id": "CIIF26-R0530",
+   "name_zh": "邦家控股（丽水）有限公司",
+   "booth_no": "4.1H-C252"
+  },
+  {
+   "source_id": "CIIF26-R0538",
+   "name_zh": "常州市镜伦达机械、华博工具有限公司",
+   "booth_no": "4.1H-D006"
+  },
+  {
+   "source_id": "CIIF26-R0557",
+   "name_zh": "上海优路特仓储设备有限公司",
+   "booth_no": "4.1H-D113"
+  },
+  {
+   "source_id": "CIIF26-R0577",
+   "name_zh": "四川展团",
+   "booth_no": "4.1H-E118"
+  },
+  {
+   "source_id": "CIIF26-R0586",
+   "name_zh": "四川意外科技有限公司",
+   "booth_no": "4.1H-E118"
+  },
+  {
+   "source_id": "CIIF26-R0593",
+   "name_zh": "东方电气（成都）创新研究有限公司",
+   "booth_no": "4.1H-E118"
+  },
+  {
+   "source_id": "CIIF26-R0607",
+   "name_zh": "上海广赛电源有限公司新立行科技浙江有限公司妙德气动元件（江苏）有限公司禾田气动有限公司乐清博天气动科技有限公司",
+   "booth_no": "4.1H-E180"
+  },
+  {
+   "source_id": "CIIF26-R0615",
+   "name_zh": "河北华远机床附件有限公司",
+   "booth_no": "4.1H-E220"
+  },
+  {
+   "source_id": "CIIF26-R0618",
+   "name_zh": "上海尖捷实业有限公司",
+   "booth_no": "4.1H-E225"
+  },
+  {
+   "source_id": "CIIF26-R0622",
+   "name_zh": "河北富兰特轴承有限公司",
+   "booth_no": "4.1H-E231"
+  },
+  {
+   "source_id": "CIIF26-R0628",
+   "name_zh": "沧州市乾宇机床附件有限公司",
+   "booth_no": "4.1H-E264"
+  },
+  {
+   "source_id": "CIIF26-R0630",
+   "name_zh": "桐乡市永大机械有限公司",
+   "booth_no": "4.1H-E267"
+  },
+  {
+   "source_id": "CIIF26-R0634",
+   "name_zh": "上海正扬轴承有限公司",
+   "booth_no": "4.1H-E273"
+  },
+  {
+   "source_id": "CIIF26-R0639",
+   "name_zh": "江苏爱中精密金属科技有限公司",
+   "booth_no": "4.1H-E278"
+  },
+  {
+   "source_id": "CIIF26-R0641",
+   "name_zh": "东莞市华宸电子科技有限公司",
+   "booth_no": "4.1H-E280"
+  },
+  {
+   "source_id": "CIIF26-R0643",
+   "name_zh": "宁波市阿阿电器有限公司",
+   "booth_no": "4.1H-E283"
+  },
+  {
+   "source_id": "CIIF26-R0658",
+   "name_zh": "宁波骏力同步带有限公司",
+   "booth_no": "4.1H-F051"
+  },
+  {
+   "source_id": "CIIF26-R0660",
+   "name_zh": "山东永恒轴承有限公司",
+   "booth_no": "4.1H-F060"
+  },
+  {
+   "source_id": "CIIF26-R0668",
+   "name_zh": "常州市伟方工具厂",
+   "booth_no": "4.1H-F085"
+  },
+  {
+   "source_id": "CIIF26-R0669",
+   "name_zh": "宁波龙佑科技有限公司",
+   "booth_no": "4.1H-F085"
+  },
+  {
+   "source_id": "CIIF26-R0671",
+   "name_zh": "河北政博机械制造有限公司",
+   "booth_no": "4.1H-F087"
+  },
+  {
+   "source_id": "CIIF26-R0682",
+   "name_zh": "慈溪市荣威光电科技有限公司",
+   "booth_no": "4.1H-F111"
+  },
+  {
+   "source_id": "CIIF26-R0687",
+   "name_zh": "昆山邓氏精密机械有限公司",
+   "booth_no": "4.1H-F118"
+  },
+  {
+   "source_id": "CIIF26-R0689",
+   "name_zh": "沧州坤豪机床附件制造有限公司",
+   "booth_no": "4.1H-F120"
+  },
+  {
+   "source_id": "CIIF26-R0693",
+   "name_zh": "宁波博钧模塑有限公司",
+   "booth_no": "4.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R0697",
+   "name_zh": "常州巨烨工具有限公司",
+   "booth_no": "4.1H-F137"
+  },
+  {
+   "source_id": "CIIF26-R0699",
+   "name_zh": "福州融钻金刚石砂轮科技有限公司温岭市律达合金工具厂",
+   "booth_no": "4.1H-F138"
+  },
+  {
+   "source_id": "CIIF26-R0708",
+   "name_zh": "玉环迪飞机械制造有限公司",
+   "booth_no": "4.1H-F153"
+  },
+  {
+   "source_id": "CIIF26-R0711",
+   "name_zh": "常州钧焯工具有限公司",
+   "booth_no": "4.1H-F157"
+  },
+  {
+   "source_id": "CIIF26-R0713",
+   "name_zh": "安徽鑫亿成精密机械有限公司",
+   "booth_no": "4.1H-F159"
+  },
+  {
+   "source_id": "CIIF26-R0715",
+   "name_zh": "广州市因博电子科技有限公司",
+   "booth_no": "4.1H-F200"
+  },
+  {
+   "source_id": "CIIF26-R0717",
+   "name_zh": "宁波研佰圣智能科技有限公司",
+   "booth_no": "4.1H-F208"
+  },
+  {
+   "source_id": "CIIF26-R0719",
+   "name_zh": "玉环久裕智控科技有限公司",
+   "booth_no": "4.1H-F210"
+  },
+  {
+   "source_id": "CIIF26-R0721",
+   "name_zh": "临西县航亿机械配件制造有限公司",
+   "booth_no": "4.1H-F213"
+  },
+  {
+   "source_id": "CIIF26-R0723",
+   "name_zh": "江苏达马特精密工具科技有限公司",
+   "booth_no": "4.1H-F215"
+  },
+  {
+   "source_id": "CIIF26-R0726",
+   "name_zh": "上海昊湘环保科技有限公司",
+   "booth_no": "4.1H-F300"
+  },
+  {
+   "source_id": "CIIF26-R0727",
+   "name_zh": "温岭市匠泽机械有限公司",
+   "booth_no": "4.1H-F300"
+  },
+  {
+   "source_id": "CIIF26-R0737",
+   "name_zh": "沧州信诚金属制品有限公司",
+   "booth_no": "4.1H-F310"
+  },
+  {
+   "source_id": "CIIF26-R0739",
+   "name_zh": "上海俊恒化工科技发展有限公司",
+   "booth_no": "4.1H-F312"
+  },
+  {
+   "source_id": "CIIF26-R0754",
+   "name_zh": "台州市罗峰传动有限公司",
+   "booth_no": "1.1H-A075"
+  },
+  {
+   "source_id": "CIIF26-R0755",
+   "name_zh": "云枢智能科技（苏州）有限公司",
+   "booth_no": "1.1H-A076"
+  },
+  {
+   "source_id": "CIIF26-R0807",
+   "name_zh": "中轮动力(北京)科技有限公司",
+   "booth_no": "1.1H-E082"
+  },
+  {
+   "source_id": "CIIF26-R0813",
+   "name_zh": "修江电器集团有限公司",
+   "booth_no": "1.1H-E099"
+  },
+  {
+   "source_id": "CIIF26-R0834",
+   "name_zh": "杭州大椿智能传动科技有限公司",
+   "booth_no": "1.1H-E172"
+  },
+  {
+   "source_id": "CIIF26-R0836",
+   "name_zh": "宁波斯伽德科技有限公司",
+   "booth_no": "1.1H-E176"
+  },
+  {
+   "source_id": "CIIF26-R0842",
+   "name_zh": "上海递因技术有限公司",
+   "booth_no": "1.1H-E183"
+  },
+  {
+   "source_id": "CIIF26-R0843",
+   "name_zh": "利昇弘达电子科技（青岛）有限公司",
+   "booth_no": "1.1H-E185"
+  },
+  {
+   "source_id": "CIIF26-R0845",
+   "name_zh": "龙欣云（宁波）智能科技有限公司",
+   "booth_no": "1.1H-E191"
+  },
+  {
+   "source_id": "CIIF26-R0848",
+   "name_zh": "优尼控",
+   "booth_no": "1.1H-E196"
+  },
+  {
+   "source_id": "CIIF26-R0849",
+   "name_zh": "深圳市创想信息技术有限公司",
+   "booth_no": "1.1H-E198"
+  },
+  {
+   "source_id": "CIIF26-R0872",
+   "name_zh": "宁波高亚流体控制有限公司",
+   "booth_no": "1.1H-E247"
+  },
+  {
+   "source_id": "CIIF26-R0893",
+   "name_zh": "江苏索图科技有限公司",
+   "booth_no": "1.1H-F001"
+  },
+  {
+   "source_id": "CIIF26-R0901",
+   "name_zh": "杭州玖开科技发展有限公司",
+   "booth_no": "1.1H-F055"
+  },
+  {
+   "source_id": "CIIF26-R0907",
+   "name_zh": "创歆贸易（上海）有限公司",
+   "booth_no": "1.1H-F068"
+  },
+  {
+   "source_id": "CIIF26-R0911",
+   "name_zh": "深圳市捷联通科技有限公司",
+   "booth_no": "1.1H-F078"
+  },
+  {
+   "source_id": "CIIF26-R0914",
+   "name_zh": "南京深度智控科技有限公司",
+   "booth_no": "1.1H-F081"
+  },
+  {
+   "source_id": "CIIF26-R0918",
+   "name_zh": "东莞仟佰电机有限公司",
+   "booth_no": "1.1H-F085"
+  },
+  {
+   "source_id": "CIIF26-R0922",
+   "name_zh": "海研（厦门）智能科技有限公司",
+   "booth_no": "1.1H-F093"
+  },
+  {
+   "source_id": "CIIF26-R0925",
+   "name_zh": "河北泽岛机械有限公司",
+   "booth_no": "1.1H-F104"
+  },
+  {
+   "source_id": "CIIF26-R0926",
+   "name_zh": "一链数智(杭州)科技有限公司",
+   "booth_no": "1.1H-F105"
+  },
+  {
+   "source_id": "CIIF26-R0929",
+   "name_zh": "宁波联德永磁科技有限公司",
+   "booth_no": "1.1H-F111"
+  },
+  {
+   "source_id": "CIIF26-R0932",
+   "name_zh": "上海科函达智能技术有限公司",
+   "booth_no": "1.1H-F116"
+  },
+  {
+   "source_id": "CIIF26-R0936",
+   "name_zh": "增强认知（北京）科技有限公司",
+   "booth_no": "1.1H-F121"
+  },
+  {
+   "source_id": "CIIF26-R0983",
+   "name_zh": "《传感器与微系统》编辑部",
+   "booth_no": "1.1H-F290"
+  },
+  {
+   "source_id": "CIIF26-R0991",
+   "name_zh": "优易电缆(张家港)有限公司",
+   "booth_no": "5.1H-A016"
+  },
+  {
+   "source_id": "CIIF26-R1033",
+   "name_zh": "爱可的工业机器人（深圳）有限公司",
+   "booth_no": "5.1H-B027"
+  },
+  {
+   "source_id": "CIIF26-R1049",
+   "name_zh": "席勒密封技术（南京）有限公司",
+   "booth_no": "5.1H-B103"
+  },
+  {
+   "source_id": "CIIF26-R1062",
+   "name_zh": "简博斯光学科技（上海）有限公司",
+   "booth_no": "5.1H-B168"
+  },
+  {
+   "source_id": "CIIF26-R1071",
+   "name_zh": "金华江科动力有限公司",
+   "booth_no": "5.1H-C011"
+  },
+  {
+   "source_id": "CIIF26-R1072",
+   "name_zh": "艾普达电缆（上海）有限公司",
+   "booth_no": "5.1H-C016"
+  },
+  {
+   "source_id": "CIIF26-R1073",
+   "name_zh": "深圳亿联连接技术有限公司",
+   "booth_no": "5.1H-C018"
+  },
+  {
+   "source_id": "CIIF26-R1074",
+   "name_zh": "西诺信贸易（深圳）有限公司",
+   "booth_no": "5.1H-C042"
+  },
+  {
+   "source_id": "CIIF26-R1075",
+   "name_zh": "上海轶峰新材料股份有限公司",
+   "booth_no": "5.1H-C043"
+  },
+  {
+   "source_id": "CIIF26-R1077",
+   "name_zh": "深圳市瑞彩电子技术有限公司",
+   "booth_no": "5.1H-C047"
+  },
+  {
+   "source_id": "CIIF26-R1078",
+   "name_zh": "名柔特种电缆（上海）有限公司",
+   "booth_no": "5.1H-C049"
+  },
+  {
+   "source_id": "CIIF26-R1079",
+   "name_zh": "深圳市东莱尔智能科技有限公司",
+   "booth_no": "5.1H-C051"
+  },
+  {
+   "source_id": "CIIF26-R1080",
+   "name_zh": "慈溪市菲泰德气动科技有限公司",
+   "booth_no": "5.1H-C053"
+  },
+  {
+   "source_id": "CIIF26-R1081",
+   "name_zh": "韩田自动化(浙江)有限公司",
+   "booth_no": "5.1H-C053"
+  },
+  {
+   "source_id": "CIIF26-R1082",
+   "name_zh": "济南迈塔自动化设备有限公司",
+   "booth_no": "5.1H-C058"
+  },
+  {
+   "source_id": "CIIF26-R1084",
+   "name_zh": "广东铨洲科技有限公司",
+   "booth_no": "5.1H-C060"
+  },
+  {
+   "source_id": "CIIF26-R1085",
+   "name_zh": "东莞森元电子科技有限公司",
+   "booth_no": "5.1H-C063"
+  },
+  {
+   "source_id": "CIIF26-R1086",
+   "name_zh": "浙江连芯电子技术有限公司",
+   "booth_no": "5.1H-C072"
+  },
+  {
+   "source_id": "CIIF26-R1087",
+   "name_zh": "深圳市神武传感器有限公司",
+   "booth_no": "5.1H-C075"
+  },
+  {
+   "source_id": "CIIF26-R1088",
+   "name_zh": "广东东菱电子科技有限公司",
+   "booth_no": "5.1H-C077"
+  },
+  {
+   "source_id": "CIIF26-R1089",
+   "name_zh": "上海视界纵横智能科技有限公司",
+   "booth_no": "5.1H-C079"
+  },
+  {
+   "source_id": "CIIF26-R1090",
+   "name_zh": "北京特倍福电子技术有限公司",
+   "booth_no": "5.1H-C081"
+  },
+  {
+   "source_id": "CIIF26-R1092",
+   "name_zh": "穆讯特种电线电缆（上海）有限公司",
+   "booth_no": "5.1H-C085"
+  },
+  {
+   "source_id": "CIIF26-R1093",
+   "name_zh": "浙江高图智能控制有限公司",
+   "booth_no": "5.1H-C089"
+  },
+  {
+   "source_id": "CIIF26-R1094",
+   "name_zh": "深圳市合发齿轮机械有限公司",
+   "booth_no": "5.1H-C090"
+  },
+  {
+   "source_id": "CIIF26-R1095",
+   "name_zh": "神驰气动有限公司",
+   "booth_no": "5.1H-C093"
+  },
+  {
+   "source_id": "CIIF26-R1096",
+   "name_zh": "慈溪市科发电子有限公司",
+   "booth_no": "5.1H-C100"
+  },
+  {
+   "source_id": "CIIF26-R1097",
+   "name_zh": "深圳锦凌电子股份有限公司",
+   "booth_no": "5.1H-C102"
+  },
+  {
+   "source_id": "CIIF26-R1099",
+   "name_zh": "昆山艾尼维尔电子有限公司",
+   "booth_no": "5.1H-C127"
+  },
+  {
+   "source_id": "CIIF26-R1100",
+   "name_zh": "上海广奇电气有限公司",
+   "booth_no": "5.1H-C128"
+  },
+  {
+   "source_id": "CIIF26-R1101",
+   "name_zh": "精研技术",
+   "booth_no": "5.1H-C132"
+  },
+  {
+   "source_id": "CIIF26-R1102",
+   "name_zh": "北京亚控科技发展有限公司",
+   "booth_no": "5.1H-C134"
+  },
+  {
+   "source_id": "CIIF26-R1103",
+   "name_zh": "东莞市卓蓝自动化设备有限公司",
+   "booth_no": "5.1H-C139"
+  },
+  {
+   "source_id": "CIIF26-R1104",
+   "name_zh": "东莞蚂蚁工场制造有限公司",
+   "booth_no": "5.1H-C143"
+  },
+  {
+   "source_id": "CIIF26-R1105",
+   "name_zh": "深圳市盛格纳电子有限公司",
+   "booth_no": "5.1H-C146"
+  },
+  {
+   "source_id": "CIIF26-R1106",
+   "name_zh": "青岛依诺信工业自动化技术有限公司",
+   "booth_no": "5.1H-D002"
+  },
+  {
+   "source_id": "CIIF26-R1111",
+   "name_zh": "赛普（上海）电缆贸易有限公司",
+   "booth_no": "5.1H-D074"
+  },
+  {
+   "source_id": "CIIF26-R1112",
+   "name_zh": "东莞仕达通自动化有限公司",
+   "booth_no": "5.1H-D077"
+  },
+  {
+   "source_id": "CIIF26-R1113",
+   "name_zh": "胡默尔连接器系统（上海）有限公司",
+   "booth_no": "5.1H-D081"
+  },
+  {
+   "source_id": "CIIF26-R1114",
+   "name_zh": "赫优信（上海）自动化系统贸易有限公司",
+   "booth_no": "5.1H-D102"
+  },
+  {
+   "source_id": "CIIF26-R1116",
+   "name_zh": "慈溪市万捷电子有限公司",
+   "booth_no": "5.1H-D108"
+  },
+  {
+   "source_id": "CIIF26-R1117",
+   "name_zh": "缆普电缆（上海）有限公司",
+   "booth_no": "5.1H-D120"
+  },
+  {
+   "source_id": "CIIF26-R1118",
+   "name_zh": "天津思科电气有限公司",
+   "booth_no": "5.1H-D122"
+  },
+  {
+   "source_id": "CIIF26-R1119",
+   "name_zh": "世强硬创平台",
+   "booth_no": "5.1H-D125"
+  },
+  {
+   "source_id": "CIIF26-R1120",
+   "name_zh": "安费诺康耐",
+   "booth_no": "5.1H-D136"
+  },
+  {
+   "source_id": "CIIF26-R1121",
+   "name_zh": "浙江高桥电子有限公司",
+   "booth_no": "5.1H-D141"
+  },
+  {
+   "source_id": "CIIF26-R1122",
+   "name_zh": "浙江荣越电气有限公司",
+   "booth_no": "5.1H-D142"
+  },
+  {
+   "source_id": "CIIF26-R1123",
+   "name_zh": "科瑞工业自动化系统（苏州）有限公司",
+   "booth_no": "5.1H-E001"
+  },
+  {
+   "source_id": "CIIF26-R1124",
+   "name_zh": "堡盟电子（上海）有限公司",
+   "booth_no": "5.1H-E005"
+  },
+  {
+   "source_id": "CIIF26-R1125",
+   "name_zh": "上海友邦电气(集团)股份有限公司",
+   "booth_no": "5.1H-E009"
+  },
+  {
+   "source_id": "CIIF26-R1126",
+   "name_zh": "上海长江电气设备集团有限公司",
+   "booth_no": "5.1H-E011"
+  },
+  {
+   "source_id": "CIIF26-R1127",
+   "name_zh": "宁波速普电子有限公司",
+   "booth_no": "5.1H-E015"
+  },
+  {
+   "source_id": "CIIF26-R1128",
+   "name_zh": "宁波佳尔灵气动机械有限公司",
+   "booth_no": "5.1H-E018"
+  },
+  {
+   "source_id": "CIIF26-R1129",
+   "name_zh": "四川零点自动化系统有限公司",
+   "booth_no": "5.1H-E020"
+  },
+  {
+   "source_id": "CIIF26-R1130",
+   "name_zh": "厦门唯恩电气有限公司",
+   "booth_no": "5.1H-E023"
+  },
+  {
+   "source_id": "CIIF26-R1131",
+   "name_zh": "宾德连接器（南京）有限公司",
+   "booth_no": "5.1H-E088"
+  },
+  {
+   "source_id": "CIIF26-R1132",
+   "name_zh": "东莞市锐联智能装备有限公司",
+   "booth_no": "5.1H-E098"
+  },
+  {
+   "source_id": "CIIF26-R1133",
+   "name_zh": "东莞市新本自动化设备有限公司",
+   "booth_no": "5.1H-E098"
+  },
+  {
+   "source_id": "CIIF26-R1134",
+   "name_zh": "倍仕得电气科技（杭州）股份有限公司",
+   "booth_no": "5.1H-E105"
+  },
+  {
+   "source_id": "CIIF26-R1135",
+   "name_zh": "上海兰宝传感科技股份有限公司",
+   "booth_no": "5.1H-E108"
+  },
+  {
+   "source_id": "CIIF26-R1136",
+   "name_zh": "精奇（天津）科技股份有限公司",
+   "booth_no": "5.1H-E112"
+  },
+  {
+   "source_id": "CIIF26-R1137",
+   "name_zh": "无锡康贝电子设备有限公司",
+   "booth_no": "5.1H-E115"
+  },
+  {
+   "source_id": "CIIF26-R1138",
+   "name_zh": "欣大电气有限公司",
+   "booth_no": "5.1H-E117"
+  },
+  {
+   "source_id": "CIIF26-R1139",
+   "name_zh": "上海好夫满电气设备有限公司",
+   "booth_no": "5.1H-E119"
+  },
+  {
+   "source_id": "CIIF26-R1140",
+   "name_zh": "浙江格亚电气有限公司",
+   "booth_no": "5.1H-E122"
+  },
+  {
+   "source_id": "CIIF26-R1141",
+   "name_zh": "宁波韦和气动元件有限公司",
+   "booth_no": "5.1H-E128"
+  },
+  {
+   "source_id": "CIIF26-R1142",
+   "name_zh": "宁波市郎驰新材料科技有限公司",
+   "booth_no": "5.1H-E128"
+  },
+  {
+   "source_id": "CIIF26-R1143",
+   "name_zh": "罗森伯格",
+   "booth_no": "5.1H-E176"
+  },
+  {
+   "source_id": "CIIF26-R1144",
+   "name_zh": "广东思谷智能技术有限公司",
+   "booth_no": "5.1H-E181"
+  },
+  {
+   "source_id": "CIIF26-R1145",
+   "name_zh": "苏培（武汉）智能科技有限公司",
+   "booth_no": "5.1H-E186"
+  },
+  {
+   "source_id": "CIIF26-R1146",
+   "name_zh": "江苏田信塑料光纤有限公司",
+   "booth_no": "5.1H-E190"
+  },
+  {
+   "source_id": "CIIF26-R1147",
+   "name_zh": "霍浦科技（宁波）有限公司",
+   "booth_no": "5.1H-E192"
+  },
+  {
+   "source_id": "CIIF26-R1148",
+   "name_zh": "无锡成一智创精密机械有限公司",
+   "booth_no": "5.1H-E194"
+  },
+  {
+   "source_id": "CIIF26-R1149",
+   "name_zh": "广州晨控智能技术有点公司",
+   "booth_no": "5.1H-E196"
+  },
+  {
+   "source_id": "CIIF26-R1150",
+   "name_zh": "维峰电子股份有限公司",
+   "booth_no": "5.1H-E200"
+  },
+  {
+   "source_id": "CIIF26-R1152",
+   "name_zh": "鑫鑫直线精密机械（苏州）有限公司",
+   "booth_no": "5.1H-E212"
+  },
+  {
+   "source_id": "CIIF26-R1153",
+   "name_zh": "利恩特克（上海）自动化技术有限公司",
+   "booth_no": "5.1H-E216"
+  },
+  {
+   "source_id": "CIIF26-R1154",
+   "name_zh": "上海昭穆工业科技有限公司",
+   "booth_no": "5.1H-E217"
+  },
+  {
+   "source_id": "CIIF26-R1155",
+   "name_zh": "上海洲日电子有限公司",
+   "booth_no": "5.1H-E218"
+  },
+  {
+   "source_id": "CIIF26-R1156",
+   "name_zh": "无锡凌科自动化技术有限公司",
+   "booth_no": "5.1H-E220"
+  },
+  {
+   "source_id": "CIIF26-R1157",
+   "name_zh": "东莞特米勒电子科技有限公司",
+   "booth_no": "5.1H-E222"
+  },
+  {
+   "source_id": "CIIF26-R1158",
+   "name_zh": "上海德思泰电器有限公司",
+   "booth_no": "5.1H-E226"
+  },
+  {
+   "source_id": "CIIF26-R1159",
+   "name_zh": "浙江鸿祥连接器有限公司",
+   "booth_no": "5.1H-E228"
+  },
+  {
+   "source_id": "CIIF26-R1160",
+   "name_zh": "浙江昊科电气有限公司",
+   "booth_no": "5.1H-E228"
+  },
+  {
+   "source_id": "CIIF26-R1161",
+   "name_zh": "厦门宏发电声股份有限公司",
+   "booth_no": "5.1H-E230"
+  },
+  {
+   "source_id": "CIIF26-R1162",
+   "name_zh": "浙江亿日气动科技有限公司",
+   "booth_no": "5.1H-E261"
+  },
+  {
+   "source_id": "CIIF26-R1163",
+   "name_zh": "厦门汉印股份有限公司",
+   "booth_no": "5.1H-E264"
+  },
+  {
+   "source_id": "CIIF26-R1164",
+   "name_zh": "厦门麦克玛视电子信息技术有限公司",
+   "booth_no": "5.1H-E265"
+  },
+  {
+   "source_id": "CIIF26-R1165",
+   "name_zh": "因泰立科技（天津）有限公司",
+   "booth_no": "5.1H-E268"
+  },
+  {
+   "source_id": "CIIF26-R1166",
+   "name_zh": "大同特殊钢（上海）有限公司（日本东北特殊钢）",
+   "booth_no": "5.1H-E270"
+  },
+  {
+   "source_id": "CIIF26-R1167",
+   "name_zh": "意札拓（上海）贸易有限公司",
+   "booth_no": "5.1H-E272"
+  },
+  {
+   "source_id": "CIIF26-R1168",
+   "name_zh": "精浚科技（杭州）有限公司",
+   "booth_no": "5.1H-E274"
+  },
+  {
+   "source_id": "CIIF26-R1169",
+   "name_zh": "宁波三和壳体有限公司",
+   "booth_no": "5.1H-E276"
+  },
+  {
+   "source_id": "CIIF26-R1170",
+   "name_zh": "优铂利气动科技有限公司",
+   "booth_no": "5.1H-E280"
+  },
+  {
+   "source_id": "CIIF26-R1171",
+   "name_zh": "欣旭（深圳）智能电机有限公司",
+   "booth_no": "5.1H-E282"
+  },
+  {
+   "source_id": "CIIF26-R1172",
+   "name_zh": "上海气立可气动设备有限公司",
+   "booth_no": "5.1H-E285"
+  },
+  {
+   "source_id": "CIIF26-R1173",
+   "name_zh": "苏州怡合达自动化科技有限公司",
+   "booth_no": "5.1H-F001"
+  },
+  {
+   "source_id": "CIIF26-R1174",
+   "name_zh": "深圳深浦电气有限公司",
+   "booth_no": "5.1H-F006"
+  },
+  {
+   "source_id": "CIIF26-R1175",
+   "name_zh": "浙江天齐电气有限公司",
+   "booth_no": "5.1H-F009"
+  },
+  {
+   "source_id": "CIIF26-R1176",
+   "name_zh": "成都瑞联电气",
+   "booth_no": "5.1H-F012"
+  },
+  {
+   "source_id": "CIIF26-R1177",
+   "name_zh": "长春禹衡光学有限公司",
+   "booth_no": "5.1H-F015"
+  },
+  {
+   "source_id": "CIIF26-R1178",
+   "name_zh": "杭州中达电机有限公司",
+   "booth_no": "5.1H-F015"
+  },
+  {
+   "source_id": "CIIF26-R1179",
+   "name_zh": "汉伯特（深圳）精密传动有限公司",
+   "booth_no": "5.1H-F017"
+  },
+  {
+   "source_id": "CIIF26-R1180",
+   "name_zh": "东莞市大迪电子科技有限公司",
+   "booth_no": "5.1H-F021"
+  },
+  {
+   "source_id": "CIIF26-R1181",
+   "name_zh": "为乐电气有限公司",
+   "booth_no": "5.1H-F060"
+  },
+  {
+   "source_id": "CIIF26-R1182",
+   "name_zh": "兴威联电气(苏州)有限公司",
+   "booth_no": "5.1H-F084"
+  },
+  {
+   "source_id": "CIIF26-R1183",
+   "name_zh": "广东威浦电器有限公司",
+   "booth_no": "5.1H-F085"
+  },
+  {
+   "source_id": "CIIF26-R1184",
+   "name_zh": "四维增压科技（苏州）有限公司",
+   "booth_no": "5.1H-F091"
+  },
+  {
+   "source_id": "CIIF26-R1185",
+   "name_zh": "东莞市迅拓自动化科技有限公司",
+   "booth_no": "5.1H-F091"
+  },
+  {
+   "source_id": "CIIF26-R1186",
+   "name_zh": "湖南凌翔磁浮科技有限责任公司",
+   "booth_no": "5.1H-F096"
+  },
+  {
+   "source_id": "CIIF26-R1187",
+   "name_zh": "重庆苏众机电设备有限公司上海分公司",
+   "booth_no": "5.1H-F100"
+  },
+  {
+   "source_id": "CIIF26-R1188",
+   "name_zh": "杭州力为科技有限公司",
+   "booth_no": "5.1H-F102"
+  },
+  {
+   "source_id": "CIIF26-R1189",
+   "name_zh": "上海开地电子有限公司",
+   "booth_no": "5.1H-F127"
+  },
+  {
+   "source_id": "CIIF26-R1190",
+   "name_zh": "台州优川自动化有限公司",
+   "booth_no": "5.1H-F129"
+  },
+  {
+   "source_id": "CIIF26-R1191",
+   "name_zh": "湖南伊米森科技有限公司",
+   "booth_no": "5.1H-F131"
+  },
+  {
+   "source_id": "CIIF26-R1192",
+   "name_zh": "南京德克威尔自动化有限公司",
+   "booth_no": "5.1H-F133"
+  },
+  {
+   "source_id": "CIIF26-R1193",
+   "name_zh": "厦门瑞莱博电气有限公司",
+   "booth_no": "5.1H-F147"
+  },
+  {
+   "source_id": "CIIF26-R1194",
+   "name_zh": "浙江泰达微电机有限公司",
+   "booth_no": "5.1H-F159"
+  },
+  {
+   "source_id": "CIIF26-R1195",
+   "name_zh": "苏州威弗电气有限公司",
+   "booth_no": "5.1H-F161"
+  },
+  {
+   "source_id": "CIIF26-R1196",
+   "name_zh": "天津艾普斯工业铝型材股份有限公司",
+   "booth_no": "5.1H-F163"
+  },
+  {
+   "source_id": "CIIF26-R1197",
+   "name_zh": "安徽亿思特电子科技有限公司",
+   "booth_no": "5.1H-F164"
+  },
+  {
+   "source_id": "CIIF26-R1198",
+   "name_zh": "上海米菱电子有限公司",
+   "booth_no": "5.1H-F165"
+  },
+  {
+   "source_id": "CIIF26-R1199",
+   "name_zh": "KSS-江苏凯满仓电气有限公司",
+   "booth_no": "5.1H-F166"
+  },
+  {
+   "source_id": "CIIF26-R1200",
+   "name_zh": "深圳市光路在线科技有限公司",
+   "booth_no": "5.1H-F167"
+  },
+  {
+   "source_id": "CIIF26-R1201",
+   "name_zh": "温州中穗电气有限公司",
+   "booth_no": "5.1H-F168"
+  },
+  {
+   "source_id": "CIIF26-R1202",
+   "name_zh": "宁波谷雷姆电子有限公司",
+   "booth_no": "5.1H-F169"
+  },
+  {
+   "source_id": "CIIF26-R1203",
+   "name_zh": "宁波市重强电器有限公司",
+   "booth_no": "5.1H-F175"
+  },
+  {
+   "source_id": "CIIF26-R1204",
+   "name_zh": "北京硕方信息技术有限公司",
+   "booth_no": "5.1H-F177"
+  },
+  {
+   "source_id": "CIIF26-R1205",
+   "name_zh": "上海艾研机电控制系统有限公司",
+   "booth_no": "5.1H-F189"
+  },
+  {
+   "source_id": "CIIF26-R1207",
+   "name_zh": "常州零点智能科技有限公司",
+   "booth_no": "5.1H-F191"
+  },
+  {
+   "source_id": "CIIF26-R1208",
+   "name_zh": "宁波市旭骋电子有限公司",
+   "booth_no": "5.1H-F192"
+  },
+  {
+   "source_id": "CIIF26-R1209",
+   "name_zh": "东莞市胜牌电线电缆有限公司",
+   "booth_no": "5.1H-F193"
+  },
+  {
+   "source_id": "CIIF26-R1210",
+   "name_zh": "烟台羿沣传感测控技术有限公司",
+   "booth_no": "5.1H-F194"
+  },
+  {
+   "source_id": "CIIF26-R1211",
+   "name_zh": "乐清市赛德斯气动有限公司",
+   "booth_no": "5.1H-F195"
+  },
+  {
+   "source_id": "CIIF26-R1212",
+   "name_zh": "浙江安纽电气有限公司",
+   "booth_no": "5.1H-F196"
+  },
+  {
+   "source_id": "CIIF26-R1213",
+   "name_zh": "索维电器（浙江）有限公司",
+   "booth_no": "5.1H-F197"
+  },
+  {
+   "source_id": "CIIF26-R1214",
+   "name_zh": "一佳工控电器有限公司",
+   "booth_no": "5.1H-F198"
+  },
+  {
+   "source_id": "CIIF26-R1215",
+   "name_zh": "深圳市汉凯科技有限公司",
+   "booth_no": "5.1H-F200"
+  },
+  {
+   "source_id": "CIIF26-R1216",
+   "name_zh": "苏州屏通电气科技有限公司",
+   "booth_no": "5.1H-F201"
+  },
+  {
+   "source_id": "CIIF26-R1217",
+   "name_zh": "深圳市川特电子科技有限公司",
+   "booth_no": "5.1H-F202"
+  },
+  {
+   "source_id": "CIIF26-R1218",
+   "name_zh": "浙江亚明电器有限公司",
+   "booth_no": "5.1H-F203"
+  },
+  {
+   "source_id": "CIIF26-R1219",
+   "name_zh": "安徽智敏电气技术有限公司",
+   "booth_no": "5.1H-F204"
+  },
+  {
+   "source_id": "CIIF26-R1220",
+   "name_zh": "浙江浙豪电气有限公司",
+   "booth_no": "5.1H-F205"
+  },
+  {
+   "source_id": "CIIF26-R1221",
+   "name_zh": "山东英通达电气技术有限公司",
+   "booth_no": "5.1H-F206"
+  },
+  {
+   "source_id": "CIIF26-R1222",
+   "name_zh": "浙江西盟电子科技有限公司",
+   "booth_no": "5.1H-F207"
+  },
+  {
+   "source_id": "CIIF26-R1223",
+   "name_zh": "深圳市兴昊荣五金设备有限公司",
+   "booth_no": "5.1H-F208"
+  },
+  {
+   "source_id": "CIIF26-R1224",
+   "name_zh": "武汉星之雨科技有限公司",
+   "booth_no": "5.1H-F209"
+  },
+  {
+   "source_id": "CIIF26-R1225",
+   "name_zh": "三联传动机械有限公司",
+   "booth_no": "5.1H-F210"
+  },
+  {
+   "source_id": "CIIF26-R1226",
+   "name_zh": "上海俄海特国际贸易有限公司",
+   "booth_no": "5.1H-F211"
+  },
+  {
+   "source_id": "CIIF26-R1227",
+   "name_zh": "杭州友上智能技术有限公",
+   "booth_no": "5.1H-F212"
+  },
+  {
+   "source_id": "CIIF26-R1228",
+   "name_zh": "浙江华西科技有限公司",
+   "booth_no": "5.1H-F213"
+  },
+  {
+   "source_id": "CIIF26-R1229",
+   "name_zh": "广州吉思特机械传动科技有限公司",
+   "booth_no": "5.1H-F214"
+  },
+  {
+   "source_id": "CIIF26-R1230",
+   "name_zh": "东莞普莱特传动设备有限公司",
+   "booth_no": "5.1H-F215"
+  },
+  {
+   "source_id": "CIIF26-R1231",
+   "name_zh": "温州市上丰电气有限公司",
+   "booth_no": "5.1H-F217"
+  },
+  {
+   "source_id": "CIIF26-R1232",
+   "name_zh": "广州市跃国电子有限公司",
+   "booth_no": "5.1H-F219"
+  },
+  {
+   "source_id": "CIIF26-R1233",
+   "name_zh": "东莞市德索精密工业有限公司",
+   "booth_no": "5.1H-F220"
+  },
+  {
+   "source_id": "CIIF26-R1234",
+   "name_zh": "天津滨海新区三格电子科技有限公司",
+   "booth_no": "5.1H-F221"
+  },
+  {
+   "source_id": "CIIF26-R1235",
+   "name_zh": "无锡康哲自动化科技有限公司",
+   "booth_no": "5.1H-F223"
+  },
+  {
+   "source_id": "CIIF26-R1236",
+   "name_zh": "浙江德尔信连接器有限公司",
+   "booth_no": "5.1H-F226"
+  },
+  {
+   "source_id": "CIIF26-R1237",
+   "name_zh": "浙江麦纬电气科技有限公司",
+   "booth_no": "5.1H-F228"
+  },
+  {
+   "source_id": "CIIF26-R1238",
+   "name_zh": "宁波高鼎电子有限公司",
+   "booth_no": "5.1H-F230"
+  },
+  {
+   "source_id": "CIIF26-R1239",
+   "name_zh": "北京方芯半导体有限公司",
+   "booth_no": "5.1H-F231"
+  },
+  {
+   "source_id": "CIIF26-R1240",
+   "name_zh": "苏州纵苇科技有限公司",
+   "booth_no": "6.1H-A001"
+  },
+  {
+   "source_id": "CIIF26-R1241",
+   "name_zh": "摩莎科技（上海）有限公司",
+   "booth_no": "6.1H-A006"
+  },
+  {
+   "source_id": "CIIF26-R1242",
+   "name_zh": "厦门宇电自动化科技有限公司",
+   "booth_no": "6.1H-A008"
+  },
+  {
+   "source_id": "CIIF26-R1243",
+   "name_zh": "深圳市吉方工控有限公司",
+   "booth_no": "6.1H-A010"
+  },
+  {
+   "source_id": "CIIF26-R1244",
+   "name_zh": "山东有人物联网股份有限公司",
+   "booth_no": "6.1H-A012"
+  },
+  {
+   "source_id": "CIIF26-R1245",
+   "name_zh": "深圳市亿道信息股份有限公司",
+   "booth_no": "6.1H-A015"
+  },
+  {
+   "source_id": "CIIF26-R1246",
+   "name_zh": "上海卓岚信息科技有限公司",
+   "booth_no": "6.1H-A016"
+  },
+  {
+   "source_id": "CIIF26-R1247",
+   "name_zh": "南京图稳自动化技术有限公司",
+   "booth_no": "6.1H-A018"
+  },
+  {
+   "source_id": "CIIF26-R1248",
+   "name_zh": "控制工程中文版",
+   "booth_no": "6.1H-A020"
+  },
+  {
+   "source_id": "CIIF26-R1249",
+   "name_zh": "上海翌控科技有限公司",
+   "booth_no": "6.1H-A022"
+  },
+  {
+   "source_id": "CIIF26-R1250",
+   "name_zh": "苏州稳信智能科技有限公司",
+   "booth_no": "6.1H-A050"
+  },
+  {
+   "source_id": "CIIF26-R1251",
+   "name_zh": "深圳市辰想智能科技有限公司",
+   "booth_no": "6.1H-A053"
+  },
+  {
+   "source_id": "CIIF26-R1252",
+   "name_zh": "上海亿耀电子有限公司",
+   "booth_no": "6.1H-A056"
+  },
+  {
+   "source_id": "CIIF26-R1253",
+   "name_zh": "研凌工控电脑科技（深圳）有限公司",
+   "booth_no": "6.1H-A058"
+  },
+  {
+   "source_id": "CIIF26-R1254",
+   "name_zh": "亚洲龙电气股份有限公司",
+   "booth_no": "6.1H-A060"
+  },
+  {
+   "source_id": "CIIF26-R1255",
+   "name_zh": "浙江龙牌电气有限公司",
+   "booth_no": "6.1H-A061"
+  },
+  {
+   "source_id": "CIIF26-R1256",
+   "name_zh": "泓格科技股份有限公司",
+   "booth_no": "6.1H-A062"
+  },
+  {
+   "source_id": "CIIF26-R1257",
+   "name_zh": "浙江东政电机有限公司",
+   "booth_no": "6.1H-A064"
+  },
+  {
+   "source_id": "CIIF26-R1258",
+   "name_zh": "佛山康视特控科技有限公司",
+   "booth_no": "6.1H-A066"
+  },
+  {
+   "source_id": "CIIF26-R1259",
+   "name_zh": "利驰软件（苏州）有限公司",
+   "booth_no": "6.1H-A068"
+  },
+  {
+   "source_id": "CIIF26-R1260",
+   "name_zh": "深圳市杰和科技发展有限公司",
+   "booth_no": "6.1H-A070"
+  },
+  {
+   "source_id": "CIIF26-R1261",
+   "name_zh": "北京明达智控技术有限公司",
+   "booth_no": "6.1H-A078"
+  },
+  {
+   "source_id": "CIIF26-R1262",
+   "name_zh": "深圳市德航智能技术有限公司",
+   "booth_no": "6.1H-A080"
+  },
+  {
+   "source_id": "CIIF26-R1263",
+   "name_zh": "深圳市康士达科技有限公司",
+   "booth_no": "6.1H-A082"
+  },
+  {
+   "source_id": "CIIF26-R1264",
+   "name_zh": "深圳市汉智星科技有限公司",
+   "booth_no": "6.1H-A084"
+  },
+  {
+   "source_id": "CIIF26-R1265",
+   "name_zh": "深圳市研盛芯控电子技术有限公司",
+   "booth_no": "6.1H-A086"
+  },
+  {
+   "source_id": "CIIF26-R1266",
+   "name_zh": "沈阳广成科技有限公司",
+   "booth_no": "6.1H-A088"
+  },
+  {
+   "source_id": "CIIF26-R1267",
+   "name_zh": "艾讯宏达科技（深圳）有限公司",
+   "booth_no": "6.1H-A090"
+  },
+  {
+   "source_id": "CIIF26-R1268",
+   "name_zh": "埃迈诺冠气动器材（上海）有限公司",
+   "booth_no": "6.1H-A092"
+  },
+  {
+   "source_id": "CIIF26-R1269",
+   "name_zh": "南京实点电子科技有限公司",
+   "booth_no": "6.1H-A097"
+  },
+  {
+   "source_id": "CIIF26-R1270",
+   "name_zh": "深圳市铭微科技有限公司",
+   "booth_no": "6.1H-A104"
+  },
+  {
+   "source_id": "CIIF26-R1271",
+   "name_zh": "南京创优科技有限责任公司",
+   "booth_no": "6.1H-A106"
+  },
+  {
+   "source_id": "CIIF26-R1272",
+   "name_zh": "上海辰竹仪表有限公司",
+   "booth_no": "6.1H-A108"
+  },
+  {
+   "source_id": "CIIF26-R1273",
+   "name_zh": "厦门四信通信科技有限公司",
+   "booth_no": "6.1H-A110"
+  },
+  {
+   "source_id": "CIIF26-R1274",
+   "name_zh": "中优智控自动化（上海）有限公司",
+   "booth_no": "6.1H-A112"
+  },
+  {
+   "source_id": "CIIF26-R1275",
+   "name_zh": "深圳市大唐计算机有限公司",
+   "booth_no": "6.1H-A115"
+  },
+  {
+   "source_id": "CIIF26-R1276",
+   "name_zh": "埃莫运动控制技术（上海）有限公司",
+   "booth_no": "6.1H-A118"
+  },
+  {
+   "source_id": "CIIF26-R1278",
+   "name_zh": "福建富昌维控电子科技股份有限公司",
+   "booth_no": "6.1H-A172"
+  },
+  {
+   "source_id": "CIIF26-R1279",
+   "name_zh": "上海繁易信息科技股份有限公司",
+   "booth_no": "6.1H-A175"
+  },
+  {
+   "source_id": "CIIF26-R1280",
+   "name_zh": "杭州研智科技有限公司",
+   "booth_no": "6.1H-A178"
+  },
+  {
+   "source_id": "CIIF26-R1281",
+   "name_zh": "深圳市智微智能科技股份有限公司",
+   "booth_no": "6.1H-A180"
+  },
+  {
+   "source_id": "CIIF26-R1284",
+   "name_zh": "苏州美名软件有限公司",
+   "booth_no": "6.1H-A241"
+  },
+  {
+   "source_id": "CIIF26-R1285",
+   "name_zh": "米思米（中国）精密机械贸易有限公司",
+   "booth_no": "6.1H-A244"
+  },
+  {
+   "source_id": "CIIF26-R1286",
+   "name_zh": "斯泰必鲁斯（苏州）工业有限公司",
+   "booth_no": "6.1H-A245"
+  },
+  {
+   "source_id": "CIIF26-R1287",
+   "name_zh": "纽泰克斯电线（潍坊）有限公司",
+   "booth_no": "6.1H-A247"
+  },
+  {
+   "source_id": "CIIF26-R1288",
+   "name_zh": "麦尔（张家港）传动技术有限公司",
+   "booth_no": "6.1H-A248"
+  },
+  {
+   "source_id": "CIIF26-R1289",
+   "name_zh": "PlanarMotorInc.",
+   "booth_no": "6.1H-A251"
+  },
+  {
+   "source_id": "CIIF26-R1290",
+   "name_zh": "苏州特恩驰工业电缆有限公司",
+   "booth_no": "6.1H-A252"
+  },
+  {
+   "source_id": "CIIF26-R1291",
+   "name_zh": "中国机电一体化技术应用协会现场总线专业委员会",
+   "booth_no": "6.1H-B001"
+  },
+  {
+   "source_id": "CIIF26-R1292",
+   "name_zh": "华硕",
+   "booth_no": "6.1H-B005"
+  },
+  {
+   "source_id": "CIIF26-R1293",
+   "name_zh": "百能堡电气销售（苏州）有限公司",
+   "booth_no": "6.1H-B009"
+  },
+  {
+   "source_id": "CIIF26-R1294",
+   "name_zh": "上海祁鸣电子科技有限公司",
+   "booth_no": "6.1H-B011"
+  },
+  {
+   "source_id": "CIIF26-R1295",
+   "name_zh": "维纳尔（北京）电气系统有限公司",
+   "booth_no": "6.1H-B016"
+  },
+  {
+   "source_id": "CIIF26-R1296",
+   "name_zh": "三木普利（天津）有限公司上海分公司",
+   "booth_no": "6.1H-B018"
+  },
+  {
+   "source_id": "CIIF26-R1297",
+   "name_zh": "MECHATROLINK协会",
+   "booth_no": "6.1H-B020"
+  },
+  {
+   "source_id": "CIIF26-R1298",
+   "name_zh": "山洋电气（上海）贸易有限公司",
+   "booth_no": "6.1H-B023"
+  },
+  {
+   "source_id": "CIIF26-R1299",
+   "name_zh": "锐联特技术（上海）有限公司",
+   "booth_no": "6.1H-B061"
+  },
+  {
+   "source_id": "CIIF26-R1300",
+   "name_zh": "盈速工业通讯技术（北京）有限公司",
+   "booth_no": "6.1H-B063"
+  },
+  {
+   "source_id": "CIIF26-R1301",
+   "name_zh": "上海精浦机电有限公司",
+   "booth_no": "6.1H-B066"
+  },
+  {
+   "source_id": "CIIF26-R1302",
+   "name_zh": "吕策贸易（上海）有限公司",
+   "booth_no": "6.1H-B068"
+  },
+  {
+   "source_id": "CIIF26-R1303",
+   "name_zh": "瑞萨电子",
+   "booth_no": "6.1H-B070"
+  },
+  {
+   "source_id": "CIIF26-R1304",
+   "name_zh": "江苏富兴电机技术股份有限公司",
+   "booth_no": "6.1H-B072"
+  },
+  {
+   "source_id": "CIIF26-R1305",
+   "name_zh": "Temposonics传感器",
+   "booth_no": "6.1H-B087"
+  },
+  {
+   "source_id": "CIIF26-R1306",
+   "name_zh": "优仪半导体设备（上海）有限公司",
+   "booth_no": "6.1H-B089"
+  },
+  {
+   "source_id": "CIIF26-R1307",
+   "name_zh": "黑田精工（浙江）有限公司",
+   "booth_no": "6.1H-B092"
+  },
+  {
+   "source_id": "CIIF26-R1308",
+   "name_zh": "尤尼帕斯贸易（无锡）有限公司",
+   "booth_no": "6.1H-B094"
+  },
+  {
+   "source_id": "CIIF26-R1309",
+   "name_zh": "DEEPX",
+   "booth_no": "6.1H-B096"
+  },
+  {
+   "source_id": "CIIF26-R1310",
+   "name_zh": "锅屋百迪精密机械（苏州）有限公司",
+   "booth_no": "6.1H-B101"
+  },
+  {
+   "source_id": "CIIF26-R1312",
+   "name_zh": "恒迈思网络技术（北京）有限公司",
+   "booth_no": "6.1H-B112"
+  },
+  {
+   "source_id": "CIIF26-R1313",
+   "name_zh": "和柔电缆（常州）有限公司",
+   "booth_no": "6.1H-B115"
+  },
+  {
+   "source_id": "CIIF26-R1314",
+   "name_zh": "金士顿科技有限公司",
+   "booth_no": "6.1H-B118"
+  },
+  {
+   "source_id": "CIIF26-R1315",
+   "name_zh": "亿迈齿轮(太仓)有限公司",
+   "booth_no": "6.1H-B120"
+  },
+  {
+   "source_id": "CIIF26-R1316",
+   "name_zh": "广州金升阳科技有限公司",
+   "booth_no": "6.1H-B122"
+  },
+  {
+   "source_id": "CIIF26-R1317",
+   "name_zh": "CC-Link协会",
+   "booth_no": "6.1H-B127"
+  },
+  {
+   "source_id": "CIIF26-R1321",
+   "name_zh": "金子电线电讯（苏州）有限公司",
+   "booth_no": "6.1H-C001"
+  },
+  {
+   "source_id": "CIIF26-R1322",
+   "name_zh": "北京盟通科技有限公司",
+   "booth_no": "6.1H-C003"
+  },
+  {
+   "source_id": "CIIF26-R1323",
+   "name_zh": "深圳市中电华星电子技术有限公司",
+   "booth_no": "6.1H-C005"
+  },
+  {
+   "source_id": "CIIF26-R1324",
+   "name_zh": "深圳三铭电气有限公司",
+   "booth_no": "6.1H-C008"
+  },
+  {
+   "source_id": "CIIF26-R1325",
+   "name_zh": "杭州四横机器人动力技术有限公司",
+   "booth_no": "6.1H-C011"
+  },
+  {
+   "source_id": "CIIF26-R1326",
+   "name_zh": "深圳市海浦蒙特科技有限公司",
+   "booth_no": "6.1H-C013"
+  },
+  {
+   "source_id": "CIIF26-R1327",
+   "name_zh": "台湾精密齿轮工业股份有限公司",
+   "booth_no": "6.1H-C015"
+  },
+  {
+   "source_id": "CIIF26-R1328",
+   "name_zh": "台湾区电机电子工业同业公会",
+   "booth_no": "6.1H-C018"
+  },
+  {
+   "source_id": "CIIF26-R1329",
+   "name_zh": "深圳市朝瑞自动化系统有限公司",
+   "booth_no": "6.1H-C020"
+  },
+  {
+   "source_id": "CIIF26-R1330",
+   "name_zh": "东擎科技股份有限公司",
+   "booth_no": "6.1H-C038"
+  },
+  {
+   "source_id": "CIIF26-R1331",
+   "name_zh": "秦伟电机股份有限公司",
+   "booth_no": "6.1H-C039"
+  },
+  {
+   "source_id": "CIIF26-R1332",
+   "name_zh": "深圳华北工控股份有限公司",
+   "booth_no": "6.1H-C043"
+  },
+  {
+   "source_id": "CIIF26-R1333",
+   "name_zh": "吉林省能纲科技发展有限公司",
+   "booth_no": "6.1H-C045"
+  },
+  {
+   "source_id": "CIIF26-R1334",
+   "name_zh": "广东吉嘉精密科技有限公司",
+   "booth_no": "6.1H-C050"
+  },
+  {
+   "source_id": "CIIF26-R1335",
+   "name_zh": "凯士士企业股份有限公司",
+   "booth_no": "6.1H-C051"
+  },
+  {
+   "source_id": "CIIF26-R1336",
+   "name_zh": "江苏吉泰科电气股份有限公司",
+   "booth_no": "6.1H-C053"
+  },
+  {
+   "source_id": "CIIF26-R1343",
+   "name_zh": "深圳市顾美科技有限公司",
+   "booth_no": "6.1H-C078"
+  },
+  {
+   "source_id": "CIIF26-R1345",
+   "name_zh": "AIBLEINSIGHT",
+   "booth_no": "6.1H-C083"
+  },
+  {
+   "source_id": "CIIF26-R1346",
+   "name_zh": "深圳深瞳灵控智能科技有限公司",
+   "booth_no": "6.1H-C084"
+  },
+  {
+   "source_id": "CIIF26-R1349",
+   "name_zh": "深圳市汇川技术股份有限公司",
+   "booth_no": "6.1H-C092"
+  },
+  {
+   "source_id": "CIIF26-R1350",
+   "name_zh": "江苏烽禾升智能科技有限公司",
+   "booth_no": "6.1H-C098"
+  },
+  {
+   "source_id": "CIIF26-R1351",
+   "name_zh": "北京宝伦数控技术有限公司",
+   "booth_no": "6.1H-C104"
+  },
+  {
+   "source_id": "CIIF26-R1352",
+   "name_zh": "深圳市安优测技术有限公司",
+   "booth_no": "6.1H-C122"
+  },
+  {
+   "source_id": "CIIF26-R1363",
+   "name_zh": "图尔克（天津）传感器有限公司",
+   "booth_no": "6.1H-D016"
+  },
+  {
+   "source_id": "CIIF26-R1365",
+   "name_zh": "奥力孚传动科技股份有限公司",
+   "booth_no": "6.1H-D086"
+  },
+  {
+   "source_id": "CIIF26-R1366",
+   "name_zh": "深圳市蓝海华腾技术股份有限公司",
+   "booth_no": "6.1H-D088"
+  },
+  {
+   "source_id": "CIIF26-R1369",
+   "name_zh": "吉林省北联显示技术有限公司",
+   "booth_no": "6.1H-D128"
+  },
+  {
+   "source_id": "CIIF26-R1372",
+   "name_zh": "深圳华军盛共创实业有限公司",
+   "booth_no": "6.1H-D150"
+  },
+  {
+   "source_id": "CIIF26-R1378",
+   "name_zh": "深圳市福升电机有限公司",
+   "booth_no": "6.1H-D168"
+  },
+  {
+   "source_id": "CIIF26-R1380",
+   "name_zh": "密克微测（深圳）测量技术有限公司",
+   "booth_no": "6.1H-D173"
+  },
+  {
+   "source_id": "CIIF26-R1382",
+   "name_zh": "石家庄德堃电子科技有限公司",
+   "booth_no": "6.1H-D178"
+  },
+  {
+   "source_id": "CIIF26-R1397",
+   "name_zh": "深圳华龙讯达信息技术股份有限公司",
+   "booth_no": "6.1H-E183"
+  },
+  {
+   "source_id": "CIIF26-R1400",
+   "name_zh": "苏州科宝光电科技有限公司",
+   "booth_no": "6.1H-E202"
+  },
+  {
+   "source_id": "CIIF26-R1401",
+   "name_zh": "研祥高科技控股集团有限公司",
+   "booth_no": "6.1H-E205"
+  },
+  {
+   "source_id": "CIIF26-R1402",
+   "name_zh": "深圳市汇辰自动化技术有限公司",
+   "booth_no": "6.1H-E217"
+  },
+  {
+   "source_id": "CIIF26-R1406",
+   "name_zh": "凯布斯连接技术（苏州）有限公司",
+   "booth_no": "6.1H-E226"
+  },
+  {
+   "source_id": "CIIF26-R1414",
+   "name_zh": "深圳市宇航光通科技有限公司",
+   "booth_no": "6.1H-E276"
+  },
+  {
+   "source_id": "CIIF26-R1416",
+   "name_zh": "上海积步自动化科技有限公司",
+   "booth_no": "6.1H-E280"
+  },
+  {
+   "source_id": "CIIF26-R1421",
+   "name_zh": "深圳市显控科技股份有限公司",
+   "booth_no": "6.1H-F015"
+  },
+  {
+   "source_id": "CIIF26-R1432",
+   "name_zh": "孚瑞肯电气（深圳）有限公司",
+   "booth_no": "6.1H-F152"
+  },
+  {
+   "source_id": "CIIF26-R1437",
+   "name_zh": "广州触沃电子有限公司",
+   "booth_no": "6.1H-F164"
+  },
+  {
+   "source_id": "CIIF26-R1442",
+   "name_zh": "苏州市优力能电气科技有限公司",
+   "booth_no": "6.1H-F173"
+  },
+  {
+   "source_id": "CIIF26-R1443",
+   "name_zh": "浙江星马微电子科技有限公司杭州东田科技有限公司深圳市双翌光电科技有限公司",
+   "booth_no": "6.1H-F176"
+  },
+  {
+   "source_id": "CIIF26-R1444",
+   "name_zh": "友川精密技术（东莞）有限公司",
+   "booth_no": "6.1H-F181"
+  },
+  {
+   "source_id": "CIIF26-R1445",
+   "name_zh": "帕尔特智能科技（苏州）有限公司",
+   "booth_no": "6.1H-F183"
+  },
+  {
+   "source_id": "CIIF26-R1446",
+   "name_zh": "深圳市艾而特工业自动化设备有限公司",
+   "booth_no": "6.1H-F185"
+  },
+  {
+   "source_id": "CIIF26-R1447",
+   "name_zh": "浙江威斯诺工业(集团)有限公司",
+   "booth_no": "6.1H-F188"
+  },
+  {
+   "source_id": "CIIF26-R1453",
+   "name_zh": "一方梯队（北京）科技有限公司",
+   "booth_no": "6.1H-F200"
+  },
+  {
+   "source_id": "CIIF26-R1454",
+   "name_zh": "倍斯托智能科技（深圳）有限公司",
+   "booth_no": "6.1H-F202"
+  },
+  {
+   "source_id": "CIIF26-R1456",
+   "name_zh": "菲码（江苏）智能科技有限公司",
+   "booth_no": "6.1H-F208"
+  },
+  {
+   "source_id": "CIIF26-R1462",
+   "name_zh": "东莞市七友光电有限公司",
+   "booth_no": "6.1H-F222"
+  },
+  {
+   "source_id": "CIIF26-R1464",
+   "name_zh": "深圳市帏达鑫科技有限公司",
+   "booth_no": "6.1H-F225"
+  },
+  {
+   "source_id": "CIIF26-R1466",
+   "name_zh": "弗莱博电气（浙江）有限公司",
+   "booth_no": "6.1H-F230"
+  },
+  {
+   "source_id": "CIIF26-R1470",
+   "name_zh": "巡御机器人",
+   "booth_no": "7.1H-A016"
+  },
+  {
+   "source_id": "CIIF26-R1475",
+   "name_zh": "广东拓斯达科技股份有限公司",
+   "booth_no": "7.1H-A218"
+  },
+  {
+   "source_id": "CIIF26-R1479",
+   "name_zh": "郑州领航机器人有限公司",
+   "booth_no": "7.1H-A242"
+  },
+  {
+   "source_id": "CIIF26-R1481",
+   "name_zh": "积步通讯（苏州）有限公司",
+   "booth_no": "7.1H-A301"
+  },
+  {
+   "source_id": "CIIF26-R1484",
+   "name_zh": "兴威联电气（苏州）有限公司",
+   "booth_no": "7.1H-A311"
+  },
+  {
+   "source_id": "CIIF26-R1486",
+   "name_zh": "上海中臣智联工业服务有限责任公司",
+   "booth_no": "7.1H-B001"
+  },
+  {
+   "source_id": "CIIF26-R1491",
+   "name_zh": "中科硅纪（南京）机器人有限公司",
+   "booth_no": "7.1H-B020"
+  },
+  {
+   "source_id": "CIIF26-R1495",
+   "name_zh": "上海机器人产业园（上海市宝山区顾村工业公司）",
+   "booth_no": "7.1H-B242"
+  },
+  {
+   "source_id": "CIIF26-R1499",
+   "name_zh": "萨贝丹图石家庄密封技术有限公司",
+   "booth_no": "7.1H-C002"
+  },
+  {
+   "source_id": "CIIF26-R1501",
+   "name_zh": "洛阳普瑞森精密轴承有限公司",
+   "booth_no": "7.1H-C006"
+  },
+  {
+   "source_id": "CIIF26-R1503",
+   "name_zh": "深圳思谋信息科技有限公司",
+   "booth_no": "7.1H-C010"
+  },
+  {
+   "source_id": "CIIF26-R1508",
+   "name_zh": "深圳市南科佳安机器人科技有限公司",
+   "booth_no": "7.1H-C068"
+  },
+  {
+   "source_id": "CIIF26-R1509",
+   "name_zh": "南昌酷德智能科技有限公司",
+   "booth_no": "7.1H-C070"
+  },
+  {
+   "source_id": "CIIF26-R1511",
+   "name_zh": "世匠电气技术（上海）有限公司",
+   "booth_no": "7.1H-C078"
+  },
+  {
+   "source_id": "CIIF26-R1516",
+   "name_zh": "上海众辰电子科技股份有限公司",
+   "booth_no": "7.1H-C198"
+  },
+  {
+   "source_id": "CIIF26-R1521",
+   "name_zh": "普发特（苏州）机床有限公司",
+   "booth_no": "7.1H-C212"
+  },
+  {
+   "source_id": "CIIF26-R1523",
+   "name_zh": "温州星普工业机器人有限公司",
+   "booth_no": "7.1H-C218"
+  },
+  {
+   "source_id": "CIIF26-R1524",
+   "name_zh": "上海派启科技有限公司",
+   "booth_no": "7.1H-C300"
+  },
+  {
+   "source_id": "CIIF26-R1525",
+   "name_zh": "东莞市卓越化学科技有限公司",
+   "booth_no": "7.1H-C301"
+  },
+  {
+   "source_id": "CIIF26-R1526",
+   "name_zh": "武汉万集光电技术有限公司",
+   "booth_no": "7.1H-C302"
+  },
+  {
+   "source_id": "CIIF26-R1527",
+   "name_zh": "卡尔德线缆（东莞）有限公司",
+   "booth_no": "7.1H-C304"
+  },
+  {
+   "source_id": "CIIF26-R1536",
+   "name_zh": "上海昕触信息科技有限公司",
+   "booth_no": "7.1H-C323"
+  },
+  {
+   "source_id": "CIIF26-R1539",
+   "name_zh": "深圳市湾测技术有限公司",
+   "booth_no": "7.1H-D010"
+  },
+  {
+   "source_id": "CIIF26-R1540",
+   "name_zh": "广东嘉腾机器人自动化有限公司",
+   "booth_no": "7.1H-D016"
+  },
+  {
+   "source_id": "CIIF26-R1543",
+   "name_zh": "汉瓦真空技术（无锡）有限公司",
+   "booth_no": "7.1H-D128"
+  },
+  {
+   "source_id": "CIIF26-R1546",
+   "name_zh": "北京因时机器人科技有限公司",
+   "booth_no": "7.1H-D137"
+  },
+  {
+   "source_id": "CIIF26-R1552",
+   "name_zh": "深圳市领鹏智能科技有限公司",
+   "booth_no": "7.1H-D201"
+  },
+  {
+   "source_id": "CIIF26-R1559",
+   "name_zh": "上海柴孚机器人有限公司",
+   "booth_no": "7.1H-E025"
+  },
+  {
+   "source_id": "CIIF26-R1561",
+   "name_zh": "钛虎机器人科技（上海）有限公司",
+   "booth_no": "7.1H-E161"
+  },
+  {
+   "source_id": "CIIF26-R1562",
+   "name_zh": "上海傲意信息科技有限公司上海慧可达智能科技有限公司上海钧慈机器人有限公司",
+   "booth_no": "7.1H-E165"
+  },
+  {
+   "source_id": "CIIF26-R1564",
+   "name_zh": "德斯禾海精密工业（江苏）有限公司",
+   "booth_no": "7.1H-E168"
+  },
+  {
+   "source_id": "CIIF26-R1567",
+   "name_zh": "珠海市海峰机器人系统有限公司",
+   "booth_no": "7.1H-E181"
+  },
+  {
+   "source_id": "CIIF26-R1571",
+   "name_zh": "无锡盈连科技有限公司",
+   "booth_no": "7.1H-E270"
+  },
+  {
+   "source_id": "CIIF26-R1573",
+   "name_zh": "无锡丹尼克尔自动化科技有限公司",
+   "booth_no": "7.1H-E278"
+  },
+  {
+   "source_id": "CIIF26-R1575",
+   "name_zh": "北京慧闻科技（集团）有限公司",
+   "booth_no": "7.1H-E282"
+  },
+  {
+   "source_id": "CIIF26-R1577",
+   "name_zh": "佛山市松智机器人科技有限公司",
+   "booth_no": "7.1H-F002"
+  },
+  {
+   "source_id": "CIIF26-R1579",
+   "name_zh": "浙江如川谐波传动科技有限公司",
+   "booth_no": "7.1H-F010"
+  },
+  {
+   "source_id": "CIIF26-R1583",
+   "name_zh": "深圳市杰美康机电有限公司",
+   "booth_no": "7.1H-F015"
+  },
+  {
+   "source_id": "CIIF26-R1584",
+   "name_zh": "深圳市朗宇芯科技有限公司",
+   "booth_no": "7.1H-F016"
+  },
+  {
+   "source_id": "CIIF26-R1586",
+   "name_zh": "深圳一格智能有限公司",
+   "booth_no": "7.1H-F023"
+  },
+  {
+   "source_id": "CIIF26-R1587",
+   "name_zh": "成都瑞迪智驱科技股份有限公司",
+   "booth_no": "7.1H-F127"
+  },
+  {
+   "source_id": "CIIF26-R1588",
+   "name_zh": "洛阳鸿元轴承科技有限公司",
+   "booth_no": "7.1H-F131"
+  },
+  {
+   "source_id": "CIIF26-R1591",
+   "name_zh": "苏州诺达佳自动化技术有限公司",
+   "booth_no": "7.1H-F138"
+  },
+  {
+   "source_id": "CIIF26-R1592",
+   "name_zh": "浙江格尔减速机有限公司",
+   "booth_no": "7.1H-F139"
+  },
+  {
+   "source_id": "CIIF26-R1593",
+   "name_zh": "深圳市华成工业控制股份有限公司",
+   "booth_no": "7.1H-F142"
+  },
+  {
+   "source_id": "CIIF26-R1594",
+   "name_zh": "常州合杰电机有限公司",
+   "booth_no": "7.1H-F172"
+  },
+  {
+   "source_id": "CIIF26-R1597",
+   "name_zh": "锐马（福建）电气制造有限公司",
+   "booth_no": "7.1H-F178"
+  },
+  {
+   "source_id": "CIIF26-R1598",
+   "name_zh": "深圳市奔强电路有限公司",
+   "booth_no": "7.1H-F180"
+  },
+  {
+   "source_id": "CIIF26-R1607",
+   "name_zh": "上海意优智控科技有限公司",
+   "booth_no": "7.1H-F212"
+  },
+  {
+   "source_id": "CIIF26-R1608",
+   "name_zh": "宇视嘉（广州）智能装备科技有限公司",
+   "booth_no": "7.1H-F213"
+  },
+  {
+   "source_id": "CIIF26-R1612",
+   "name_zh": "北京金钢科技有限公司",
+   "booth_no": "7.1H-F228"
+  },
+  {
+   "source_id": "CIIF26-R1613",
+   "name_zh": "创联三维科技（青岛）有限公司",
+   "booth_no": "7.1H-F230"
+  },
+  {
+   "source_id": "CIIF26-R1614",
+   "name_zh": "山东贝乐盛轴承有限公司",
+   "booth_no": "7.1H-F232"
+  },
+  {
+   "source_id": "CIIF26-R1616",
+   "name_zh": "安徽希磁科技股份有限公司",
+   "booth_no": "7.1H-F259"
+  },
+  {
+   "source_id": "CIIF26-R1617",
+   "name_zh": "上海玖璋机元传动科技有限公司",
+   "booth_no": "7.1H-F300"
+  },
+  {
+   "source_id": "CIIF26-R1618",
+   "name_zh": "河北德迈传动机械有限公司",
+   "booth_no": "7.1H-F302"
+  },
+  {
+   "source_id": "CIIF26-R1622",
+   "name_zh": "巴瓦龙传感器（上海）有限公司",
+   "booth_no": "7.1H-F312"
+  },
+  {
+   "source_id": "CIIF26-R1624",
+   "name_zh": "诸暨市大唐启东弹簧厂",
+   "booth_no": "7.1H-F314"
+  },
+  {
+   "source_id": "CIIF26-R1625",
+   "name_zh": "云卓科技（福建）有限公司",
+   "booth_no": "7.1H-F315"
+  },
+  {
+   "source_id": "CIIF26-R1627",
+   "name_zh": "深圳网聚云联科技有限公司",
+   "booth_no": "7.1H-F321"
+  },
+  {
+   "source_id": "CIIF26-R1629",
+   "name_zh": "广东智凝精控科技有限公司",
+   "booth_no": "7.1H-F325"
+  },
+  {
+   "source_id": "CIIF26-R1633",
+   "name_zh": "上海开普勒机器人有限公司",
+   "booth_no": "8.1H-A001"
+  },
+  {
+   "source_id": "CIIF26-R1634",
+   "name_zh": "上海具识智能科技有限公司",
+   "booth_no": "8.1H-A001"
+  },
+  {
+   "source_id": "CIIF26-R1635",
+   "name_zh": "上海它石智航技术有限公司",
+   "booth_no": "8.1H-A001"
+  },
+  {
+   "source_id": "CIIF26-R1639",
+   "name_zh": "深圳市灵巧驱控技术有限公司",
+   "booth_no": "8.1H-A001"
+  },
+  {
+   "source_id": "CIIF26-R1647",
+   "name_zh": "创造力（常州）机器人有限公司",
+   "booth_no": "8.1H-A126"
+  },
+  {
+   "source_id": "CIIF26-R1648",
+   "name_zh": "北京深诣机器人技术有限公司",
+   "booth_no": "8.1H-A128"
+  },
+  {
+   "source_id": "CIIF26-R1649",
+   "name_zh": "中科第五纪（杭州）智能技术有限公司",
+   "booth_no": "8.1H-A130"
+  },
+  {
+   "source_id": "CIIF26-R1650",
+   "name_zh": "苏州晶动之星智能科技有限公司",
+   "booth_no": "8.1H-A136"
+  },
+  {
+   "source_id": "CIIF26-R1658",
+   "name_zh": "现代机器人（江苏）有限公司",
+   "booth_no": "8.1H-A226"
+  },
+  {
+   "source_id": "CIIF26-R1662",
+   "name_zh": "苏州希瑞格机器人科技有限公司",
+   "booth_no": "8.1H-A305"
+  },
+  {
+   "source_id": "CIIF26-R1665",
+   "name_zh": "浙江来福谐波传动股份有限公司",
+   "booth_no": "8.1H-B010"
+  },
+  {
+   "source_id": "CIIF26-R1668",
+   "name_zh": "南京南传智能技术有限公司",
+   "booth_no": "8.1H-B098"
+  },
+  {
+   "source_id": "CIIF26-R1674",
+   "name_zh": "嘉兴赛捷弹簧制造有限公司",
+   "booth_no": "8.1H-C005"
+  },
+  {
+   "source_id": "CIIF26-R1675",
+   "name_zh": "武汉诺博特机电有限公司",
+   "booth_no": "8.1H-C007"
+  },
+  {
+   "source_id": "CIIF26-R1677",
+   "name_zh": "深圳市华威智能技术有限责任公司",
+   "booth_no": "8.1H-C018"
+  },
+  {
+   "source_id": "CIIF26-R1694",
+   "name_zh": "纽氏达特行星传动系统技术（淄博）股份有限公司锡德斯普拖链技术有限公司利莱诺（安徽）传动科技有限责任公司",
+   "booth_no": "8.1H-C196"
+  },
+  {
+   "source_id": "CIIF26-R1703",
+   "name_zh": "上海新养贞轴承有限公司",
+   "booth_no": "8.1H-C304"
+  },
+  {
+   "source_id": "CIIF26-R1706",
+   "name_zh": "苏州敏硕新材料有限公司",
+   "booth_no": "8.1H-C310"
+  },
+  {
+   "source_id": "CIIF26-R1709",
+   "name_zh": "诺万特科技（苏州）有限公司",
+   "booth_no": "8.1H-D006"
+  },
+  {
+   "source_id": "CIIF26-R1715",
+   "name_zh": "南京工诺科技有限公司",
+   "booth_no": "8.1H-D102"
+  },
+  {
+   "source_id": "CIIF26-R1719",
+   "name_zh": "北京摩云阁精密齿条股份有限公司",
+   "booth_no": "8.1H-D127"
+  },
+  {
+   "source_id": "CIIF26-R1721",
+   "name_zh": "苏州钧舵机器人有限公司",
+   "booth_no": "8.1H-D146"
+  },
+  {
+   "source_id": "CIIF26-R1723",
+   "name_zh": "纽鼐机器人（杭州）有限公司",
+   "booth_no": "8.1H-E016"
+  },
+  {
+   "source_id": "CIIF26-R1735",
+   "name_zh": "上海征和机器人有限公司",
+   "booth_no": "8.1H-E258"
+  },
+  {
+   "source_id": "CIIF26-R1737",
+   "name_zh": "南宁宇立仪器有限公司",
+   "booth_no": "8.1H-E260"
+  },
+  {
+   "source_id": "CIIF26-R1742",
+   "name_zh": "北京智同精密传动科技股份有限公司",
+   "booth_no": "8.1H-E272"
+  },
+  {
+   "source_id": "CIIF26-R1744",
+   "name_zh": "上海新日升传动科技股份有限公司",
+   "booth_no": "8.1H-E285"
+  },
+  {
+   "source_id": "CIIF26-R1748",
+   "name_zh": "江苏润泰机器人有限公司",
+   "booth_no": "8.1H-F010"
+  },
+  {
+   "source_id": "CIIF26-R1754",
+   "name_zh": "南通振康机械有限公司柏卡（东莞）真空科技有限公司台州市豪力实业有限公司",
+   "booth_no": "8.1H-F135"
+  },
+  {
+   "source_id": "CIIF26-R1759",
+   "name_zh": "长坂（扬州）机器人科技有限公司",
+   "booth_no": "8.1H-F199"
+  },
+  {
+   "source_id": "CIIF26-R1760",
+   "name_zh": "北京联工密封科技有限公司广东森揽智能科技有限公司浙江吉欣电缆有限公司",
+   "booth_no": "8.1H-F200"
+  },
+  {
+   "source_id": "CIIF26-R1765",
+   "name_zh": "辰铭动力科技（深圳）有限公司",
+   "booth_no": "8.1H-F252"
+  },
+  {
+   "source_id": "CIIF26-R1767",
+   "name_zh": "无锡三立机器人技术有限公司",
+   "booth_no": "8.1H-F257"
+  },
+  {
+   "source_id": "CIIF26-R1768",
+   "name_zh": "极东电子精密股份有限公司",
+   "booth_no": "8.1H-F302"
+  },
+  {
+   "source_id": "CIIF26-R1769",
+   "name_zh": "上海卓珲机器人有限公司",
+   "booth_no": "8.1H-F303"
+  },
+  {
+   "source_id": "CIIF26-R1775",
+   "name_zh": "浙江力升弹簧股份有限公司",
+   "booth_no": "8.1H-F310"
+  },
+  {
+   "source_id": "CIIF26-R1777",
+   "name_zh": "江苏凤鸣电缆有限公司",
+   "booth_no": "8.1H-F315"
+  },
+  {
+   "source_id": "CIIF26-R1778",
+   "name_zh": "鼎智韦尔智能控制系统（深圳）有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1779",
+   "name_zh": "深圳市吉恒达科技有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1781",
+   "name_zh": "深圳市克洛诺斯科技有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1784",
+   "name_zh": "江西成稳科技股份有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1790",
+   "name_zh": "东莞市亚当电子科技有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1793",
+   "name_zh": "江苏展帆电机科技有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1794",
+   "name_zh": "深圳伟堪智能设备有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1795",
+   "name_zh": "嘉兴松州工业科技有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1797",
+   "name_zh": "江苏睿芯源科技有限公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1798",
+   "name_zh": "湖南六岳微电子有限责任公司",
+   "booth_no": "8.1H-F128"
+  },
+  {
+   "source_id": "CIIF26-R1805",
+   "name_zh": "中国机器人网",
+   "booth_no": "8.1H-F231"
+  },
+  {
+   "source_id": "CIIF26-R1806",
+   "name_zh": "高工机器人",
+   "booth_no": "7.1H-C008"
+  },
+  {
+   "source_id": "CIIF26-R1808",
+   "name_zh": "遨杰贸易（上海）有限公司",
+   "booth_no": "1.1H-A010"
+  },
+  {
+   "source_id": "CIIF26-R1810",
+   "name_zh": "天长市东弘电子有限公司",
+   "booth_no": "1.1H-A013"
+  },
+  {
+   "source_id": "CIIF26-R1811",
+   "name_zh": "海德韦尔（扬州）能源科技有限公司",
+   "booth_no": "1.1H-A015"
+  },
+  {
+   "source_id": "CIIF26-R1813",
+   "name_zh": "浙江凯朗锁业有限公司",
+   "booth_no": "1.1H-A018"
+  },
+  {
+   "source_id": "CIIF26-R1814",
+   "name_zh": "乐清豪门电器有限公司",
+   "booth_no": "1.1H-A019"
+  },
+  {
+   "source_id": "CIIF26-R1815",
+   "name_zh": "温州摩根电气有限公司",
+   "booth_no": "1.1H-A023"
+  },
+  {
+   "source_id": "CIIF26-R1816",
+   "name_zh": "上海博伟塑胶机电有限公司",
+   "booth_no": "1.1H-A030"
+  },
+  {
+   "source_id": "CIIF26-R1817",
+   "name_zh": "浙江至控科技有限公司",
+   "booth_no": "1.1H-A033"
+  },
+  {
+   "source_id": "CIIF26-R1827",
+   "name_zh": "江苏南方精工股份有限公司",
+   "booth_no": "1.1H-A095"
+  },
+  {
+   "source_id": "CIIF26-R1828",
+   "name_zh": "徐州弗朗德工业技术有限公司",
+   "booth_no": "1.1H-A096"
+  },
+  {
+   "source_id": "CIIF26-R1830",
+   "name_zh": "爱姆卡（天津）工业五金有限公司",
+   "booth_no": "1.1H-A098"
+  },
+  {
+   "source_id": "CIIF26-R1832",
+   "name_zh": "友容新源电气（昆山）有限公司",
+   "booth_no": "1.1H-A103"
+  },
+  {
+   "source_id": "CIIF26-R1835",
+   "name_zh": "广州虚拟动力网络技术有限公司",
+   "booth_no": "1.1H-A132"
+  },
+  {
+   "source_id": "CIIF26-R1837",
+   "name_zh": "紫兴玉光管路系统有限公司",
+   "booth_no": "1.1H-A138"
+  },
+  {
+   "source_id": "CIIF26-R1838",
+   "name_zh": "合肥华耀电子工业有限公司",
+   "booth_no": "1.1H-A150"
+  },
+  {
+   "source_id": "CIIF26-R1842",
+   "name_zh": "浙江东晓科技有限公司",
+   "booth_no": "1.1H-A175"
+  },
+  {
+   "source_id": "CIIF26-R1843",
+   "name_zh": "一立方智能（北京）科技有限公司",
+   "booth_no": "1.1H-A178"
+  },
+  {
+   "source_id": "CIIF26-R1845",
+   "name_zh": "浙江省电气行业协会",
+   "booth_no": "1.1H-A210"
+  },
+  {
+   "source_id": "CIIF26-R1846",
+   "name_zh": "东莞市新瑞自动化科技有限公司",
+   "booth_no": "1.1H-A220"
+  },
+  {
+   "source_id": "CIIF26-R1850",
+   "name_zh": "科译勒（上海）智能仪表有限公司",
+   "booth_no": "1.1H-A302"
+  },
+  {
+   "source_id": "CIIF26-R1853",
+   "name_zh": "浙江仁信锁业有限公司",
+   "booth_no": "1.1H-A307"
+  },
+  {
+   "source_id": "CIIF26-R1859",
+   "name_zh": "上海景林包装机械有限公司",
+   "booth_no": "1.1H-B011"
+  },
+  {
+   "source_id": "CIIF26-R1866",
+   "name_zh": "乐清市益兴柜锁有限公司",
+   "booth_no": "1.1H-B025"
+  },
+  {
+   "source_id": "CIIF26-R1867",
+   "name_zh": "广州市华南自控技术有限公司",
+   "booth_no": "1.1H-B026"
+  },
+  {
+   "source_id": "CIIF26-R1873",
+   "name_zh": "江苏省辰顺精密科技有限公司",
+   "booth_no": "1.1H-B047"
+  },
+  {
+   "source_id": "CIIF26-R1875",
+   "name_zh": "苏州威佳能源科技有限公司",
+   "booth_no": "1.1H-B050"
+  },
+  {
+   "source_id": "CIIF26-R1876",
+   "name_zh": "北京灵足时代科技有限公司",
+   "booth_no": "1.1H-B052"
+  },
+  {
+   "source_id": "CIIF26-R1877",
+   "name_zh": "济南宇正电子科技有限公司",
+   "booth_no": "1.1H-B055"
+  },
+  {
+   "source_id": "CIIF26-R1879",
+   "name_zh": "杭州豪企电气有限公司",
+   "booth_no": "1.1H-B057"
+  },
+  {
+   "source_id": "CIIF26-R1880",
+   "name_zh": "深圳市华夏光大电子科技有限公司",
+   "booth_no": "1.1H-B058"
+  },
+  {
+   "source_id": "CIIF26-R1881",
+   "name_zh": "图达通智能科技（苏州）有限公司",
+   "booth_no": "1.1H-B060"
+  },
+  {
+   "source_id": "CIIF26-R1882",
+   "name_zh": "武汉理岩控制技术有限公司",
+   "booth_no": "1.1H-B061"
+  },
+  {
+   "source_id": "CIIF26-R1884",
+   "name_zh": "佳普（苏州）电子贸易有限公司",
+   "booth_no": "1.1H-B063"
+  },
+  {
+   "source_id": "CIIF26-R1891",
+   "name_zh": "诺瓦聚变能源科技（上海）有限公司",
+   "booth_no": "1.1H-B130"
+  },
+  {
+   "source_id": "CIIF26-R1900",
+   "name_zh": "中国航发控制系统研究所",
+   "booth_no": "1.1H-B150"
+  },
+  {
+   "source_id": "CIIF26-R1902",
+   "name_zh": "华清未央（北京）科技有限公司",
+   "booth_no": "1.1H-B153"
+  },
+  {
+   "source_id": "CIIF26-R1909",
+   "name_zh": "东昇聚变（上海）技术有限公司",
+   "booth_no": "1.1H-B203"
+  },
+  {
+   "source_id": "CIIF26-R1910",
+   "name_zh": "上海交大-上海光机所DCI激光聚变联合研究团队",
+   "booth_no": "1.1H-B205"
+  },
+  {
+   "source_id": "CIIF26-R1911",
+   "name_zh": "能量奇点能源科技（上海）有限公司",
+   "booth_no": "1.1H-B206"
+  },
+  {
+   "source_id": "CIIF26-R1912",
+   "name_zh": "中国聚变能源有限公司",
+   "booth_no": "1.1H-B207"
+  },
+  {
+   "source_id": "CIIF26-R1914",
+   "name_zh": "中广核数字科技有限公司",
+   "booth_no": "1.1H-B220"
+  },
+  {
+   "source_id": "CIIF26-R1915",
+   "name_zh": "中广核清洁能源科技（上海）有限公司",
+   "booth_no": "1.1H-B220"
+  },
+  {
+   "source_id": "CIIF26-R1918",
+   "name_zh": "上海洛丁森工业自动化设备有限公司",
+   "booth_no": "1.1H-B233"
+  },
+  {
+   "source_id": "CIIF26-R1922",
+   "name_zh": "国电投智能科技（上海）有限公司",
+   "booth_no": "1.1H-B250"
+  },
+  {
+   "source_id": "CIIF26-R1923",
+   "name_zh": "国核自仪系统工程有限公司",
+   "booth_no": "1.1H-B251"
+  },
+  {
+   "source_id": "CIIF26-R1925",
+   "name_zh": "核电运行研究（上海）有限公司",
+   "booth_no": "1.1H-B270"
+  },
+  {
+   "source_id": "CIIF26-R1932",
+   "name_zh": "上海理光数码设备有限公司",
+   "booth_no": "1.1H-C031"
+  },
+  {
+   "source_id": "CIIF26-R1936",
+   "name_zh": "中国电源学会/世纪电源网",
+   "booth_no": "1.1H-C059"
+  },
+  {
+   "source_id": "CIIF26-R1938",
+   "name_zh": "讯能通科技（上海）有限公司",
+   "booth_no": "1.1H-C071"
+  },
+  {
+   "source_id": "CIIF26-R1941",
+   "name_zh": "顺邦传媒《中国工业自动化大全》编委会",
+   "booth_no": "1.1H-C091"
+  },
+  {
+   "source_id": "CIIF26-R1946",
+   "name_zh": "苏州市投资促进中心",
+   "booth_no": "1.1H-C130"
+  },
+  {
+   "source_id": "CIIF26-R1950",
+   "name_zh": "卡尔倍可润滑剂上海有限公司",
+   "booth_no": "1.1H-C160"
+  },
+  {
+   "source_id": "CIIF26-R1951",
+   "name_zh": "中国移动通信集团上海有限公司",
+   "booth_no": "6.2H-A001"
+  },
+  {
+   "source_id": "CIIF26-R1954",
+   "name_zh": "上海魔治技术服务有限公司",
+   "booth_no": "6.2H-A009"
+  },
+  {
+   "source_id": "CIIF26-R1957",
+   "name_zh": "上海荻立智能科技有限公司",
+   "booth_no": "6.2H-A012"
+  },
+  {
+   "source_id": "CIIF26-R1961",
+   "name_zh": "东莞市霈荣电子科技有限公司",
+   "booth_no": "6.2H-A019"
+  },
+  {
+   "source_id": "CIIF26-R1962",
+   "name_zh": "安威联软件科技（上海）有限公司",
+   "booth_no": "6.2H-A020"
+  },
+  {
+   "source_id": "CIIF26-R1966",
+   "name_zh": "上海极映科技有限公司",
+   "booth_no": "6.2H-A057"
+  },
+  {
+   "source_id": "CIIF26-R1968",
+   "name_zh": "西安抟微科技有限公司",
+   "booth_no": "6.2H-A059"
+  },
+  {
+   "source_id": "CIIF26-R1970",
+   "name_zh": "上海荭杏信息科技有限公司",
+   "booth_no": "6.2H-A063"
+  },
+  {
+   "source_id": "CIIF26-R1973",
+   "name_zh": "黄山罗米测控技术有限公司",
+   "booth_no": "6.2H-A071"
+  },
+  {
+   "source_id": "CIIF26-R1974",
+   "name_zh": "珠海软件行业协会",
+   "booth_no": "6.2H-A073"
+  },
+  {
+   "source_id": "CIIF26-R1976",
+   "name_zh": "东莞提迪凯沿感智能科技有限公司",
+   "booth_no": "6.2H-A115"
+  },
+  {
+   "source_id": "CIIF26-R1983",
+   "name_zh": "上海黑湖科技有限公司上海电气上海汽轮机厂CONTACTSOFTWARE蓝沃（上海）智能数字科技有限公司依柯力信息科技(上海)股份有限公司锐捷网络股份有限公司上海易立德信息技术股份有限公司深圳鲁班系统科技有限公司上海数映科技有限公司上海展湾信息科技有限公司上海青翼工业软件有限公司",
+   "booth_no": "6.2H-A211"
+  },
+  {
+   "source_id": "CIIF26-R1986",
+   "name_zh": "数科想象科技（上海）有限公司",
+   "booth_no": "6.2H-A255"
+  },
+  {
+   "source_id": "CIIF26-R1987",
+   "name_zh": "上海罗泰信息技术有限公司",
+   "booth_no": "6.2H-A256"
+  },
+  {
+   "source_id": "CIIF26-R1988",
+   "name_zh": "上海金珵科技有限公司",
+   "booth_no": "6.2H-A257"
+  },
+  {
+   "source_id": "CIIF26-R1995",
+   "name_zh": "上海商汤智能科技有限公司",
+   "booth_no": "6.2H-A266"
+  },
+  {
+   "source_id": "CIIF26-R1998",
+   "name_zh": "深圳市方睿商业数据咨询有限公司",
+   "booth_no": "6.2H-B009"
+  },
+  {
+   "source_id": "CIIF26-R1999",
+   "name_zh": "广州小嘉科技有限公司",
+   "booth_no": "6.2H-B016"
+  },
+  {
+   "source_id": "CIIF26-R2000",
+   "name_zh": "苏州鸿芯合韵信息技术有限公司",
+   "booth_no": "6.2H-B017"
+  },
+  {
+   "source_id": "CIIF26-R2002",
+   "name_zh": "云汉芯城（上海）互联网科技股份有限公司",
+   "booth_no": "6.2H-B051"
+  },
+  {
+   "source_id": "CIIF26-R2004",
+   "name_zh": "卓豪（中国）技术有限公司",
+   "booth_no": "6.2H-B063"
+  },
+  {
+   "source_id": "CIIF26-R2007",
+   "name_zh": "上海皓元生物医药科技有限公司",
+   "booth_no": "6.2H-B068"
+  },
+  {
+   "source_id": "CIIF26-R2011",
+   "name_zh": "三联泵业股份有限公司",
+   "booth_no": "6.2H-B073"
+  },
+  {
+   "source_id": "CIIF26-R2012",
+   "name_zh": "星融元数据技术（苏州）有限公司",
+   "booth_no": "6.2H-B082"
+  },
+  {
+   "source_id": "CIIF26-R2013",
+   "name_zh": "北京鑫云科技有限公司",
+   "booth_no": "6.2H-B086"
+  },
+  {
+   "source_id": "CIIF26-R2014",
+   "name_zh": "西域智慧供应链（上海）股份公司",
+   "booth_no": "6.2H-B088"
+  },
+  {
+   "source_id": "CIIF26-R2016",
+   "name_zh": "上海久页信息科技有限公司太空算力专区上海市算力网络协会上海星枢天算航天科技有限公司上海天数智芯半导体股份有限公司上海巡天千河空间技术有限公司",
+   "booth_no": "6.2H-B098"
+  },
+  {
+   "source_id": "CIIF26-R2017",
+   "name_zh": "苏试宜特（上海）检测技术股份有限公司上海太驿微行航天科技有限公司中国电信股份有限公司上海分公司上海商汤科技开发有限公司安徽中科密位科技有限公司百代（上海）数据技术有限公司",
+   "booth_no": "6.2H-B126"
+  },
+  {
+   "source_id": "CIIF26-R2019",
+   "name_zh": "中国人民财产保险股份有限公司上海市分公司",
+   "booth_no": "6.2H-B139"
+  },
+  {
+   "source_id": "CIIF26-R2024",
+   "name_zh": "淘宝天猫工业品上海市张江科学城建设管理办公室上海远铸智能技术有限公司博通集成电路（上海）股份有限公司",
+   "booth_no": "6.2H-B211"
+  },
+  {
+   "source_id": "CIIF26-R2025",
+   "name_zh": "上海晟联科半导体有限公司依柯力信息科技(上海)股份有限公司上海福思优技术服务有限公司",
+   "booth_no": "6.2H-B216"
+  },
+  {
+   "source_id": "CIIF26-R2026",
+   "name_zh": "艾利特智能机器人股份有限公司上海七牛信息技术有限公司上海霖知源智能科技有限公司上海沐寰星算科技有限公司上海桥创科技有限公司智识神工（上海）信息技术股份有限公司",
+   "booth_no": "6.2H-B216"
+  },
+  {
+   "source_id": "CIIF26-R2027",
+   "name_zh": "上海海智智造科技有限公司",
+   "booth_no": "6.2H-B218"
+  },
+  {
+   "source_id": "CIIF26-R2034",
+   "name_zh": "上海保隆汽车科技股份有限公司",
+   "booth_no": "8.2H-A086"
+  },
+  {
+   "source_id": "CIIF26-R2035",
+   "name_zh": "保隆霍富（上海）电子有限公司",
+   "booth_no": "8.2H-A086"
+  },
+  {
+   "source_id": "CIIF26-R2036",
+   "name_zh": "上海文襄汽车传感器有限公司",
+   "booth_no": "8.2H-A086"
+  },
+  {
+   "source_id": "CIIF26-R2039",
+   "name_zh": "智博汽车科技（上海）有限公司",
+   "booth_no": "8.2H-A086"
+  },
+  {
+   "source_id": "CIIF26-R2040",
+   "name_zh": "中科创达软件股份有限公司",
+   "booth_no": "8.2H-A086"
+  },
+  {
+   "source_id": "CIIF26-R2042",
+   "name_zh": "上海齐感电子信息科技有限公司",
+   "booth_no": "8.2H-A086"
+  },
+  {
+   "source_id": "CIIF26-R2047",
+   "name_zh": "上海赛西科技发展有限责任公司",
+   "booth_no": "8.2H-A086"
+  },
+  {
+   "source_id": "CIIF26-R2048",
+   "name_zh": "上海安智芯车规集成电路有限公司",
+   "booth_no": "8.2H-A086"
+  },
+  {
+   "source_id": "CIIF26-R2049",
+   "name_zh": "智能汽车创新发展平台（上海）有限公司",
+   "booth_no": "8.2H-A089"
+  },
+  {
+   "source_id": "CIIF26-R2052",
+   "name_zh": "特斯拉",
+   "booth_no": "8.2H-A185"
+  },
+  {
+   "source_id": "CIIF26-R2053",
+   "name_zh": "上海谐振子智能科技有限公司",
+   "booth_no": "8.2H-A236"
+  },
+  {
+   "source_id": "CIIF26-R2054",
+   "name_zh": "轾驱新能源（柳州）有限公司",
+   "booth_no": "8.2H-A238"
+  },
+  {
+   "source_id": "CIIF26-R2056",
+   "name_zh": "小米通讯技术有限公司",
+   "booth_no": "8.2H-A251"
+  },
+  {
+   "source_id": "CIIF26-R2058",
+   "name_zh": "清陶动力科技（上海）有限公司",
+   "booth_no": "8.2H-A255"
+  },
+  {
+   "source_id": "CIIF26-R2065",
+   "name_zh": "金恒丰科技集团有限公司",
+   "booth_no": "6.2H-D016"
+  },
+  {
+   "source_id": "CIIF26-R2066",
+   "name_zh": "深圳金谷田科技有限公司上海重塑能源集团股份有限公司上海氢晨新能源科技有限公司上海电气集团股份有限公司上海捷氢科技股份有限公司上海氢洋科技有限公司国鸿氢能科技（嘉兴）股份有限公司",
+   "booth_no": "6.2H-D022"
+  },
+  {
+   "source_id": "CIIF26-R2067",
+   "name_zh": "安徽简色数码科技有限公司上海碳索能源服务股份有限公司大金空调（上海）有限公司上海质量管理科学研究院有限公司",
+   "booth_no": "6.2H-D157"
+  },
+  {
+   "source_id": "CIIF26-R2074",
+   "name_zh": "上海新浩佳新节能科技有限公司绿洲全球可持续科技创新平台上海百奥恒新材料有限公司中国科学院上海应用物理研究所上海碳益智能科技有限公司楼智云（上海）信息科技有限公司",
+   "booth_no": "6.2H-D239"
+  },
+  {
+   "source_id": "CIIF26-R2075",
+   "name_zh": "苏州首正新能源科技有限公司",
+   "booth_no": "7.2H-A011"
+  },
+  {
+   "source_id": "CIIF26-R2077",
+   "name_zh": "鹤壁市伟诚电气有限公司",
+   "booth_no": "7.2H-A028"
+  },
+  {
+   "source_id": "CIIF26-R2078",
+   "name_zh": "东莞市康柏工业陶瓷有限公司",
+   "booth_no": "7.2H-A029"
+  },
+  {
+   "source_id": "CIIF26-R2079",
+   "name_zh": "天津六0九电缆有限公司",
+   "booth_no": "7.2H-A035"
+  },
+  {
+   "source_id": "CIIF26-R2080",
+   "name_zh": "河北征迪新材料科技有限公司",
+   "booth_no": "7.2H-A039"
+  },
+  {
+   "source_id": "CIIF26-R2081",
+   "name_zh": "诚科创景（北京）智能科技有限公司",
+   "booth_no": "7.2H-A040"
+  },
+  {
+   "source_id": "CIIF26-R2083",
+   "name_zh": "上海正欧实业有限公司",
+   "booth_no": "7.2H-A044"
+  },
+  {
+   "source_id": "CIIF26-R2084",
+   "name_zh": "青岛金涛石墨新材料有限公司",
+   "booth_no": "7.2H-A045"
+  },
+  {
+   "source_id": "CIIF26-R2087",
+   "name_zh": "山东泰银新材料科技有限公司",
+   "booth_no": "7.2H-A060"
+  },
+  {
+   "source_id": "CIIF26-R2094",
+   "name_zh": "辽宁展团",
+   "booth_no": "7.2H-A099"
+  },
+  {
+   "source_id": "CIIF26-R2095",
+   "name_zh": "佛山中瑞新材料科技有限公司",
+   "booth_no": "7.2H-A115"
+  },
+  {
+   "source_id": "CIIF26-R2096",
+   "name_zh": "金百灵塑胶科技（上海）有限公司",
+   "booth_no": "7.2H-A116"
+  },
+  {
+   "source_id": "CIIF26-R2103",
+   "name_zh": "江苏九天高科股份有限公司",
+   "booth_no": "7.2H-A170"
+  },
+  {
+   "source_id": "CIIF26-R2107",
+   "name_zh": "奉贤通用新材料（杭州湾）",
+   "booth_no": "7.2H-A233"
+  },
+  {
+   "source_id": "CIIF26-R2108",
+   "name_zh": "上海海亮铜业有限公司",
+   "booth_no": "7.2H-A233"
+  },
+  {
+   "source_id": "CIIF26-R2110",
+   "name_zh": "上海英科实业有限公司",
+   "booth_no": "7.2H-A233"
+  },
+  {
+   "source_id": "CIIF26-R2114",
+   "name_zh": "西格里特种石墨（上海）有限公司",
+   "booth_no": "7.2H-A233"
+  },
+  {
+   "source_id": "CIIF26-R2116",
+   "name_zh": "确信乐思化学（上海）有限公司",
+   "booth_no": "7.2H-A233"
+  },
+  {
+   "source_id": "CIIF26-R2121",
+   "name_zh": "宁夏东方钽业股份有限公司",
+   "booth_no": "7.2H-A266"
+  },
+  {
+   "source_id": "CIIF26-R2123",
+   "name_zh": "中国石化上海石油化工股份有限公司",
+   "booth_no": "7.2H-A300"
+  },
+  {
+   "source_id": "CIIF26-R2125",
+   "name_zh": "上海御风未来航空科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2131",
+   "name_zh": "上海翔威新能源科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2132",
+   "name_zh": "上海凤凰自行车有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2133",
+   "name_zh": "信唐安新能源科技(上海)有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2136",
+   "name_zh": "西克玛（上海）复合材料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2137",
+   "name_zh": "上海天承化学有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2138",
+   "name_zh": "上海甘田光学材料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2139",
+   "name_zh": "上海泛博凯纶新材料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2140",
+   "name_zh": "上海普利特化工新材料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2141",
+   "name_zh": "凯鑫森（上海）功能性薄膜产业股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2142",
+   "name_zh": "上海乘鹰新材料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2143",
+   "name_zh": "上海汇得科技股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2144",
+   "name_zh": "上海德威涂料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2145",
+   "name_zh": "上海金山锦湖日丽塑料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2146",
+   "name_zh": "上海璞钠能源科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2147",
+   "name_zh": "上海会通聚合材料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2148",
+   "name_zh": "电智化合（上海）科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2149",
+   "name_zh": "上海奔佑新材料科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2150",
+   "name_zh": "库贝化学（上海）有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2151",
+   "name_zh": "上海玟昕科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2152",
+   "name_zh": "有行鲨鱼（上海）科技股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2153",
+   "name_zh": "上海沣霏润滑技术有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2154",
+   "name_zh": "江西太平洋电缆集团有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2155",
+   "name_zh": "奥来德(上海)光电材料科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2156",
+   "name_zh": "特百佳动力科技股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2157",
+   "name_zh": "飞卓科技（上海）股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2159",
+   "name_zh": "上海沃凯生物技术有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2160",
+   "name_zh": "凯之路（上海）复合材料科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2162",
+   "name_zh": "上海和辉光电股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2163",
+   "name_zh": "泰铂（上海）环保科技股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2164",
+   "name_zh": "上海瑞兆特新能源科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2165",
+   "name_zh": "上海贺东电子材料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2167",
+   "name_zh": "菲尔德克功能材料（上海）有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2168",
+   "name_zh": "上海语荻光电有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2169",
+   "name_zh": "上海顶皓新材料科技有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2170",
+   "name_zh": "上海华峰超纤科技股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2171",
+   "name_zh": "米开罗那（上海）工业智能科技股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2172",
+   "name_zh": "上海精珅新材料有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2173",
+   "name_zh": "朴烯晶新能源材料（上海）有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2174",
+   "name_zh": "上海华峰铝业股份有限公司",
+   "booth_no": "7.2H-A320"
+  },
+  {
+   "source_id": "CIIF26-R2175",
+   "name_zh": "江苏桓知鑫新材料科技有限公司",
+   "booth_no": "7.2H-B001"
+  },
+  {
+   "source_id": "CIIF26-R2176",
+   "name_zh": "江苏中德复合材料科技有限公司",
+   "booth_no": "7.2H-B001"
+  },
+  {
+   "source_id": "CIIF26-R2178",
+   "name_zh": "新化县五阳电子陶瓷有限公司",
+   "booth_no": "7.2H-B006"
+  },
+  {
+   "source_id": "CIIF26-R2179",
+   "name_zh": "浙江华惠阀门有限公司",
+   "booth_no": "7.2H-B020"
+  },
+  {
+   "source_id": "CIIF26-R2180",
+   "name_zh": "浙江华氟隆新材有限公司",
+   "booth_no": "7.2H-B025"
+  },
+  {
+   "source_id": "CIIF26-R2181",
+   "name_zh": "词元造物（上海）人工智能科技有限公司",
+   "booth_no": "7.2H-B028"
+  },
+  {
+   "source_id": "CIIF26-R2182",
+   "name_zh": "宝武碳业科技股份有限公司",
+   "booth_no": "7.2H-B030"
+  },
+  {
+   "source_id": "CIIF26-R2183",
+   "name_zh": "常州万凯塑胶有限公司",
+   "booth_no": "7.2H-B39"
+  },
+  {
+   "source_id": "CIIF26-R2184",
+   "name_zh": "宁谷科技（北京）有限公司",
+   "booth_no": "7.2H-B045"
+  },
+  {
+   "source_id": "CIIF26-R2185",
+   "name_zh": "浙江千瑞新材料科技有限公司",
+   "booth_no": "7.2H-B056"
+  },
+  {
+   "source_id": "CIIF26-R2186",
+   "name_zh": "东莞市蓝姆材料科技有限公司辽宁博联过滤有限公司浙江荣圣新材料科技有限公司包头市镧图新材料有限公司",
+   "booth_no": "7.2H-B057"
+  },
+  {
+   "source_id": "CIIF26-R2187",
+   "name_zh": "华研复材(江门)科技有限公司",
+   "booth_no": "7.2H-B069"
+  },
+  {
+   "source_id": "CIIF26-R2188",
+   "name_zh": "广东星聚材料科技有限公司",
+   "booth_no": "7.2H-B085"
+  },
+  {
+   "source_id": "CIIF26-R2189",
+   "name_zh": "合肥卡星数控设备有限公司",
+   "booth_no": "7.2H-B111"
+  },
+  {
+   "source_id": "CIIF26-R2190",
+   "name_zh": "上海以傲国际贸易有限公司",
+   "booth_no": "7.2H-B128"
+  },
+  {
+   "source_id": "CIIF26-R2191",
+   "name_zh": "上海宝山工业园区管理委员会",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2192",
+   "name_zh": "上海屹锂新能源科技有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2193",
+   "name_zh": "上海兆钠新能源科技有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2194",
+   "name_zh": "上海玻声电子科技有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2195",
+   "name_zh": "上海市翔丰华科技股份有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2196",
+   "name_zh": "国顺空天光电科技（上海）有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2197",
+   "name_zh": "上海中欣晶圆半导体科技有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2198",
+   "name_zh": "江苏富乐华半导体科技股份有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2199",
+   "name_zh": "浙江富乐德传感技术有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2200",
+   "name_zh": "上海汉虹精密机械有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2201",
+   "name_zh": "开利空调冷冻系统（上海）有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2202",
+   "name_zh": "上海纤端新材料科技有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2203",
+   "name_zh": "上海国创碳铖纳米科技发展有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2204",
+   "name_zh": "上海海鹰粘接科技有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2205",
+   "name_zh": "上海奥膳贸易有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2206",
+   "name_zh": "欧力(上海)饮料有限公司",
+   "booth_no": "7.2H-B200"
+  },
+  {
+   "source_id": "CIIF26-R2207",
+   "name_zh": "新东先进陶瓷欧洲有限责任公司",
+   "booth_no": "7.2H-B240"
+  },
+  {
+   "source_id": "CIIF26-R2208",
+   "name_zh": "上海洗霸科技股份有限公司",
+   "booth_no": "7.2H-B240"
+  },
+  {
+   "source_id": "CIIF26-R2209",
+   "name_zh": "上海市翔丰华科技股份有限公司",
+   "booth_no": "7.2H-B240"
+  },
+  {
+   "source_id": "CIIF26-R2210",
+   "name_zh": "清陶动力科技（上海）有限公司",
+   "booth_no": "7.2H-B240"
+  },
+  {
+   "source_id": "CIIF26-R2211",
+   "name_zh": "上海市松江区经济委员会",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2212",
+   "name_zh": "上海绿联智能科技股份有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2213",
+   "name_zh": "上海羿弓精密科技有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2214",
+   "name_zh": "晋拓科技股份有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2215",
+   "name_zh": "上海匠心动能机器人有限公司上海交衡智能科技有限公司/",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2216",
+   "name_zh": "上海五腾机器人科技有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2217",
+   "name_zh": "上纬新材料科技股份有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2218",
+   "name_zh": "上海恒脉陶瓷技术有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2219",
+   "name_zh": "上海天示机械零部件制造有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2220",
+   "name_zh": "上海湜清新材料科技有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2221",
+   "name_zh": "上海泰睿锂电科技有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2222",
+   "name_zh": "贵研中希(上海)新材料科技有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2223",
+   "name_zh": "上海演犀科技有限公司",
+   "booth_no": "7.2H-B300"
+  },
+  {
+   "source_id": "CIIF26-R2224",
+   "name_zh": "东华大学（先进纤维材料全国重点实验室）",
+   "booth_no": "7.2H-B311"
+  },
+  {
+   "source_id": "CIIF26-R2225",
+   "name_zh": "宝武镁业科技股份有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2226",
+   "name_zh": "上海化学工业区企业发展有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2227",
+   "name_zh": "上海试四化学品有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2228",
+   "name_zh": "上海致领半导体科技发展有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2229",
+   "name_zh": "巢登材料科技（上海）有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2230",
+   "name_zh": "菲尔德克功能材料（上海）有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2231",
+   "name_zh": "中国石化催化剂有限公司上海分公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2232",
+   "name_zh": "原集微（上海）电子有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2233",
+   "name_zh": "上海炼升化工股份有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2234",
+   "name_zh": "华声强化（上海）科技有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2235",
+   "name_zh": "上海沃凯生物技术有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2236",
+   "name_zh": "道生天合材料科技（上海）股份有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2238",
+   "name_zh": "劼睿斯医药科技（上海）有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2239",
+   "name_zh": "康达新材料（集团）股份有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2240",
+   "name_zh": "上海材料研究所有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2242",
+   "name_zh": "上海大学",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2243",
+   "name_zh": "上海国创碳铖纳米科技发展有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2244",
+   "name_zh": "上海华谊新材料有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2245",
+   "name_zh": "上海匠聚新材料有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2246",
+   "name_zh": "上海凯波电缆特材股份有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2247",
+   "name_zh": "上海朋泰机械科技有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2248",
+   "name_zh": "上海瑞华晟新材料有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2249",
+   "name_zh": "昇合建物（上海）生物科技有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2250",
+   "name_zh": "中国石化上海石油化工股份有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2251",
+   "name_zh": "中核光电科技（上海）有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2252",
+   "name_zh": "华东理工大学华昌聚合物有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2253",
+   "name_zh": "上海国佳生化工程技术研究中心有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2254",
+   "name_zh": "上海金山新材料孵化器发展有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2255",
+   "name_zh": "上海一郎合金材料有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2256",
+   "name_zh": "中国科学院上海硅酸盐研究所",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2257",
+   "name_zh": "上海耀皮玻璃集团股份有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2258",
+   "name_zh": "上海瑞泽丰标准技术服务有限公司",
+   "booth_no": "7.2H-B320"
+  },
+  {
+   "source_id": "CIIF26-R2259",
+   "name_zh": "山东闻道科技有限公司",
+   "booth_no": "7.2H-B616"
+  },
+  {
+   "source_id": "CIIF26-R2260",
+   "name_zh": "江苏爱力丝新材料有限公司",
+   "booth_no": "7.2H-B618"
+  },
+  {
+   "source_id": "CIIF26-R2261",
+   "name_zh": "上海华谊控股集团有限公司",
+   "booth_no": "7.2H-D033"
+  },
+  {
+   "source_id": "CIIF26-R2262",
+   "name_zh": "上海青浦工业园区发展（集团）有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2263",
+   "name_zh": "赫格纳斯（中国）有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2264",
+   "name_zh": "上海索菲玛汽车滤清器有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2265",
+   "name_zh": "奎克好富顿投资管理（上海）有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2266",
+   "name_zh": "上海顺纬艾科材料有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2267",
+   "name_zh": "纳峰真空镀膜（上海）有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2268",
+   "name_zh": "上海华测导航技术股份有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2269",
+   "name_zh": "克鲁勃润滑产品（上海）有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2270",
+   "name_zh": "上海颜钛实业有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2271",
+   "name_zh": "上海真兰仪表科技股份有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2272",
+   "name_zh": "上海安池科技有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2273",
+   "name_zh": "上海姿琳汽车配件有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2274",
+   "name_zh": "上海普利特复合材料股份有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2275",
+   "name_zh": "上海金发科技发展有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2276",
+   "name_zh": "永恒力叉车制造（上海）有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2277",
+   "name_zh": "上海松川远亿机械设备有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2278",
+   "name_zh": "上海晶盟硅材料有限公司",
+   "booth_no": "7.2H-D088"
+  },
+  {
+   "source_id": "CIIF26-R2279",
+   "name_zh": "三井金属贸易（上海）有限公司",
+   "booth_no": "7.2H-D107"
+  },
+  {
+   "source_id": "CIIF26-R2280",
+   "name_zh": "广西桐曦电子科技有限公司",
+   "booth_no": "7.2H-D108"
+  },
+  {
+   "source_id": "CIIF26-R2281",
+   "name_zh": "江苏龙旺达磁性材料有限公司",
+   "booth_no": "7.2H-D110"
+  },
+  {
+   "source_id": "CIIF26-R2282",
+   "name_zh": "湖南荣岚复合材料股份有限公司",
+   "booth_no": "7.2H-D126"
+  },
+  {
+   "source_id": "CIIF26-R2284",
+   "name_zh": "东旺智能科技（上海）有限公司",
+   "booth_no": "7.2H-D148"
+  },
+  {
+   "source_id": "CIIF26-R2285",
+   "name_zh": "中车贵阳车辆有限公司",
+   "booth_no": "7.2H-D160"
+  },
+  {
+   "source_id": "CIIF26-R2287",
+   "name_zh": "浙江优可丽新材料有限公司",
+   "booth_no": "7.2H-D166"
+  },
+  {
+   "source_id": "CIIF26-R2288",
+   "name_zh": "上海金智达复合材料有限公司",
+   "booth_no": "7.2H-D175"
+  },
+  {
+   "source_id": "CIIF26-R2289",
+   "name_zh": "常州聚和新材料股份有限公司",
+   "booth_no": "7.2H-D180"
+  },
+  {
+   "source_id": "CIIF26-R2290",
+   "name_zh": "江苏振波智能科技有限公司",
+   "booth_no": "7.2H-D192"
+  },
+  {
+   "source_id": "CIIF26-R2291",
+   "name_zh": "胜美科机械(无锡)有限公司",
+   "booth_no": "7.2H-D210"
+  },
+  {
+   "source_id": "CIIF26-R2292",
+   "name_zh": "上海佰世昌新材料有限公司",
+   "booth_no": "7.2H-D211"
+  },
+  {
+   "source_id": "CIIF26-R2293",
+   "name_zh": "上海易信塑胶科技有限公司",
+   "booth_no": "7.2H-D218"
+  },
+  {
+   "source_id": "CIIF26-R2294",
+   "name_zh": "上海乾辉烯金材料科技有限公司",
+   "booth_no": "7.2H-D246"
+  },
+  {
+   "source_id": "CIIF26-R2295",
+   "name_zh": "上海昊佰智造精密电子股份有限公司",
+   "booth_no": "7.2H-D248"
+  },
+  {
+   "source_id": "CIIF26-R2296",
+   "name_zh": "广西南南铝加工有限公司",
+   "booth_no": "7.2H-D260"
+  },
+  {
+   "source_id": "CIIF26-R2297",
+   "name_zh": "如皋市联创捏合机械有限公司",
+   "booth_no": "7.2H-D280"
+  },
+  {
+   "source_id": "CIIF26-R2299",
+   "name_zh": "湖南芯聚能科技有限公司",
+   "booth_no": "7.2H-E050"
+  },
+  {
+   "source_id": "CIIF26-R2301",
+   "name_zh": "智慧芽信息科技(苏州)有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2302",
+   "name_zh": "鸿之微科技（上海）股份有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2303",
+   "name_zh": "华东理工大学",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2304",
+   "name_zh": "上海数之微信息科技有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2305",
+   "name_zh": "华院计算技术（上海）股份有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2306",
+   "name_zh": "中国联通（上海）公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2307",
+   "name_zh": "上海材料研究所有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2308",
+   "name_zh": "汇像智能科技（上海）有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2309",
+   "name_zh": "惠柏新材料科技（上海）股份有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2310",
+   "name_zh": "上海绘兰材料科技有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2311",
+   "name_zh": "聚塔时代材料科技有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2312",
+   "name_zh": "上海化工研究院有限公司",
+   "booth_no": "7.2H-E080"
+  },
+  {
+   "source_id": "CIIF26-R2313",
+   "name_zh": "滁州市纳瑞日用品有限公司",
+   "booth_no": "7.2H-E116"
+  },
+  {
+   "source_id": "CIIF26-R2314",
+   "name_zh": "长沙长唐进出口有限公司",
+   "booth_no": "7.2H-E118"
+  },
+  {
+   "source_id": "CIIF26-R2315",
+   "name_zh": "江苏泰华塑料制品有限公司",
+   "booth_no": "7.2H-E119"
+  },
+  {
+   "source_id": "CIIF26-R2316",
+   "name_zh": "上海德凯乐环保科技有限公司",
+   "booth_no": "7.2H-E122"
+  },
+  {
+   "source_id": "CIIF26-R2317",
+   "name_zh": "陕西鼎益科技有限公司",
+   "booth_no": "7.2H-E125"
+  },
+  {
+   "source_id": "CIIF26-R2318",
+   "name_zh": "仲德实业（上海）有限公司",
+   "booth_no": "7.2H-E126"
+  },
+  {
+   "source_id": "CIIF26-R2320",
+   "name_zh": "上海吉帛纺织品有限公司",
+   "booth_no": "7.2H-E128"
+  },
+  {
+   "source_id": "CIIF26-R2321",
+   "name_zh": "凯司玛(丹东)高新材料科技有限公司",
+   "booth_no": "7.2H-E129"
+  },
+  {
+   "source_id": "CIIF26-R2322",
+   "name_zh": "上海赟佑实业有限公司",
+   "booth_no": "7.2H-E130"
+  },
+  {
+   "source_id": "CIIF26-R2323",
+   "name_zh": "福斯曼科技（北京）有限公司太仓市瓦思新材料有限公司",
+   "booth_no": "7.2H-E132"
+  },
+  {
+   "source_id": "CIIF26-R2324",
+   "name_zh": "上海翊科聚合物科技有限公司江苏东旺环保科技集团有限公司",
+   "booth_no": "7.2H-E138"
+  },
+  {
+   "source_id": "CIIF26-R2325",
+   "name_zh": "江苏戴宝机械设备有限公司",
+   "booth_no": "7.2H-E147"
+  },
+  {
+   "source_id": "CIIF26-R2326",
+   "name_zh": "泰州恒宇氟塑制品有限公司",
+   "booth_no": "7.2H-E149"
+  },
+  {
+   "source_id": "CIIF26-R2327",
+   "name_zh": "浙江国森精细化工科技有限公司",
+   "booth_no": "7.2H-E152"
+  },
+  {
+   "source_id": "CIIF26-R2328",
+   "name_zh": "潍坊华韵机械有限公司",
+   "booth_no": "7.2H-E153"
+  },
+  {
+   "source_id": "CIIF26-R2329",
+   "name_zh": "宜兴瑞泰耐火材料工程有限公司",
+   "booth_no": "7.2H-E158"
+  },
+  {
+   "source_id": "CIIF26-R2330",
+   "name_zh": "北京宝佳亚龙光电科技有限公司承德华净活性炭有限公司",
+   "booth_no": "7.2H-E159"
+  },
+  {
+   "source_id": "CIIF26-R2331",
+   "name_zh": "山东泉胜凯新材料科技有限公司",
+   "booth_no": "7.2H-E167"
+  },
+  {
+   "source_id": "CIIF26-R2332",
+   "name_zh": "常州市东顺化工有限公司",
+   "booth_no": "7.2H-E171"
+  },
+  {
+   "source_id": "CIIF26-R2333",
+   "name_zh": "平湖市独山港经济开发区投资集团有限公司",
+   "booth_no": "7.2H-E203"
+  },
+  {
+   "source_id": "CIIF26-R2334",
+   "name_zh": "青岛天银纺织科技有限公司",
+   "booth_no": "7.2H-E205"
+  },
+  {
+   "source_id": "CIIF26-R2336",
+   "name_zh": "中科常化(常州)分析检测有限公司",
+   "booth_no": "7.2H-E257"
+  },
+  {
+   "source_id": "CIIF26-R2337",
+   "name_zh": "富得巴精模（深圳）有限公司",
+   "booth_no": "7.2H-E296"
+  },
+  {
+   "source_id": "CIIF26-R2339",
+   "name_zh": "成都新材料",
+   "booth_no": "7.2H-E311"
+  },
+  {
+   "source_id": "CIIF26-R2340",
+   "name_zh": "江苏科瑞斯机件有限公司",
+   "booth_no": "7.2H-E320"
+  },
+  {
+   "source_id": "CIIF26-R2341",
+   "name_zh": "新乡市天诚航空净化设备有限公司",
+   "booth_no": "7.2H-E327"
+  },
+  {
+   "source_id": "CIIF26-R2342",
+   "name_zh": "大纤维工作组",
+   "booth_no": "7.2H-E328"
+  },
+  {
+   "source_id": "CIIF26-R2343",
+   "name_zh": "上海肆芃科技有限公司",
+   "booth_no": "7.2H-E329"
+  },
+  {
+   "source_id": "CIIF26-R2344",
+   "name_zh": "北京联东投资（集团）有限公司",
+   "booth_no": "7.2H-E330"
+  },
+  {
+   "source_id": "CIIF26-R2346",
+   "name_zh": "苏州铜宝锐新材料有限公司",
+   "booth_no": "7.2H-E505"
+  },
+  {
+   "source_id": "CIIF26-R2347",
+   "name_zh": "杭州捷尔思化工有限公司",
+   "booth_no": "7.2H-E600"
+  },
+  {
+   "source_id": "CIIF26-R2348",
+   "name_zh": "山东瑞兴阻燃科技有限公司",
+   "booth_no": "7.2H-E688"
+  },
+  {
+   "source_id": "CIIF26-R2349",
+   "name_zh": "广东阳明向欣科技有限公司",
+   "booth_no": "7.2H-E689"
+  },
+  {
+   "source_id": "CIIF26-R2350",
+   "name_zh": "科技创业中心上海市科技创业中心上海技术交易所有限公司上海东部科技成果转化有限公司山东朱葛机器人有限公司上海飒智智能科技有限公司水视科技（上海）有限公司锐奇控股股份有限公司上海斑咕智能科技有限公司上海悟昕科技有限公司上海观澜云电气有限公司蒂姆维澳（上海）网络技术有限公司上海寒江月科技有限公司心凯诺医疗科技（上海）有限公司",
+   "booth_no": "8.2H-B076"
+  },
+  {
+   "source_id": "CIIF26-R2351",
+   "name_zh": "上海科技会展有限公司臻芯龙为（上海）半导体材料有限公司朗道燧岩（上海）科技有限公司上海芯擎宇能科技有限公司上海峥集智能科技股份有限公司上海岩清信息科技有限公司矩阵和光（上海）科技有限责任公司上海市公安局交通管理总队科学与技术应用支队上海电科智能有限公司图灵进化科技（深圳）有限公司上海分公司上海玉贲智能科技有限公司上海具识智能科技有限公司",
+   "booth_no": "8.2H-B226"
+  },
+  {
+   "source_id": "CIIF26-R2353",
+   "name_zh": "韓國海洋交通安全公團",
+   "booth_no": "8.2H-B238"
+  },
+  {
+   "source_id": "CIIF26-R2354",
+   "name_zh": "上海健康医学院",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2355",
+   "name_zh": "南通大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2356",
+   "name_zh": "南京医科大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2357",
+   "name_zh": "南京航空航天大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2358",
+   "name_zh": "中国矿业大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2359",
+   "name_zh": "北京大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2360",
+   "name_zh": "暨南大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2361",
+   "name_zh": "河北工业大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2362",
+   "name_zh": "天津工业大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2363",
+   "name_zh": "天津大学合肥创新发展研究院",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2364",
+   "name_zh": "山西大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2365",
+   "name_zh": "山东大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2366",
+   "name_zh": "西北农林科技大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2367",
+   "name_zh": "西南交通大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2368",
+   "name_zh": "华南理工大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2369",
+   "name_zh": "中山大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2370",
+   "name_zh": "南京邮电大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2371",
+   "name_zh": "江南大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2372",
+   "name_zh": "浙江工业大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2373",
+   "name_zh": "安徽大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2374",
+   "name_zh": "中国药科大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2375",
+   "name_zh": "河海大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2376",
+   "name_zh": "南京工业大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2377",
+   "name_zh": "宁波大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2378",
+   "name_zh": "华南师范大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2379",
+   "name_zh": "扬州大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2380",
+   "name_zh": "上海市高校科技发展中心",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2381",
+   "name_zh": "江苏大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2382",
+   "name_zh": "南京中医药大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2383",
+   "name_zh": "苏州大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2384",
+   "name_zh": "南京师范大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2385",
+   "name_zh": "南京理工大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2386",
+   "name_zh": "南京信息工程大学",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2387",
+   "name_zh": "上海电子信息职业技术学院",
+   "booth_no": "8.2H-D001"
+  },
+  {
+   "source_id": "CIIF26-R2388",
+   "name_zh": "南开大学",
+   "booth_no": "8.2H-D002"
+  },
+  {
+   "source_id": "CIIF26-R2389",
+   "name_zh": "东南大学",
+   "booth_no": "8.2H-D003"
+  },
+  {
+   "source_id": "CIIF26-R2390",
+   "name_zh": "上海大学",
+   "booth_no": "8.2H-D004"
+  },
+  {
+   "source_id": "CIIF26-R2391",
+   "name_zh": "复旦大学",
+   "booth_no": "8.2H-D005"
+  },
+  {
+   "source_id": "CIIF26-R2392",
+   "name_zh": "上海电机学院",
+   "booth_no": "8.2H-D006"
+  },
+  {
+   "source_id": "CIIF26-R2393",
+   "name_zh": "上海应用技术大学",
+   "booth_no": "8.2H-D007"
+  },
+  {
+   "source_id": "CIIF26-R2394",
+   "name_zh": "华北电力大学",
+   "booth_no": "8.2H-D008"
+  },
+  {
+   "source_id": "CIIF26-R2395",
+   "name_zh": "上海第二工业大学",
+   "booth_no": "8.2H-D009"
+  },
+  {
+   "source_id": "CIIF26-R2396",
+   "name_zh": "上海电力大学",
+   "booth_no": "8.2H-D010"
+  },
+  {
+   "source_id": "CIIF26-R2397",
+   "name_zh": "华东师范大学",
+   "booth_no": "8.2H-D011"
+  },
+  {
+   "source_id": "CIIF26-R2398",
+   "name_zh": "上海理工大学",
+   "booth_no": "8.2H-D012"
+  },
+  {
+   "source_id": "CIIF26-R2399",
+   "name_zh": "上海交通大学",
+   "booth_no": "8.2H-E001"
+  },
+  {
+   "source_id": "CIIF26-R2400",
+   "name_zh": "南京大学",
+   "booth_no": "8.2H-E002"
+  },
+  {
+   "source_id": "CIIF26-R2401",
+   "name_zh": "华东理工大学",
+   "booth_no": "8.2H-E003"
+  },
+  {
+   "source_id": "CIIF26-R2402",
+   "name_zh": "武汉大学",
+   "booth_no": "8.2H-E004"
+  },
+  {
+   "source_id": "CIIF26-R2403",
+   "name_zh": "中国地质大学（北京）",
+   "booth_no": "8.2H-E005"
+  },
+  {
+   "source_id": "CIIF26-R2409",
+   "name_zh": "上海师范大学",
+   "booth_no": "8.2H-E012"
+  },
+  {
+   "source_id": "CIIF26-R2410",
+   "name_zh": "北京交通大学",
+   "booth_no": "8.2H-E013"
+  },
+  {
+   "source_id": "CIIF26-R2412",
+   "name_zh": "静安区青少年科创教育联盟",
+   "booth_no": "8.2H-E015"
+  },
+  {
+   "source_id": "CIIF26-R2413",
+   "name_zh": "有研金属复合材料(北京)股份公司",
+   "booth_no": "8.2H-B017"
+  },
+  {
+   "source_id": "CIIF26-R2414",
+   "name_zh": "陕西拾贝通讯技术有限公司",
+   "booth_no": "8.2H-B023"
+  },
+  {
+   "source_id": "CIIF26-R2415",
+   "name_zh": "湖南航升卫星科技有限公司",
+   "booth_no": "8.2H-B024"
+  },
+  {
+   "source_id": "CIIF26-R2416",
+   "name_zh": "江苏生益特种材料有限公司",
+   "booth_no": "8.2H-B025"
+  },
+  {
+   "source_id": "CIIF26-R2417",
+   "name_zh": "沪焓宇航（上海）科技有限公司上海凰后航空科技有限公司上海集加实业有限公司寰信驿联(上海)科技有限公司天通瑞宏科技有限公司深圳鹏星智联科技有限公司洛阳轴承集团股份有限公司深圳市镭神智能系统有限公司上海京济通信技术有限公司东莞市朗纶电子制品有限公司MazaromimpexSRL上海市计算技术研究所衡水市绿山科技有限公司上海航天技术研究院（中国航天科技集团第八研究院）中国船舶集团有限公司第七〇四研究所",
+   "booth_no": "8.2H-B026"
+  },
+  {
+   "source_id": "CIIF26-R2418",
+   "name_zh": "信阳市品上机械制造有限公司",
+   "booth_no": "8.2H-C009"
+  },
+  {
+   "source_id": "CIIF26-R2419",
+   "name_zh": "陕西伏特安电气科技有限公司",
+   "booth_no": "8.2H-C010"
+  },
+  {
+   "source_id": "CIIF26-R2420",
+   "name_zh": "安庆希甲航天科技有限公司",
+   "booth_no": "8.2H-C015"
+  },
+  {
+   "source_id": "CIIF26-R2421",
+   "name_zh": "浙江商林科技股份有限公司",
+   "booth_no": "8.2H-C031"
+  },
+  {
+   "source_id": "CIIF26-R2422",
+   "name_zh": "北京航宇神舟仪器仪表科技开发中心上海市商业航天“火箭星城”中航机载系统有限公司沪东中华造船（集团）有限公司上海谱星航天科技有限公司氦星光联科技（深圳）有限公司锐莱热控科技（北京）有限公司上海威克鲍尔通信科技有限公司/至誉科技股份有限公司深圳市安信达存储技术有限公司上海巡天千河空间技术有限公司上海淇玥高温线缆有限公司上海创景信息科技股份有限公司陕西箴铭新材料科技有限公司蓝星光域(上海)航天科技有限公司",
+   "booth_no": "8.2H-C032"
+  },
+  {
+   "source_id": "CIIF26-R2423",
+   "name_zh": "深圳地瓜机器人有限公司",
+   "booth_no": "5.2H-A001"
+  },
+  {
+   "source_id": "CIIF26-R2424",
+   "name_zh": "安谋科技（中国）有限公司",
+   "booth_no": "5.2H-A002"
+  },
+  {
+   "source_id": "CIIF26-R2425",
+   "name_zh": "兄弟连品牌发展（深圳）有限公司",
+   "booth_no": "5.2H-A004"
+  },
+  {
+   "source_id": "CIIF26-R2426",
+   "name_zh": "半导体产业纵横",
+   "booth_no": "5.2H-A007"
+  },
+  {
+   "source_id": "CIIF26-R2427",
+   "name_zh": "致东光电科技（上海）有限公司",
+   "booth_no": "5.2H-A008"
+  },
+  {
+   "source_id": "CIIF26-R2428",
+   "name_zh": "青芯半导体科技（上海）有限公司",
+   "booth_no": "5.2H-A010"
+  },
+  {
+   "source_id": "CIIF26-R2429",
+   "name_zh": "燕芯微电子（上海）有限公司",
+   "booth_no": "5.2H-A011"
+  },
+  {
+   "source_id": "CIIF26-R2430",
+   "name_zh": "翱捷科技股份有限公司",
+   "booth_no": "5.2H-A016"
+  },
+  {
+   "source_id": "CIIF26-R2431",
+   "name_zh": "华腾微电子（上海）有限公司",
+   "booth_no": "5.2H-A017"
+  },
+  {
+   "source_id": "CIIF26-R2432",
+   "name_zh": "芯驿电子科技（上海）有限公司",
+   "booth_no": "5.2H-A021"
+  },
+  {
+   "source_id": "CIIF26-R2434",
+   "name_zh": "南京为旌科技有限公司",
+   "booth_no": "5.2H-A051"
+  },
+  {
+   "source_id": "CIIF26-R2435",
+   "name_zh": "精典电子股份有限公司",
+   "booth_no": "5.2H-A052"
+  },
+  {
+   "source_id": "CIIF26-R2436",
+   "name_zh": "深圳市米尔电子有限公司",
+   "booth_no": "5.2H-A054"
+  },
+  {
+   "source_id": "CIIF26-R2437",
+   "name_zh": "慧忆微电子（上海）有限公司",
+   "booth_no": "5.2H-A055"
+  },
+  {
+   "source_id": "CIIF26-R2438",
+   "name_zh": "上海锐昕普电子科技有限公司",
+   "booth_no": "5.2H-A057"
+  },
+  {
+   "source_id": "CIIF26-R2439",
+   "name_zh": "上海南芯半导体科技股份有限公司",
+   "booth_no": "5.2H-A058"
+  },
+  {
+   "source_id": "CIIF26-R2440",
+   "name_zh": "东芯半导体股份有限公司",
+   "booth_no": "5.2H-A059"
+  },
+  {
+   "source_id": "CIIF26-R2441",
+   "name_zh": "芯和半导体科技（上海）股份有限公司上海瞻芯电子科技股份有限公司上海帝图信息科技有限公司上海晟联科半导体有限公司上海晶丰明源半导体股份有限公司",
+   "booth_no": "5.2H-A060"
+  },
+  {
+   "source_id": "CIIF26-R2442",
+   "name_zh": "普冉半导体（上海）股份有限公司",
+   "booth_no": "5.2H-A062"
+  },
+  {
+   "source_id": "CIIF26-R2443",
+   "name_zh": "上海奎芯集成电路设计有限公司",
+   "booth_no": "5.2H-A063"
+  },
+  {
+   "source_id": "CIIF26-R2444",
+   "name_zh": "深圳扬兴科技有限公司",
+   "booth_no": "5.2H-A064"
+  },
+  {
+   "source_id": "CIIF26-R2445",
+   "name_zh": "《今日人工智能》时擎智能科技（上海）有限公司",
+   "booth_no": "5.2H-A065"
+  },
+  {
+   "source_id": "CIIF26-R2446",
+   "name_zh": "成都星拓微电子科技股份有限公司",
+   "booth_no": "5.2H-A066"
+  },
+  {
+   "source_id": "CIIF26-R2447",
+   "name_zh": "无锡新洁能股份有限公司",
+   "booth_no": "5.2H-A067"
+  },
+  {
+   "source_id": "CIIF26-R2448",
+   "name_zh": "深圳市宇芯数码技术有限公司",
+   "booth_no": "5.2H-A071"
+  },
+  {
+   "source_id": "CIIF26-R2450",
+   "name_zh": "华大半导体有限公司",
+   "booth_no": "5.2H-A101"
+  },
+  {
+   "source_id": "CIIF26-R2451",
+   "name_zh": "江苏华创微系统有限公司",
+   "booth_no": "5.2H-A102"
+  },
+  {
+   "source_id": "CIIF26-R2452",
+   "name_zh": "昕原半导体（上海）有限公司",
+   "booth_no": "5.2H-A107"
+  },
+  {
+   "source_id": "CIIF26-R2453",
+   "name_zh": "厦门码灵半导体技术有限公司",
+   "booth_no": "5.2H-A108"
+  },
+  {
+   "source_id": "CIIF26-R2454",
+   "name_zh": "格科微电子（上海）有限公司",
+   "booth_no": "5.2H-A109"
+  },
+  {
+   "source_id": "CIIF26-R2455",
+   "name_zh": "格兰菲智能科技股份有限公司",
+   "booth_no": "5.2H-A111"
+  },
+  {
+   "source_id": "CIIF26-R2456",
+   "name_zh": "上海概伦电子股份有限公司",
+   "booth_no": "5.2H-A112"
+  },
+  {
+   "source_id": "CIIF26-R2457",
+   "name_zh": "上海EDA/IP创新中心",
+   "booth_no": "5.2H-A112"
+  },
+  {
+   "source_id": "CIIF26-R2458",
+   "name_zh": "广州创龙电子科技有限公司",
+   "booth_no": "5.2H-A118"
+  },
+  {
+   "source_id": "CIIF26-R2460",
+   "name_zh": "保定飞凌嵌入式技术有限公司杭州凡诺电子有限公司赛柯微电子有限公司",
+   "booth_no": "5.2H-A123"
+  },
+  {
+   "source_id": "CIIF26-R2461",
+   "name_zh": "上海燧原科技股份有限公司",
+   "booth_no": "5.2H-A156"
+  },
+  {
+   "source_id": "CIIF26-R2462",
+   "name_zh": "沐曦集成电路（上海）股份有限公司",
+   "booth_no": "5.2H-A158"
+  },
+  {
+   "source_id": "CIIF26-R2463",
+   "name_zh": "上海思朗科技股份有限公司",
+   "booth_no": "5.2H-A159"
+  },
+  {
+   "source_id": "CIIF26-R2464",
+   "name_zh": "紫光展锐",
+   "booth_no": "5.2H-A166"
+  },
+  {
+   "source_id": "CIIF26-R2465",
+   "name_zh": "上海智能传感器产业园",
+   "booth_no": "5.2H-A167"
+  },
+  {
+   "source_id": "CIIF26-R2466",
+   "name_zh": "上海捷热科技有限公司",
+   "booth_no": "5.2H-A167"
+  },
+  {
+   "source_id": "CIIF26-R2468",
+   "name_zh": "上海新智元电子科技有限公司",
+   "booth_no": "5.2H-A167"
+  },
+  {
+   "source_id": "CIIF26-R2469",
+   "name_zh": "上海嘉宝智慧湾建设发展有限公司",
+   "booth_no": "5.2H-A167"
+  },
+  {
+   "source_id": "CIIF26-R2470",
+   "name_zh": "珠海全志科技股份有限公司",
+   "booth_no": "5.2H-A168"
+  },
+  {
+   "source_id": "CIIF26-R2471",
+   "name_zh": "北京华大九天科技股份有限公司",
+   "booth_no": "5.2H-A170"
+  },
+  {
+   "source_id": "CIIF26-R2473",
+   "name_zh": "中科仪（南通）半导体设备有限责任公司",
+   "booth_no": "5.2H-B005"
+  },
+  {
+   "source_id": "CIIF26-R2474",
+   "name_zh": "上海果纳半导体技术股份有限公司",
+   "booth_no": "5.2H-B009"
+  },
+  {
+   "source_id": "CIIF26-R2475",
+   "name_zh": "米拓半导体（上海）股份有限公司",
+   "booth_no": "5.2H-B014"
+  },
+  {
+   "source_id": "CIIF26-R2476",
+   "name_zh": "匠岭科技（上海）有限公司",
+   "booth_no": "5.2H-B015"
+  },
+  {
+   "source_id": "CIIF26-R2477",
+   "name_zh": "浙江亿太诺科技股份有限公司",
+   "booth_no": "5.2H-B016"
+  },
+  {
+   "source_id": "CIIF26-R2478",
+   "name_zh": "上海泓明供应链有限公司",
+   "booth_no": "5.2H-B021"
+  },
+  {
+   "source_id": "CIIF26-R2479",
+   "name_zh": "江苏微导纳米科技股份有限公司",
+   "booth_no": "5.2H-B026"
+  },
+  {
+   "source_id": "CIIF26-R2480",
+   "name_zh": "弥费科技（上海）股份有限公司",
+   "booth_no": "5.2H-B028"
+  },
+  {
+   "source_id": "CIIF26-R2481",
+   "name_zh": "上海邦芯半导体科技有限公司",
+   "booth_no": "5.2H-B031"
+  },
+  {
+   "source_id": "CIIF26-R2482",
+   "name_zh": "东方晶源微电子科技（北京）股份有限公司",
+   "booth_no": "5.2H-B033"
+  },
+  {
+   "source_id": "CIIF26-R2483",
+   "name_zh": "宸微设备科技（苏州）有限公司",
+   "booth_no": "5.2H-B035"
+  },
+  {
+   "source_id": "CIIF26-R2484",
+   "name_zh": "浙江亚笙半导体设备有限公司",
+   "booth_no": "5.2H-B037"
+  },
+  {
+   "source_id": "CIIF26-R2486",
+   "name_zh": "上海第二工业大学——微世半导体产教融合展台",
+   "booth_no": "5.2H-B041"
+  },
+  {
+   "source_id": "CIIF26-R2487",
+   "name_zh": "杭州联显数字科技有限公司",
+   "booth_no": "5.2H-B045"
+  },
+  {
+   "source_id": "CIIF26-R2489",
+   "name_zh": "苏州矽行半导体技术有限公司",
+   "booth_no": "5.2H-B077"
+  },
+  {
+   "source_id": "CIIF26-R2490",
+   "name_zh": "江苏点夺技术股份有限公司",
+   "booth_no": "5.2H-B080"
+  },
+  {
+   "source_id": "CIIF26-R2491",
+   "name_zh": "北京京仪自动化装备技术股份有限公司",
+   "booth_no": "5.2H-B082"
+  },
+  {
+   "source_id": "CIIF26-R2492",
+   "name_zh": "武汉格蓝若精密技术有限公司",
+   "booth_no": "5.2H-B086"
+  },
+  {
+   "source_id": "CIIF26-R2493",
+   "name_zh": "上海微电子产业学院",
+   "booth_no": "5.2H-B088"
+  },
+  {
+   "source_id": "CIIF26-R2494",
+   "name_zh": "芯栋微（上海）半导体技术有限公司飞测思凯浦（上海）半导体科技有限公司",
+   "booth_no": "5.2H-B090"
+  },
+  {
+   "source_id": "CIIF26-R2495",
+   "name_zh": "深圳中科飞测科技股份有限公司",
+   "booth_no": "5.2H-B095"
+  },
+  {
+   "source_id": "CIIF26-R2496",
+   "name_zh": "北京北方华创微电子装备有限公司",
+   "booth_no": "5.2H-B151"
+  },
+  {
+   "source_id": "CIIF26-R2497",
+   "name_zh": "拓荆创益（沈阳）半导体设备有限公司",
+   "booth_no": "5.2H-B158"
+  },
+  {
+   "source_id": "CIIF26-R2498",
+   "name_zh": "上海微电子装备（集团）股份有限公司",
+   "booth_no": "5.2H-B160"
+  },
+  {
+   "source_id": "CIIF26-R2499",
+   "name_zh": "华海清科股份有限公司",
+   "booth_no": "5.2H-B168"
+  },
+  {
+   "source_id": "CIIF26-R2500",
+   "name_zh": "盛美半导体设备（上海）股份有限公司",
+   "booth_no": "5.2H-B170"
+  },
+  {
+   "source_id": "CIIF26-R2501",
+   "name_zh": "金桥装备小镇",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2502",
+   "name_zh": "上海励兆科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2503",
+   "name_zh": "上海左麟阀门有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2504",
+   "name_zh": "上海爱芯享半导体科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2505",
+   "name_zh": "联合光科（上海）技术有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2506",
+   "name_zh": "上海咖瑟孚微电子有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2507",
+   "name_zh": "上海视光微电子工程有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2508",
+   "name_zh": "上海沪江微测科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2509",
+   "name_zh": "上海道格特科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2510",
+   "name_zh": "上海荏原精密机械有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2511",
+   "name_zh": "深圳市恒运昌真空技术股份有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2512",
+   "name_zh": "上海隐冠半导体技术股份有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2513",
+   "name_zh": "星奇（上海）半导体有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2514",
+   "name_zh": "御微半导体技术有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2515",
+   "name_zh": "深圳市埃芯半导体科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2517",
+   "name_zh": "上海卓垣弘芯半导体科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2518",
+   "name_zh": "杭州弗莱曼智洁科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2519",
+   "name_zh": "上海沸点密封技术有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2520",
+   "name_zh": "上海天承智元微电子科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2521",
+   "name_zh": "深圳精智达技术股份有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2522",
+   "name_zh": "上海复矽源半导体科技有限公司",
+   "booth_no": "5.2H-C001"
+  },
+  {
+   "source_id": "CIIF26-R2523",
+   "name_zh": "江苏奈飞科技发展有限公司",
+   "booth_no": "5.2H-C053"
+  },
+  {
+   "source_id": "CIIF26-R2524",
+   "name_zh": "北京通嘉宏瑞科技股份有限公司",
+   "booth_no": "5.2H-C056"
+  },
+  {
+   "source_id": "CIIF26-R2525",
+   "name_zh": "无锡来氟金化工科技有限公司",
+   "booth_no": "5.2H-C060"
+  },
+  {
+   "source_id": "CIIF26-R2526",
+   "name_zh": "多氟多新材料股份有限公司",
+   "booth_no": "5.2H-C075"
+  },
+  {
+   "source_id": "CIIF26-R2527",
+   "name_zh": "上海强华实业股份有限公司",
+   "booth_no": "5.2H-C076"
+  },
+  {
+   "source_id": "CIIF26-R2529",
+   "name_zh": "上海精测半导体技术有限公司",
+   "booth_no": "5.2H-C095"
+  },
+  {
+   "source_id": "CIIF26-R2530",
+   "name_zh": "辽宁汉京半导体材料有限公司",
+   "booth_no": "5.2H-C097"
+  },
+  {
+   "source_id": "CIIF26-R2531",
+   "name_zh": "上海华谊三爱富新材料有限公司",
+   "booth_no": "5.2H-C102"
+  },
+  {
+   "source_id": "CIIF26-R2532",
+   "name_zh": "上海华谊树脂有限公司",
+   "booth_no": "5.2H-C102"
+  },
+  {
+   "source_id": "CIIF26-R2534",
+   "name_zh": "江化微（镇江）电子材料有限公司",
+   "booth_no": "5.2H-C102"
+  },
+  {
+   "source_id": "CIIF26-R2535",
+   "name_zh": "中环领先半导体科技股份有限公司",
+   "booth_no": "5.2H-C130"
+  },
+  {
+   "source_id": "CIIF26-R2536",
+   "name_zh": "安集微电子科技（上海）股份有限公司",
+   "booth_no": "5.2H-C136"
+  },
+  {
+   "source_id": "CIIF26-R2537",
+   "name_zh": "深圳新宙邦科技股份有限公司",
+   "booth_no": "5.2H-C141"
+  },
+  {
+   "source_id": "CIIF26-R2538",
+   "name_zh": "上海新阳半导体材料股份有限公司",
+   "booth_no": "5.2H-C145"
+  },
+  {
+   "source_id": "CIIF26-R2539",
+   "name_zh": "瑞红（苏州）电子化学品股份有限公司",
+   "booth_no": "5.2H-C146"
+  },
+  {
+   "source_id": "CIIF26-R2540",
+   "name_zh": "宁波江丰电子材料股份有限公司",
+   "booth_no": "5.2H-C148"
+  },
+  {
+   "source_id": "CIIF26-R2541",
+   "name_zh": "上海硅产业集团股份有限公司",
+   "booth_no": "5.2H-C149"
+  },
+  {
+   "source_id": "CIIF26-R2542",
+   "name_zh": "上海安智芯车规集成电路有限公司",
+   "booth_no": "5.2H-C151"
+  },
+  {
+   "source_id": "CIIF26-R2543",
+   "name_zh": "珠海硅芯科技有限公司",
+   "booth_no": "5.2H-D003"
+  },
+  {
+   "source_id": "CIIF26-R2544",
+   "name_zh": "此芯科技集团有限公司",
+   "booth_no": "5.2H-D006"
+  },
+  {
+   "source_id": "CIIF26-R2545",
+   "name_zh": "爱芯元智半导体股份有限公司",
+   "booth_no": "5.2H-D008"
+  },
+  {
+   "source_id": "CIIF26-R2546",
+   "name_zh": "上海天数智芯半导体股份有限公司",
+   "booth_no": "5.2H-D012"
+  },
+  {
+   "source_id": "CIIF26-R2548",
+   "name_zh": "上海东方算芯科技股份有限公司",
+   "booth_no": "5.2H-D020"
+  },
+  {
+   "source_id": "CIIF26-R2549",
+   "name_zh": "神州数码集团股份有限公司",
+   "booth_no": "5.2H-D076"
+  },
+  {
+   "source_id": "CIIF26-R2550",
+   "name_zh": "上海先楫半导体科技有限公司",
+   "booth_no": "5.2H-D080"
+  },
+  {
+   "source_id": "CIIF26-R2551",
+   "name_zh": "深圳星火半导体科技有限公司",
+   "booth_no": "5.2H-D082"
+  },
+  {
+   "source_id": "CIIF26-R2552",
+   "name_zh": "瑞昱半导体股份有限公司",
+   "booth_no": "5.2H-D085"
+  },
+  {
+   "source_id": "CIIF26-R2553",
+   "name_zh": "芯率智能科技（苏州）有限公司",
+   "booth_no": "5.2H-D107"
+  },
+  {
+   "source_id": "CIIF26-R2554",
+   "name_zh": "邦粹（上海）通信有限公司",
+   "booth_no": "5.2H-D108"
+  },
+  {
+   "source_id": "CIIF26-R2555",
+   "name_zh": "光本位智能科技(上海)有限公司",
+   "booth_no": "5.2H-D109"
+  },
+  {
+   "source_id": "CIIF26-R2556",
+   "name_zh": "新思软件科技（上海）有限公司",
+   "booth_no": "5.2H-D111"
+  },
+  {
+   "source_id": "CIIF26-R2557",
+   "name_zh": "宇瞻电子（上海）有限公司",
+   "booth_no": "5.2H-D112"
+  },
+  {
+   "source_id": "CIIF26-R2558",
+   "name_zh": "上海合见工业软件集团股份有限公司",
+   "booth_no": "5.2H-D115"
+  },
+  {
+   "source_id": "CIIF26-R2559",
+   "name_zh": "深圳佰维存储科技股份有限公司",
+   "booth_no": "5.2H-D117"
+  },
+  {
+   "source_id": "CIIF26-R2560",
+   "name_zh": "达摩院应用生态",
+   "booth_no": "5.2H-D119"
+  },
+  {
+   "source_id": "CIIF26-R2561",
+   "name_zh": "上海华虹(集团)有限公司",
+   "booth_no": "5.2H-E001"
+  },
+  {
+   "source_id": "CIIF26-R2562",
+   "name_zh": "上海华虹宏力半导体制造有限公司",
+   "booth_no": "5.2H-E001"
+  },
+  {
+   "source_id": "CIIF26-R2563",
+   "name_zh": "上海华力集成电路制造有限公司",
+   "booth_no": "5.2H-E001"
+  },
+  {
+   "source_id": "CIIF26-R2564",
+   "name_zh": "盛合晶微半导体有限公司",
+   "booth_no": "5.2H-E008"
+  },
+  {
+   "source_id": "CIIF26-R2565",
+   "name_zh": "XXXX",
+   "booth_no": "5.2H-E012"
+  },
+  {
+   "source_id": "CIIF26-R2566",
+   "name_zh": "上海季丰电子股份有限公司",
+   "booth_no": "5.2H-E018"
+  },
+  {
+   "source_id": "CIIF26-R2567",
+   "name_zh": "中微半导体设备（上海）股份有限公司",
+   "booth_no": "5.2H-E020"
+  },
+  {
+   "source_id": "CIIF26-R2568",
+   "name_zh": "广州广钢气体能源股份有限公司",
+   "booth_no": "5.2H-E101"
+  },
+  {
+   "source_id": "CIIF26-R2569",
+   "name_zh": "信息产业电子第十一设计研究院科技工程股份有限公司",
+   "booth_no": "5.2H-E104"
+  },
+  {
+   "source_id": "CIIF26-R2570",
+   "name_zh": "杭州广立微电子股份有限公司",
+   "booth_no": "5.2H-E107"
+  },
+  {
+   "source_id": "CIIF26-R2571",
+   "name_zh": "中船（邯郸）派瑞特种气体股份有限公司",
+   "booth_no": "5.2H-E109"
+  },
+  {
+   "source_id": "CIIF26-R2572",
+   "name_zh": "重庆臻宝科技股份有限公司",
+   "booth_no": "5.2H-E112"
+  },
+  {
+   "source_id": "CIIF26-R2573",
+   "name_zh": "上海芯之翼半导体材料有限公司",
+   "booth_no": "5.2H-E115"
+  },
+  {
+   "source_id": "CIIF26-R2574",
+   "name_zh": "全芯智造技术股份有限公司",
+   "booth_no": "5.2H-E116"
+  },
+  {
+   "source_id": "CIIF26-R2575",
+   "name_zh": "开尔唯科技服务（集团）有限公司",
+   "booth_no": "5.2H-E117"
+  },
+  {
+   "source_id": "CIIF26-R2576",
+   "name_zh": "睿励科学仪器（上海）有限公司",
+   "booth_no": "5.2H-E120"
+  },
+  {
+   "source_id": "CIIF26-R2577",
+   "name_zh": "上海凯世通半导体股份有限公司",
+   "booth_no": "5.2H-E121"
+  },
+  {
+   "source_id": "CIIF26-R2579",
+   "name_zh": "上海先普科技股份有限公司",
+   "booth_no": "5.2H-E123"
+  },
+  {
+   "source_id": "CIIF26-R2580",
+   "name_zh": "上海圣永丞半导体科技有限公司",
+   "booth_no": "5.2H-E124"
+  },
+  {
+   "source_id": "CIIF26-R2581",
+   "name_zh": "洛阳中硅高科技有限公司",
+   "booth_no": "5.2H-E125"
+  },
+  {
+   "source_id": "CIIF26-R2582",
+   "name_zh": "中建三局集团有限公司",
+   "booth_no": "5.2H-E126"
+  },
+  {
+   "source_id": "CIIF26-R2583",
+   "name_zh": "上海协微环境科技有限公司",
+   "booth_no": "5.2H-E127"
+  },
+  {
+   "source_id": "CIIF26-R2584",
+   "name_zh": "中化蓝天集团有限公司",
+   "booth_no": "5.2H-E130"
+  },
+  {
+   "source_id": "CIIF26-R2585",
+   "name_zh": "索尔维蓝天(衢州)化学品有限公司",
+   "booth_no": "5.2H-E130"
+  },
+  {
+   "source_id": "CIIF26-R2586",
+   "name_zh": "北京中科信半导体股份有限公司",
+   "booth_no": "5.2H-E132"
+  },
+  {
+   "source_id": "CIIF26-R2587",
+   "name_zh": "睿晶半导体有限公司",
+   "booth_no": "5.2H-E133"
+  },
+  {
+   "source_id": "CIIF26-R2588",
+   "name_zh": "思源电气股份有限公司",
+   "booth_no": "5.2H-E134"
+  },
+  {
+   "source_id": "CIIF26-R2589",
+   "name_zh": "上海和宏电子科技有限公司",
+   "booth_no": "5.2H-E136"
+  },
+  {
+   "source_id": "CIIF26-R2590",
+   "name_zh": "上海大族富创得科技股份有限公司",
+   "booth_no": "5.2H-E137"
+  },
+  {
+   "source_id": "CIIF26-R2591",
+   "name_zh": "中国电子系统工程第二建设有限公司",
+   "booth_no": "5.2H-E202"
+  },
+  {
+   "source_id": "CIIF26-R2592",
+   "name_zh": "上海建工四建集团有限公司",
+   "booth_no": "5.2H-E203"
+  },
+  {
+   "source_id": "CIIF26-R2593",
+   "name_zh": "河南心连心深冷能源股份有限公司",
+   "booth_no": "5.2H-E206"
+  },
+  {
+   "source_id": "CIIF26-R2594",
+   "name_zh": "矽电半导体设备（深圳）股份有限公司",
+   "booth_no": "5.2H-E209"
+  },
+  {
+   "source_id": "CIIF26-R2595",
+   "name_zh": "柏诚系统科技股份有限公司",
+   "booth_no": "5.2H-E210"
+  },
+  {
+   "source_id": "CIIF26-R2596",
+   "name_zh": "深圳市森美协尔科技有限公司",
+   "booth_no": "5.2H-E211"
+  },
+  {
+   "source_id": "CIIF26-R2597",
+   "name_zh": "江苏道达智能科技有限公司",
+   "booth_no": "5.2H-E215"
+  },
+  {
+   "source_id": "CIIF26-R2598",
+   "name_zh": "重庆同辉科发气体有限公司",
+   "booth_no": "5.2H-E216"
+  },
+  {
+   "source_id": "CIIF26-R2600",
+   "name_zh": "杭州长川科技股份有限公司",
+   "booth_no": "5.2H-E221"
+  },
+  {
+   "source_id": "CIIF26-R2601",
+   "name_zh": "协铠自动化系统科技（上海）有限公司",
+   "booth_no": "5.2H-E222"
+  },
+  {
+   "source_id": "CIIF26-R2602",
+   "name_zh": "鸿世佰熠半导体设备(上海)有限公司",
+   "booth_no": "5.2H-E230"
+  },
+  {
+   "source_id": "CIIF26-R2603",
+   "name_zh": "国科天骥（山东）新材料有限责任公司",
+   "booth_no": "5.2H-E231"
+  },
+  {
+   "source_id": "CIIF26-R2604",
+   "name_zh": "上海中电国服保税物流有限公司",
+   "booth_no": "5.2H-E232"
+  },
+  {
+   "source_id": "CIIF26-R2605",
+   "name_zh": "北京晶亦精微科技股份有限公司",
+   "booth_no": "5.2H-E235"
+  },
+  {
+   "source_id": "CIIF26-R2606",
+   "name_zh": "安徽富乐德科技发展股份有限公司",
+   "booth_no": "5.2H-E240"
+  },
+  {
+   "source_id": "CIIF26-R2607",
+   "name_zh": "米格未来（上海）检测技术有限公司",
+   "booth_no": "5.2H-E241"
+  },
+  {
+   "source_id": "CIIF26-R2608",
+   "name_zh": "无锡国家集成电路设计基地有限公司",
+   "booth_no": "5.2H-E243"
+  },
+  {
+   "source_id": "CIIF26-R2610",
+   "name_zh": "栗田工业（苏州）水处理有限公司",
+   "booth_no": "5.2H-E251"
+  },
+  {
+   "source_id": "CIIF26-R2611",
+   "name_zh": "上海汉得信息技术股份有限公司",
+   "booth_no": "5.2H-E252"
+  },
+  {
+   "source_id": "CIIF26-R2612",
+   "name_zh": "麦峤里（上海）半导体科技有限责任公司",
+   "booth_no": "5.2H-E258"
+  },
+  {
+   "source_id": "CIIF26-R2613",
+   "name_zh": "福建福豆新材料有限公司",
+   "booth_no": "5.2H-E259"
+  },
+  {
+   "source_id": "CIIF26-R2614",
+   "name_zh": "江苏中电创新环境科技有限公司",
+   "booth_no": "5.2H-E260"
+  },
+  {
+   "source_id": "CIIF26-R2615",
+   "name_zh": "上海芯密科技股份有限公司",
+   "booth_no": "5.2H-E262"
+  },
+  {
+   "source_id": "CIIF26-R2616",
+   "name_zh": "中国联合网络通信有限公司上海市浦东新区分公司",
+   "booth_no": "5.2H-E263"
+  },
+  {
+   "source_id": "CIIF26-R2617",
+   "name_zh": "上海徐汇科盛德半导体有限公司",
+   "booth_no": "5.2H-E289"
+  },
+  {
+   "source_id": "CIIF26-R2618",
+   "name_zh": "上海集成电路设计产业园",
+   "booth_no": "5.2H-E290"
+  },
+  {
+   "source_id": "CIIF26-R2619",
+   "name_zh": "北京科华微电子材料有限公司",
+   "booth_no": "5.2H-E291"
+  },
+  {
+   "source_id": "CIIF26-R2620",
+   "name_zh": "纳锋真空镀膜（上海）有限公司",
+   "booth_no": "5.2H-E292"
+  },
+  {
+   "source_id": "CIIF26-R2621",
+   "name_zh": "北京屹唐半导体科技股份有限公司",
+   "booth_no": "5.2H-E293"
+  },
+  {
+   "source_id": "CIIF26-R2622",
+   "name_zh": "上海天隽机电设备有限公司",
+   "booth_no": "5.2H-E294"
+  },
+  {
+   "source_id": "CIIF26-R2623",
+   "name_zh": "大连地拓精密科技股份有限公司",
+   "booth_no": "5.2H-E296"
+  },
+  {
+   "source_id": "CIIF26-R2624",
+   "name_zh": "镇江市瑞科新材料有限公司",
+   "booth_no": "5.2H-E297"
+  },
+  {
+   "source_id": "CIIF26-R2625",
+   "name_zh": "苏州优控智行科技有限公司",
+   "booth_no": "5.2H-E298"
+  },
+  {
+   "source_id": "CIIF26-R2626",
+   "name_zh": "上海新微科技集团有限公司",
+   "booth_no": "5.2H-F001"
+  },
+  {
+   "source_id": "CIIF26-R2627",
+   "name_zh": "上海盛剑科技股份有限公司",
+   "booth_no": "5.2H-F002"
+  },
+  {
+   "source_id": "CIIF26-R2628",
+   "name_zh": "上海福瑞科技有限公司",
+   "booth_no": "5.2H-F003"
+  },
+  {
+   "source_id": "CIIF26-R2629",
+   "name_zh": "浙江晶盛机电股份有限公司",
+   "booth_no": "5.2H-F005"
+  },
+  {
+   "source_id": "CIIF26-R2630",
+   "name_zh": "北京华丞电子股份限公司杭州中欣晶圆半导体股份有限公司杭州大和江东新材料科技有限公司浙江富乐德石英科技有限公司浙江申和传感技术有限公司江苏富乐华半导体科技股份有限公司杭州盾源聚芯半导体科技有限公司",
+   "booth_no": "5.2H-F006"
+  },
+  {
+   "source_id": "CIIF26-R2631",
+   "name_zh": "上海至纯洁净系统科技股份有限公司",
+   "booth_no": "5.2H-F009"
+  },
+  {
+   "source_id": "CIIF26-R2633",
+   "name_zh": "上海森桓机电科技有限公司",
+   "booth_no": "5.2H-F016"
+  },
+  {
+   "source_id": "CIIF26-R2634",
+   "name_zh": "埃地沃兹贸易（上海）有限公司",
+   "booth_no": "5.2H-F017"
+  },
+  {
+   "source_id": "CIIF26-R2635",
+   "name_zh": "江苏雅克科技股份有限公司",
+   "booth_no": "5.2H-F018"
+  },
+  {
+   "source_id": "CIIF26-R2636",
+   "name_zh": "浙江洁奥照明科技有限公司",
+   "booth_no": "5.2H-F019"
+  },
+  {
+   "source_id": "CIIF26-R2637",
+   "name_zh": "湖南德智新材料股份有限公司",
+   "booth_no": "5.2H-F020"
+  },
+  {
+   "source_id": "CIIF26-R2638",
+   "name_zh": "金瑞泓微电子（衢州）有限公司",
+   "booth_no": "5.2H-F021"
+  },
+  {
+   "source_id": "CIIF26-R2639",
+   "name_zh": "湖北鼎龙控股股份有限公司",
+   "booth_no": "5.2H-F022"
+  },
+  {
+   "source_id": "CIIF26-R2640",
+   "name_zh": "中巨芯科技股份有限公司",
+   "booth_no": "5.2H-F023"
+  },
+  {
+   "source_id": "CIIF26-R2641",
+   "name_zh": "深圳市和科达精密清洗设备股份有限公司",
+   "booth_no": "5.2H-F024"
+  },
+  {
+   "source_id": "CIIF26-R2642",
+   "name_zh": "上海恒芯金属制品制造有限公司",
+   "booth_no": "5.2H-F025"
+  },
+  {
+   "source_id": "CIIF26-R2643",
+   "name_zh": "苏州联讯仪器股份有限公司",
+   "booth_no": "5.2H-F026"
+  },
+  {
+   "source_id": "CIIF26-R2645",
+   "name_zh": "上海本诺电子材料有限公司",
+   "booth_no": "5.2H-F029"
+  },
+  {
+   "source_id": "CIIF26-R2646",
+   "name_zh": "合肥芯物半导体材料有限公司",
+   "booth_no": "5.2H-F030"
+  },
+  {
+   "source_id": "CIIF26-R2647",
+   "name_zh": "吉姆西半导体科技（无锡）股份有限公司",
+   "booth_no": "5.2H-F031"
+  },
+  {
+   "source_id": "CIIF26-R2648",
+   "name_zh": "深圳市元泰丰光电限公司",
+   "booth_no": "5.2H-F032"
+  },
+  {
+   "source_id": "CIIF26-R2649",
+   "name_zh": "上海福瑞科技有限公司",
+   "booth_no": "5.2H-F033"
+  },
+  {
+   "source_id": "CIIF26-R2651",
+   "name_zh": "无锡卓海科技股份有限公司",
+   "booth_no": "5.2H-F036"
+  },
+  {
+   "source_id": "CIIF26-R2652",
+   "name_zh": "上海集成电路材料研究院",
+   "booth_no": "5.2H-F037"
+  },
+  {
+   "source_id": "CIIF26-R2653",
+   "name_zh": "厦门恒坤新材料科技股份有限公司",
+   "booth_no": "5.2H-F038"
+  },
+  {
+   "source_id": "CIIF26-R2654",
+   "name_zh": "昂坤半导体股份有限公司",
+   "booth_no": "5.2H-F039"
+  },
+  {
+   "source_id": "CIIF26-R2655",
+   "name_zh": "上海建科工程咨询有限公司",
+   "booth_no": "5.2H-F040"
+  },
+  {
+   "source_id": "CIIF26-R2656",
+   "name_zh": "上海聚芯光新材料有限公司",
+   "booth_no": "5.2H-F049"
+  },
+  {
+   "source_id": "CIIF26-R2657",
+   "name_zh": "上海贯新科技有限公司",
+   "booth_no": "5.2H-F050"
+  },
+  {
+   "source_id": "CIIF26-R2658",
+   "name_zh": "上海超硅半导体股份有限公司",
+   "booth_no": "5.2H-F051"
+  },
+  {
+   "source_id": "CIIF26-R2659",
+   "name_zh": "湖北兴福电子材料股份有限公司",
+   "booth_no": "5.2H-F052"
+  },
+  {
+   "source_id": "CIIF26-R2660",
+   "name_zh": "浙江美晶新材料股份有限公司",
+   "booth_no": "5.2H-F053"
+  },
+  {
+   "source_id": "CIIF26-R2661",
+   "name_zh": "关音实业（上海）有限公司",
+   "booth_no": "5.2H-F056"
+  },
+  {
+   "source_id": "CIIF26-R2662",
+   "name_zh": "无锡市肯恩科技有限公司",
+   "booth_no": "5.2H-F057"
+  },
+  {
+   "source_id": "CIIF26-R2663",
+   "name_zh": "北京华卓精科科技股份有限公司",
+   "booth_no": "5.2H-F058"
+  },
+  {
+   "source_id": "CIIF26-R2664",
+   "name_zh": "闳康技术检测（上海）有限公司",
+   "booth_no": "5.2H-F059"
+  },
+  {
+   "source_id": "CIIF26-R2665",
+   "name_zh": "辽宁拓邦鸿基半导体材料股份有限公司",
+   "booth_no": "5.2H-F060"
+  },
+  {
+   "source_id": "CIIF26-R2666",
+   "name_zh": "沁阳国顺硅源光电气体有限公司",
+   "booth_no": "5.2H-F061"
+  },
+  {
+   "source_id": "CIIF26-R2667",
+   "name_zh": "浙江森田新材料有限公司",
+   "booth_no": "5.2H-F062"
+  },
+  {
+   "source_id": "CIIF26-R2668",
+   "name_zh": "成都高新技术产业开发区电子信息产业局",
+   "booth_no": "5.2H-F068"
+  },
+  {
+   "source_id": "CIIF26-R2669",
+   "name_zh": "观察者网",
+   "booth_no": "5.2H-F071"
+  },
+  {
+   "source_id": "CIIF26-R2670",
+   "name_zh": "新电子",
+   "booth_no": "5.2H-F072"
+  }
+ ]
+}

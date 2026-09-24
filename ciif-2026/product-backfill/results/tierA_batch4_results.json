@@ -1,0 +1,598 @@
+[
+ {
+  "source_id": "CIIF26-R1772",
+  "found": true,
+  "products": [
+   "AGG-DC 矽橡膠直流高壓線",
+   "AGG-AC 矽橡膠交流高壓線",
+   "RG141 同軸信號線",
+   "SFF-50-1.5-1 同軸信號線",
+   "UL1180 PTFE 絕緣線",
+   "EVP 新能源汽車高壓屏蔽線"
+  ],
+  "description": "耐高溫電線、高壓線、同軸線與新能源汽車線",
+  "evidence_url": "http://www.tygwx.com/chanpin/",
+  "leads": [],
+  "flag": "",
+  "note": "產品名稱與型號取自官方網域產品頁標題；另有耐火線、軍工線纜、熱電偶補償線、線束等類別"
+ },
+ {
+  "source_id": "CIIF26-R1773",
+  "found": true,
+  "products": [
+   "波形彈簧",
+   "碟形彈簧",
+   "進口氮氣彈簧",
+   "O型圈",
+   "彈性擋圈",
+   "壓力傳感器"
+  ],
+  "description": "進口高端工業零部件（彈簧、密封件、擋圈）貿易",
+  "evidence_url": "http://www.starpoint.cn/product.html?brand_id=&category_id=2004",
+  "leads": [],
+  "flag": "",
+  "note": "產品類別取自官方網域產品分類頁標題與摘要；官網摘要提及應用於醫療器械等行業"
+ },
+ {
+  "source_id": "CIIF26-R1782",
+  "found": true,
+  "products": [
+   "泰山系列八合一伺服驅動器",
+   "華山系列伺服驅動器",
+   "嵩山系列伺服驅動器"
+  ],
+  "description": "低壓直流高功率密度伺服驅動器",
+  "evidence_url": "https://xien-tech.com/uploadpic/file/202509/20250923201258_64917.pdf",
+  "leads": [],
+  "flag": "",
+  "note": "產品取自官方網域用戶手冊PDF；官網首頁標題為「蘇州西恩微伺雲科技有限公司」，聯繫頁為蘇州西恩科技有限公司（品牌一致）；泰山系列應用提及醫療"
+ },
+ {
+  "source_id": "CIIF26-R1787",
+  "found": true,
+  "products": [
+   "光幕",
+   "濾波器",
+   "伺服系統",
+   "步進系統",
+   "變頻器",
+   "導軌式開關電源",
+   "繼電器模組",
+   "固態模塊系列"
+  ],
+  "description": "工業控制產品（伺服、步進、變頻、電源、光幕）",
+  "evidence_url": "http://www.basitu.cc/product/12/",
+  "leads": [],
+  "flag": "",
+  "note": "光幕、濾波器取自官方網域產品頁標題，其餘取自官網摘要；官網首頁標題為「台州巴斯圖視覺機器人有限公司」，產品頁為台州巴斯圖自動化有限公司"
+ },
+ {
+  "source_id": "CIIF26-R1789",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "http://www.apaqi.com/",
+  "leads": [
+   "https://zhuanlan.zhihu.com/p/2030019667251738518 — 知乎文章：阿帕奇機器人Pre-A輪融資，聚焦具身智能大小腦控制器（非官方）"
+  ],
+  "flag": "",
+  "note": "官方網域僅見首頁，摘要只有聯繫方式與退款承諾，無具名產品；全名搜尋無官網結果"
+ },
+ {
+  "source_id": "CIIF26-R1792",
+  "found": true,
+  "products": [
+   "伺服連接器",
+   "西門子 V90 小功率編碼器線"
+  ],
+  "description": "伺服連接器與伺服編碼器線束",
+  "evidence_url": "http://www.deetrue.com/pd.jsp?id=4",
+  "leads": [],
+  "flag": "",
+  "note": "產品取自官方網域頁面；網站標題為「寧波典創線束科技有限公司」，內有上海典創自動化科技有限公司頁面（同品牌關聯企業）"
+ },
+ {
+  "source_id": "CIIF26-R1796",
+  "found": true,
+  "products": [
+   "旋轉伺服編碼器",
+   "直線伺服編碼器",
+   "通用編碼器",
+   "行業專用編碼器"
+  ],
+  "description": "伺服編碼器元件、產品與方案",
+  "evidence_url": "http://www.demagawa.cn/",
+  "leads": [],
+  "flag": "",
+  "note": "產品類別取自官方網域摘要；部分文章頁標題署名「恩格達」，品牌關係未明"
+ },
+ {
+  "source_id": "CIIF26-R1799",
+  "found": true,
+  "products": [
+   "MAS 滑台式電機執行器",
+   "MAC 活塞式執行器（MAC35）",
+   "MEC 電動缸",
+   "MRG 電動夾爪",
+   "BSG 研磨級滾珠絲槓（BSG0601K、BSG1002K）",
+   "BSR 轉造級滾珠絲槓（BSR0401）",
+   "FBG 系列（FBG2550、FBG0805、FBG0606）",
+   "步進／伺服驅動器"
+  ],
+  "description": "中小型電動執行器、滾珠絲槓與驅動器",
+  "evidence_url": "http://www.hkx-inc.com/products.html",
+  "leads": [],
+  "flag": "",
+  "note": "型號取自官方網域產品頁標題，系列名稱取自官網摘要"
+ },
+ {
+  "source_id": "CIIF26-R1801",
+  "found": true,
+  "products": [
+   "中教AI內容巡檢系統",
+   "線上智能問答系統",
+   "智能客服系統"
+  ],
+  "description": "高校招生與內容安全AI服務平台",
+  "evidence_url": "https://www.zjzw.cn/about",
+  "leads": [],
+  "flag": "name_mismatch",
+  "note": "官網公司名為「中教智網（北京）信息技術有限公司」，與「智能網（北京）」不同；業務為教育科技，非工業產品"
+ },
+ {
+  "source_id": "CIIF26-R1803",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "https://cn-aidc.com/",
+  "leads": [],
+  "flag": "",
+  "note": "官網為智算中心產業資訊／生態平台（液冷、高密度機櫃等內容），無具名產品"
+ },
+ {
+  "source_id": "CIIF26-R1804",
+  "found": true,
+  "products": [
+   "工控元器件銷售",
+   "機器人視覺應用集成",
+   "進口設備維修保養及租賃",
+   "呆滯庫存／二手元器件評估收購"
+  ],
+  "description": "工控元器件銷售、視覺集成與設備維修租賃服務",
+  "evidence_url": "https://www.sevenspace.com.cn/index.html",
+  "leads": [],
+  "flag": "",
+  "note": "僅官網摘要列出服務類別，無具名產品型號；官網公司名為江蘇七維空間信息平台有限公司"
+ },
+ {
+  "source_id": "CIIF26-R1807",
+  "found": true,
+  "products": [
+   "110kV及以下高低壓電力電纜",
+   "稀土鋁合金電纜",
+   "防火／低煙無鹵電線電纜",
+   "醫療電纜",
+   "智能機器人電纜",
+   "變頻電纜",
+   "光伏電纜",
+   "OPLC 光纖複合電纜"
+  ],
+  "description": "電力電纜與各類特種電纜",
+  "evidence_url": "https://www.langdacable.com/gsjj/index_14.aspx",
+  "leads": [],
+  "flag": "",
+  "note": "產品類別取自官方網域公司簡介摘要；列有醫療電纜；產品中心某頁標題疑似被植入垃圾內容"
+ },
+ {
+  "source_id": "CIIF26-R1812",
+  "found": true,
+  "products": [
+   "60／80／100／120 行星一體化關節",
+   "70L／80L／90L／110L 諧波一體化關節"
+  ],
+  "description": "精密諧波與大扭矩行星關節模組",
+  "evidence_url": "https://www.lingshuzhike.com/",
+  "leads": [],
+  "flag": "",
+  "note": "規格取自官方網域首頁摘要；應用提及醫療、康復"
+ },
+ {
+  "source_id": "CIIF26-R1818",
+  "found": true,
+  "products": [
+   "波紋電阻器",
+   "波紋電阻箱",
+   "出線電抗器",
+   "RPBU 系列制動單元",
+   "濾波器",
+   "疊層電阻"
+  ],
+  "description": "變頻器用制動電阻、電抗器等無源器件",
+  "evidence_url": "https://www.jugeelectric.com/pros_show/6.aspx",
+  "leads": [],
+  "flag": "",
+  "note": "產品名稱取自官方網域產品頁標題與摘要"
+ },
+ {
+  "source_id": "CIIF26-R1819",
+  "found": true,
+  "products": [
+   "V174 螺母板",
+   "XNF 螺母板",
+   "VW341 前縱梁",
+   "V297 前端下保險槓",
+   "G4X 支架",
+   "豐田柱外下板 SPC1180DUB",
+   "汽車模具"
+  ],
+  "description": "汽車精密沖壓件、總成件與汽車模具",
+  "evidence_url": "https://www.baojiemould.com/product/id/21UFY.html",
+  "leads": [],
+  "flag": "",
+  "note": "產品名稱取自官方網域產品／業務頁標題"
+ },
+ {
+  "source_id": "CIIF26-R1821",
+  "found": true,
+  "products": [
+   "TXA38S-80B 軸流風機",
+   "EC 離心風機",
+   "TXB272T-630BB-640E",
+   "TX116",
+   "儲能櫃散熱風扇",
+   "工業冷水機",
+   "通風過濾網組",
+   "控制櫃配件"
+  ],
+  "description": "機櫃散熱風機、過濾網組、工業冷水機",
+  "evidence_url": "https://www.tesoer.com/product-item-12.html",
+  "leads": [],
+  "flag": "",
+  "note": "產品名稱與型號取自官方網域產品頁標題"
+ },
+ {
+  "source_id": "CIIF26-R1825",
+  "found": true,
+  "products": [
+   "一體型激光測徑儀",
+   "標準型激光測徑儀",
+   "雙向激光測徑儀",
+   "手持式激光測徑儀",
+   "CCD 測徑儀",
+   "位移傳感器（電渦流／激光）"
+  ],
+  "description": "線上非接觸式激光測徑儀與位移傳感器",
+  "evidence_url": "http://www.ridee.net/show/?id=48&page=1&siteid=1",
+  "leads": [],
+  "flag": "",
+  "note": "產品名稱取自官方網域產品頁標題"
+ },
+ {
+  "source_id": "CIIF26-R1839",
+  "found": true,
+  "products": [
+   "高速動車組（時速250／350公里）",
+   "鐵路機車",
+   "鐵路客車",
+   "城市軌道交通車輛",
+   "儲能裝備",
+   "風電裝備",
+   "新能源汽車"
+  ],
+  "description": "軌道交通裝備與新產業（風電、儲能、新能源車）",
+  "evidence_url": "https://www.crrcgc.cc/crrcgc/71_5090/index.html",
+  "leads": [],
+  "flag": "",
+  "note": "產品取自官方網域「產品與服務」頁；網站標題為中國中車股份有限公司（集團旗下上市公司，同品牌）"
+ },
+ {
+  "source_id": "CIIF26-R1840",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1844",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1847",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1848",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1849",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1851",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1854",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1856",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1857",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1860",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1862",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1863",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1865",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1869",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1878",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1887",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1890",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1892",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1893",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1901",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1904",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1907",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1913",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1919",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1924",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1927",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1930",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1931",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1940",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1947",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ },
+ {
+  "source_id": "CIIF26-R1948",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本次工作階段的WebSearch額度（200次）已用完，需重新排入佇列"
+ }
+]

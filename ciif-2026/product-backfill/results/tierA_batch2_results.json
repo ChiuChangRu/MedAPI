@@ -1,0 +1,644 @@
+[
+ {
+  "source_id": "CIIF26-R1480",
+  "found": true,
+  "products": [
+   "M8/M12/M16/7/8/M23系列圓形連接器",
+   "總線協議系列連接器",
+   "I/O分線盒（如M12-A3-8K5-DZP）",
+   "閥插頭連接器",
+   "D-SUB連接器（冷壓插針CDSM-1.5等）",
+   "穿牆板（KEL 24/12-2MT）",
+   "管線包",
+   "重載連接器（HMK-004-MC、H10B）",
+   "工業交換機",
+   "總線模組",
+   "USB系列產品"
+  ],
+  "description": "工業自動化連接器與連接系統方案",
+  "evidence_url": "https://www.velledq.com/page105?product_id=2607",
+  "leads": [],
+  "flag": "",
+  "note": "官網公司名為「為樂電氣（上海）有限公司」，與登錄名「為樂電氣有限公司」略異，品牌一致"
+ },
+ {
+  "source_id": "CIIF26-R1485",
+  "found": true,
+  "products": [
+   "橡膠(RU)同步帶",
+   "聚氨酯(PU)同步帶",
+   "同步帶輪",
+   "三角帶輪",
+   "鏈輪",
+   "齒輪",
+   "齒條",
+   "聯軸器"
+  ],
+  "description": "同步帶、帶輪等精密傳動件",
+  "evidence_url": "http://www.sy-xy.com/",
+  "leads": [],
+  "flag": "",
+  "note": "產品資訊來自官網首頁摘要，無獨立產品頁連結"
+ },
+ {
+  "source_id": "CIIF26-R1487",
+  "found": true,
+  "products": [
+   "激光測距感測器（LD100等）",
+   "PS系列ToF光電感測器",
+   "激光位移感測器",
+   "光電感測器",
+   "無線傳輸設備"
+  ],
+  "description": "激光測距與工業光電感測器",
+  "evidence_url": "https://www.gatporsensor.com/",
+  "leads": [],
+  "flag": "",
+  "note": "品牌GATPOR；應用含電梯、物流、航太等"
+ },
+ {
+  "source_id": "CIIF26-R1488",
+  "found": true,
+  "products": [
+   "通用IMU（FSS-IMU614E系列、FSS-IMU618、FSS-IMUP8、FSS-IMU16488）",
+   "行業專用IMU（614E-AG農機、614E-P）",
+   "姿態感測器（FSS-AHRS200-X/400-X）",
+   "組合導航（FSS-NAV680-AG、FS982-SA/AG/U）",
+   "衛星羅經"
+  ],
+  "description": "MEMS慣性測量單元與慣性導航系統",
+  "evidence_url": "https://www.forsense.cn/Product-Center/",
+  "leads": [],
+  "flag": "",
+  "note": "應用含智慧駕駛、機器人、工業控制"
+ },
+ {
+  "source_id": "CIIF26-R1489",
+  "found": true,
+  "products": [
+   "QTC工具快換裝置",
+   "三指氣動夾爪（FOUK-TZ系列）",
+   "四指氣動夾爪（FOUK-TF系列）",
+   "齒形三指夾爪",
+   "旋轉氣缸",
+   "浮動補償",
+   "旋轉手指"
+  ],
+  "description": "機器人快換裝置與氣動夾爪",
+  "evidence_url": "https://www.fouk.top/sanzhiqidongjiazhaoxilie/",
+  "leads": [],
+  "flag": "",
+  "note": "品牌FOUK"
+ },
+ {
+  "source_id": "CIIF26-R1498",
+  "found": true,
+  "products": [
+   "工業繼電器",
+   "電力繼電器",
+   "新能源繼電器（CHPV-S350）",
+   "高壓直流接觸器",
+   "感測器",
+   "智慧配電模組"
+  ],
+  "description": "繼電器、接觸器與高壓直流產品",
+  "evidence_url": "https://www.churod.com/index/product/showproduct?id=607&pid=83",
+  "leads": [],
+  "flag": "",
+  "note": "應用涵蓋工業、汽車、清潔能源、電力、家電"
+ },
+ {
+  "source_id": "CIIF26-R1500",
+  "found": true,
+  "products": [
+   "驅動輪（D140-23-19等）",
+   "高速特種滾輪",
+   "工程塑料滾輪",
+   "鋁芯包塑滾輪及配件"
+  ],
+  "description": "特種滾輪與驅動輪",
+  "evidence_url": "http://www.siger-tech.cn/lists/123.html",
+  "leads": [],
+  "flag": "",
+  "note": "應用於物流分揀、立體倉庫、自動門等"
+ },
+ {
+  "source_id": "CIIF26-R1502",
+  "found": true,
+  "products": [
+   "非標專用軸承",
+   "專用導軌",
+   "制動器",
+   "直線運動組件",
+   "編碼器"
+  ],
+  "description": "專用軸承、導軌與運動單元",
+  "evidence_url": "http://www.bom-cn.com/page/html/index.php",
+  "leads": [],
+  "flag": "",
+  "note": "產品類別來自官網關於我們頁摘要，無具體型號"
+ },
+ {
+  "source_id": "CIIF26-R1506",
+  "found": true,
+  "products": [
+   "MT系列三相異步電機",
+   "60系列伺服電機",
+   "YTP系列直流無刷電機",
+   "AB SQ系列縫製設備專用稀土永磁伺服電機",
+   "單相交流異步電機",
+   "永磁同步電機",
+   "永磁同步增氧機"
+  ],
+  "description": "家電電機、伺服電機與無刷電機",
+  "evidence_url": "http://www.shangqimotor.com/chanpin/products_article.asp?id=384",
+  "leads": [],
+  "flag": "",
+  "note": ""
+ },
+ {
+  "source_id": "CIIF26-R1513",
+  "found": true,
+  "products": [
+   "行星關節模組（250N·m）",
+   "低壓伺服驅動",
+   "力控關節模組",
+   "直線關節模組",
+   "雙差速線控底盤",
+   "力控人形臂"
+  ],
+  "description": "人形機器人關節模組與伺服驅動",
+  "evidence_url": "http://www.zdl-robotics.com/index.php?c=show&id=51",
+  "leads": [],
+  "flag": "",
+  "note": ""
+ },
+ {
+  "source_id": "CIIF26-R1518",
+  "found": true,
+  "products": [
+   "TX系列伺服驅動",
+   "TC系列伺服電機",
+   "TS系列機器人控制系統",
+   "iT系列集成伺服電機",
+   "一體化關節模組"
+  ],
+  "description": "伺服驅動、伺服電機與關節模組",
+  "evidence_url": "https://tsinchan.com/?about%2F=",
+  "leads": [],
+  "flag": "",
+  "note": "產品資訊來自官網「關於我們」頁摘要"
+ },
+ {
+  "source_id": "CIIF26-R1520",
+  "found": true,
+  "products": [
+   "減速器背隙測試機",
+   "機器人關節模組檢測設備",
+   "關節模組綜合性能測試台",
+   "諧波減速機測試設備",
+   "伺服壓力機",
+   "行星滾針排列機",
+   "伺服電機測功機",
+   "諧波/RV減速機剛性測試系統",
+   "減速機C字線裝配線"
+  ],
+  "description": "減速機與關節模組測試設備",
+  "evidence_url": "http://www.tstzn.com/?show=45",
+  "leads": [],
+  "flag": "",
+  "note": ""
+ },
+ {
+  "source_id": "CIIF26-R1530",
+  "found": true,
+  "products": [
+   "WOLF旋風拋光刷／拋光片（Radial Bristle Discs/Brushes）",
+   "WOLF Stand Needle Brush",
+   "磨料絲",
+   "研磨工業刷",
+   "塑料夾與五金夾"
+  ],
+  "description": "旋風拋光刷與磨料絲研磨工業刷",
+  "evidence_url": "http://en.wolfabrasive.com/Products/1.html",
+  "leads": [],
+  "flag": "",
+  "note": "品牌WOLF；官網公司名與登錄名一致"
+ },
+ {
+  "source_id": "CIIF26-R1534",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [
+   "https://www.1688.com/factory/b2b-22112243877505a7d0.html — 1688黃頁，稱產品為感測器、熱電偶、熱電阻（非官方）",
+   "https://m.tianyancha.com/company/3338842738 — 天眼查工商資料",
+   "https://dit.dagasensor.com/?tags=65 — 官網子域「大鎵學院」知識文章，僅提及手持紅外溫度感測器管理工具"
+  ],
+  "flag": "",
+  "note": "官方域名僅搜到dit子域學習平台文章，未見產品中心或具名產品"
+ },
+ {
+  "source_id": "CIIF26-R1535",
+  "found": true,
+  "products": [
+   "17mm無刷空心杯電機（SBR1758B）",
+   "22mm無刷空心杯電機",
+   "S-Module 8Axis 6030八軸驅動器（CANopen/EtherCAT）",
+   "電機驅動與控制產品",
+   "微型編碼器"
+  ],
+  "description": "微型電機驅動器與空心杯電機",
+  "evidence_url": "https://www.hcmotion.cn/pd.jsp?id=49",
+  "leads": [],
+  "flag": "",
+  "note": "官網提及醫療設備與醫療機器人應用；產品頁標題署名「寧波昊創」，與首頁「上海昊控」不同法人名，疑為關聯公司"
+ },
+ {
+  "source_id": "CIIF26-R1547",
+  "found": true,
+  "products": [
+   "微型系列軸承",
+   "6000/6200/6300/6800/6900系列深溝球軸承",
+   "英制系列軸承"
+  ],
+  "description": "高速低噪音微型與深溝球軸承",
+  "evidence_url": "http://www.nbmairui.com/Support.html",
+  "leads": [],
+  "flag": "",
+  "note": "官網提及應用於醫療器械；產品資訊來自關於我們／技術參數頁摘要"
+ },
+ {
+  "source_id": "CIIF26-R1548",
+  "found": true,
+  "products": [
+   "螺旋錐齒輪",
+   "零度弧齒錐齒輪",
+   "大減速比錐齒輪",
+   "機器人高精度磨齒齒輪",
+   "K系列減速機齒輪",
+   "精密行星錐齒輪"
+  ],
+  "description": "中小模數精密錐齒輪",
+  "evidence_url": "http://www.nsgear.net/",
+  "leads": [],
+  "flag": "",
+  "note": "產品資訊來自官網首頁／英文頁摘要，無獨立產品頁連結"
+ },
+ {
+  "source_id": "CIIF26-R1549",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [
+   "https://m.zhaopin.com/company/CZ842876400.htm — 智聯招聘，稱從事汽車焊裝／塗裝自動化電氣與機器人服務（非官方）",
+   "https://m.qcc.com/firm/6b8352c4779a770eb666472929244fa4.html — 企查查工商資料"
+  ],
+  "flag": "",
+  "note": "兩次搜尋均無xinda-auto.com結果"
+ },
+ {
+  "source_id": "CIIF26-R1550",
+  "found": true,
+  "products": [
+   "可配置安全繼電器（Quanta DN1820）",
+   "安全聯鎖開關（Oxon-W1）",
+   "安全光幕（GM1/GM2/GM3）",
+   "SoftsenseDNA安全觸邊",
+   "佰安翼AnEZ配置工具"
+  ],
+  "description": "機械安全繼電器、光幕與聯鎖開關",
+  "evidence_url": "https://www.bytorent.net/ProductDetail/9931817.html",
+  "leads": [],
+  "flag": "",
+  "note": "品牌「佰多恩」"
+ },
+ {
+  "source_id": "CIIF26-R1553",
+  "found": true,
+  "products": [
+   "磁位置感測器晶片（KTM5200/KTM5300、KTH78、KTM59）",
+   "磁性電流/線性檢測晶片（線性霍爾晶片）",
+   "開關位置檢測晶片（高壓氣缸位置檢測感測器）",
+   "信號調理晶片",
+   "磁通門剩餘電流檢測晶片",
+   "磁旋鈕"
+  ],
+  "description": "磁感測與位置檢測晶片",
+  "evidence_url": "https://en.conntek.com.cn/html/web/product/magneticCurrentLinearSensingChip/linearHallChip/index.html",
+  "leads": [],
+  "flag": "",
+  "note": ""
+ },
+ {
+  "source_id": "CIIF26-R1557",
+  "found": true,
+  "products": [
+   "G系列工業級協作機器人",
+   "C系列消費級協作機器人",
+   "X系列特種級協作機器人",
+   "碼垛工作站",
+   "滑軌式充電機器人"
+  ],
+  "description": "協作機器人及應用方案",
+  "evidence_url": "https://www.cgxi.com.cn/product/series",
+  "leads": [],
+  "flag": "",
+  "note": "官網應用方案列有醫療應用"
+ },
+ {
+  "source_id": "CIIF26-R1560",
+  "found": true,
+  "products": [
+   "潛伏舉升AGV",
+   "叉車AGV",
+   "複合移載AGV",
+   "智慧巡檢機器人",
+   "軸線車",
+   "重載高精度全方位AGV"
+  ],
+  "description": "重載高精度全方位移動機器人",
+  "evidence_url": "https://omark-agv.com/index.php?m=home&c=Lists&a=index&tid=8",
+  "leads": [],
+  "flag": "",
+  "note": ""
+ },
+ {
+  "source_id": "CIIF26-R1569",
+  "found": true,
+  "products": [
+   "高性能電機（130STP、130STL、180HDD）",
+   "直線電機（LF370、LF400、LF560）",
+   "通用型電機（80STE、80STEB）",
+   "標準型電機",
+   "定製電機"
+  ],
+  "description": "伺服電機與直線電機",
+  "evidence_url": "http://hxdwh-new.com/lists/12.html",
+  "leads": [],
+  "flag": "",
+  "note": ""
+ },
+ {
+  "source_id": "CIIF26-R1580",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1581",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1582",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1585",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1589",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1596",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1602",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1606",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1609",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1610",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1611",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1619",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1620",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1623",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1628",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1631",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1636",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1638",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1642",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1643",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1644",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1645",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1651",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1654",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1655",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R1656",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本工作階段WebSearch額度（200次）已用盡，需重跑"
+ }
+]

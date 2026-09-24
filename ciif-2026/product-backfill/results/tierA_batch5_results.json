@@ -1,0 +1,554 @@
+[
+ {
+  "source_id": "CIIF26-R1949",
+  "found": true,
+  "products": [
+   "半導體（三菱、ISAHAYA 等）及各類元件",
+   "三菱 FA 設備及產業機械",
+   "產業機器系統",
+   "節能／環境相關產品"
+  ],
+  "description": "三菱半導體、FA設備與產業機器系統代理銷售",
+  "evidence_url": "https://www.takebishi.co.jp/company/outline/relation_shanghai.html",
+  "leads": [],
+  "flag": "",
+  "note": "官方網域為日本母公司株式會社たけびし（竹菱）網站，含竹菱（上海）據點頁；產品類別取自母公司取扱製品頁，非上海子公司專屬清單"
+ },
+ {
+  "source_id": "CIIF26-R1952",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "http://www.racobit.com/",
+  "leads": [
+   "https://ttc.bit.edu.cn/cyfw/xkxgs20/b183917.htm — 北理工技術轉移中心介紹，業務涉雷達系統、空間遙感、衛星導航、數字系統、模擬仿真（非官網）"
+  ],
+  "flag": "",
+  "note": "官網首頁僅見「雷達應用／遙感應用」等解決方案欄目名稱，無具名產品"
+ },
+ {
+  "source_id": "CIIF26-R1955",
+  "found": true,
+  "products": [
+   "MWORKS.Syslab",
+   "MWORKS.Sysplorer",
+   "MWORKS.Sysblock",
+   "MWORKS.Syslink",
+   "MWORKS.Sysbuilder",
+   "MWORKS.Systwin",
+   "MWORKS 工具箱（代碼生成與驗證、設計優化、模型試驗等）",
+   "MWORKS 模型庫（電氣、機械、流體、車輛、能源、航空航天等）"
+  ],
+  "description": "基於Modelica的系統建模仿真平台MWORKS",
+  "evidence_url": "https://www.tongyuan.cc/product/Toolbox/",
+  "leads": [],
+  "flag": "",
+  "note": "產品名取自官方網域產品頁標題與摘要"
+ },
+ {
+  "source_id": "CIIF26-R1963",
+  "found": true,
+  "products": [
+   "多業務綜合網關",
+   "OLT 光接入設備",
+   "VOIP 音頻調度網關",
+   "ITV 網關",
+   "安全流控路由",
+   "Aino+ 終端產品",
+   "ZH-VS220 視頻門禁對講",
+   "ZH-AP18006S 千兆雙頻吸頂 AP",
+   "POE／以太網交換機"
+  ],
+  "description": "光電融合通信、PON網絡與音視頻物聯網設備",
+  "evidence_url": "https://www.zhgxnet.com/product/product_5_1.html",
+  "leads": [],
+  "flag": "",
+  "note": "官網品牌 AINOPOL；應用領域含智慧醫療"
+ },
+ {
+  "source_id": "CIIF26-R1967",
+  "found": true,
+  "products": [
+   "Key Stone K1 八核 RISC-V AI CPU",
+   "Power Stone P1 電源管理芯片",
+   "X100／X200 RISC-V 處理器核",
+   "MUSE Pi Pro 單板計算機",
+   "MUSE Book／MUSE Paper／MUSE Shelf",
+   "B1 PsP 封裝 CoM 模組"
+  ],
+  "description": "RISC-V AI CPU芯片與開發板等生態產品",
+  "evidence_url": "https://www.spacemit.com/news/%E9%AB%98%E5%BA%A6%E9%9B%86%E6%88%90%EF%BC%8C%E5%9F%BA%E4%BA%8Erisc-v-ai-cpu%E8%8A%AF%E7%89%87k1%E7%9A%84psp%E5%B0%81%E8%A3%85com%E4%BA%A7%E5%93%81%E5%8F%91%E5%B8%83/",
+  "leads": [],
+  "flag": "",
+  "note": "產品取自官方網域新聞頁；X200 為研發中"
+ },
+ {
+  "source_id": "CIIF26-R1979",
+  "found": true,
+  "products": [
+   "網絡安全平台 RIS-191／RIS-5240／RIS-5241／RIS-5250",
+   "網閘平台 RTC-1191／RTC-2191／RTC-2192／RTC-5241",
+   "工業安全平台（x86、機架式）",
+   "千兆／萬兆網絡擴展模組",
+   "設計製造服務"
+  ],
+  "description": "網絡安全硬件平台、網閘與工業安全平台",
+  "evidence_url": "http://royaltech.cn/product.php?catid=47",
+  "leads": [],
+  "flag": "",
+  "note": "型號取自官方網域產品頁摘要"
+ },
+ {
+  "source_id": "CIIF26-R1982",
+  "found": true,
+  "products": [
+   "L9 雙光束紫外可見分光光度計",
+   "分光光度計、氣相色譜、原子吸收、液相色譜等分析儀器",
+   "安防產品、汽車電子、智能標籤、智能芯片",
+   "樓宇控制設備、照明產品",
+   "顯示材料、消費電子"
+  ],
+  "description": "國資電子信息集團：分析儀器、智慧建築等",
+  "evidence_url": "https://ydfx.inesa.com/shydfx_prozwx/2022-10-31/Detail_164701.htm",
+  "leads": [],
+  "flag": "",
+  "note": "集團網站列產品範圍；具名儀器來自子公司上海儀電分析儀器（ydfx.inesa.com 子網域）"
+ },
+ {
+  "source_id": "CIIF26-R1984",
+  "found": true,
+  "products": [
+   "戰略諮詢和規劃",
+   "全鏈技術和交付",
+   "產品供應鏈",
+   "運營和增值服務"
+  ],
+  "description": "工業品數字化供應鏈技術與服務",
+  "evidence_url": "https://www.jingdongindustrials.com/",
+  "leads": [],
+  "flag": "",
+  "note": "僅官網首頁摘要列服務類別，無具名產品"
+ },
+ {
+  "source_id": "CIIF26-R1985",
+  "found": true,
+  "products": [
+   "iTS-L 磁懸浮環形傳輸線",
+   "iTS-LT 磁懸浮接駁傳輸線",
+   "MegaMover iHDT 磁懸浮重載傳輸線",
+   "iWS 磁懸浮物流傳輸線"
+  ],
+  "description": "磁懸浮柔性傳輸系統",
+  "evidence_url": "https://www.golytec.com/product/",
+  "leads": [],
+  "flag": "",
+  "note": "官網所列應用行業含醫療器械、製藥"
+ },
+ {
+  "source_id": "CIIF26-R1993",
+  "found": true,
+  "products": [
+   "盒式通用網絡分流器（GE～100GE）",
+   "增強型盒式分流器（去重、脫敏）"
+  ],
+  "description": "網絡流量分流與採集硬件加速設備",
+  "evidence_url": "https://www.uucode.com.cn/products-enhanced.html",
+  "leads": [],
+  "flag": "",
+  "note": "產品取自官方網域產品頁標題"
+ },
+ {
+  "source_id": "CIIF26-R1996",
+  "found": true,
+  "products": [
+   "SMT 全自動貼標機",
+   "自動送（收）板機",
+   "接駁台",
+   "轉角機",
+   "移載機",
+   "高效緩衝機",
+   "AGV"
+  ],
+  "description": "SMT周邊自動化設備與AGV",
+  "evidence_url": "https://www.hayawin.com.cn/",
+  "leads": [],
+  "flag": "",
+  "note": "僅官網首頁摘要，產品為類別名無型號"
+ },
+ {
+  "source_id": "CIIF26-R2005",
+  "found": true,
+  "products": [
+   "輸送線",
+   "三排中驅鏈條機",
+   "堆垛機",
+   "提升機",
+   "穿梭車"
+  ],
+  "description": "智能倉儲物流設備",
+  "evidence_url": "https://www.liaodun.net/product.html",
+  "leads": [],
+  "flag": "",
+  "note": "官網稱2024年4月起由北京晶品特裝（688084）控股"
+ },
+ {
+  "source_id": "CIIF26-R2009",
+  "found": true,
+  "products": [
+   "國內倉配服務（B2B／B2C）",
+   "跨境快遞",
+   "全球供應鏈",
+   "數字化供應鏈規劃",
+   "物流廣告、供應鏈金融等增值服務",
+   "菜鳥 APP"
+  ],
+  "description": "電商物流與供應鏈服務",
+  "evidence_url": "https://www.cainiao.com/en/chn-supply-chain.html",
+  "leads": [],
+  "flag": "",
+  "note": "服務類別取自官方網域頁面"
+ },
+ {
+  "source_id": "CIIF26-R2010",
+  "found": true,
+  "products": [
+   "企業財產保險",
+   "公眾責任險"
+  ],
+  "description": "財產保險",
+  "evidence_url": "http://www.cntaiping.com/product-qycx/",
+  "leads": [],
+  "flag": "",
+  "note": "取自中國太平集團官網產品頁；非上海分公司專屬頁"
+ },
+ {
+  "source_id": "CIIF26-R2021",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2022",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2028",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2029",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2037",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2041",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2046",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2050",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2055",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2057",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2069",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2072",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2073",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2076",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2085",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2088",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2089",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2092",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2099",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2104",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2105",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2109",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2111",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2113",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2115",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2118",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2119",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2122",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2124",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2126",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2130",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2134",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ },
+ {
+  "source_id": "CIIF26-R2135",
+  "found": false,
+  "products": [],
+  "description": "",
+  "evidence_url": "",
+  "leads": [],
+  "flag": "not_searched",
+  "note": "未搜尋：本會話 WebSearch 額度（200 次）已用盡，需重跑"
+ }
+]

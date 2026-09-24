@@ -133,12 +133,19 @@
       ],
       "description": "工業溫控／熱管理設備（明細待複核）",
       "products": [
-        "待查（官方產品頁目前未見可穩定核實的具名型號）"
+        "手持焊冷水機",
+        "切割冷水機",
+        "主軸冷水機",
+        "油冷機",
+        "換熱器",
+        "冷風機",
+        "冰水機",
+        "製氮機"
       ],
       "website": "https://www.aiweitawenkong.com/",
       "website_label": "aiweitawenkong.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "",
+      "product_anchor_url": "http://aiweitawenkong.com/product.php?classID=1",
+      "product_anchor_label": "工業溫控設備：雷射焊接／切割用冷水機、主軸冷水機、油冷機、換熱器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -158,7 +165,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://aiweitawenkong.com/product.php?classID=1",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官方網域「產品中心」頁（標題含公司全名）搜尋摘要列出產品類別"
     },
     {
       "id": "ex-ciif-r0003",
@@ -5002,15 +5014,15 @@
       "tags": [
         "待查"
       ],
-      "description": "具體產品名稱待查；官方站已提供多個產品分類與產品詳情頁。",
+      "description": "感應加熱設備與雷射加工設備（釺焊、淬火、退火等熱處理）",
       "products": [
         "待查（官方頁僅有產品中心",
         "總覽，未見具名型號）"
       ],
       "website": "https://www.taidousz.com/",
       "website_label": "taidousz.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "",
+      "product_anchor_url": "http://www.taidousz.com/product_show.php?classID=17&id=74",
+      "product_anchor_label": "感應加熱設備與雷射加工設備（釺焊、淬火、退火等熱處理）",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -5030,7 +5042,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.taidousz.com/product_show.php?classID=17&id=74",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官方網域產品頁標題「高頻15KW;25KW」「退火」＋官網摘要列出主營產品"
     },
     {
       "id": "ex-ciif-r0109",
@@ -5075,7 +5092,10 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "website_mismatch"
+      ]
     },
     {
       "id": "ex-ciif-r0110",
@@ -5184,15 +5204,15 @@
       "tags": [
         "待查"
       ],
-      "description": "軸承產品；具體系列待查。",
+      "description": "RKT 品牌工業軸承（標準與特種軸承）",
       "products": [
         "待查（官方頁僅有產品中心",
         "總覽，未見具名型號）"
       ],
       "website": "https://www.rktzc.com/",
       "website_label": "RKT 軸承候選站",
-      "product_anchor_url": "",
-      "product_anchor_label": "",
+      "product_anchor_url": "https://rktzc.com/products.php?class=142&pid=",
+      "product_anchor_label": "RKT 品牌工業軸承（標準與特種軸承）",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -5212,7 +5232,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://rktzc.com/products.php?class=142&pid=",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官方網域「產品中心」及調心滾子軸承產品頁；網站自稱「德國瑞凱特（RKT）軸承公司」，與展商法律名稱不完全一致，品牌相符"
     },
     {
       "id": "ex-ciif-r0113",
@@ -5727,7 +5752,7 @@
       "tags": [
         "待查"
       ],
-      "description": "模型與樣件製造服務；具體產品分類名稱待查。",
+      "description": "手板模型製作與小批量生產（CNC 加工、矽膠複模）",
       "products": [
         "產品展示"
       ],
@@ -5754,7 +5779,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.jijiamockup.com.cn/gywm_show/2155.aspx",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官方網域「關於技嘉」頁；官方簡介提及應用領域含醫療設備，醫療關聯欄位可另行複核（本次不修改）"
     },
     {
       "id": "ex-ciif-r0125",
@@ -10006,14 +10036,19 @@
       "tags": [
         "一般工業／無直接關聯"
       ],
-      "description": "工業自動化設備（明細待查）",
+      "description": "數控鈑金自動化：折彎機器人、上下料機器人與鈑金柔性生產線",
       "products": [
-        "待查（官方首頁可對應，具名產品頁待補）"
+        "HR 系列折彎機器人",
+        "HR 系列雷射切割機上下料",
+        "數控沖床上下料機器人",
+        "料庫整合雷射上下料",
+        "剪沖折生產線",
+        "組合式生產線"
       ],
       "website": "https://www.henga.cn/",
       "website_label": "henga.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "",
+      "product_anchor_url": "http://www.henga.cn/product.html",
+      "product_anchor_label": "數控鈑金自動化：折彎機器人、上下料機器人與鈑金柔性生產線",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -10033,7 +10068,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.henga.cn/product.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱取自官方網域產品中心頁標題"
     },
     {
       "id": "ex-ciif-r0218",
@@ -10235,7 +10275,7 @@
       "tags": [
         "一般工業／無直接關聯"
       ],
-      "description": "齒條、齒輪與傳動系統（具名系列待查）",
+      "description": "德國ATLANTA齒條、伺服減速機、升降機與潤滑系統",
       "products": [
         "ATLANTA 傳動產品"
       ],
@@ -10262,7 +10302,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.atlanta-drives.cn/product/7/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網產品中心頁標題與摘要可見齒條、減速器、升降機、潤滑等系列"
     },
     {
       "id": "ex-ciif-r0223",
@@ -10645,14 +10690,16 @@
       "category": "mwcs",
       "raw_sector": "数控机床与金属加工展(位于2.1H&3H&4.1H） / 3H-B018",
       "tags": [],
-      "description": "待查",
+      "description": "雷射切割用氮氣發生器與無油螺桿壓縮機",
       "products": [
-        "待查（Boman 博曼工業產品頁待核）"
+        "雷射專用氮氣發生器",
+        "無油水潤滑單螺桿兩級壓縮機",
+        "氣體後處理設備"
       ],
       "website": "https://bomair.com/cn",
       "website_label": "bomair.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "",
+      "product_anchor_url": "http://bomair.com/",
+      "product_anchor_label": "雷射切割用氮氣發生器與無油螺桿壓縮機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -10672,7 +10719,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://bomair.com/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網以「Boman博曼工業」名義呈現，未見「博曼流體」法人全名；僅首頁摘要，無細項產品頁"
     },
     {
       "id": "ex-ciif-r0232",
@@ -10966,7 +11018,7 @@
       "tags": [
         "一般工業／無直接關聯"
       ],
-      "description": "液壓元件（具名系列待查）",
+      "description": "鈑金設備油缸專業製造商",
       "products": [
         "華星液壓元件產品"
       ],
@@ -10993,7 +11045,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.huaxingyy.com/userlist/jhhuaxing/wareshow-19633.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網產品中心頁標題含公司全名，資訊一致"
     },
     {
       "id": "ex-ciif-r0238",
@@ -11600,7 +11657,10 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "website_mismatch"
+      ]
     },
     {
       "id": "ex-ciif-r0251",
@@ -11660,14 +11720,19 @@
       "category": "mwcs",
       "raw_sector": "数控机床与金属加工展(位于2.1H&3H&4.1H） / 3H-C048",
       "tags": [],
-      "description": "待查",
+      "description": "家電用電源線與各式連接線製造",
       "products": [
-        "待查（優艾斯線纜產品待法律名稱核對）"
+        "空調電源線",
+        "電暖器電源線",
+        "冰箱電源線",
+        "風扇/電鍋電源線",
+        "橡膠連接線",
+        "PVC連接線"
       ],
       "website": "https://hbuis.com/",
       "website_label": "hbuis.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "",
+      "product_anchor_url": "http://www.hbuis.com/",
+      "product_anchor_label": "家電用電源線與各式連接線製造",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -11687,7 +11752,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "name_mismatch"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.hbuis.com/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網名稱為「河北優艾斯電器」，與「特種線纜」法人名稱略異，品牌一致；僅首頁/簡介摘要"
     },
     {
       "id": "ex-ciif-r0253",
@@ -12206,15 +12279,15 @@
       "tags": [
         "一般工業／無直接關聯"
       ],
-      "description": "光電技術產品與客製方案（具名型號待查）",
+      "description": "光電技術設備，官網產品中心列有FSM20、GSM15",
       "products": [
         "待查（官方頁僅有產品中心",
         "總覽，未見具名型號）"
       ],
       "website": "https://www.fastscan.cn/",
       "website_label": "fastscan.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "",
+      "product_anchor_url": "https://www.fastscan.cn/cpzx",
+      "product_anchor_label": "光電技術設備，官網產品中心列有FSM20、GSM15",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -12234,7 +12307,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.fastscan.cn/cpzx",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網產品頁僅見型號標題，搜尋工具無法取得產品類別說明"
     },
     {
       "id": "ex-ciif-r0264",
@@ -12279,7 +12357,10 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "website_mismatch"
+      ]
     },
     {
       "id": "ex-ciif-r0265",
@@ -20370,14 +20451,14 @@
       "tags": [
         "待查"
       ],
-      "description": "待查；集團官方網站列有『分公司—朗安精密』入口，但目前頁面未能確認本法人專屬具名產品。",
+      "description": "快速連接器、快換盤與氫燃料加注設備",
       "products": [
         "集團官方網站列有『分公司—朗安精密』入口，但目前頁面未能確認本法人專屬具名產品。"
       ],
       "website": "https://www.longentest.com.cn/",
       "website_label": "朗安集團官方網站",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查",
+      "product_anchor_url": "https://www.longentest.com.cn/cate/364.html",
+      "product_anchor_label": "快速連接器、快換盤與氫燃料加注設備",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -20397,7 +20478,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "name_mismatch"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.longentest.com.cn/cate/364.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網主體為「朗安（天津）科技發展有限公司」，摘要稱朗安精密為其分支，屬關聯但不同法人"
     },
     {
       "id": "ex-ciif-r0438",
@@ -22853,7 +22942,7 @@
       "tags": [
         "待查"
       ],
-      "description": "乐清乐腾：快速接线器、PCB 接线端子与欧式接线端子；河南迪控部分待查。",
+      "description": "電連接器與接線端子製造商",
       "products": [
         "乐清乐腾：快速接线器",
         "PCB 接线端子与欧式接线端子",
@@ -22902,7 +22991,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "site_compromised"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://letengdz.com/en_product1.asp?category=100",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網部分頁面（news2.asp、en_index.asp）已被博彩內容挾持；第二主體河南迪控環境科技未查"
     },
     {
       "id": "ex-ciif-r0490",
@@ -25514,12 +25611,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "滾動功能部件：直線導軌、滾珠絲桿等",
+      "products": [
+        "高精度方形直線導軌",
+        "滾珠絲桿直線導軌（EDW/EDH系列）",
+        "精密直線導軸",
+        "雙軸心滾輪直線導軌",
+        "冷軋滾珠絲桿（SFU/SFE/DFU等）",
+        "精密滾珠直線軸承",
+        "滾珠直線滑塊"
+      ],
       "website": "http://www.zjsydg.com/",
       "website_label": "疑似官網",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查",
+      "product_anchor_url": "http://www.zjsydg.com/pro.asp?clsid=736",
+      "product_anchor_label": "滾動功能部件：直線導軌、滾珠絲桿等",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -25539,7 +25644,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.zjsydg.com/pro.asp?clsid=736",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱產品應用於醫療設備等領域"
     },
     {
       "id": "ex-ciif-r0544",
@@ -29810,12 +29920,16 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "",
+      "description": "工具機配件：拖鏈、鋼製拖鏈、工具機防護罩",
+      "products": [
+        "拖鏈",
+        "鋼製拖鏈",
+        "防護罩"
+      ],
+      "website": "http://www.shengtuogs.com/",
       "website_label": "",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查",
+      "product_anchor_url": "http://www.shengtuogs.com/Home.html",
+      "product_anchor_label": "工具機配件：拖鏈、鋼製拖鏈、工具機防護罩",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -29835,7 +29949,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.shengtuogs.com/Home.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網標題含完整法人名及產品；第三方頁提到另一網址 saytop.com.cn 未經驗證"
     },
     {
       "id": "ex-ciif-r0634",
@@ -41756,12 +41876,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "微型直流電機、空心杯與精密減速電機",
+      "products": [
+        "直流齒輪箱電機（RIC-25GB2431，370系列）",
+        "微型齒輪箱電機（N20，RIC-12GB1215）",
+        "行星齒輪箱電機（RIC-42GP4267，775馬達）",
+        "防水振動馬達（RIC-724VG）",
+        "空心杯電機"
+      ],
       "website": "https://www.szric.com/",
       "website_label": "候选官网：RIC MOTOR",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查",
+      "product_anchor_url": "https://www.szric.com/details/%E7%9B%B4%E6%B5%81%E9%BD%BF%E8%BD%AE%E7%AE%B1%E7%94%B5%E6%9C%BA-ric-25gb2431",
+      "product_anchor_label": "微型直流電機、空心杯與精密減速電機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -41781,7 +41907,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.szric.com/details/%E7%9B%B4%E6%B5%81%E9%BD%BF%E8%BD%AE%E7%AE%B1%E7%94%B5%E6%9C%BA-ric-25gb2431",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網品牌為「瑞科電機/RIC MOTOR」，未見南通瑞科傳動法人全名；稱應用於醫療器械"
     },
     {
       "id": "ex-ciif-r0884",
@@ -51263,12 +51394,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "待查",
+      "description": "重載連接器、矩形連接器、航空插頭插座等工業連接器",
+      "products": [
+        "重載連接器",
+        "矩形連接器",
+        "航空插頭插座",
+        "工業連接器"
+      ],
+      "website": "http://www.xibashi.com/",
       "website_label": "待查",
-      "product_anchor_url": "待查",
-      "product_anchor_label": "待查",
+      "product_anchor_url": "http://www.xibashi.com/",
+      "product_anchor_label": "重載連接器、矩形連接器、航空插頭插座等工業連接器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -51288,7 +51424,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.xibashi.com/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網標題含完整法人名與產品。注意同名品牌「西霸士電子（廈門）」SIBAS 已被 TE 收購，為不同法人"
     },
     {
       "id": "ex-ciif-r1084",
@@ -54221,12 +54363,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "待查",
+      "description": "賽普電氣集團旗下，電氣機櫃、IT機櫃、成套電器與新能源產品",
+      "products": [
+        "電氣機櫃",
+        "IT機櫃",
+        "成套電器",
+        "新能源產品"
+      ],
+      "website": "https://www.saipwell.cn/",
       "website_label": "待查",
-      "product_anchor_url": "待查",
-      "product_anchor_label": "待查",
+      "product_anchor_url": "https://www.saipwell.cn/About.html",
+      "product_anchor_label": "賽普電氣集團旗下，電氣機櫃、IT機櫃、成套電器與新能源產品",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -54246,7 +54393,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.saipwell.cn/About.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "Saipwell 官網關於頁標題為「上海斯普威爾電氣有限公司」，摘要稱斯普威爾電氣有限公司隸屬賽普集團；品牌一致，但上海公司可能為銷售子公司，法人名略有差異"
     },
     {
       "id": "ex-ciif-r1152",
@@ -62767,12 +62920,23 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工控電氣元件：端子台、繼電器、感測器等",
+      "products": [
+        "總線模組",
+        "端子台（T063、T001-L/T001-LP）",
+        "繼電器模組（Y400、Y410、Y448、Y315系列）",
+        "交流固態繼電器",
+        "光電感測器",
+        "雷射位移感測器K053",
+        "聲光三色警示燈D018",
+        "開關電源",
+        "氣動元件",
+        "減速機"
+      ],
       "website": "https://www.szsiron.com.cn/",
       "website_label": "szsiron.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://szsiron.com.cn/list.php?f1=7&pid=5",
+      "product_anchor_label": "工控電氣元件：端子台、繼電器、感測器等",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -62792,7 +62956,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://szsiron.com.cn/list.php?f1=7&pid=5",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網產品頁標題與分類一致"
     },
     {
       "id": "ex-ciif-r1349",
@@ -62982,12 +63151,16 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "重載、圓形、矩形電連接器製造商",
+      "products": [
+        "HA/HE系列重載連接器",
+        "圓形連接器系列",
+        "矩形連接器系列（CA、AZ、CB2型）"
+      ],
       "website": "https://www.haogncn.cn/",
       "website_label": "haogncn.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.haogncn.cn/a/cpyfa/1/HA/",
+      "product_anchor_label": "重載、圓形、矩形電連接器製造商",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -63007,7 +63180,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.haogncn.cn/a/cpyfa/1/HA/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱20大系列、2000餘規格，應用於航空、艦船、鐵路等"
     },
     {
       "id": "ex-ciif-r1354",
@@ -63070,12 +63248,23 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "軟體定義工業自動化：工智機、IO、運動控制",
+      "products": [
+        "MetaOS工業級雙域作業系統",
+        "MetaFacture統一開發環境",
+        "SC系列IO模組",
+        "SRE/SRR/SRC/SRT/SRI系列IO產品",
+        "SV35系列伺服",
+        "SF4101/SF4200/SF4201/SF4202/SF4301通訊插件",
+        "SD8000（awCenter）設備接入與管理平台",
+        "工業機器人",
+        "機器視覺硬體",
+        "工業通訊閘道"
+      ],
       "website": "https://www.sinsegye.com.cn/",
       "website_label": "sinsegye.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.sinsegye.com.cn/product-category/products/i-o-module/io-products/",
+      "product_anchor_label": "軟體定義工業自動化：工智機、IO、運動控制",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -63095,7 +63284,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.sinsegye.com.cn/product-category/products/i-o-module/io-products/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網產品頁標題含型號，資訊一致"
     },
     {
       "id": "ex-ciif-r1356",
@@ -63113,12 +63307,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "運動控制器、伺服驅動器與數控系統",
+      "products": [
+        "gLink-II多軸網路運動控制器",
+        "GSNE系列多軸網路運動控制器",
+        "GSVD/GSHD系列伺服驅動器",
+        "驅控一體機（拿雲Marvie）",
+        "IDEABOX系列智慧控制器",
+        "數控系統（GNC）",
+        "開放式機器人系統開發平台",
+        "工業設備物聯雲平台"
+      ],
       "website": "https://www.googoltech.com.cn/",
       "website_label": "googoltech.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://googoltech.com.cn/show-671.html",
+      "product_anchor_label": "運動控制器、伺服驅動器與數控系統",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -63138,7 +63341,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://googoltech.com.cn/show-671.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網結果多為新聞/應用案例頁，產品名取自官網標題與摘要"
     },
     {
       "id": "ex-ciif-r1357",
@@ -63156,12 +63364,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "",
+      "description": "工業控制元件：導軌開關電源、繼電器、感測器、按鈕開關、訊號隔離器",
+      "products": [
+        "開關電源（導軌式工業電源）",
+        "繼電器",
+        "感測器",
+        "按鈕開關",
+        "隔離送變器/熱電偶變送隔離器"
+      ],
+      "website": "https://www.mibbo.cn/",
       "website_label": "",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（未確認官方身分與具名產品／服務）",
+      "product_anchor_url": "https://www.mibbo.cn/",
+      "product_anchor_label": "工業控制元件：導軌開關電源、繼電器、感測器、按鈕開關、訊號隔離器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -63181,7 +63395,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.mibbo.cn/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網頁面標題含「米博（廈門）集團有限公司」及產品分類；米博（廈門）智能科技/自動化科技為關係企業，非本法人"
     },
     {
       "id": "ex-ciif-r1358",
@@ -63619,12 +63839,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "IEC 61131-3工控軟體與安全關鍵嵌入式軟體工具",
+      "products": [
+        "ACEphere Runtime",
+        "ACEphere Display",
+        "ACEphere Motion Control",
+        "ACEphere LiteSys",
+        "ACEphere GearSys",
+        "ACEphere UniSys",
+        "SMAVE Model Suite / HMI",
+        "SMAVE AI Fuzzer"
+      ],
       "website": "https://www.formal-tech.com/zh/about/",
       "website_label": "formal-tech.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.formal-tech.com/products/acephere/acephere-runtime",
+      "product_anchor_label": "IEC 61131-3工控軟體與安全關鍵嵌入式軟體工具",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -63644,7 +63873,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.formal-tech.com/products/acephere/acephere-runtime",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網產品頁標題含公司全名"
     },
     {
       "id": "ex-ciif-r1368",
@@ -63795,12 +64029,25 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "格力旗下電機製造商，家電與工業電機",
+      "products": [
+        "家用空調電機（交流/直流）",
+        "風扇電機",
+        "油煙機電機",
+        "空氣淨化器電機",
+        "除濕機電機",
+        "冰箱風機",
+        "淨水機用穩壓泵",
+        "高效工業電機",
+        "工業製冷壓縮機電機",
+        "伺服電機",
+        "直線伺服電機及驅動器",
+        "磁懸浮電機驅動系統"
+      ],
       "website": "https://www.gree-kb.com/zh-CN/",
       "website_label": "gree-kb.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.gree-kb.com/zh-cn/Product/Category?pageIndex=0",
+      "product_anchor_label": "格力旗下電機製造商，家電與工業電機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -63820,7 +64067,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.gree-kb.com/zh-cn/Product/Category?pageIndex=0",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱為格力電器全資子公司，5大類43系列"
     },
     {
       "id": "ex-ciif-r1372",
@@ -63881,12 +64133,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "物位、壓力、溫度感測器與儀表",
+      "products": [
+        "RL20XW100/200/400 FMCW雷達物位計",
+        "XM5500航空插頭型溫度變送器",
+        "單晶矽壓力變送器",
+        "音叉液位開關（高溫法蘭、四氟螺紋款）",
+        "音叉密度計/濃度計",
+        "射頻導納物位開關",
+        "電容式物位計",
+        "阻旋料位開關"
+      ],
       "website": "https://www.jvler.com/",
       "website_label": "jvler.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.jvler.com/e/action/ShowInfo.php?classid=31&id=208",
+      "product_anchor_label": "物位、壓力、溫度感測器與儀表",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -63906,7 +64167,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "site_compromised"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.jvler.com/e/action/ShowInfo.php?classid=31&id=208",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網部分頁面（classid=34）已被博彩內容挾持；稱應用含製藥等行業"
     },
     {
       "id": "ex-ciif-r1374",
@@ -63924,12 +64193,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "德國Nanotec步進/無刷電機與控制器",
+      "products": [
+        "步進電機（ST4118，NEMA 17）",
+        "步進電機+變速箱",
+        "無刷直流電機",
+        "整合式電機（PD4-E、PD2-C）",
+        "電機控制器",
+        "步進電機直線機構",
+        "光學編碼器",
+        "配件（電纜、軸）"
+      ],
       "website": "https://www.nanotec-cn.cn/zh",
       "website_label": "nanotec-cn.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.nanotec-cn.cn/zh/products",
+      "product_anchor_label": "德國Nanotec步進/無刷電機與控制器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -63949,7 +64227,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.nanotec-cn.cn/zh/products",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱產品用於自動化實驗室設備與醫療器械領域"
     },
     {
       "id": "ex-ciif-r1375",
@@ -64012,12 +64295,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "伺服器機箱、工控機箱與非標機箱製造",
+      "products": [
+        "伺服器機箱（1U/2U/3U/4U）",
+        "工控機箱（4U、壁掛）",
+        "非標機箱",
+        "機櫃",
+        "操作台",
+        "顯卡礦機準系統",
+        "工控主板"
+      ],
       "website": "https://bgepc.com/",
       "website_label": "bgepc.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.bgepc.com/p/5.html",
+      "product_anchor_label": "伺服器機箱、工控機箱與非標機箱製造",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -64037,7 +64328,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.bgepc.com/p/5.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網產品中心頁標題含公司全名"
     },
     {
       "id": "ex-ciif-r1377",
@@ -64317,12 +64613,14 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "伺服驅動連接電纜",
+      "products": [
+        "SSY系列伺服驅動連接電纜（SIEMENS SINAMICS用）"
+      ],
       "website": "https://www.isuntek.com.cn/",
       "website_label": "isuntek.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.isuntek.com.cn/upfile/SIEMENS%20SINAMIC%E7%B3%BB%E5%88%97%E7%94%B5%E7%BC%86v1.5.pdf",
+      "product_anchor_label": "伺服驅動連接電纜",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -64342,7 +64640,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.isuntek.com.cn/upfile/SIEMENS%20SINAMIC%E7%B3%BB%E5%88%97%E7%94%B5%E7%BC%86v1.5.pdf",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網名稱為「北京星科嘉銳自動化技術有限公司」，較登記名多「技術」二字；僅一份官網PDF可見產品"
     },
     {
       "id": "ex-ciif-r1384",
@@ -64696,12 +64999,22 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "伺服電機與伺服驅動器",
+      "products": [
+        "WM/WA/WE系列伺服驅動器",
+        "ZMS/ZLS系列伺服電機",
+        "Z9系列交流伺服電機",
+        "ZDP/ZEP系列防爆伺服電機",
+        "礦用伺服電機",
+        "ZDR系列直驅伺服電機",
+        "ZHRE/ZHRT系列空心軸伺服電機",
+        "ZLS-S低壓伺服電機",
+        "ZSS不鏽鋼伺服電機"
+      ],
       "website": "https://www.preciserobot.com.cn/",
       "website_label": "preciserobot.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.preciserobot.com.cn/sv_complex.aspx?nid=8",
+      "product_anchor_label": "伺服電機與伺服驅動器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -64721,7 +65034,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.preciserobot.com.cn/sv_complex.aspx?nid=8",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網摘要提及應用於CT掃描設備等高端裝備（醫療應用）"
     },
     {
       "id": "ex-ciif-r1392",
@@ -64919,12 +65237,23 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "明緯合資集團：建築智能化與自動化設備",
+      "products": [
+        "人臉辨識一卡通軟硬體",
+        "視訊安防及平台",
+        "AI視訊分析",
+        "物聯網管理平台",
+        "建築可視化管理平台",
+        "單工程自動線",
+        "連續模",
+        "光學檢驗設備",
+        "全自動鉚PIN機",
+        "全自動組裝鉚合機"
+      ],
       "website": "https://www.sharewell.cc/",
       "website_label": "sharewell.cc",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.sharewell.cc/aboutRange.aspx?i=9",
+      "product_anchor_label": "明緯合資集團：建築智能化與自動化設備",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -64944,7 +65273,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.sharewell.cc/aboutRange.aspx?i=9",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品分屬旗下子公司（協緯智能、承緯精密等），非母公司本身"
     },
     {
       "id": "ex-ciif-r1397",
@@ -66639,12 +66973,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "",
+      "description": "工業自動化測控元件：溫度/溫濕度控制器、固態繼電器、溫度模組、PLC、HMI、溫度感測器",
+      "products": [
+        "智慧溫度控制器",
+        "溫濕度控制器（TH1系列）",
+        "固態繼電器（NY1系列）",
+        "多通道溫度模組",
+        "網路型控制模組",
+        "可程式控制器",
+        "人機介面觸控屏",
+        "溫度感測器"
+      ],
+      "website": "https://www.sinny.cn/",
       "website_label": "",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（未確認官方身分與具名產品／服務）",
+      "product_anchor_url": "https://www.sinny.cn/company/about_us.html",
+      "product_anchor_label": "工業自動化測控元件：溫度/溫濕度控制器、固態繼電器、溫度模組、PLC、HMI、溫度感測器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -66664,7 +67007,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.sinny.cn/company/about_us.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網首頁標題含完整法人名（Sinny 上南），產品取自官網公司簡介與產品頁標題"
     },
     {
       "id": "ex-ciif-r1435",
@@ -68791,12 +69140,24 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工業自動化連接器與連接系統方案",
+      "products": [
+        "M8/M12/M16/7/8/M23系列圓形連接器",
+        "總線協議系列連接器",
+        "I/O分線盒（如M12-A3-8K5-DZP）",
+        "閥插頭連接器",
+        "D-SUB連接器（冷壓插針CDSM-1.5等）",
+        "穿牆板（KEL 24/12-2MT）",
+        "管線包",
+        "重載連接器（HMK-004-MC、H10B）",
+        "工業交換機",
+        "總線模組",
+        "USB系列產品"
+      ],
       "website": "https://www.velledq.com/?pmcId=31",
       "website_label": "velledq.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.velledq.com/page105?product_id=2607",
+      "product_anchor_label": "工業自動化連接器與連接系統方案",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -68816,7 +69177,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.velledq.com/page105?product_id=2607",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網公司名為「為樂電氣（上海）有限公司」，與登錄名「為樂電氣有限公司」略異，品牌一致"
     },
     {
       "id": "ex-ciif-r1481",
@@ -69031,12 +69397,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "同步帶、帶輪等精密傳動件",
+      "products": [
+        "橡膠(RU)同步帶",
+        "聚氨酯(PU)同步帶",
+        "同步帶輪",
+        "三角帶輪",
+        "鏈輪",
+        "齒輪",
+        "齒條",
+        "聯軸器"
+      ],
       "website": "https://www.sy-xy.com/",
       "website_label": "sy-xy.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.sy-xy.com/",
+      "product_anchor_label": "同步帶、帶輪等精密傳動件",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -69056,7 +69431,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.sy-xy.com/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品資訊來自官網首頁摘要，無獨立產品頁連結"
     },
     {
       "id": "ex-ciif-r1486",
@@ -69117,12 +69497,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "激光測距與工業光電感測器",
+      "products": [
+        "激光測距感測器（LD100等）",
+        "PS系列ToF光電感測器",
+        "激光位移感測器",
+        "光電感測器",
+        "無線傳輸設備"
+      ],
       "website": "https://www.gatporsensor.com/",
       "website_label": "gatporsensor.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.gatporsensor.com/",
+      "product_anchor_label": "激光測距與工業光電感測器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -69142,7 +69528,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.gatporsensor.com/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "品牌GATPOR；應用含電梯、物流、航太等"
     },
     {
       "id": "ex-ciif-r1488",
@@ -69160,12 +69551,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "MEMS慣性測量單元與慣性導航系統",
+      "products": [
+        "通用IMU（FSS-IMU614E系列、FSS-IMU618、FSS-IMUP8、FSS-IMU16488）",
+        "行業專用IMU（614E-AG農機、614E-P）",
+        "姿態感測器（FSS-AHRS200-X/400-X）",
+        "組合導航（FSS-NAV680-AG、FS982-SA/AG/U）",
+        "衛星羅經"
+      ],
       "website": "https://www.forsense.cn/",
       "website_label": "forsense.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.forsense.cn/Product-Center/",
+      "product_anchor_label": "MEMS慣性測量單元與慣性導航系統",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -69185,7 +69582,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.forsense.cn/Product-Center/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "應用含智慧駕駛、機器人、工業控制"
     },
     {
       "id": "ex-ciif-r1489",
@@ -69203,12 +69605,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "機器人快換裝置與氣動夾爪",
+      "products": [
+        "QTC工具快換裝置",
+        "三指氣動夾爪（FOUK-TZ系列）",
+        "四指氣動夾爪（FOUK-TF系列）",
+        "齒形三指夾爪",
+        "旋轉氣缸",
+        "浮動補償",
+        "旋轉手指"
+      ],
       "website": "https://www.fouk.top/",
       "website_label": "fouk.top",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.fouk.top/sanzhiqidongjiazhaoxilie/",
+      "product_anchor_label": "機器人快換裝置與氣動夾爪",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -69228,7 +69638,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.fouk.top/sanzhiqidongjiazhaoxilie/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "品牌FOUK"
     },
     {
       "id": "ex-ciif-r1490",
@@ -69713,12 +70128,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "繼電器、接觸器與高壓直流產品",
+      "products": [
+        "工業繼電器",
+        "電力繼電器",
+        "新能源繼電器（CHPV-S350）",
+        "高壓直流接觸器",
+        "感測器",
+        "智慧配電模組"
+      ],
       "website": "https://churod.com/index.asp",
       "website_label": "churod.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.churod.com/index/product/showproduct?id=607&pid=83",
+      "product_anchor_label": "繼電器、接觸器與高壓直流產品",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -69738,7 +70160,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.churod.com/index/product/showproduct?id=607&pid=83",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "應用涵蓋工業、汽車、清潔能源、電力、家電"
     },
     {
       "id": "ex-ciif-r1499",
@@ -69799,12 +70226,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "特種滾輪與驅動輪",
+      "products": [
+        "驅動輪（D140-23-19等）",
+        "高速特種滾輪",
+        "工程塑料滾輪",
+        "鋁芯包塑滾輪及配件"
+      ],
       "website": "https://www.siger-tech.cn/",
       "website_label": "siger-tech.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.siger-tech.cn/lists/123.html",
+      "product_anchor_label": "特種滾輪與驅動輪",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -69824,7 +70256,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.siger-tech.cn/lists/123.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "應用於物流分揀、立體倉庫、自動門等"
     },
     {
       "id": "ex-ciif-r1501",
@@ -69885,12 +70322,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "專用軸承、導軌與運動單元",
+      "products": [
+        "非標專用軸承",
+        "專用導軌",
+        "制動器",
+        "直線運動組件",
+        "編碼器"
+      ],
       "website": "https://www.bom-cn.com/",
       "website_label": "bom-cn.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.bom-cn.com/page/html/index.php",
+      "product_anchor_label": "專用軸承、導軌與運動單元",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -69910,7 +70353,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.bom-cn.com/page/html/index.php",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品類別來自官網關於我們頁摘要，無具體型號"
     },
     {
       "id": "ex-ciif-r1503",
@@ -70062,12 +70510,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "家電電機、伺服電機與無刷電機",
+      "products": [
+        "MT系列三相異步電機",
+        "60系列伺服電機",
+        "YTP系列直流無刷電機",
+        "AB SQ系列縫製設備專用稀土永磁伺服電機",
+        "單相交流異步電機",
+        "永磁同步電機",
+        "永磁同步增氧機"
+      ],
       "website": "https://www.shangqimotor.com/",
       "website_label": "shangqimotor.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.shangqimotor.com/chanpin/products_article.asp?id=384",
+      "product_anchor_label": "家電電機、伺服電機與無刷電機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -70087,7 +70543,11 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.shangqimotor.com/chanpin/products_article.asp?id=384",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）"
     },
     {
       "id": "ex-ciif-r1507",
@@ -70369,12 +70829,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "人形機器人關節模組與伺服驅動",
+      "products": [
+        "行星關節模組（250N·m）",
+        "低壓伺服驅動",
+        "力控關節模組",
+        "直線關節模組",
+        "雙差速線控底盤",
+        "力控人形臂"
+      ],
       "website": "https://www.zdl-robotics.com/index.php",
       "website_label": "zdl-robotics.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.zdl-robotics.com/index.php?c=show&id=51",
+      "product_anchor_label": "人形機器人關節模組與伺服驅動",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -70394,7 +70861,11 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.zdl-robotics.com/index.php?c=show&id=51",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）"
     },
     {
       "id": "ex-ciif-r1514",
@@ -70478,12 +70949,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工業機器人與注塑機械手、機器人電控櫃",
+      "products": [
+        "四軸機器人 BRTIRSC0810A（臂展800／負載10kg）",
+        "六軸機器人 BRTIRWD2206A（臂展2200／負載6kg）",
+        "五軸伺服機械手 BRTV13WDS5P0（適用成型機320T–700T）",
+        "380V 重負載機器人電控櫃"
+      ],
       "website": "https://www.borunte.com/index.html",
       "website_label": "borunte.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.borunte.com/mobile/productDetails?type=1&id=393054147eb546c29daabbc6b411708d",
+      "product_anchor_label": "工業機器人與注塑機械手、機器人電控櫃",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -70524,7 +71000,12 @@
         "match_status": "候選命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.borunte.com/mobile/productDetails?type=1&id=393054147eb546c29daabbc6b411708d",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱與型號取自官方網域產品頁標題"
     },
     {
       "id": "ex-ciif-r1516",
@@ -70651,12 +71132,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "伺服驅動、伺服電機與關節模組",
+      "products": [
+        "TX系列伺服驅動",
+        "TC系列伺服電機",
+        "TS系列機器人控制系統",
+        "iT系列集成伺服電機",
+        "一體化關節模組"
+      ],
       "website": "https://www.tsinchan.com/",
       "website_label": "tsinchan.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://tsinchan.com/?about%2F=",
+      "product_anchor_label": "伺服驅動、伺服電機與關節模組",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -70676,7 +71163,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://tsinchan.com/?about%2F=",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品資訊來自官網「關於我們」頁摘要"
     },
     {
       "id": "ex-ciif-r1519",
@@ -70739,12 +71231,22 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "減速機與關節模組測試設備",
+      "products": [
+        "減速器背隙測試機",
+        "機器人關節模組檢測設備",
+        "關節模組綜合性能測試台",
+        "諧波減速機測試設備",
+        "伺服壓力機",
+        "行星滾針排列機",
+        "伺服電機測功機",
+        "諧波/RV減速機剛性測試系統",
+        "減速機C字線裝配線"
+      ],
       "website": "https://tstzn.com/",
       "website_label": "tstzn.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.tstzn.com/?show=45",
+      "product_anchor_label": "減速機與關節模組測試設備",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -70764,7 +71266,11 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.tstzn.com/?show=45",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）"
     },
     {
       "id": "ex-ciif-r1521",
@@ -71176,12 +71682,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "旋風拋光刷與磨料絲研磨工業刷",
+      "products": [
+        "WOLF旋風拋光刷／拋光片（Radial Bristle Discs/Brushes）",
+        "WOLF Stand Needle Brush",
+        "磨料絲",
+        "研磨工業刷",
+        "塑料夾與五金夾"
+      ],
       "website": "https://www.wolfabrasive.com/Products.html",
       "website_label": "wolfabrasive.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://en.wolfabrasive.com/Products/1.html",
+      "product_anchor_label": "旋風拋光刷與磨料絲研磨工業刷",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -71201,7 +71713,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://en.wolfabrasive.com/Products/1.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "品牌WOLF；官網公司名與登錄名一致"
     },
     {
       "id": "ex-ciif-r1531",
@@ -71395,12 +71912,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "微型電機驅動器與空心杯電機",
+      "products": [
+        "17mm無刷空心杯電機（SBR1758B）",
+        "22mm無刷空心杯電機",
+        "S-Module 8Axis 6030八軸驅動器（CANopen/EtherCAT）",
+        "電機驅動與控制產品",
+        "微型編碼器"
+      ],
       "website": "https://hcmotion.cn/",
       "website_label": "hcmotion.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.hcmotion.cn/pd.jsp?id=49",
+      "product_anchor_label": "微型電機驅動器與空心杯電機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -71420,7 +71943,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.hcmotion.cn/pd.jsp?id=49",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網提及醫療設備與醫療機器人應用；產品頁標題署名「寧波昊創」，與首頁「上海昊控」不同法人名，疑為關聯公司"
     },
     {
       "id": "ex-ciif-r1536",
@@ -71878,12 +72406,16 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "機器人電動夾爪（手爪）與智能抓取系統",
+      "products": [
+        "大負載電動夾爪／重載夾爪",
+        "電動夾爪 CTM2F110",
+        "葉片分揀機器人"
+      ],
       "website": "https://www.changingtek.com/",
       "website_label": "changingtek.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.changingtek.com/zhongzaijiazhao",
+      "product_anchor_label": "機器人電動夾爪（手爪）與智能抓取系統",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -71924,7 +72456,12 @@
         "match_status": "候選命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.changingtek.com/zhongzaijiazhao",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱取自官方網域頁面標題（重載夾爪頁、CTM2F110 產品頁、葉片分揀機器人頁）"
     },
     {
       "id": "ex-ciif-r1545",
@@ -72069,12 +72606,16 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "高速低噪音微型與深溝球軸承",
+      "products": [
+        "微型系列軸承",
+        "6000/6200/6300/6800/6900系列深溝球軸承",
+        "英制系列軸承"
+      ],
       "website": "https://www.nbmairui.com/",
       "website_label": "nbmairui.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.nbmairui.com/Support.html",
+      "product_anchor_label": "高速低噪音微型與深溝球軸承",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -72094,7 +72635,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.nbmairui.com/Support.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網提及應用於醫療器械；產品資訊來自關於我們／技術參數頁摘要"
     },
     {
       "id": "ex-ciif-r1548",
@@ -72112,12 +72658,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "中小模數精密錐齒輪",
+      "products": [
+        "螺旋錐齒輪",
+        "零度弧齒錐齒輪",
+        "大減速比錐齒輪",
+        "機器人高精度磨齒齒輪",
+        "K系列減速機齒輪",
+        "精密行星錐齒輪"
+      ],
       "website": "https://www.nsgear.net/",
       "website_label": "nsgear.net",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.nsgear.net/",
+      "product_anchor_label": "中小模數精密錐齒輪",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -72137,7 +72690,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.nsgear.net/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品資訊來自官網首頁／英文頁摘要，無獨立產品頁連結"
     },
     {
       "id": "ex-ciif-r1549",
@@ -72198,12 +72756,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "機械安全繼電器、光幕與聯鎖開關",
+      "products": [
+        "可配置安全繼電器（Quanta DN1820）",
+        "安全聯鎖開關（Oxon-W1）",
+        "安全光幕（GM1/GM2/GM3）",
+        "SoftsenseDNA安全觸邊",
+        "佰安翼AnEZ配置工具"
+      ],
       "website": "https://www.bytorent.net/en/",
       "website_label": "bytorent.net",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.bytorent.net/ProductDetail/9931817.html",
+      "product_anchor_label": "機械安全繼電器、光幕與聯鎖開關",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -72223,7 +72787,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.bytorent.net/ProductDetail/9931817.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "品牌「佰多恩」"
     },
     {
       "id": "ex-ciif-r1551",
@@ -72352,12 +72921,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "磁感測與位置檢測晶片",
+      "products": [
+        "磁位置感測器晶片（KTM5200/KTM5300、KTH78、KTM59）",
+        "磁性電流/線性檢測晶片（線性霍爾晶片）",
+        "開關位置檢測晶片（高壓氣缸位置檢測感測器）",
+        "信號調理晶片",
+        "磁通門剩餘電流檢測晶片",
+        "磁旋鈕"
+      ],
       "website": "https://www.conntek.com.cn/",
       "website_label": "conntek.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://en.conntek.com.cn/html/web/product/magneticCurrentLinearSensingChip/linearHallChip/index.html",
+      "product_anchor_label": "磁感測與位置檢測晶片",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -72377,7 +72953,11 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://en.conntek.com.cn/html/web/product/magneticCurrentLinearSensingChip/linearHallChip/index.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）"
     },
     {
       "id": "ex-ciif-r1554",
@@ -72554,12 +73134,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "協作機器人及應用方案",
+      "products": [
+        "G系列工業級協作機器人",
+        "C系列消費級協作機器人",
+        "X系列特種級協作機器人",
+        "碼垛工作站",
+        "滑軌式充電機器人"
+      ],
       "website": "https://www.cgxi.com.cn/",
       "website_label": "cgxi.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.cgxi.com.cn/product/series",
+      "product_anchor_label": "協作機器人及應用方案",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -72579,7 +73165,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.cgxi.com.cn/product/series",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網應用方案列有醫療應用"
     },
     {
       "id": "ex-ciif-r1558",
@@ -72708,12 +73299,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "重載高精度全方位移動機器人",
+      "products": [
+        "潛伏舉升AGV",
+        "叉車AGV",
+        "複合移載AGV",
+        "智慧巡檢機器人",
+        "軸線車",
+        "重載高精度全方位AGV"
+      ],
       "website": "https://www.omark-agv.com/",
       "website_label": "omark-agv.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://omark-agv.com/index.php?m=home&c=Lists&a=index&tid=8",
+      "product_anchor_label": "重載高精度全方位移動機器人",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -72733,7 +73331,11 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://omark-agv.com/index.php?m=home&c=Lists&a=index&tid=8",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）"
     },
     {
       "id": "ex-ciif-r1561",
@@ -72998,12 +73600,16 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "機器人關節用高精密減速器（3–1000kg 負載機器人整體方案）",
+      "products": [
+        "RV 減速器",
+        "諧波減速器",
+        "精密配件"
+      ],
       "website": "https://finemotion.com.cn/",
       "website_label": "finemotion.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.finemotion.com.cn/home/about?id=1",
+      "product_anchor_label": "機器人關節用高精密減速器（3–1000kg 負載機器人整體方案）",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -73044,7 +73650,12 @@
         "match_status": "候選命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.finemotion.com.cn/home/about?id=1",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官方網域「關於我們」頁摘要列出產品類別；無具名型號"
     },
     {
       "id": "ex-ciif-r1567",
@@ -73150,12 +73761,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "伺服電機與直線電機",
+      "products": [
+        "高性能電機（130STP、130STL、180HDD）",
+        "直線電機（LF370、LF400、LF560）",
+        "通用型電機（80STE、80STEB）",
+        "標準型電機",
+        "定製電機"
+      ],
       "website": "https://www.hxdwh-new.com/index.php/",
       "website_label": "hxdwh-new.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://hxdwh-new.com/lists/12.html",
+      "product_anchor_label": "伺服電機與直線電機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -73175,7 +73792,11 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://hxdwh-new.com/lists/12.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）"
     },
     {
       "id": "ex-ciif-r1570",
@@ -77118,12 +77739,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "智能製造核心零部件：SCARA 機器人、移動機器人（AMR）、機器視覺",
+      "products": [
+        "SCARA 機器人 TM20-R650／R800／R1000",
+        "移動機器人 TX-Q1",
+        "移動機器人 TX-NEXT",
+        "光伏智能運輸平台 TL-PILLAR",
+        "物流搬運機器人 TS-AGLIE",
+        "複合移動作業機器人 TT-METAL",
+        "UV 刻蝕機龍門大理石 YXZ 平台"
+      ],
       "website": "https://www.linkhou.com/?sourcef=china-ca800",
       "website_label": "linkhou.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.linkhou.com/proInfo/64.html",
+      "product_anchor_label": "智能製造核心零部件：SCARA 機器人、移動機器人（AMR）、機器視覺",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -77164,7 +77793,12 @@
         "match_status": "候選命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.linkhou.com/proInfo/64.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "型號取自官方網域產品頁標題"
     },
     {
       "id": "ex-ciif-r1654",
@@ -77311,12 +77945,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "液壓油缸、泵閥、馬達及工業機器人製造商",
+      "products": [
+        "小型挖掘機油缸",
+        "礦用自卸車油缸",
+        "疏浚挖泥設備油缸",
+        "敞開式TBM油缸",
+        "HCW系列擺線液壓馬達",
+        "工業機器人",
+        "液壓泵",
+        "控制閥"
+      ],
       "website": "https://www.henglihydraulics.com/col49/39",
       "website_label": "henglihydraulics.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.henglihydraulics.com/col52/799",
+      "product_anchor_label": "液壓油缸、泵閥、馬達及工業機器人製造商",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -77336,7 +77979,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "name_mismatch"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.henglihydraulics.com/col52/799",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網為江蘇恒立液壓股份有限公司，與登記名「江蘇恒立精密工業」為同品牌不同法人名稱"
     },
     {
       "id": "ex-ciif-r1658",
@@ -77663,12 +78314,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "拖鏈系統、高柔性電纜及工程塑料軸承",
+      "products": [
+        "拖鏈（E08/Z08、E2/000系列）",
+        "自伸縮三維拖鏈 TRXE",
+        "E6J無塵室拖鏈",
+        "拖鏈電纜",
+        "dryspin 絲槓",
+        "EC/BLDC無刷電機"
+      ],
       "website": "https://www.igus.cn/",
       "website_label": "igus.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.igus.cn/product/triflex-r-trxe?category=triflex-3d-movement",
+      "product_anchor_label": "拖鏈系統、高柔性電纜及工程塑料軸承",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -77688,7 +78346,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.igus.cn/product/triflex-r-trxe?category=triflex-3d-movement",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網igus.cn；產品頁標題直接可見"
     },
     {
       "id": "ex-ciif-r1665",
@@ -77749,12 +78412,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工業機器人：SCARA、焊接、壓鑄打磨、大負載機器人",
+      "products": [
+        "SCARA 機器人 MR06SC-500",
+        "SCARA 機器人 MR06SC-700",
+        "焊接機器人",
+        "壓鑄打磨機器人",
+        "MB 系列大負載機器人"
+      ],
       "website": "https://www.moka-robot.com/",
       "website_label": "moka-robot.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.moka-robot.com/scara.html",
+      "product_anchor_label": "工業機器人：SCARA、焊接、壓鑄打磨、大負載機器人",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -77795,7 +78464,12 @@
         "match_status": "候選命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.moka-robot.com/scara.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱取自官方網域產品中心頁標題"
     },
     {
       "id": "ex-ciif-r1667",
@@ -77813,12 +78487,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "數控系統、機器人控制器及伺服驅動電機",
+      "products": [
+        "數控系統 K1000MF1-2i",
+        "K2000TF3/4/5i Plus",
+        "3000T-3/4i",
+        "KPT110 桁架機器人控制器",
+        "伺服驅動器（單軸／多合一）",
+        "伺服電機 KA60/80/90/110"
+      ],
       "website": "https://cn.knd.com.cn/",
       "website_label": "cn.knd.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://cn.knd.com.cn/pd526315568.html",
+      "product_anchor_label": "數控系統、機器人控制器及伺服驅動電機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -77838,7 +78519,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://cn.knd.com.cn/pd526315568.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網列六大類：數控系統、機器人控制器、通用自動化控制器、伺服驅動、伺服電機、工業互聯網"
     },
     {
       "id": "ex-ciif-r1668",
@@ -77969,12 +78655,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "FANUC工業機器人及精密加工機械",
+      "products": [
+        "小型機器人 LR Mate 200iD",
+        "中型機器人 M-710iC",
+        "大型機器人",
+        "碼垛機器人 M-410iB/M-410iC",
+        "標準周邊產品",
+        "小型加工中心"
+      ],
       "website": "https://www.shanghai-fanuc.com.cn/",
       "website_label": "shanghai-fanuc.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.shanghai-fanuc.com.cn/palletizingrobot/",
+      "product_anchor_label": "FANUC工業機器人及精密加工機械",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -77994,7 +78687,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.shanghai-fanuc.com.cn/palletizingrobot/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱260多種機器人系列，負載0.5kg–2300kg"
     },
     {
       "id": "ex-ciif-r1671",
@@ -78149,12 +78847,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "微特電機、機器人關節模組及風機",
+      "products": [
+        "無框力矩電機（機器人）",
+        "無刷直流電機系列",
+        "BY永磁步進電機系列",
+        "BYJ減速步進電機系列",
+        "有刷直流電機系列",
+        "工農業負壓風機／電機",
+        "機器人關節模組"
+      ],
       "website": "https://cn.maintexpt.com/",
       "website_label": "cn.maintexpt.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://cn.maintexpt.com/wukuanglijudianjijiqiren.html",
+      "product_anchor_label": "微特電機、機器人關節模組及風機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -78174,7 +78880,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://cn.maintexpt.com/wukuanglijudianjijiqiren.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱無框力矩電機適用於醫療影像等高精度應用"
     },
     {
       "id": "ex-ciif-r1674",
@@ -78411,12 +79122,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "機器人精密減速器及工程機械減速機",
+      "products": [
+        "SMRDS",
+        "雙臥軸攪拌機專用減速箱",
+        "工業機器人精密行星擺線減速器",
+        "諧波減速器",
+        "齒輪、軸類傳動件"
+      ],
       "website": "https://www.zhsima.com/",
       "website_label": "zhsima.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.zhsima.com/products/1004414512520441856.html",
+      "product_anchor_label": "機器人精密減速器及工程機械減速機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -78436,7 +79153,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.zhsima.com/products/1004414512520441856.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "SMRDS產品頁標題可見；其他類別來自官網摘要"
     },
     {
       "id": "ex-ciif-r1680",
@@ -78544,12 +79266,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "電弧微爆法微細球形金屬粉末",
+      "products": [
+        "微細球形金屬粉末（鎢、鉬、鎳、銅合金等）",
+        "鎳基高溫合金粉末",
+        "鐵基合金粉末（高速鋼、不鏽鋼、模具鋼）",
+        "表面工程技術與服務"
+      ],
       "website": "https://www.szhkxc.cn/",
       "website_label": "szhkxc.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.szhkxc.cn/product",
+      "product_anchor_label": "電弧微爆法微細球形金屬粉末",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -78569,7 +79296,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.szhkxc.cn/product",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "應用含微球噴丸、熔覆、熱噴塗、3D列印、MIM"
     },
     {
       "id": "ex-ciif-r1683",
@@ -78671,12 +79403,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "存儲器、MCU、感測器及類比晶片設計商",
+      "products": [
+        "GD32 MCU（GD32F527、GD32H7）",
+        "SPI NOR Flash（GD25/55）",
+        "SPI NAND Flash GD5F",
+        "感測器",
+        "類比產品"
+      ],
       "website": "https://www.gigadevice.com.cn/",
       "website_label": "gigadevice.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.gigadevice.com.cn/product/mcu/high-performance-mcus/gd32f5xx-series/gd32f527",
+      "product_anchor_label": "存儲器、MCU、感測器及類比晶片設計商",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -78696,7 +79434,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.gigadevice.com.cn/product/mcu/high-performance-mcus/gd32f5xx-series/gd32f527",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "無晶圓廠半導體公司"
     },
     {
       "id": "ex-ciif-r1685",
@@ -78714,12 +79457,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工業智能物聯產品：模組、電源、總線與工控",
+      "products": [
+        "IoT9000A-LI 工控板",
+        "ZM602 Wi-Fi+BLE無線模組",
+        "P系列定壓DC-DC電源",
+        "E系列集中式I/O模組（EtherCAT）",
+        "iCAN教學實驗開發平台",
+        "編程器"
+      ],
       "website": "https://www.zlg.cn/",
       "website_label": "zlg.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.zlg.cn/ipc/ipc/product/id/82.html",
+      "product_anchor_label": "工業智能物聯產品：模組、電源、總線與工控",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -78739,7 +79489,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.zlg.cn/ipc/ipc/product/id/82.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱無線模組及工控板應用含醫療電子／醫療"
     },
     {
       "id": "ex-ciif-r1686",
@@ -78757,12 +79512,16 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "人形機器人、複合機器人與機器人客製開發",
+      "products": [
+        "人形機器人「小天」",
+        "人形機器人自動化解決方案",
+        "機械臂 SDK／運動控制介面"
+      ],
       "website": "https://www.tlibot.com/arm/105.html",
       "website_label": "tlibot.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.tlibot.com/news_d/48.html",
+      "product_anchor_label": "人形機器人、複合機器人與機器人客製開發",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -78803,7 +79562,12 @@
         "match_status": "候選命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.tlibot.com/news_d/48.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官方網域首頁標題「人形機器人自動化解決方案」、新聞頁「新款人形機器人—超級物種-小天」"
     },
     {
       "id": "ex-ciif-r1687",
@@ -78887,12 +79651,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "精密減速器、濃密機及冶金化工設備",
+      "products": [
+        "CORT精密減速器",
+        "機器人傳動技術解決方案",
+        "GLDS型高錐角高效沉降槽",
+        "濃密機",
+        "電解鋁設備（陽極提升機構）",
+        "機械攪拌設備"
+      ],
       "website": "https://cnhtr.com/",
       "website_label": "cnhtr.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.cnhtr.com/Col/Col12/Index.aspx",
+      "product_anchor_label": "精密減速器、濃密機及冶金化工設備",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -78912,7 +79683,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.cnhtr.com/Col/Col12/Index.aspx",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱CORT精密減速器應用含醫療器械"
     },
     {
       "id": "ex-ciif-r1689",
@@ -78930,12 +79706,15 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "SCARA 機器人與滾珠絲槓傳動元件",
+      "products": [
+        "SCARA 機器人",
+        "高精度大導程滾珠絲槓"
+      ],
       "website": "https://www.scs-i.com/",
       "website_label": "scs-i.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.scs-i.com/productinfo/5987900.html?templateId=1133605",
+      "product_anchor_label": "SCARA 機器人與滾珠絲槓傳動元件",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -78976,7 +79755,12 @@
         "match_status": "候選命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.scs-i.com/productinfo/5987900.html?templateId=1133605",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱取自官方網域產品頁標題"
     },
     {
       "id": "ex-ciif-r1690",
@@ -78994,12 +79778,15 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "同步帶輪等機械零件製造",
+      "products": [
+        "同步帶輪",
+        "鋁件陽極氧化加工"
+      ],
       "website": "https://scrdjy.com/Mo_index_gci_1.html",
       "website_label": "scrdjy.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.scrdjy.com/En_Mo_index_gci_10.html",
+      "product_anchor_label": "同步帶輪等機械零件製造",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -79019,7 +79806,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "weak_evidence"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.scrdjy.com/En_Mo_index_gci_10.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "證據薄弱：僅官網摘要提及同步帶輪與鋁陽極氧化產線，產品頁細節未見"
     },
     {
       "id": "ex-ciif-r1691",
@@ -79037,12 +79832,22 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "精密齒輪、諧波減速器及中置電機",
+      "products": [
+        "工業用機器人傳動（協作機器人用諧波減速器）",
+        "諧波減速器系列",
+        "精密減速機",
+        "中置電機",
+        "汽車及新能源車傳動",
+        "醫療設備齒輪",
+        "電動工具齒輪",
+        "電動腳踏車齒輪",
+        "縫紉機齒輪"
+      ],
       "website": "https://khgears.com/",
       "website_label": "khgears.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.khgears.com/pro.php?lm=1",
+      "product_anchor_label": "精密齒輪、諧波減速器及中置電機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -79062,7 +79867,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.khgears.com/pro.php?lm=1",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網設有「醫療設備」產品類別頁（pro_show.php?id=90）"
     },
     {
       "id": "ex-ciif-r1692",
@@ -79431,12 +80241,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "皮帶、軟管接頭及機器人工具交換裝置",
+      "products": [
+        "傳動・輸送用皮帶",
+        "自動工具交換裝置 OMEGA S35-S",
+        "旋轉接頭",
+        "工程機械樹脂液壓軟管",
+        "商用車氣剎快速接頭及尼龍管",
+        "伺服液壓產品",
+        "氣動控制閥"
+      ],
       "website": "https://www.nitta.com.cn/group/detail/id/4.html",
       "website_label": "nitta.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.nitta.com.cn/products/catlist.html",
+      "product_anchor_label": "皮帶、軟管接頭及機器人工具交換裝置",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -79456,7 +80274,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.nitta.com.cn/products/catlist.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網nitta.com.cn為NITTA霓達中國集團站，霓達機電科技（常州）為其集團公司之一"
     },
     {
       "id": "ex-ciif-r1699",
@@ -79517,12 +80340,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "滾珠絲槓等滾動功能部件及精密沖壓件",
+      "products": [
+        "精密滾珠花鍵",
+        "精密旋轉花鍵",
+        "滾珠絲槓副",
+        "直線導軌副",
+        "彈性圓柱銷",
+        "精密沖壓件"
+      ],
       "website": "https://www.surelen.cn/",
       "website_label": "surelen.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.surelen.cn/product-center/gunzhusihangfuchanpingliebiao/",
+      "product_anchor_label": "滾珠絲槓等滾動功能部件及精密沖壓件",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -79542,7 +80372,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.surelen.cn/product-center/gunzhusihangfuchanpingliebiao/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱產品服務領域含醫療"
     },
     {
       "id": "ex-ciif-r1701",
@@ -79867,12 +80702,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "機器人末端執行器、快換裝置及力感測器",
+      "products": [
+        "機器人工具快換裝置",
+        "多軸力／力矩感測器",
+        "碰撞感測器",
+        "Utility Coupler",
+        "Net F/T 軟體"
+      ],
       "website": "https://www.ati-ia.com/",
       "website_label": "ati-ia.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.ati-ia.com/zh-CN/products/ft/sensors.aspx",
+      "product_anchor_label": "機器人末端執行器、快換裝置及力感測器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -79892,7 +80733,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.ati-ia.com/zh-CN/products/ft/sensors.aspx",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網中文站ati-ia.com/zh-CN"
     },
     {
       "id": "ex-ciif-r1709",
@@ -79953,12 +80799,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "通用具身智能人形機器人",
+      "products": [
+        "智元精靈 G2",
+        "靈犀 X1",
+        "遠征 A1 通用人形機器人",
+        "智元酷拓",
+        "靈創平台"
+      ],
       "website": "https://www.agibot.com.cn/?channel=chinapp.com",
       "website_label": "agibot.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.agibot.com.cn/product/248.html",
+      "product_anchor_label": "通用具身智能人形機器人",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -79978,7 +80830,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.agibot.com.cn/product/248.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網摘要另提靈犀X2、關節電機PowerFlow、靈巧手SkillHand"
     },
     {
       "id": "ex-ciif-r1711",
@@ -79996,12 +80853,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "智能移動操作及具身智能機器人",
+      "products": [
+        "智能巡視測溫機器人",
+        "智能移動操作複合機器人",
+        "Moroma類人雙臂機器人",
+        "AMR自主移動機器人",
+        "智能盤點機器人",
+        "智能配送機器人"
+      ],
       "website": "https://www.sage-modi.com/",
       "website_label": "sage-modi.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.sage-modi.com/product_6.html",
+      "product_anchor_label": "智能移動操作及具身智能機器人",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -80021,7 +80885,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.sage-modi.com/product_6.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱應用含醫療康養"
     },
     {
       "id": "ex-ciif-r1712",
@@ -80039,12 +80908,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "愛普生工業機器人（SCARA、6軸）",
+      "products": [
+        "GX20 / GX4 SCARA機器人",
+        "G1 SCARA機器人",
+        "LS3-B SCARA機器人",
+        "C4 緊湊型6軸機器人",
+        "N2 機器人",
+        "Epson RC+ Express Edition"
+      ],
       "website": "https://www.epson.com.cn/index.html",
       "website_label": "epson.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.epson.com.cn/products/robots/",
+      "product_anchor_label": "愛普生工業機器人（SCARA、6軸）",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -80064,7 +80940,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.epson.com.cn/products/robots/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱應用含醫療與實驗室自動化；網站為愛普生（中國）品牌站"
     },
     {
       "id": "ex-ciif-r1713",
@@ -80128,12 +81009,14 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "高端行星減速機研發製造",
+      "products": [
+        "高端行星減速機"
+      ],
       "website": "https://www.faston-box.com/?list%2F89=",
       "website_label": "faston-box.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://faston-box.com/",
+      "product_anchor_label": "高端行星減速機研發製造",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -80153,7 +81036,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://faston-box.com/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "僅官網首頁摘要，無具體型號；官網名稱為「法斯頓動力科技有限公司」（無蘇州前綴）"
     },
     {
       "id": "ex-ciif-r1715",
@@ -80280,12 +81168,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工業工具、車間裝備與MRO用品",
+      "products": [
+        "裝配用工具套組",
+        "工具櫃",
+        "尖嘴鉗",
+        "GARANT 工具",
+        "HOLEX 刀具／量具"
+      ],
       "website": "https://www.hoffmann-group.com.cn/about-us/hoffmann-china",
       "website_label": "hoffmann-group.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.hoffmann-group.com.cn/product/21680",
+      "product_anchor_label": "工業工具、車間裝備與MRO用品",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -80305,7 +81199,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.hoffmann-group.com.cn/product/21680",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網為Hoffmann霍夫曼集團中國站，品牌與登記公司相符"
     },
     {
       "id": "ex-ciif-r1718",
@@ -80323,12 +81222,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "汽車、工業及家電用油封",
+      "products": [
+        "高溫油封",
+        "V型圈",
+        "電機油封",
+        "家電油封",
+        "工程機械油封",
+        "減震器油封",
+        "輪轂油封"
+      ],
       "website": "https://www.sealdo.com/",
       "website_label": "sealdo.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.sealdo.com/proinfo/26.html",
+      "product_anchor_label": "汽車、工業及家電用油封",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -80348,7 +81255,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.sealdo.com/proinfo/26.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網列工業油封應用含工業機器人、減速機"
     },
     {
       "id": "ex-ciif-r1719",
@@ -80409,12 +81321,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "台灣精密齒條與齒輪製造商",
+      "products": [
+        "齒條",
+        "法蘭齒輪",
+        "導軌齒條",
+        "花鍵齒輪",
+        "滾輪"
+      ],
       "website": "https://www.yycmotion.com/zh-TW/",
       "website_label": "yycmotion.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.yycmotion.com/zh-CN/plist4-%E6%B3%95%E5%85%B0%E9%BD%BF%E8%BD%AE",
+      "product_anchor_label": "台灣精密齒條與齒輪製造商",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -80434,7 +81352,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.yycmotion.com/zh-CN/plist4-%E6%B3%95%E5%85%B0%E9%BD%BF%E8%BD%AE",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網有簡體中文、繁體中文及英文站"
     },
     {
       "id": "ex-ciif-r1721",
@@ -80495,12 +81418,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "ABB工業機器人、控制器及自動化方案",
+      "products": [
+        "協作機器人",
+        "關節機器人",
+        "並聯機器人",
+        "SCARA機器人",
+        "噴塗機器人",
+        "AMR自主移動機器人",
+        "OmniCore E10 控制器",
+        "變位機"
+      ],
       "website": "https://www.abbrobotics.com.cn/index.php/About/index.html",
       "website_label": "abbrobotics.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.abbrobotics.com.cn/index.php/Select/index.html",
+      "product_anchor_label": "ABB工業機器人、控制器及自動化方案",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -80520,7 +81452,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "domain_verify"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.abbrobotics.com.cn/index.php/Select/index.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "abbrobotics.com.cn非ABB集團主站abb.com，是否為官方中國站建議人工確認"
     },
     {
       "id": "ex-ciif-r1723",
@@ -81250,12 +82190,15 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工業機器人離線程式設計軟體與職業教育實訓設備",
+      "products": [
+        "工業機器人離線程式設計軟體（PQArt）",
+        "教學實訓工作站"
+      ],
       "website": "https://www.chlrob.com/",
       "website_label": "chlrob.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www-prepro.chlrob.com/ProductCenter/Index",
+      "product_anchor_label": "工業機器人離線程式設計軟體與職業教育實訓設備",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -81296,7 +82239,12 @@
         "match_status": "候選命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www-prepro.chlrob.com/ProductCenter/Index",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官方網域「產品中心」頁標題為「離線編程」與「WorkStations」；PQArt 名稱出自搜尋摘要"
     },
     {
       "id": "ex-ciif-r1740",
@@ -82933,12 +83881,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "耐高溫電線、高壓線、同軸線與新能源汽車線",
+      "products": [
+        "AGG-DC 矽橡膠直流高壓線",
+        "AGG-AC 矽橡膠交流高壓線",
+        "RG141 同軸信號線",
+        "SFF-50-1.5-1 同軸信號線",
+        "UL1180 PTFE 絕緣線",
+        "EVP 新能源汽車高壓屏蔽線"
+      ],
       "website": "https://www.tygwx.com/",
       "website_label": "tygwx.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.tygwx.com/chanpin/",
+      "product_anchor_label": "耐高溫電線、高壓線、同軸線與新能源汽車線",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -82958,7 +83913,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.tygwx.com/chanpin/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱與型號取自官方網域產品頁標題；另有耐火線、軍工線纜、熱電偶補償線、線束等類別"
     },
     {
       "id": "ex-ciif-r1773",
@@ -82976,12 +83936,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "進口高端工業零部件（彈簧、密封件、擋圈）貿易",
+      "products": [
+        "波形彈簧",
+        "碟形彈簧",
+        "進口氮氣彈簧",
+        "O型圈",
+        "彈性擋圈",
+        "壓力傳感器"
+      ],
       "website": "https://www.starpoint.cn/",
       "website_label": "starpoint.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.starpoint.cn/product.html?brand_id=&category_id=2004",
+      "product_anchor_label": "進口高端工業零部件（彈簧、密封件、擋圈）貿易",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -83001,7 +83968,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.starpoint.cn/product.html?brand_id=&category_id=2004",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品類別取自官方網域產品分類頁標題與摘要；官網摘要提及應用於醫療器械等行業"
     },
     {
       "id": "ex-ciif-r1774",
@@ -83390,12 +84362,16 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "低壓直流高功率密度伺服驅動器",
+      "products": [
+        "泰山系列八合一伺服驅動器",
+        "華山系列伺服驅動器",
+        "嵩山系列伺服驅動器"
+      ],
       "website": "https://www.xien-tech.com/",
       "website_label": "xien-tech.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://xien-tech.com/uploadpic/file/202509/20250923201258_64917.pdf",
+      "product_anchor_label": "低壓直流高功率密度伺服驅動器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -83415,7 +84391,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://xien-tech.com/uploadpic/file/202509/20250923201258_64917.pdf",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品取自官方網域用戶手冊PDF；官網首頁標題為「蘇州西恩微伺雲科技有限公司」，聯繫頁為蘇州西恩科技有限公司（品牌一致）；泰山系列應用提及醫療"
     },
     {
       "id": "ex-ciif-r1783",
@@ -83611,12 +84592,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工業控制產品（伺服、步進、變頻、電源、光幕）",
+      "products": [
+        "光幕",
+        "濾波器",
+        "伺服系統",
+        "步進系統",
+        "變頻器",
+        "導軌式開關電源",
+        "繼電器模組",
+        "固態模塊系列"
+      ],
       "website": "https://www.basitu.cc/",
       "website_label": "basitu.cc",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.basitu.cc/product/12/",
+      "product_anchor_label": "工業控制產品（伺服、步進、變頻、電源、光幕）",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -83636,7 +84626,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.basitu.cc/product/12/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "光幕、濾波器取自官方網域產品頁標題，其餘取自官網摘要；官網首頁標題為「台州巴斯圖視覺機器人有限公司」，產品頁為台州巴斯圖自動化有限公司"
     },
     {
       "id": "ex-ciif-r1788",
@@ -83830,12 +84825,15 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "伺服連接器與伺服編碼器線束",
+      "products": [
+        "伺服連接器",
+        "西門子 V90 小功率編碼器線"
+      ],
       "website": "https://www.deetrue.com/",
       "website_label": "deetrue.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.deetrue.com/pd.jsp?id=4",
+      "product_anchor_label": "伺服連接器與伺服編碼器線束",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -83855,7 +84853,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.deetrue.com/pd.jsp?id=4",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品取自官方網域頁面；網站標題為「寧波典創線束科技有限公司」，內有上海典創自動化科技有限公司頁面（同品牌關聯企業）"
     },
     {
       "id": "ex-ciif-r1793",
@@ -84002,12 +85005,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "伺服編碼器元件、產品與方案",
+      "products": [
+        "旋轉伺服編碼器",
+        "直線伺服編碼器",
+        "通用編碼器",
+        "行業專用編碼器"
+      ],
       "website": "https://www.demagawa.cn/",
       "website_label": "demagawa.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.demagawa.cn/",
+      "product_anchor_label": "伺服編碼器元件、產品與方案",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -84027,7 +85035,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.demagawa.cn/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品類別取自官方網域摘要；部分文章頁標題署名「恩格達」，品牌關係未明"
     },
     {
       "id": "ex-ciif-r1797",
@@ -84131,12 +85144,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "中小型電動執行器、滾珠絲槓與驅動器",
+      "products": [
+        "MAS 滑台式電機執行器",
+        "MAC 活塞式執行器（MAC35）",
+        "MEC 電動缸",
+        "MRG 電動夾爪",
+        "BSG 研磨級滾珠絲槓（BSG0601K、BSG1002K）",
+        "BSR 轉造級滾珠絲槓（BSR0401）",
+        "FBG 系列（FBG2550、FBG0805、FBG0606）",
+        "步進／伺服驅動器"
+      ],
       "website": "https://www.hkx-inc.com/",
       "website_label": "hkx-inc.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.hkx-inc.com/products.html",
+      "product_anchor_label": "中小型電動執行器、滾珠絲槓與驅動器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -84156,7 +85178,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.hkx-inc.com/products.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "型號取自官方網域產品頁標題，系列名稱取自官網摘要"
     },
     {
       "id": "ex-ciif-r1800",
@@ -84219,12 +85246,16 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "高校招生與內容安全AI服務平台",
+      "products": [
+        "中教AI內容巡檢系統",
+        "線上智能問答系統",
+        "智能客服系統"
+      ],
       "website": "https://www.zjzw.cn/about",
       "website_label": "zjzw.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.zjzw.cn/about",
+      "product_anchor_label": "高校招生與內容安全AI服務平台",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -84244,7 +85275,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "name_mismatch"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.zjzw.cn/about",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網公司名為「中教智網（北京）信息技術有限公司」，與「智能網（北京）」不同；業務為教育科技，非工業產品"
     },
     {
       "id": "ex-ciif-r1802",
@@ -84373,12 +85412,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工控元器件銷售、視覺集成與設備維修租賃服務",
+      "products": [
+        "工控元器件銷售",
+        "機器人視覺應用集成",
+        "進口設備維修保養及租賃",
+        "呆滯庫存／二手元器件評估收購"
+      ],
       "website": "https://www.sevenspace.com.cn/",
       "website_label": "sevenspace.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.sevenspace.com.cn/index.html",
+      "product_anchor_label": "工控元器件銷售、視覺集成與設備維修租賃服務",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -84398,7 +85442,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.sevenspace.com.cn/index.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "僅官網摘要列出服務類別，無具名產品型號；官網公司名為江蘇七維空間信息平台有限公司"
     },
     {
       "id": "ex-ciif-r1805",
@@ -84502,12 +85551,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "電力電纜與各類特種電纜",
+      "products": [
+        "110kV及以下高低壓電力電纜",
+        "稀土鋁合金電纜",
+        "防火／低煙無鹵電線電纜",
+        "醫療電纜",
+        "智能機器人電纜",
+        "變頻電纜",
+        "光伏電纜",
+        "OPLC 光纖複合電纜"
+      ],
       "website": "https://www.langdacable.com/",
       "website_label": "langdacable.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.langdacable.com/gsjj/index_14.aspx",
+      "product_anchor_label": "電力電纜與各類特種電纜",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -84527,7 +85585,15 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "review_flags": [
+        "site_compromised"
+      ],
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.langdacable.com/gsjj/index_14.aspx",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品類別取自官方網域公司簡介摘要；列有醫療電纜；產品中心某頁標題疑似被植入垃圾內容"
     },
     {
       "id": "ex-ciif-r1808",
@@ -84719,12 +85785,15 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "精密諧波與大扭矩行星關節模組",
+      "products": [
+        "60／80／100／120 行星一體化關節",
+        "70L／80L／90L／110L 諧波一體化關節"
+      ],
       "website": "https://www.lingshuzhike.com/",
       "website_label": "lingshuzhike.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.lingshuzhike.com/",
+      "product_anchor_label": "精密諧波與大扭矩行星關節模組",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -84744,7 +85813,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.lingshuzhike.com/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "規格取自官方網域首頁摘要；應用提及醫療、康復"
     },
     {
       "id": "ex-ciif-r1813",
@@ -84977,12 +86051,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "變頻器用制動電阻、電抗器等無源器件",
+      "products": [
+        "波紋電阻器",
+        "波紋電阻箱",
+        "出線電抗器",
+        "RPBU 系列制動單元",
+        "濾波器",
+        "疊層電阻"
+      ],
       "website": "https://jugeelectric.com/",
       "website_label": "jugeelectric.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.jugeelectric.com/pros_show/6.aspx",
+      "product_anchor_label": "變頻器用制動電阻、電抗器等無源器件",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -85002,7 +86083,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.jugeelectric.com/pros_show/6.aspx",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱取自官方網域產品頁標題與摘要"
     },
     {
       "id": "ex-ciif-r1819",
@@ -85020,12 +86106,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "汽車精密沖壓件、總成件與汽車模具",
+      "products": [
+        "V174 螺母板",
+        "XNF 螺母板",
+        "VW341 前縱梁",
+        "V297 前端下保險槓",
+        "G4X 支架",
+        "豐田柱外下板 SPC1180DUB",
+        "汽車模具"
+      ],
       "website": "https://www.baojiemould.com/",
       "website_label": "baojiemould.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.baojiemould.com/product/id/21UFY.html",
+      "product_anchor_label": "汽車精密沖壓件、總成件與汽車模具",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -85045,7 +86139,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.baojiemould.com/product/id/21UFY.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱取自官方網域產品／業務頁標題"
     },
     {
       "id": "ex-ciif-r1820",
@@ -85110,12 +86209,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "機櫃散熱風機、過濾網組、工業冷水機",
+      "products": [
+        "TXA38S-80B 軸流風機",
+        "EC 離心風機",
+        "TXB272T-630BB-640E",
+        "TX116",
+        "儲能櫃散熱風扇",
+        "工業冷水機",
+        "通風過濾網組",
+        "控制櫃配件"
+      ],
       "website": "https://www.tesoer.com/",
       "website_label": "tesoer.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.tesoer.com/product-item-12.html",
+      "product_anchor_label": "機櫃散熱風機、過濾網組、工業冷水機",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -85135,7 +86243,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.tesoer.com/product-item-12.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱與型號取自官方網域產品頁標題"
     },
     {
       "id": "ex-ciif-r1822",
@@ -85288,12 +86401,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "線上非接觸式激光測徑儀與位移傳感器",
+      "products": [
+        "一體型激光測徑儀",
+        "標準型激光測徑儀",
+        "雙向激光測徑儀",
+        "手持式激光測徑儀",
+        "CCD 測徑儀",
+        "位移傳感器（電渦流／激光）"
+      ],
       "website": "https://www.ridee.net/",
       "website_label": "ridee.net",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.ridee.net/show/?id=48&page=1&siteid=1",
+      "product_anchor_label": "線上非接觸式激光測徑儀與位移傳感器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -85313,7 +86433,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.ridee.net/show/?id=48&page=1&siteid=1",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名稱取自官方網域產品頁標題"
     },
     {
       "id": "ex-ciif-r1826",
@@ -85905,12 +87030,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "軌道交通裝備與新產業（風電、儲能、新能源車）",
+      "products": [
+        "高速動車組（時速250／350公里）",
+        "鐵路機車",
+        "鐵路客車",
+        "城市軌道交通車輛",
+        "儲能裝備",
+        "風電裝備",
+        "新能源汽車"
+      ],
       "website": "https://www.crrcgc.cc/crrcgc/",
       "website_label": "crrcgc.cc",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.crrcgc.cc/crrcgc/71_5090/index.html",
+      "product_anchor_label": "軌道交通裝備與新產業（風電、儲能、新能源車）",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -85930,7 +87063,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.crrcgc.cc/crrcgc/71_5090/index.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品取自官方網域「產品與服務」頁；網站標題為中國中車股份有限公司（集團旗下上市公司，同品牌）"
     },
     {
       "id": "ex-ciif-r1840",
@@ -90740,12 +91878,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "三菱半導體、FA設備與產業機器系統代理銷售",
+      "products": [
+        "半導體（三菱、ISAHAYA 等）及各類元件",
+        "三菱 FA 設備及產業機械",
+        "產業機器系統",
+        "節能／環境相關產品"
+      ],
       "website": "https://www.takebishi.co.jp/chinese/office/relation_shanghai/",
       "website_label": "takebishi.co.jp",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.takebishi.co.jp/company/outline/relation_shanghai.html",
+      "product_anchor_label": "三菱半導體、FA設備與產業機器系統代理銷售",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -90765,7 +91908,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.takebishi.co.jp/company/outline/relation_shanghai.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官方網域為日本母公司株式會社たけびし（竹菱）網站，含竹菱（上海）據點頁；產品類別取自母公司取扱製品頁，非上海子公司專屬清單"
     },
     {
       "id": "ex-ciif-r1950",
@@ -91000,12 +92148,21 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "基於Modelica的系統建模仿真平台MWORKS",
+      "products": [
+        "MWORKS.Syslab",
+        "MWORKS.Sysplorer",
+        "MWORKS.Sysblock",
+        "MWORKS.Syslink",
+        "MWORKS.Sysbuilder",
+        "MWORKS.Systwin",
+        "MWORKS 工具箱（代碼生成與驗證、設計優化、模型試驗等）",
+        "MWORKS 模型庫（電氣、機械、流體、車輛、能源、航空航天等）"
+      ],
       "website": "https://www.tongyuan.cc/",
       "website_label": "tongyuan.cc",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.tongyuan.cc/product/Toolbox/",
+      "product_anchor_label": "基於Modelica的系統建模仿真平台MWORKS",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -91025,7 +92182,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.tongyuan.cc/product/Toolbox/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品名取自官方網域產品頁標題與摘要"
     },
     {
       "id": "ex-ciif-r1956",
@@ -91352,12 +92514,22 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "光電融合通信、PON網絡與音視頻物聯網設備",
+      "products": [
+        "多業務綜合網關",
+        "OLT 光接入設備",
+        "VOIP 音頻調度網關",
+        "ITV 網關",
+        "安全流控路由",
+        "Aino+ 終端產品",
+        "ZH-VS220 視頻門禁對講",
+        "ZH-AP18006S 千兆雙頻吸頂 AP",
+        "POE／以太網交換機"
+      ],
       "website": "https://www.zhgxnet.com/?language=zh_CN",
       "website_label": "zhgxnet.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.zhgxnet.com/product/product_5_1.html",
+      "product_anchor_label": "光電融合通信、PON網絡與音視頻物聯網設備",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -91377,7 +92549,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.zhgxnet.com/product/product_5_1.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網品牌 AINOPOL；應用領域含智慧醫療"
     },
     {
       "id": "ex-ciif-r1964",
@@ -91549,12 +92726,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "RISC-V AI CPU芯片與開發板等生態產品",
+      "products": [
+        "Key Stone K1 八核 RISC-V AI CPU",
+        "Power Stone P1 電源管理芯片",
+        "X100／X200 RISC-V 處理器核",
+        "MUSE Pi Pro 單板計算機",
+        "MUSE Book／MUSE Paper／MUSE Shelf",
+        "B1 PsP 封裝 CoM 模組"
+      ],
       "website": "https://www.spacemit.com/",
       "website_label": "spacemit.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.spacemit.com/news/%E9%AB%98%E5%BA%A6%E9%9B%86%E6%88%90%EF%BC%8C%E5%9F%BA%E4%BA%8Erisc-v-ai-cpu%E8%8A%AF%E7%89%87k1%E7%9A%84psp%E5%B0%81%E8%A3%85com%E4%BA%A7%E5%93%81%E5%8F%91%E5%B8%83/",
+      "product_anchor_label": "RISC-V AI CPU芯片與開發板等生態產品",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -91574,7 +92758,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.spacemit.com/news/%E9%AB%98%E5%BA%A6%E9%9B%86%E6%88%90%EF%BC%8C%E5%9F%BA%E4%BA%8Erisc-v-ai-cpu%E8%8A%AF%E7%89%87k1%E7%9A%84psp%E5%B0%81%E8%A3%85com%E4%BA%A7%E5%93%81%E5%8F%91%E5%B8%83/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品取自官方網域新聞頁；X200 為研發中"
     },
     {
       "id": "ex-ciif-r1968",
@@ -92119,12 +93308,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "網絡安全硬件平台、網閘與工業安全平台",
+      "products": [
+        "網絡安全平台 RIS-191／RIS-5240／RIS-5241／RIS-5250",
+        "網閘平台 RTC-1191／RTC-2191／RTC-2192／RTC-5241",
+        "工業安全平台（x86、機架式）",
+        "千兆／萬兆網絡擴展模組",
+        "設計製造服務"
+      ],
       "website": "https://www.royaltech.cn/",
       "website_label": "royaltech.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://royaltech.cn/product.php?catid=47",
+      "product_anchor_label": "網絡安全硬件平台、網閘與工業安全平台",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -92144,7 +93339,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://royaltech.cn/product.php?catid=47",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "型號取自官方網域產品頁摘要"
     },
     {
       "id": "ex-ciif-r1980",
@@ -92252,12 +93452,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "國資電子信息集團：分析儀器、智慧建築等",
+      "products": [
+        "L9 雙光束紫外可見分光光度計",
+        "分光光度計、氣相色譜、原子吸收、液相色譜等分析儀器",
+        "安防產品、汽車電子、智能標籤、智能芯片",
+        "樓宇控制設備、照明產品",
+        "顯示材料、消費電子"
+      ],
       "website": "https://www.inesa.com/portal/index/index.htm",
       "website_label": "inesa.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://ydfx.inesa.com/shydfx_prozwx/2022-10-31/Detail_164701.htm",
+      "product_anchor_label": "國資電子信息集團：分析儀器、智慧建築等",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -92277,7 +93483,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://ydfx.inesa.com/shydfx_prozwx/2022-10-31/Detail_164701.htm",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "集團網站列產品範圍；具名儀器來自子公司上海儀電分析儀器（ydfx.inesa.com 子網域）"
     },
     {
       "id": "ex-ciif-r1983",
@@ -92393,12 +93604,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "工業品數字化供應鏈技術與服務",
+      "products": [
+        "戰略諮詢和規劃",
+        "全鏈技術和交付",
+        "產品供應鏈",
+        "運營和增值服務"
+      ],
       "website": "https://www.jingdongindustrials.com/",
       "website_label": "jingdongindustrials.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.jingdongindustrials.com/",
+      "product_anchor_label": "工業品數字化供應鏈技術與服務",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -92418,7 +93634,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.jingdongindustrials.com/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "僅官網首頁摘要列服務類別，無具名產品"
     },
     {
       "id": "ex-ciif-r1985",
@@ -92436,12 +93657,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "磁懸浮柔性傳輸系統",
+      "products": [
+        "iTS-L 磁懸浮環形傳輸線",
+        "iTS-LT 磁懸浮接駁傳輸線",
+        "MegaMover iHDT 磁懸浮重載傳輸線",
+        "iWS 磁懸浮物流傳輸線"
+      ],
       "website": "https://www.golytec.com/",
       "website_label": "golytec.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.golytec.com/product/",
+      "product_anchor_label": "磁懸浮柔性傳輸系統",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -92461,7 +93687,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.golytec.com/product/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網所列應用行業含醫療器械、製藥"
     },
     {
       "id": "ex-ciif-r1986",
@@ -92851,12 +94082,15 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "網絡流量分流與採集硬件加速設備",
+      "products": [
+        "盒式通用網絡分流器（GE～100GE）",
+        "增強型盒式分流器（去重、脫敏）"
+      ],
       "website": "https://www.uucode.com.cn/",
       "website_label": "uucode.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.uucode.com.cn/products-enhanced.html",
+      "product_anchor_label": "網絡流量分流與採集硬件加速設備",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -92876,7 +94110,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.uucode.com.cn/products-enhanced.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "產品取自官方網域產品頁標題"
     },
     {
       "id": "ex-ciif-r1994",
@@ -92982,12 +94221,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "SMT周邊自動化設備與AGV",
+      "products": [
+        "SMT 全自動貼標機",
+        "自動送（收）板機",
+        "接駁台",
+        "轉角機",
+        "移載機",
+        "高效緩衝機",
+        "AGV"
+      ],
       "website": "https://www.hayawin.com.cn/",
       "website_label": "hayawin.com.cn",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.hayawin.com.cn/",
+      "product_anchor_label": "SMT周邊自動化設備與AGV",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -93007,7 +94254,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.hayawin.com.cn/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "僅官網首頁摘要，產品為類別名無型號"
     },
     {
       "id": "ex-ciif-r1997",
@@ -93375,12 +94627,18 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "智能倉儲物流設備",
+      "products": [
+        "輸送線",
+        "三排中驅鏈條機",
+        "堆垛機",
+        "提升機",
+        "穿梭車"
+      ],
       "website": "https://www.liaodun.net/",
       "website_label": "liaodun.net",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.liaodun.net/product.html",
+      "product_anchor_label": "智能倉儲物流設備",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -93400,7 +94658,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.liaodun.net/product.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網稱2024年4月起由北京晶品特裝（688084）控股"
     },
     {
       "id": "ex-ciif-r2006",
@@ -93551,12 +94814,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "電商物流與供應鏈服務",
+      "products": [
+        "國內倉配服務（B2B／B2C）",
+        "跨境快遞",
+        "全球供應鏈",
+        "數字化供應鏈規劃",
+        "物流廣告、供應鏈金融等增值服務",
+        "菜鳥 APP"
+      ],
       "website": "https://www.cainiao.com/index.html",
       "website_label": "cainiao.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "https://www.cainiao.com/en/chn-supply-chain.html",
+      "product_anchor_label": "電商物流與供應鏈服務",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -93576,7 +94846,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.cainiao.com/en/chn-supply-chain.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "服務類別取自官方網域頁面"
     },
     {
       "id": "ex-ciif-r2010",
@@ -93594,12 +94869,15 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
+      "description": "財產保險",
+      "products": [
+        "企業財產保險",
+        "公眾責任險"
+      ],
       "website": "https://www.cntaiping.com/service-site/7713.html",
       "website_label": "cntaiping.com",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（官網身分可對接，但本輪未取得可核實的具名產品／服務頁）",
+      "product_anchor_url": "http://www.cntaiping.com/product-qycx/",
+      "product_anchor_label": "財產保險",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -93619,7 +94897,12 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.cntaiping.com/product-qycx/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "取自中國太平集團官網產品頁；非上海分公司專屬頁"
     },
     {
       "id": "ex-ciif-r2011",
@@ -103638,12 +104921,19 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "",
+      "description": "東華大學所屬國家級研究實驗室，研究方向為智慧纖維及前沿應用（非商業產品）",
+      "products": [
+        "智慧纖維（研究方向）",
+        "半導體纖維",
+        "儲能纖維",
+        "能量轉換纖維",
+        "催化轉化纖維",
+        "傳感纖維"
+      ],
+      "website": "https://sklfpm.dhu.edu.cn/",
       "website_label": "",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（未確認官方身分與具名產品／服務）",
+      "product_anchor_url": "https://sklfpm.dhu.edu.cn/mainm.htm",
+      "product_anchor_label": "東華大學所屬國家級研究實驗室，研究方向為智慧纖維及前沿應用（非商業產品）",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -103663,7 +104953,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://sklfpm.dhu.edu.cn/mainm.htm",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "實驗室官網位於東華大學網域；此為研究單位，所列為官方公告的研究方向而非商品"
     },
     {
       "id": "ex-ciif-r2238",
@@ -103810,12 +105106,17 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "",
+      "description": "上海低碳技術創新功能型平台載體，提供低碳技術分析測試、技術孵化與碳核算諮詢等服務",
+      "products": [
+        "分析測試服務",
+        "技術孵化",
+        "創新成果轉化",
+        "碳核算／碳足跡分析與碳中和方案諮詢"
+      ],
+      "website": "http://shicti.com/",
       "website_label": "",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（未確認官方身分與具名產品／服務）",
+      "product_anchor_url": "http://shicti.com/index/index/about.html",
+      "product_anchor_label": "上海低碳技術創新功能型平台載體，提供低碳技術分析測試、技術孵化與碳核算諮詢等服務",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -103835,7 +105136,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://shicti.com/index/index/about.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網頁面標題含完整法人名；為技術服務平台，所列為官網欄目中的服務項目"
     },
     {
       "id": "ex-ciif-r2242",
@@ -114883,12 +116190,15 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "",
+      "description": "半導體刻蝕設備，如 LMEC-300 12吋整合刻蝕/沉積設備，應用於 MRAM、PCRAM、ReRAM、磁感測器",
+      "products": [
+        "LMEC-300™ 12吋整合設備（RIE反應離子刻蝕＋IBS離子束塑形＋原位沉積腔室）",
+        "離子束設備"
+      ],
+      "website": "https://leuven-instruments.cn/",
       "website_label": "",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（未確認官方身分與具名產品／服務）",
+      "product_anchor_url": "https://leuven-instruments.cn/?a=view&p=101&r=205",
+      "product_anchor_label": "半導體刻蝕設備，如 LMEC-300 12吋整合刻蝕/沉積設備，應用於 MRAM、PCRAM、ReRAM、磁感測器",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -114908,7 +116218,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://leuven-instruments.cn/?a=view&p=101&r=205",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網產品頁標題含「江蘇魯汶儀器有限公司」（股改前名稱），產品取自官網頁面摘要"
     },
     {
       "id": "ex-ciif-r2486",
@@ -118922,12 +120238,14 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "",
+      "description": "PDMC（Photronics 與 DNP 合資）在上海的先進光罩銷售中心",
+      "products": [
+        "先進光罩（Photomask）銷售服務"
+      ],
+      "website": "https://www.pdmc-sh.cn/",
       "website_label": "",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（未確認官方身分與具名產品／服務）",
+      "product_anchor_url": "https://www.pdmc-sh.cn/Services.html",
+      "product_anchor_label": "PDMC（Photronics 與 DNP 合資）在上海的先進光罩銷售中心",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -118947,7 +120265,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "https://www.pdmc-sh.cn/Services.html",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網頁面標題為「上海封创成像技术有限公司 - PDMC」，與法人名僅差「責任」二字；官網摘要說明為光罩銷售中心"
     },
     {
       "id": "ex-ciif-r2579",
@@ -121793,12 +123117,20 @@
       "tags": [
         "待查"
       ],
-      "description": "待查",
-      "products": [],
-      "website": "",
+      "description": "半導體與顯示面板用電子化學品，官網依應用分為晶圓、先進封裝、封測、顯示面板、FPC等系列",
+      "products": [
+        "晶圓應用系列",
+        "先進封裝應用系列",
+        "封測系列",
+        "TFT-LCD/AMOLED應用系列",
+        "EIT系列",
+        "被動元器件系列",
+        "FPC/HDI系列"
+      ],
+      "website": "http://www.asem.cn/",
       "website_label": "",
-      "product_anchor_url": "",
-      "product_anchor_label": "待查（未確認官方身分與具名產品／服務）",
+      "product_anchor_url": "http://www.asem.cn/",
+      "product_anchor_label": "半導體與顯示面板用電子化學品，官網依應用分為晶圓、先進封裝、封測、顯示面板、FPC等系列",
       "directory_url": "https://static.ciif-expo.com/annex/2026-09-16/124257/2026.pdf",
       "pdfs": [],
       "photo": "",
@@ -121818,7 +123150,13 @@
         "match_status": "未在現有欄位命中",
         "match_basis": "現有展商資料欄位文字比對",
         "note": "未在現有欄位命中不代表該展商無相關產品；需補查時另行確認。"
-      }
+      },
+      "website_source": "官方網域搜尋摘要（本次新找到）",
+      "product_source": "官方網域搜尋摘要",
+      "product_evidence_url": "http://www.asem.cn/",
+      "product_checked_at": "2026-09-24",
+      "product_check_status": "產品：官方網域搜尋摘要（待開頁複核）",
+      "product_note": "官網標題含公司全名並列出產品應用系列；電鍍液/光刻膠字樣來自年報，未列入 products"
     },
     {
       "id": "ex-ciif-r2645",
