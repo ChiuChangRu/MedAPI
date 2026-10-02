@@ -234,6 +234,14 @@ let FILE_SORT = localStorage.getItem("fieldlog_file_sort") || "new";
 // 桌機右欄是唯一的閱讀／編輯表面，不再允許用舊偏好把它關掉後退回置中 modal。
 // 手機沒有三欄空間，才使用原本的單頁詳情流程。
 let PREVIEW_ENABLED = true;
+// 2026-10-02：記事編輯視窗（openEntry 的置中 modal，CURRENT_FOLDER 為空時用，
+// 例如從首頁「待處理」清單開記事）先把「✨ AI 整理筆記（Markdown）」區塊
+// （含「上傳 .md」按鈕與輸入框）藏起來——只拿掉這個入口，ai_note 欄位與
+// 既有資料完全不動；存檔流程也改成在這個常數關閉時一律略過寫入 ai_note，
+// 避免看不到輸入框卻把既有整理筆記存成空字串覆蓋掉。要恢復只要把這個常數
+// 改回 true。桌機右欄編輯器（renderEntryEditor，見 aiNoteEditorHtml(entry.ai_note,
+// "preview-entry") 那個呼叫點）沒有被要求改動，維持原樣。
+const SHOW_ENTRY_MODAL_AI_NOTE = false;
 
 function usesDesktopRightPane() {
   return !!CURRENT_FOLDER && matchMedia("(min-width: 1000px)").matches;
@@ -4052,7 +4060,7 @@ async function openEntry(id) {
       <input id="e-title" class="title-input" value="${esc(e.title)}" placeholder="標題" />
     </div>
     <p class="sub">${esc(localDateTime(e.created_at))}｜${folder ? esc(folder.name) : "⏳ 待分類"}</p>
-    ${entryAudio.length ? aiNoteEditorHtml(e.ai_note, "e") : ""}
+    ${entryAudio.length && SHOW_ENTRY_MODAL_AI_NOTE ? aiNoteEditorHtml(e.ai_note, "e") : ""}
     <section class="merged-transcript ${mergedTranscript ? "" : "empty"}">
       <div><strong>📝 完整轉錄</strong><span><button class="btn small" id="e-open-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>開啟</button><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>一鍵複製</button></span></div>
       ${mergedTranscript
@@ -4105,7 +4113,7 @@ async function openEntry(id) {
       <p class="sub">整個資料包會移到垃圾桶，保留 60 天。</p>
     </div>
   `;
-  if (entryAudio.length) bindAiNoteFileInput("e");
+  if (entryAudio.length && SHOW_ENTRY_MODAL_AI_NOTE) bindAiNoteFileInput("e");
   $("entry-overlay").classList.add("open");
   lockBodyScroll();
   $("e-close").onclick = closeEntry;
@@ -4214,8 +4222,8 @@ async function openEntry(id) {
     if (!isWeeklyReport && bodyFormat === "html" && storedAsText) patch.body_format = "html";
     if (pendingFolderId !== undefined) patch.folder_id = pendingFolderId;
     await api(`/entries/${id}`, { method: "PUT", body: JSON.stringify(patch) });
-    const aiMarkdown = entryAudio.length ? String($("e-ai-note")?.value || "") : initialAiNoteMarkdown;
-    if (entryAudio.length && aiMarkdown !== initialAiNoteMarkdown) {
+    const aiMarkdown = entryAudio.length && SHOW_ENTRY_MODAL_AI_NOTE ? String($("e-ai-note")?.value || "") : initialAiNoteMarkdown;
+    if (entryAudio.length && SHOW_ENTRY_MODAL_AI_NOTE && aiMarkdown !== initialAiNoteMarkdown) {
       await api(`/entries/${id}/ai-note`, {
         method: "PUT",
         body: JSON.stringify({ markdown: aiMarkdown, source: "manual" }),
