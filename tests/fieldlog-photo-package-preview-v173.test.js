@@ -9,7 +9,7 @@ test("桌機點多張照片資料包時，右欄先顯示照片而不是空白 W
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/style.css"),
   ]);
-  const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
+  const editor = app.match(/async function renderEntryEditor\(entryId[^)]*\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
 
   assert.ok(editor, "應能定位桌機右欄記事編輯器");
   assert.match(editor, /const photos = .*isImageAtt\(item\)/,

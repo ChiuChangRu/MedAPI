@@ -405,12 +405,12 @@ function entryTextPreviewHtml(source) {
 }
 
 async function renderInspectorEntry(item, tab) {
-  const entry = await api(`/entries/${item.id}`);
+  const entry = await api(`/entries/${item.id}`, { timeoutMs: INSPECTOR_READ_TIMEOUT_MS });
   const attachments = (entry.attachments || []).filter((a) => !a.source_pdf_id);
   const body = $("folder-preview-body");
   setFolderPreviewTitle(entry.title || "未命名");
   if (tab === "content") {
-    await renderEntryEditor(entry.id);
+    await renderEntryEditor(entry.id, entry);
     const form = $("entry-preview-editor"), originalSave = form.onsubmit;
     inspectorTrack(() => JSON.stringify({ title: $("folder-preview-title").textContent, form: inspectorFormSnapshot(form), rich: $("preview-entry-rich") ? window.fieldlogRichEditor?.getHtml($("preview-entry-rich")) : "" }), ({ automatic } = {}) => originalSave({ preventDefault() {}, automatic }));
     form.onsubmit = (event) => { event.preventDefault(); saveInspector({ automatic: false }); };

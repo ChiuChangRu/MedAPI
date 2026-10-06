@@ -64,7 +64,7 @@ test("桌機右欄的一般記事統一使用 Word 類富文字編輯器", async
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/style.css"),
   ]);
-  const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
+  const editor = app.match(/async function renderEntryEditor\(entryId[^)]*\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
   assert.ok(editor, "應能定位桌機右欄記事編輯器");
   assert.match(editor, /id="preview-entry-rich"/);
   assert.match(editor, /setFolderPreviewTitle\(entry\.title \|\| "記事", !isWeeklyReport\)/,

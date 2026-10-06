@@ -289,7 +289,26 @@ function folderComparator() {
 // ---------- API ----------
 function pin() { return localStorage.getItem("fieldlog_pin") || ""; }
 
+// 右欄讀取用的逾時：沒有逾時的話，一支卡住的請求會讓右欄永遠停在「載入中…」，
+// 之後點的每個檔案也都排在它後面（openInspector 是串行佇列）。只給唯讀 GET 用。
+const INSPECTOR_READ_TIMEOUT_MS = 30000;
+
 async function api(path, options = {}) {
+  const { timeoutMs, ...fetchOptions } = options;
+  if (!timeoutMs) return apiFetch(path, fetchOptions);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await apiFetch(path, { ...fetchOptions, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("連線逾時，請按「重試」");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function apiFetch(path, options) {
   const res = await fetch("/api" + path, {
     ...options,
     headers: { "content-type": "application/json", "x-pin": pin(), ...(options.headers || {}) },
@@ -2796,8 +2815,8 @@ async function showEntryEditor(entryId) {
   return openInspector({ type: "entry", id: Number(entryId) }, "content");
 }
 
-async function renderEntryEditor(entryId) {
-  const entry = await api(`/entries/${entryId}`);
+async function renderEntryEditor(entryId, preloadedEntry = null) {
+  const entry = preloadedEntry || await api(`/entries/${entryId}`, { timeoutMs: INSPECTOR_READ_TIMEOUT_MS });
   const recordingAudio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
   let initialAiNoteMarkdown = String(entry.ai_note?.markdown || "");
   const photos = (entry.attachments || []).filter((item) => isImageAtt(item) && !item.source_pdf_id);
@@ -3052,7 +3071,27 @@ function renderXlsxWorkbook(workbook, { editable = false, maxRows = 1000, maxCol
   return `<div class="spreadsheet-preview xlsx-workbook-preview">${sheets.join("")}</div>`;
 }
 
+// Excel 程式庫約 900KB，原本在 index.html 同步載入、擋在 app.js 前面，每次開頁都要
+// 等它（CDN 慢時整個系統一起慢）。改成第一次開 Excel 時才載入。
+const XLSX_LIBRARY_URL = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+let XLSX_LIBRARY_LOADING = null;
+
+function loadXlsxLibrary() {
+  if (window.XLSX?.read) return Promise.resolve();
+  if (!XLSX_LIBRARY_LOADING) {
+    XLSX_LIBRARY_LOADING = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = XLSX_LIBRARY_URL;
+      script.onload = () => resolve();
+      script.onerror = () => { script.remove(); reject(new Error("Excel 預覽程式載入失敗，請檢查網路後重試")); };
+      document.head.appendChild(script);
+    }).catch((error) => { XLSX_LIBRARY_LOADING = null; throw error; });
+  }
+  return XLSX_LIBRARY_LOADING;
+}
+
 async function fetchXlsxWorkbook(url) {
+  await loadXlsxLibrary();
   if (!window.XLSX?.read) throw new Error("Excel 預覽程式尚未載入，請重新整理頁面");
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`Excel 讀取失敗（HTTP ${response.status}）`);
@@ -3114,7 +3153,7 @@ async function renderXlsxEditor(entryId, attachment) {
 }
 
 async function attachmentWithText(entryId, attachmentId, { extract = false } = {}) {
-  const entry = await api(`/entries/${entryId}`);
+  const entry = await api(`/entries/${entryId}`, { timeoutMs: INSPECTOR_READ_TIMEOUT_MS });
   let attachment = (entry.attachments || []).find((item) => Number(item.id) === Number(attachmentId));
   if (!attachment) throw new Error("這份檔案已不存在");
   if (extract && !String(attachment.ocr_text || "").trim() && !attachment.ocr_at) {
