@@ -1801,12 +1801,16 @@ async function handleApi(request, env, url, identity = {}) {
     // 這裡一次用 IN 查完全部附件塞回去，資料夾內頁改成一支 API 打完收工。
     if (url.searchParams.get("include") === "attachments" && results.length) {
       const ids = results.map((e) => e.id);
-      const { results: atts } = await db.prepare(
+      // D1 單一查詢最多 100 個綁定參數；資料夾超過 100 筆記事時不分批會整個資料夾打不開。
+      const chunks = [];
+      for (let i = 0; i < ids.length; i += 90) chunks.push(ids.slice(i, i + 90));
+      const chunkResults = await Promise.all(chunks.map((part) => db.prepare(
         `SELECT id, entry_id, kind, filename, key, mime, created_at, offset_secs,
                 source_pdf_id, rotation, transcribed_at,
                 CASE WHEN COALESCE(transcript, '') != '' THEN 1 ELSE 0 END AS has_transcript
-         FROM attachments WHERE entry_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`
-      ).bind(...ids).all();
+         FROM attachments WHERE entry_id IN (${part.map(() => "?").join(",")}) ORDER BY id`
+      ).bind(...part).all()));
+      const atts = chunkResults.flatMap((r) => r.results || []).sort((a, b) => a.id - b.id);
       const byEntry = new Map();
       for (const a of atts || []) {
         if (!byEntry.has(a.entry_id)) byEntry.set(a.entry_id, []);

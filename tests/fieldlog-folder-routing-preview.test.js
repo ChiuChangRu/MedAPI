@@ -92,7 +92,7 @@ test("一般記事與週報都統一在右欄編輯，週報欄位由 fields_jso
   const [app, html, css] = await Promise.all([
     read("../fieldlog/public/app.js"), read("../fieldlog/public/index.html"), read("../fieldlog/public/style.css"),
   ]);
-  const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
+  const editor = app.match(/async function renderEntryEditor\(entryId[^)]*\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
   assert.match(editor, /_kind === "weekly_report"/);
   assert.match(editor, /setFolderPreviewTitle\(entry\.title \|\| "記事", !isWeeklyReport\)/);
   assert.doesNotMatch(editor, /id="preview-entry-title"/);

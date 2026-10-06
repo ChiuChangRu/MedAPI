@@ -52,7 +52,7 @@ test("錄音的 Word 畫面只在未完成或失敗時顯示轉錄入口", async
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/index.html"),
   ]);
-  const editor = app.match(/async function renderEntryEditor\(entryId\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
+  const editor = app.match(/async function renderEntryEditor\(entryId[^)]*\)[\s\S]*?\n}\n\nasync function showRecordingPreview/)?.[0] || "";
   const action = app.match(/function showRecordingTranscribeButton\(entryId, audio\)[\s\S]*?\n}\n/)?.[0] || "";
   assert.match(index, /id="folder-preview-transcribe"[^>]*hidden/);
   assert.match(editor, /showRecordingTranscribeButton\(entryId, recordingAudio\)/,

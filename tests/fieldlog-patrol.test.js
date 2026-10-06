@@ -55,7 +55,10 @@ test("schema.js：ensurePatrolCategory 一次性補上「巡廠」folder_type �
   assert.match(schema, /_patrol_category_2026_08_09/);
   assert.match(schema, /'folder_type', 0, '巡廠'/);
   const ensureSchemaFn = schema.match(/export async function ensureSchema\(db, timestamp\)[\s\S]*?\n\}/)[0];
-  assert.match(ensureSchemaFn, /ensurePatrolCategory\(db, timestamp\)/);
+  // 2026-10-06：完整設定流程搬到 applySchemaSetup()，ensureSchema() 在指紋不符時呼叫它。
+  assert.match(ensureSchemaFn, /applySchemaSetup\(db, timestamp\)/);
+  const setupFn = schema.match(/async function applySchemaSetup\(db, timestamp\)[\s\S]*?\n\}/)[0];
+  assert.match(setupFn, /ensurePatrolCategory\(db, timestamp\)/);
 });
 
 test("patrol.html：存在且接線到 /api/patrol/ocr、/api/patrol/format、/api/patrol/folder、/api/entries、/api/upload", async () => {

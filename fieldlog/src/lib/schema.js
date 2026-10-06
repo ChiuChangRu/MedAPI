@@ -466,13 +466,47 @@ export const CATEGORY_SEED = [
 export const MAX_FOLDER_DEPTH = 4;
 
 let schemaReady = false;
+let schemaFingerprint = null;
 
-/** 建表、補欄位、必要時寫入分類種子。整個 Worker 生命週期只跑一次。 */
+export const SCHEMA_FINGERPRINT_KEY = "schema.fingerprint";
+
+// D1 has no ADD COLUMN IF NOT EXISTS, so these are the expected failures on an up-to-date database.
+const EXPECTED_MIGRATION_ERROR = /duplicate column|already exists/i;
+
+/**
+ * 建表、補欄位、必要時寫入分類種子。整個 Worker 生命週期只跑一次。
+ *
+ * 2026-10-06 速度優化：每次冷啟動原本都要依序打 ~59 次 D1（MIGRATIONS 不能
+ * 包進 batch，一筆 duplicate column 就會讓整批 rollback），而且每次改版都再
+ * 多幾筆，系統越用越慢。現在全部套用成功後，把「這一版設定程式的指紋」記在
+ * settings；之後冷啟動只要 1 次查詢比對指紋。指紋涵蓋 SCHEMA／MIGRATIONS／
+ * 種子資料與設定函式本身的原始碼，改任何一項都會自動重跑完整流程，不需要
+ * 人工記得改版號。有任何非預期的 migration 失敗就不寫指紋，下次冷啟動照舊重試。
+ */
 export async function ensureSchema(db, timestamp) {
   if (schemaReady) return;
+  const fingerprint = await currentSchemaFingerprint();
+  if (await schemaFingerprintMatches(db, fingerprint)) {
+    schemaReady = true;
+    return;
+  }
+  const clean = await applySchemaSetup(db, timestamp);
+  if (clean) {
+    await db.prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    ).bind(SCHEMA_FINGERPRINT_KEY, fingerprint, timestamp).run().catch(() => {});
+  }
+  schemaReady = true;
+}
+
+async function applySchemaSetup(db, timestamp) {
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
+  let clean = true;
   for (const sql of MIGRATIONS) {
-    await db.prepare(sql).run().catch(() => {});
+    await db.prepare(sql).run().catch((err) => {
+      if (!EXPECTED_MIGRATION_ERROR.test(String(err?.message || err))) clean = false;
+    });
   }
   await seedCategories(db, timestamp);
   await seedSources(db, timestamp);
@@ -483,7 +517,28 @@ export async function ensureSchema(db, timestamp) {
     `INSERT OR IGNORE INTO settings (key, value, updated_at)
      VALUES ('ai_summary.cutoff', ?, ?)`
   ).bind(timestamp, timestamp).run();
-  schemaReady = true;
+  return clean;
+}
+
+async function schemaFingerprintMatches(db, fingerprint) {
+  try {
+    const row = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(SCHEMA_FINGERPRINT_KEY).first();
+    return row?.value === fingerprint;
+  } catch {
+    // 全新資料庫還沒有 settings 表：照完整流程建立。
+    return false;
+  }
+}
+
+export async function currentSchemaFingerprint() {
+  if (schemaFingerprint) return schemaFingerprint;
+  const source = JSON.stringify([
+    SCHEMA, MIGRATIONS, CATEGORY_SEED, SOURCE_SEED,
+    String(applySchemaSetup), String(seedCategories), String(seedSources), String(ensurePatrolCategory),
+  ]);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(source));
+  schemaFingerprint = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  return schemaFingerprint;
 }
 
 /**
