@@ -5,7 +5,11 @@
  * 每次冷啟動重跑一遍是安全的（欄位已存在就是失敗、忽略）。
  */
 
+import { ENTRY_VERSIONS_SCHEMA } from "./weekly-report.js";
+
 export const SCHEMA = [
+  // 週報等記事被覆寫前的版本備份（見 lib/weekly-report.js 的 saveEntryVersion）。
+  ...ENTRY_VERSIONS_SCHEMA,
   `CREATE TABLE IF NOT EXISTS folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

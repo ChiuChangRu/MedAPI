@@ -39,6 +39,9 @@ try {
 import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
 import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFolderReorg20260808, ensureSchema } from "./lib/schema.js";
 import { syncSources } from "./lib/sync.js";
+import {
+  WEEKLY_REPORT_EDITABLE_FIELDS, WEEKLY_REPORT_FIXED_PLAN, getOrCreateWeeklyReport, weeklyReportText,
+} from "./lib/weekly-report.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
 import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
@@ -212,49 +215,6 @@ export async function recoverPreviousDayTranscriptionClaims(db, date = new Date(
         )`
   ).bind(today).run();
   return Number(unlocked?.meta?.changes || 0);
-}
-
-const WEEKLY_REPORT_FOLDER_ROLE = "weekly_reports";
-const WEEKLY_REPORT_FIXED_PLAN = [
-  "- 宜科廠高壓攝影導管用注射筒套組－功能性驗證",
-  "- 醫用塗層與親水性導管開發",
-  "- 檢體針開發",
-  "- Laborie 29種壓管代工，與 Laborie 關注物質（毒物）資料更新",
-].join("\n");
-
-function taipeiIsoWeek(date = new Date()) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(date).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
-  const local = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  const weekday = local.getUTCDay() || 7;
-  const thursday = new Date(local);
-  thursday.setUTCDate(local.getUTCDate() + 4 - weekday);
-  const year = thursday.getUTCFullYear();
-  const first = new Date(Date.UTC(year, 0, 1));
-  const week = Math.ceil((((thursday - first) / 86400000) + 1) / 7);
-  const monday = new Date(local);
-  monday.setUTCDate(local.getUTCDate() - weekday + 1);
-  const friday = new Date(monday);
-  friday.setUTCDate(monday.getUTCDate() + 4);
-  const isoDate = (value) => value.toISOString().slice(0, 10);
-  return { year, week, key: `${year}-W${String(week).padStart(2, "0")}`, start: isoDate(monday), end: isoDate(friday) };
-}
-
-function weeklyReportText(fields) {
-  return [
-    `週次：${fields["週次"] || ""}`,
-    `期間：${fields["期間"] || ""}`,
-    "",
-    "一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）",
-    fields["中長期規劃"] || WEEKLY_REPORT_FIXED_PLAN,
-    "",
-    "二、本週工作報告",
-    fields["本週工作報告"] || "",
-    "",
-    "三、下週重要工作計畫",
-    fields["下週重要工作計畫"] || "",
-  ].join("\n").trim();
 }
 
 // 週報的權威資料只有 fields_json。body 是為搜尋、分享與匯出保留的衍生文字，
@@ -1264,47 +1224,10 @@ async function handleApi(request, env, url, identity = {}) {
 
   // 週報由人或 Claude 整理，不做排程自動覆寫。這個入口只保證「一週一檔」：
   // 同一 ISO 週重複按按鈕會開啟既有檔案，不會產生兩份互相衝突的週報。
+  // 週次、檔名與查重規則跟 medapi-mcp 的 create_weekly_report 共用 lib/weekly-report.js。
   if (path === "/weekly-reports/current" && method === "POST") {
-    const report = taipeiIsoWeek();
-    let folder = await db.prepare(
-      "SELECT id, name FROM folders WHERE role = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
-    ).bind(WEEKLY_REPORT_FOLDER_ROLE).first();
-    if (!folder) {
-      const existing = await db.prepare(
-        "SELECT id, name FROM folders WHERE parent_id IS NULL AND name = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
-      ).bind("工作週報").first();
-      if (existing) {
-        await db.prepare("UPDATE folders SET role = ?, type = ?, category = ? WHERE id = ?")
-          .bind(WEEKLY_REPORT_FOLDER_ROLE, "週報", "routine_report", existing.id).run();
-        folder = existing;
-      } else {
-        const created = await db.prepare(
-          "INSERT INTO folders (name, type, category, parent_id, role, created_at) VALUES (?, ?, ?, NULL, ?, ?)"
-        ).bind("工作週報", "週報", "routine_report", WEEKLY_REPORT_FOLDER_ROLE, now()).run();
-        folder = { id: created.meta.last_row_id, name: "工作週報" };
-        await logHistory(db, null, folder.id, "建立資料夾", "工作週報（每週獨立檔案）");
-      }
-    }
-    const title = `${report.key} 工作週報（${report.start.slice(5).replace("-", "/")}–${report.end.slice(5).replace("-", "/")}）`;
-    let entry = await db.prepare(
-      "SELECT id, title FROM entries WHERE folder_id = ? AND json_extract(fields_json, '$._kind') = 'weekly_report' AND json_extract(fields_json, '$.週次') = ? AND COALESCE(deleted_at, '') = '' LIMIT 1"
-    ).bind(folder.id, report.key).first();
-    if (!entry) {
-      const fields = {
-        _kind: "weekly_report",
-        "週次": report.key,
-        "期間": `${report.start}–${report.end}`,
-        "中長期規劃": WEEKLY_REPORT_FIXED_PLAN,
-        "本週工作報告": "",
-        "下週重要工作計畫": "",
-      };
-      const created = await db.prepare(
-        "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'text', ?)"
-      ).bind(folder.id, title, JSON.stringify(fields), weeklyReportText(fields), now()).run();
-      entry = { id: created.meta.last_row_id, title };
-      await logHistory(db, entry.id, folder.id, "建立週報模板", report.key);
-    }
-    return json({ ok: true, id: Number(entry.id), folder_id: Number(folder.id), title: entry.title, week: report.key });
+    const { info, entry } = await getOrCreateWeeklyReport(db, { timestamp: now(), source: "前台" });
+    return json({ ok: true, id: Number(entry.id), folder_id: Number(entry.folder_id), title: entry.title, week: info.key });
   }
   // 使用者確認「分類正確」或自己改過位置之後，把 🤖 標記清掉
   // （舊資料可能還留著歷史上 AI 自動歸類時打的標記，這個入口保留給它們用）
@@ -2225,8 +2148,9 @@ async function handleApi(request, env, url, identity = {}) {
         ...oldFields,
         _kind: "weekly_report",
         "中長期規劃": WEEKLY_REPORT_FIXED_PLAN,
-        "本週工作報告": String(body.fields["本週工作報告"] ?? oldFields["本週工作報告"] ?? "").trim(),
-        "下週重要工作計畫": String(body.fields["下週重要工作計畫"] ?? oldFields["下週重要工作計畫"] ?? "").trim(),
+        ...Object.fromEntries(WEEKLY_REPORT_EDITABLE_FIELDS
+          .filter((key) => body.fields[key] !== undefined || oldFields[key] !== undefined)
+          .map((key) => [key, String(body.fields[key] ?? oldFields[key] ?? "").trim()])),
       } : { ...oldFields, ...body.fields });
     }
     let folderId = body.folder_id !== undefined ? (body.folder_id ? Number(body.folder_id) : null) : old.folder_id;

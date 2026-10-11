@@ -63,6 +63,11 @@ import {
 import { renderTree } from "../../fieldlog/src/lib/render.js";
 import { htmlToPlainText } from "../../fieldlog/src/lib/richtext.js";
 import { FOLDER_CATEGORY_RANK_SQL } from "../../fieldlog/src/lib/schema.js";
+import {
+  DAILY_LOG_FIELD, appendToDailyLog, dailyLogHeading, findLegacyWeekNotes, findWeeklyReport,
+  getOrCreateWeeklyReport, listEntryVersions, parseWeeklyReportFields, previousReportWeek,
+  resolveReportWeek, updateWeeklyReport, weeklyReportPeriod, weeklyReportText,
+} from "../../fieldlog/src/lib/weekly-report.js";
 
 const PROTOCOL_DEFAULT = "2025-03-26";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
@@ -121,22 +126,6 @@ function fmtSecs(s) {
 
 function now() {
   return new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
-}
-
-function weeklyReportText(fields) {
-  return [
-    `週次：${fields["週次"] || ""}`,
-    `期間：${fields["期間"] || ""}`,
-    "",
-    "一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）",
-    fields["中長期規劃"] || "",
-    "",
-    "二、本週工作報告",
-    fields["本週工作報告"] || "",
-    "",
-    "三、下週重要工作計畫",
-    fields["下週重要工作計畫"] || "",
-  ].join("\n").trim();
 }
 
 function needQuery(args) {
@@ -1085,42 +1074,120 @@ const TOOLS = [
     },
   },
   {
-    // 唯一能修改記事內容的例外：只接受 fieldlog 前台建立、fields_json._kind
-    // 明確等於 weekly_report 的週報模板。中長期規劃、週次、期間與其他記事
-    // 都不能透過這支工具改寫，避免把「Claude 幫填週報」擴張成任意編輯權。
-    name: "update_weekly_report",
-    description: "把整理好的內容填入既有的 MyWiki 週報模板。只能更新標記為 weekly_report 的「本週工作報告」，可選填「下週重要工作計畫」；不能修改中長期規劃、週次、期間、標題或其他記事。先用 search_fieldlog 搜尋「工作週報」取得 entry_id。",
+    // 週報一律由系統依週次建立，與前台「本週周報」按鈕共用 fieldlog/src/lib/weekly-report.js：
+    // 同一週重複呼叫只會回傳既有那一份，不會再建一筆。
+    name: "create_weekly_report",
+    description: "建立（或取得）指定週次的 MyWiki 工作週報模板，格式固定為「2026-W41 工作週報（10/05–10/09）」，自動帶入週次、期間與中長期規劃。同一週已經有週報時直接回傳既有那一份，不會重複建立，可以放心每次排程都先呼叫。week 與 date 都不給時以今天（台北時間）所在的週為準。",
     inputSchema: {
       type: "object",
       properties: {
-        entry_id: { type: "number", description: "週報模板的 entry id" },
+        week: { type: "string", description: "選填：ISO 週次，例如 2026-W41" },
+        date: { type: "string", description: "選填：這一週裡的任一天，例如 2026-10-06（台北日期）" },
+      },
+    },
+    async handler(env, args) {
+      const { info, entry, created } = await getOrCreateWeeklyReport(env.DB_FIELDLOG, {
+        week: args.week, date: args.date, timestamp: now(), source: "MCP／claude.ai",
+      });
+      return `${created ? "已建立" : "本週已有週報，沿用既有"} [entry ${entry.id}] ${entry.title}（週次 ${info.key}，期間 ${weeklyReportPeriod(info)}）。之後用 update_weekly_report（week: "${info.key}"）寫入內容。`;
+    },
+  },
+  {
+    name: "get_weekly_report",
+    description: "用週次讀取 MyWiki 工作週報的完整內容，並一併附上上一週的週報，方便比對哪些條目跟上週重複、哪些是延續項目。week 與 date 都不給時讀今天所在的週。也會列出標題提到該週、但不是系統週報模板的舊手寫記事（例如「2026-W40工作周報」）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week: { type: "string", description: "選填：ISO 週次，例如 2026-W41" },
+        date: { type: "string", description: "選填：這一週裡的任一天，例如 2026-10-06" },
+      },
+    },
+    async handler(env, args) {
+      const db = env.DB_FIELDLOG;
+      const info = resolveReportWeek({ week: args.week, date: args.date });
+      const previous = previousReportWeek(info);
+      const [current, prior, legacyCurrent, legacyPrior] = await Promise.all([
+        findWeeklyReport(db, info.key),
+        findWeeklyReport(db, previous.key),
+        findLegacyWeekNotes(db, info.key),
+        findLegacyWeekNotes(db, previous.key),
+      ]);
+      const versions = current ? await listEntryVersions(db, current.id) : [];
+      const section = (label, weekInfo, entry, legacy) => {
+        const lines = [`# ${label}：${weekInfo.key}（${weeklyReportPeriod(weekInfo)}）`];
+        if (entry) {
+          lines.push(`[entry ${entry.id}] ${entry.title}｜建立 ${entry.created_at}${entry.updated_at ? `｜更新 ${entry.updated_at}` : ""}`, "");
+          lines.push(weeklyReportText(parseWeeklyReportFields(entry) || {}));
+        } else {
+          lines.push("（這一週還沒有系統週報模板）");
+        }
+        if (legacy.length) {
+          lines.push("", "標題提到這一週、但不是週報模板的舊記事（內容可能被反覆覆寫，引用前請確認）：");
+          for (const note of legacy) lines.push(`- [entry ${note.id}] ${note.title}｜建立 ${note.created_at}${note.updated_at ? `｜更新 ${note.updated_at}` : ""}`);
+        }
+        return lines.join("\n");
+      };
+      const out = [section("本週", info, current, legacyCurrent)];
+      if (!current) out.push(`→ 用 create_weekly_report（week: "${info.key}"）建立。`);
+      if (versions.length) {
+        out.push("", `版本備份 ${versions.length} 份（最近：${versions.map((v) => `#${v.id} ${v.created_at}`).join("、")}）`);
+      }
+      out.push("", "---", "", section("上一週", previous, prior, legacyPrior));
+      return out.join("\n");
+    },
+  },
+  {
+    // 唯一能修改記事內容的例外：只接受 fields_json._kind 明確等於 weekly_report
+    // 的週報模板。中長期規劃、週次、期間、標題與其他記事都不能透過這支工具改寫，
+    // 避免把「Claude 幫填週報」擴張成任意編輯權。覆寫前先存版本（entry_versions）。
+    name: "update_weekly_report",
+    description: "把整理好的內容填入 MyWiki 週報模板。可用 week（例如 2026-W41）直接指定哪一週，或給 entry_id。只能更新「本週工作報告」，可選填「下週重要工作計畫」；不能修改中長期規劃、週次、期間、標題或其他記事。原本已有內容時，寫入前會自動備份一份版本，不會讓上一版消失。該週還沒有週報時請先呼叫 create_weekly_report。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week: { type: "string", description: "ISO 週次，例如 2026-W41（與 entry_id 擇一）" },
+        entry_id: { type: "number", description: "週報模板的 entry id（與 week 擇一）" },
         weekly_report: { type: "string", description: "二、本週工作報告的完整內容" },
         next_week_plan: { type: "string", description: "選填：三、下週重要工作計畫；未提供時保留原內容" },
       },
-      required: ["entry_id", "weekly_report"],
+      required: ["weekly_report"],
     },
     async handler(env, args) {
-      const entryId = Number(args.entry_id || 0);
-      if (!entryId) throw new Error("entry_id 為必填");
-      const entry = await env.DB_FIELDLOG.prepare(
-        "SELECT id, title, folder_id, fields_json FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''"
-      ).bind(entryId).first();
-      if (!entry) throw new Error(`找不到記事 ${entryId}`);
-      let fields = {};
-      try { fields = JSON.parse(entry.fields_json || "{}"); } catch { throw new Error("週報欄位資料損壞，請回 MyWiki 前台檢查"); }
-      if (fields._kind !== "weekly_report") {
-        throw new Error("安全限制：這筆不是 MyWiki 週報模板，不能透過此工具修改");
-      }
-      fields["本週工作報告"] = String(args.weekly_report || "").trim();
-      if (args.next_week_plan !== undefined) fields["下週重要工作計畫"] = String(args.next_week_plan || "").trim();
-      const updatedAt = now();
-      await env.DB_FIELDLOG.prepare(
-        "UPDATE entries SET fields_json = ?, body = ?, body_format = 'text', updated_at = ? WHERE id = ?"
-      ).bind(JSON.stringify(fields), weeklyReportText(fields), updatedAt, entryId).run();
-      await env.DB_FIELDLOG.prepare(
-        "INSERT INTO history (entry_id, folder_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).bind(entryId, entry.folder_id, "更新週報", `${fields["週次"] || entry.title}（透過 MCP／claude.ai）`, updatedAt).run();
-      return `已更新 [entry ${entryId}] ${entry.title} 的本週工作報告。請使用者回 MyWiki 檢查內容並按需要補寫下週計畫。`;
+      if (!args.week && !args.entry_id) throw new Error("請提供 week（例如 2026-W41）或 entry_id");
+      const patch = { "本週工作報告": args.weekly_report ?? "" };
+      if (args.next_week_plan !== undefined) patch["下週重要工作計畫"] = args.next_week_plan;
+      const { entry, fields, changed, versionId } = await updateWeeklyReport(env.DB_FIELDLOG, {
+        entryId: args.entry_id, week: args.week, patch, timestamp: now(), source: "MCP／claude.ai",
+      });
+      if (!changed.length) return `[entry ${entry.id}] ${entry.title} 內容與送出的相同，沒有寫入。`;
+      return `已更新 [entry ${entry.id}] ${entry.title}（${fields["週次"]}）的${changed.join("、")}${versionId ? `，寫入前已備份上一版（版本 #${versionId}）` : ""}。請使用者回 MyWiki 檢查內容並按需要補寫下週計畫。`;
+    },
+  },
+  {
+    // 每天把當天紀錄接到當週週報的「每日紀錄」欄位；只附加、不覆寫，週五再由
+    // update_weekly_report 整合成正式的「本週工作報告」。
+    name: "append_daily_log",
+    description: "把當天的工作紀錄附加到當週 MyWiki 週報的「每日紀錄」段落（依日期自動分段，例如【10/06（一）】）。只會附加、不會覆寫既有內容；同一段文字重複送出不會重複附加。該週還沒有週報時會自動建立。週五再用 get_weekly_report 讀出整週每日紀錄，整合後用 update_weekly_report 寫成正式週報。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "要附加的當天紀錄" },
+        date: { type: "string", description: "選填：紀錄日期，例如 2026-10-06；不給就是今天（台北時間）" },
+      },
+      required: ["text"],
+    },
+    async handler(env, args) {
+      const db = env.DB_FIELDLOG;
+      const timestamp = now();
+      const { info, entry } = await getOrCreateWeeklyReport(db, { date: args.date, timestamp, source: "MCP 每日紀錄" });
+      const fields = parseWeeklyReportFields(entry);
+      const heading = dailyLogHeading(info);
+      const { value, appended } = appendToDailyLog(fields[DAILY_LOG_FIELD], heading, args.text);
+      if (!appended) return `${heading} 已經有這段內容，沒有重複附加（[entry ${entry.id}] ${entry.title}）。`;
+      await updateWeeklyReport(db, {
+        entryId: entry.id, patch: { [DAILY_LOG_FIELD]: value }, timestamp, source: "MCP 每日紀錄",
+      });
+      return `已把 ${heading} 的紀錄附加到 [entry ${entry.id}] ${entry.title} 的「${DAILY_LOG_FIELD}」。`;
     },
   },
   {
@@ -1766,7 +1833,9 @@ const IMAGE_PROBE_PNG_BASE64 =
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 const WRITE_TOOL_NAMES = new Set([
   "create_fieldlog_entry",
+  "create_weekly_report",
   "update_weekly_report",
+  "append_daily_log",
   "create_fieldlog_attachment",
   "create_relation",
   "add_synonym",
@@ -1792,7 +1861,10 @@ const TOOL_TITLES = {
   get_fieldlog_attachment: "讀取附件",
   get_related: "查詢關聯紀錄",
   create_fieldlog_entry: "新增隨身記紀錄",
+  create_weekly_report: "建立工作週報",
+  get_weekly_report: "讀取工作週報",
   update_weekly_report: "更新工作週報",
+  append_daily_log: "附加每日紀錄",
   create_fieldlog_attachment: "新增附件",
   create_relation: "建立紀錄關聯",
   search_exhibitors: "搜尋 Medtec 展商",
@@ -1872,7 +1944,7 @@ async function handleMcp(request, env, auth = {}) {
       capabilities: { tools: { listChanged: true } },
       serverInfo: { name: "medapi-mcp", version: "1.1.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。update_weekly_report 是唯一可更新記事內容的例外，而且只能寫入前台建立並標記為 weekly_report 的週報欄位。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。週報工具是唯一可更新記事內容的例外：create_weekly_report 依週次建立（同一週只會有一份）、get_weekly_report 用週次讀取並附上一週、update_weekly_report 只能寫入標記為 weekly_report 的週報欄位（覆寫前自動備份版本）、append_daily_log 只會把當天紀錄附加到週報的每日紀錄。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " category 是「色系分組」（project／qa_reg／literature／training／admin／misc），跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，回應裡提到這兩者時不要混為一談。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
         " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。組內嵌照片的 HTML 報告請用 get_fieldlog_image_base64 拿純文字 base64，不要用 get_fieldlog_image 的圖片內容硬抄。" +

@@ -9,6 +9,7 @@ on:
       - "fieldlog/src/lib/render.js"
       - "fieldlog/src/lib/richtext.js"
       - "fieldlog/src/lib/schema.js"
+      - "fieldlog/src/lib/weekly-report.js"
       - ".github/workflows/deploy-mcp.yml"
   workflow_dispatch:
 

@@ -4026,6 +4026,8 @@ async function openEntry(id) {
       <textarea id="weekly-current" class="e-field weekly-report-textarea current" data-key="本週工作報告" placeholder="可自行填寫，或請 Claude MCP 整理後寫入。">${esc(fields["本週工作報告"] || "")}</textarea>
       <label for="weekly-next">三、下週重要工作計畫</label>
       <textarea id="weekly-next" class="e-field weekly-report-textarea" data-key="下週重要工作計畫" placeholder="保留給你自行填寫。">${esc(fields["下週重要工作計畫"] || "")}</textarea>
+      <label for="weekly-daily">（附）每日紀錄</label>
+      <textarea id="weekly-daily" class="e-field weekly-report-textarea" data-key="每日紀錄" placeholder="每天的工作紀錄，可由 Claude 用 append_daily_log 自動附加；週五整合成本週工作報告。">${esc(fields["每日紀錄"] || "")}</textarea>
     </section>`;
   const bodySection = isWeeklyReport ? weeklyReportSection : bodyFormat === "html"
     ? `<div class="field-label-row"><label>內文／速記</label></div>
@@ -4203,6 +4205,7 @@ async function openEntry(id) {
           "", "一、本部門中長期（六個月以上）規劃（課長級及以上主管－含副總）", newFields["中長期規劃"] || "",
           "", "二、本週工作報告", newFields["本週工作報告"] || "",
           "", "三、下週重要工作計畫", newFields["下週重要工作計畫"] || "",
+          ...(newFields["每日紀錄"] ? ["", "（附）每日紀錄", newFields["每日紀錄"]] : []),
         ].join("\n").trim()
       : bodyFormat === "html"
         ? stripFilePinForSave(window.fieldlogRichEditor?.getHtml($("e-body-rich")) || "")
@@ -7794,6 +7797,9 @@ function init() {
   $("btn-photo-f").onclick = () => startPhoto(null);
   $("btn-audio-f").onclick = () => startAudio(null);
   $("btn-folder-entry").onclick = async () => {
+    // 工作週報資料夾裡的「新紀錄」＝本週週報：跟首頁「本週周報」同一支 API、同一套
+    // 週次與檔名規則，不再產生未命名或手打標題的一般記事（2026-10 實際發生）。
+    if (CURRENT_FOLDER.role === "weekly_reports") return openCurrentWeeklyReport();
     const id = await createEntry(CURRENT_FOLDER.id, "");
     openFolder(CURRENT_FOLDER.id);
     openEntry(id);
