@@ -60,10 +60,6 @@ import {
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
 import {
-  CLAUDE_ROUTINE_AUTO_MAX_ATTEMPTS, CLAUDE_ROUTINE_CRON, CLAUDE_ROUTINE_CUTOFF_KEY, CLAUDE_ROUTINE_MANUAL_COOLDOWN_SECS,
-  CLAUDE_ROUTINE_QUIET_MINUTES, claudeRoutineConfigured, fireClaudeRoutine, routineFireText,
-} from "./lib/claude-routine.js";
-import {
   canonicalFolderLocalName,
   findSiblingFolderNameConflict,
   normalizeExistingChildFolderNames,
@@ -137,7 +133,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "203";
+const UI_VERSION = "204";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1168,86 +1164,6 @@ async function refreshAiSummaryQueue(db) {
   return { cutoff, scanned: (results || []).length };
 }
 
-async function aiSummaryFireForEntry(db, entryId) {
-  return db.prepare(
-    `SELECT entry_id, transcript_revision, trigger, status, session_url, error, attempts, fired_at, updated_at
-       FROM ai_summary_fires WHERE entry_id = ?`
-  ).bind(entryId).first();
-}
-
-// 觸發一次 Routine 並記錄結果。失敗也要記：自動觸發靠 attempts 決定還要不要重試，
-// 畫面上也才看得到「上次為什麼沒整理」。
-async function fireAiSummaryRoutine(env, db, entry, context, trigger) {
-  const stamp = now();
-  try {
-    const { sessionUrl } = await fireClaudeRoutine(env, routineFireText({
-      entryId: entry.id, title: entry.title, revision: context.revision, trigger,
-    }));
-    await db.prepare(
-      `INSERT INTO ai_summary_fires (entry_id, transcript_revision, trigger, status, session_url, error, attempts, fired_at, updated_at)
-       VALUES (?, ?, ?, 'fired', ?, '', 1, ?, ?)
-       ON CONFLICT(entry_id) DO UPDATE SET
-         transcript_revision = excluded.transcript_revision, trigger = excluded.trigger, status = 'fired',
-         session_url = excluded.session_url, error = '', attempts = ai_summary_fires.attempts + 1,
-         fired_at = excluded.fired_at, updated_at = excluded.updated_at`
-    ).bind(entry.id, context.revision, trigger, sessionUrl, stamp, stamp).run();
-    await logHistory(db, entry.id, entry.folder_id ?? null, "觸發 Claude 整理逐字稿",
-      `${trigger === "manual" ? "手動" : "轉錄完成自動"}觸發${sessionUrl ? `｜${sessionUrl}` : ""}`);
-    return { ok: true, sessionUrl };
-  } catch (err) {
-    const message = String(err?.message || err).slice(0, 1000);
-    await db.prepare(
-      `INSERT INTO ai_summary_fires (entry_id, transcript_revision, trigger, status, session_url, error, attempts, fired_at, updated_at)
-       VALUES (?, ?, ?, 'failed', '', ?, 1, '', ?)
-       ON CONFLICT(entry_id) DO UPDATE SET
-         transcript_revision = excluded.transcript_revision, trigger = excluded.trigger, status = 'failed',
-         error = excluded.error, attempts = ai_summary_fires.attempts + 1, updated_at = excluded.updated_at`
-    ).bind(entry.id, context.revision, trigger, message, stamp).run();
-    await logHistory(db, entry.id, entry.folder_id ?? null, "觸發 Claude 整理失敗", message);
-    return { ok: false, error: message, status: err?.status };
-  }
-}
-
-// 轉錄完成後自動觸發：每 10 分鐘掃一次「cutoff 後建立、每段錄音都轉完、最後一段
-// 上傳後已安靜 10 分鐘、還沒成功觸發過」的錄音記事。每筆只自動觸發一次——之後
-// 補錄或改逐字稿要重新整理，請用記事上的手動按鈕，避免同一場會議被反覆整理。
-export async function fireDueAiSummaries(env, { limit = 5 } = {}) {
-  if (!claudeRoutineConfigured(env)) return { fired: 0, skipped: "not_configured" };
-  const db = env.DB;
-  const cutoffRow = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(CLAUDE_ROUTINE_CUTOFF_KEY).first();
-  const cutoff = String(cutoffRow?.value || "");
-  if (!cutoff) return { fired: 0, skipped: "no_cutoff" };
-  const quietBefore = new Date(Date.now() - CLAUDE_ROUTINE_QUIET_MINUTES * 60000)
-    .toISOString().replace("T", " ").slice(0, 19) + "Z";
-  const { results } = await db.prepare(
-    `SELECT e.id, e.title, e.folder_id
-       FROM entries e
-      WHERE e.created_at >= ?
-        AND COALESCE(e.deleted_at, '') = ''
-        AND EXISTS (SELECT 1 FROM attachments a WHERE a.entry_id = e.id AND a.kind = 'audio' AND a.source_pdf_id IS NULL)
-        AND NOT EXISTS (SELECT 1 FROM attachments a WHERE a.entry_id = e.id AND a.kind = 'audio' AND a.source_pdf_id IS NULL
-                         AND COALESCE(a.transcribed_at, '') IN ('', 'processing', 'auto_failed'))
-        AND (SELECT MAX(a.created_at) FROM attachments a WHERE a.entry_id = e.id AND a.kind = 'audio' AND a.source_pdf_id IS NULL) <= ?
-        AND NOT EXISTS (SELECT 1 FROM ai_summary_fires f WHERE f.entry_id = e.id AND (f.status = 'fired' OR f.attempts >= ?))
-      ORDER BY e.created_at, e.id LIMIT ?`
-  ).bind(cutoff, quietBefore, CLAUDE_ROUTINE_AUTO_MAX_ATTEMPTS, limit).all();
-  let fired = 0;
-  const failed = [];
-  for (const entry of results || []) {
-    const context = await recordingSummaryContext(db, entry.id);
-    // 全部是靜音／空白逐字稿就沒有東西可整理，不浪費一個雲端 session。
-    if (!context.complete || !context.transcript.trim()) continue;
-    const result = await fireAiSummaryRoutine(env, db, entry, context, "auto");
-    if (result.ok) fired++;
-    else {
-      failed.push({ entryId: entry.id, error: result.error });
-      // 401／403 是 token 問題，後面每筆都會一樣失敗，這輪先停。
-      if (result.status === 401 || result.status === 403) break;
-    }
-  }
-  return { fired, failed };
-}
-
 async function aiNoteForEntry(db, entryId) {
   return db.prepare(
     `SELECT entry_id, markdown, source, model, transcript_revision, status,
@@ -1275,7 +1191,7 @@ async function handleApi(request, env, url, identity = {}) {
   if (path === "/config" && method === "GET") {
     // ui_version：伺服器上「應該」是哪一版前端。前端拿它跟自己的 APP_VERSION 比，
     // 不一致就代表瀏覽器跑的是快取住的舊 app.js，畫面會直接提示並提供一鍵清除。
-    return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI), claude_summary: claudeRoutineConfigured(env), ui_version: UI_VERSION });
+    return json({ uploads: !!env.FILES, transcribe: !!(env.FILES && env.AI), ui_version: UI_VERSION });
   }
   if (path === "/usage" && method === "GET") {
     return json(await cloudflareUsage(env));
@@ -2201,38 +2117,8 @@ async function handleApi(request, env, url, identity = {}) {
                   FROM entries e WHERE e.parent_entry_id = ? AND COALESCE(e.deleted_at, '') = '' ORDER BY e.id DESC`).bind(id).all(),
       aiNoteForEntry(db, id),
     ]);
-    const aiFire = await aiSummaryFireForEntry(db, id);
-    return json({ ...entry, body: canonicalEntryBody(entry), attachments: atts, children, ai_note: aiNote || null, ai_fire: aiFire || null });
+    return json({ ...entry, body: canonicalEntryBody(entry), attachments: atts, children, ai_note: aiNote || null });
   }
-  // ✨ 手動觸發 Claude 整理：自動觸發沒跑到、補錄後想重整、或上線前的舊錄音都走這裡。
-  const entryClaudeSummaryMatch = path.match(/^\/entries\/(\d+)\/claude-summary$/);
-  if (entryClaudeSummaryMatch && method === "POST") {
-    if (!claudeRoutineConfigured(env)) {
-      return bad("尚未設定 Claude Routine（需要 CLAUDE_ROUTINE_FIRE_URL 與 CLAUDE_ROUTINE_TOKEN，見 fieldlog/README.md）", 501);
-    }
-    const entryId = Number(entryClaudeSummaryMatch[1]);
-    const entry = await db.prepare("SELECT id, title, folder_id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''")
-      .bind(entryId).first();
-    if (!entry) return bad("找不到紀錄", 404);
-    const context = await recordingSummaryContext(db, entryId);
-    if (!context.transcript.trim()) return bad("這筆還沒有可整理的逐字稿，請先完成錄音轉文字", 400);
-    const last = await aiSummaryFireForEntry(db, entryId);
-    if (last?.status === "fired" && last.fired_at) {
-      const elapsed = (Date.now() - Date.parse(String(last.fired_at).replace(" ", "T"))) / 1000;
-      if (elapsed >= 0 && elapsed < CLAUDE_ROUTINE_MANUAL_COOLDOWN_SECS) {
-        return bad("剛剛已經觸發過，Claude 正在整理中，請稍候再試", 429);
-      }
-    }
-    const result = await fireAiSummaryRoutine(env, db, entry, context, "manual");
-    if (!result.ok) return bad(result.error, 502);
-    return json({
-      ok: true,
-      session_url: result.sessionUrl,
-      incomplete: !context.complete,
-      ai_fire: await aiSummaryFireForEntry(db, entryId),
-    });
-  }
-
   const entryAiNoteMatch = path.match(/^\/entries\/(\d+)\/ai-note$/);
   if (entryAiNoteMatch && method === "PUT") {
     const entryId = Number(entryAiNoteMatch[1]);
@@ -3909,15 +3795,6 @@ export default {
   // 不中斷其他來源，結果一律記進 sync_log，事後用 MCP 的 sync_status 就查得到。
   async scheduled(event, env) {
     await ensureSchema(env.DB, now());
-    if (event?.cron === CLAUDE_ROUTINE_CRON) {
-      try {
-        const result = await fireDueAiSummaries(env);
-        if (result.fired || result.failed?.length) console.log(JSON.stringify({ event: "claude_routine_fire_complete", ...result }));
-      } catch (err) {
-        console.error(JSON.stringify({ event: "claude_routine_fire_failed", error: err.message }));
-      }
-      return;
-    }
     if (event?.cron === TRANSCRIPTION_RETRY_CRON) {
       try {
         const transcription = await runPendingAudioTranscriptions(env);
