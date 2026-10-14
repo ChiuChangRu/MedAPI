@@ -89,19 +89,6 @@ export const SCHEMA = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  // 觸發 claude.ai Routine 整理逐字稿的紀錄（整理結果由 Routine 另建【AI彙整】記事）。
-  // 一筆記事一列：自動觸發看這裡判斷「整理過沒」，手動按鈕看這裡防連點。
-  `CREATE TABLE IF NOT EXISTS ai_summary_fires (
-    entry_id INTEGER PRIMARY KEY,
-    transcript_revision TEXT DEFAULT '',
-    trigger TEXT DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',
-    session_url TEXT DEFAULT '',
-    error TEXT DEFAULT '',
-    attempts INTEGER NOT NULL DEFAULT 0,
-    fired_at TEXT DEFAULT '',
-    updated_at TEXT NOT NULL
-  )`,
   // 記事與記事之間的關聯（例：這次實驗引用了這份 ISO 標準、這份專利對照這家廠商的產品）。
   // 刻意不分「主從」、也不限制 relation_type 的字典——用途橫跨標準/實驗/廠商/專利，
   // 關係種類會一直長，寫死列表反而綁死用法。方向性用 relation_type 的文字本身表達
@@ -495,12 +482,6 @@ export async function ensureSchema(db, timestamp) {
   await db.prepare(
     `INSERT OR IGNORE INTO settings (key, value, updated_at)
      VALUES ('ai_summary.cutoff', ?, ?)`
-  ).bind(timestamp, timestamp).run();
-  // 轉錄完成自動觸發 Claude Routine 的切斷點：上線前的舊錄音不會一次湧進去
-  // 各開一個雲端 session；舊錄音要整理請用記事上的手動按鈕。
-  await db.prepare(
-    `INSERT OR IGNORE INTO settings (key, value, updated_at)
-     VALUES ('claude_routine.cutoff', ?, ?)`
   ).bind(timestamp, timestamp).run();
   schemaReady = true;
 }
