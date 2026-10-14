@@ -438,7 +438,7 @@ async function renderInspectorEntry(item, tab) {
           ${recordingProgress.remainingCount ? `<small>當日額度用完時，隔日台灣時間 08:15 起自動接續；已完成段落不會重複轉錄。</small>` : ""}
         </div>
         <div class="recording-download-all-row">
-          <a class="btn primary recording-download-all" href="/api/entries/${entry.id}/audio.zip" download>⬇ 一鍵下載全部錄音（${audio.length} 段 ZIP）</a>
+          <a class="btn small primary recording-download-all" href="/api/entries/${entry.id}/audio.zip" download>⬇ 一鍵下載全部錄音（${audio.length} 段 ZIP）</a>
           <small>依錄音順序編號，保留每一段原始格式。</small>
         </div>
         <div class="recording-interleaved-preview">${audio.map((a, index) => {
@@ -464,12 +464,12 @@ async function renderInspectorEntry(item, tab) {
     } else {
       // folder-preview-body 本身是橫向 flex，文件內容與資訊表必須包在同一個直向
       // 容器；否則它們會變成並排兄弟元素，窄欄時資訊表就會壓在本文上。
-      body.innerHTML = `<div class="inspector-document-preview"><div class="inspector-entry-preview">${otherAttachments.map(attachmentHtml).join("")}</div></div>`;
+      body.innerHTML = `<div class="inspector-document-preview">${aiNotePreviewHtml(entry.ai_note, { collapsible: true })}<div class="inspector-entry-preview">${otherAttachments.map(attachmentHtml).join("")}</div></div>`;
       const documentPreview = body.querySelector(".inspector-document-preview");
       if (entry.body) {
         const frame = document.createElement("iframe"); frame.className = "folder-preview-frame"; frame.title = "記事內容（保留 AI 整理標示）"; frame.setAttribute("sandbox", "");
         frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : entryTextPreviewHtml(entry.body)); documentPreview.appendChild(frame);
-      } else if (!attachments.length && !visibleEntryFields(entry).length) body.innerHTML = '<p class="folder-preview-empty">尚無內容，可切到「文字內容」編輯。</p>';
+      } else if (!attachments.length && !visibleEntryFields(entry).length && !String(entry.ai_note?.markdown || "").trim()) body.innerHTML = '<p class="folder-preview-empty">尚無內容，可切到「文字內容」編輯。</p>';
     }
     const fields = visibleEntryFields(entry);
     if (fields.length) (body.querySelector(".inspector-recording-preview") || body.querySelector(".inspector-document-preview") || body).insertAdjacentHTML("beforeend", `<dl class="inspector-metadata">${fields.map(([key, value]) => `<div><dt>${esc(key)}</dt><dd>${esc(String(value ?? ""))}</dd></div>`).join("")}</dl>`);

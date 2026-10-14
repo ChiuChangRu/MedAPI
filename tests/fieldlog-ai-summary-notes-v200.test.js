@@ -29,6 +29,6 @@ test("錄音右欄最上方可貼上或上傳 Markdown", async () => {
   const inspector = await read("../fieldlog/public/inspector.js");
   assert.match(app, /AI 整理筆記（Markdown）/);
   assert.match(app, /accept="\.md,text\/markdown,text\/plain"/);
-  assert.match(app, /aiNoteEditorHtml\(entry\.ai_note, "preview-entry"\)/);
+  assert.match(app, /aiNoteEditorHtml\(entry\.ai_note, "preview-entry", \{ collapsible: !recordingAudio\.length \}\)/);
   assert.match(inspector, /aiNotePreviewHtml\(entry\.ai_note\)/);
 });

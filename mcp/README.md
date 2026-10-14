@@ -1,5 +1,12 @@
 # medapi-mcp（跨系統問答層，預設唯讀）
 
+> **要動 `src/oauth.js`（或任何 OAuth／CSRF／CSP 邏輯）的人（含 AI 開發代理）
+> 請先讀 [`../MCP_OAUTH_HANDOFF_FOR_CLAUDE_CODE.md`](../MCP_OAUTH_HANDOFF_FOR_CLAUDE_CODE.md)
+> 開頭的「🚨 Constitution」那一段**——2026-09-22 那次事故裡，`Referrer-Policy`
+> 跟 CSP `form-action` 兩個地方各踩了一個會「完全不顯示錯誤、直接卡住」的坑，
+> 兩個都已經修好且有 production log 驗證過，但同樣的坑很容易在「順手優化」
+> 這幾行 header 設定時被重新踩到。
+
 讓 **claude.ai 當你的窗口**：連上這個 MCP Server 之後，直接用自然語言
 跨三個來源問答——
 
@@ -16,6 +23,7 @@
 | `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files`／`list_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR）＋不用猜關鍵字的附件目錄 | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
 | `sync_status` | 外部知識庫（litdb 等）的最後同步時間與最近同步紀錄——懷疑資料過時直接查事實 | fieldlog D1 的 `sources`／`sync_log` 表 |
 | `add_synonym` | 可寫入工具（之四）：搜不到但確定是「用詞沒對上」時，當場補一組同義詞對照，立刻生效 | fieldlog D1 的 `synonyms` 表（只 INSERT） |
+| `update_ai_note` | 把整理好的摘要整段寫入記事的「✨ AI 整理筆記」欄位（覆寫；每筆記事都有，錄音記事需等逐字稿完成；人工改過的筆記不可覆寫；來源記為 `mcp_api`）。`get_fieldlog_entry` 會一併顯示目前的 AI 整理筆記，要接續就先讀再整段寫入 | fieldlog 的 `PUT /api/entries/:id/ai-note`（Service Binding＋PIN，跟 App 同一條寫入路徑，見下方第二組說明） |
 | `update_folder`／`move_folder`／`move_entry`／`delete_folder` | **資料夾整理工具**（2026-08-08 新增）：改資料夾名稱／色系分類／排序、搬資料夾、搬記事歸檔位置、刪除資料夾（不遺失資料，見下方說明） | fieldlog 的 `/api/folders`、`/api/entries`（Service Binding＋PIN，代理呼叫 fieldlog 既有的 PUT／DELETE 端點，見下方說明） |
 
 > **LitDB（`chiuchangru/litdb`，長儒另一個獨立文獻/專利知識庫）已併入
@@ -41,9 +49,27 @@ INSERT D1），這四支程式碼裡沒有任何 `UPDATE`／`DELETE` 語句碰�
 的內容／attachments／relations／synonyms——只會加新的，不會改掉或刪掉
 既有的任何一筆資料。
 
-第二組（**僅限週報模板**）：`update_weekly_report` 只接受
-`fields_json._kind = 'weekly_report'` 的記事，只能更新「本週工作報告」與選填的
-「下週重要工作計畫」。週次、期間、固定中長期規劃與其他記事都不在其權限內。
+第二組（**僅限週報模板與 AI 整理筆記，只有這兩支能改既有記事的內容**）：
+
+- `update_weekly_report` 只接受 `fields_json._kind = 'weekly_report'` 的記事，
+  只能更新「本週工作報告」與選填的「下週重要工作計畫」。週次、期間、固定
+  中長期規劃與其他記事都不在其權限內。
+- `update_ai_note`（2026-09-23 新增）只寫 `entry_ai_notes` 表裡該記事的那一列，
+  標題、內文、附件、逐字稿、自訂欄位一律碰不到。寫入**不在 MCP 直接 UPDATE
+  D1**，而是透過 FIELDLOG Service Binding 呼叫 fieldlog 自己的
+  `PUT /api/entries/:id/ai-note`——「找不到記事回 404」「人工修改過的筆記不准
+  Agent 覆蓋」「逐字稿版本必須一致」「寫入操作履歷」這些規則都只在 fieldlog
+  維護一份。MCP 刻意**不送 `force`**（那個參數會繞過人工修改保護）。
+  適用範圍：fieldlog v201 起**每一筆記事**都有 AI 整理筆記（v200 只有錄音
+  記事有）。錄音記事必須等逐字稿全部完成才能寫入（fieldlog 會比對逐字稿版本，
+  確保摘要的是最新、完整的內容）；非錄音記事沒有逐字稿可比對，直接寫入。
+  App 裡非錄音記事的這個區塊沒內容時收合、有內容時自動展開。整段覆寫時
+  fieldlog 不保留前一版 AI 筆記（人工修改過的版本受保護、不會被蓋掉），
+  所以這支在工具標註裡標為 `destructiveHint: true`。
+  **維護注意**：MCP 的 `recordingTranscriptState()` 必須跟
+  `fieldlog/src/worker.js` 的 `recordingSummaryContext()` 算出同一個逐字稿
+  版本號，否則所有寫入都會被 fieldlog 以 409 擋下；
+  `tests/mcp-update-ai-note.test.js` 有一條測試會在 fieldlog 改動算法時先失敗。
 
 第三組（**限定資料夾結構整理，2026-08-08 新增**）：`update_folder`／
 `move_folder`／`move_entry`／`delete_folder`。這四支會造成真正的
