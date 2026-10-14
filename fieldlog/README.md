@@ -145,3 +145,32 @@ body 給 `{"folder_id": 42}` 或 `{"entry_id": 100}`（擇一），可選 `limit
 
 Claude 可使用既有 `x-pin`，或在 Worker 設定 `AI_SUMMARY_TOKEN` Secret 後，以
 `Authorization: Bearer <token>` 存取上述兩支端點；專用 token 不能存取其他 API。
+
+## Claude Routine：轉錄完成自動整理（v201）
+
+取代「每天固定時間跑一次」的 Agent：錄音轉錄完成就觸發 claude.ai Routine 整理，
+整理結果由 Routine 透過 MyWiki MCP 另建【AI彙整】記事並關聯回原記事。用的是
+長儒自己的 claude.ai 額度；Worker 本身不呼叫任何 LLM。
+
+- **自動**：每 10 分鐘（cron `*/10 * * * *`）找「`claude_routine.cutoff` 之後建立、
+  每段錄音都轉完、最後一段上傳後已安靜 10 分鐘、逐字稿不是空白、還沒成功觸發過」
+  的記事，每輪最多 5 筆，用 Routine 的 API trigger 呼叫 `/fire`。每筆只自動觸發一次；
+  失敗最多重試 3 次，401／403（token 問題）當輪直接停。
+- **手動**：記事「📝 完整轉錄」旁的「✨ Claude 整理」→ `POST /api/entries/:id/claude-summary`。
+  舊錄音、補錄後想重整、自動沒跑到都用這顆；同一筆 2 分鐘內不重複觸發。
+- 觸發紀錄存在 `ai_summary_fires`（狀態、執行 session 網址、錯誤），
+  `GET /api/entries/:id` 會帶 `ai_fire`，畫面上顯示「已交給 Claude 整理｜查看執行」。
+- `/fire` 的 `text` 只放 `{"entry_id","title","transcript_revision","trigger"}`；
+  Routine 會把它包成不受信任的 `<routine-fire-payload>`，所以 Routine 的 prompt 要明確
+  寫「從 payload 取 entry_id」，而且只用 entry_id 去 MyWiki 讀原文。
+
+設定（兩個都要，缺一個就整個功能關閉、不會打外部請求）：
+
+1. claude.ai/code/routines → 打開整理用的 Routine → Edit → Add another trigger → API
+   → 複製 URL、按 Generate token（token 只顯示一次）。
+2. `wrangler secret put CLAUDE_ROUTINE_FIRE_URL --config fieldlog/wrangler.jsonc`
+   `wrangler secret put CLAUDE_ROUTINE_TOKEN --config fieldlog/wrangler.jsonc`
+
+限制：`/fire` 目前是 research preview（beta header 在 `lib/claude-routine.js`），
+每支 Routine 每小時 30 次、帳號每小時 100 次 API 觸發；每次觸發是一個完整的雲端
+session，算在 claude.ai 方案用量裡。
