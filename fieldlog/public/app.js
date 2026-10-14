@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "200";
+const APP_VERSION = "201";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -4054,7 +4054,8 @@ async function openEntry(id) {
     <p class="sub">${esc(localDateTime(e.created_at))}｜${folder ? esc(folder.name) : "⏳ 待分類"}</p>
     ${entryAudio.length ? aiNoteEditorHtml(e.ai_note, "e") : ""}
     <section class="merged-transcript ${mergedTranscript ? "" : "empty"}">
-      <div><strong>📝 完整轉錄</strong><span><button class="btn small" id="e-open-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>開啟</button><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>一鍵複製</button></span></div>
+      <div><strong>📝 完整轉錄</strong><span><button class="btn small" id="e-open-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>開啟</button><button class="btn small" id="e-copy-transcript" type="button" ${mergedTranscript ? "" : "disabled"}>一鍵複製</button><button class="btn small" id="e-claude-summary" type="button" ${mergedTranscript ? "" : "disabled"} title="交給 Claude（claude.ai Routine）整理成【AI彙整】記事；轉錄完成後會自動觸發，沒跑到時可以自己按">✨ Claude 整理</button></span></div>
+      ${claudeSummaryStatusHtml(e.ai_fire)}
       ${mergedTranscript
         ? `<details class="ai-fold"><summary>展開逐字稿全文（${mergedTranscript.length} 字，AI 轉錄）</summary><pre>${esc(mergedTranscript)}</pre></details>`
         : `<p class="sub" id="e-auto-status">新錄音會在每日免費額度內自動轉錄並合併；舊錄音請使用下方「Cloudflare AI 整理」。</p>`}
@@ -4244,6 +4245,8 @@ async function openEntry(id) {
   if (!isWeeklyReport && bodyFormat === "html") setupRichImageDropZone($("e-body-rich"), id);
   const processBtn = $("e-process");
   if (processBtn) processBtn.onclick = () => processEntryAttachments(id, processBtn);
+  const claudeSummaryBtn = $("e-claude-summary");
+  if (claudeSummaryBtn) claudeSummaryBtn.onclick = () => fireClaudeSummary(id, claudeSummaryBtn);
   const syncPendingBtn = $("e-sync-pending");
   if (syncPendingBtn) syncPendingBtn.onclick = async () => {
     syncPendingBtn.disabled = true;
@@ -4992,6 +4995,43 @@ function openRelationPicker(fromEntryId, onDone) {
       confirmBtn.disabled = false;
     }
   };
+}
+
+// ✨ Claude 整理的觸發狀態。整理結果是 Routine 另建的【AI彙整】記事（看「關聯」），
+// 這裡只顯示有沒有叫到 Claude、以及執行紀錄連結，不代表整理已經寫完。
+function claudeSummaryStatusHtml(fire) {
+  if (!fire) return "";
+  if (fire.status === "failed") {
+    return `<p class="sub claude-summary-status">✨ Claude 整理觸發失敗：${esc(fire.error || "未知原因")}（可再按一次）</p>`;
+  }
+  if (fire.status !== "fired") return "";
+  const how = fire.trigger === "manual" ? "手動" : "轉錄完成自動";
+  const link = fire.session_url ? `｜<a href="${esc(fire.session_url)}" target="_blank" rel="noopener">查看執行</a>` : "";
+  return `<p class="sub claude-summary-status">✨ 已${how}交給 Claude 整理（${esc(localDateTime(fire.fired_at))}）${link}，完成後會出現在「關聯」的【AI彙整】記事</p>`;
+}
+
+async function fireClaudeSummary(id, btn) {
+  if (btn.disabled) return;
+  if (!confirm("交給 Claude 整理這筆逐字稿？\n會用你的 claude.ai 額度開一個雲端執行，完成後新增【AI彙整】記事並關聯回這筆。")) return;
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = "觸發中…";
+  try {
+    const r = await api(`/entries/${id}/claude-summary`, { method: "POST" });
+    const note = r.incomplete ? "（還有錄音沒轉完，只會整理已轉好的部分）" : "";
+    showToast(`已交給 Claude 整理${note}`, r.session_url
+      ? { actionLabel: "查看執行", onAction: () => window.open(r.session_url, "_blank", "noopener") }
+      : {});
+    const status = btn.closest(".merged-transcript")?.querySelector(".claude-summary-status");
+    const html = claudeSummaryStatusHtml(r.ai_fire);
+    if (status) status.outerHTML = html;
+    else btn.closest(".merged-transcript > div")?.insertAdjacentHTML("afterend", html);
+  } catch (err) {
+    showToast("Claude 整理觸發失敗：" + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
 }
 
 // 🪄 一鍵整理：這筆紀錄還沒轉文字的錄音全部轉、還沒擷取文字的照片全部擷取。
@@ -7870,7 +7910,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=200").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=201").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
