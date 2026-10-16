@@ -1,0 +1,14 @@
+{
+  // patent-mcp — USPTO 美國專利唯讀查詢（MCP Server）
+  // 獨立 Worker，不綁任何 D1／R2，只對外查 ppubs.uspto.gov。
+  // 部署（Cloudflare Git 連動，比照 medapi-mcp）：
+  //   Root directory = repo 根目錄、Build command 留空、
+  //   Deploy command = npx wrangler deploy --config patent-mcp/wrangler.jsonc
+  // 部署後在 Dashboard → 這個 Worker → Settings → Variables and Secrets
+  // 新增 Secret「MCP_PIN」（自訂通行碼）。沒設定時一律 401（fail-closed）。
+  "name": "patent-mcp",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-01",
+  // 保留 Dashboard 設定的 MCP_PIN，避免每次部署被清掉（medapi-mcp 2026-08-01 的教訓）
+  "keep_vars": true
+}
