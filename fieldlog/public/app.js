@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "204";
+const APP_VERSION = "205";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -153,6 +153,49 @@ function saveRecentFolderIds(ids) {
   }
 }
 
+// 便利貼要把「最近開的資料夾」與「最近開的記事」混在一起照時間排，所以另外
+// 記每個資料夾的最後開啟時間；舊資料沒有時間就沿用原本的先後順序。
+const RECENT_FOLDER_AT_KEY = "fieldlog_recent_folder_at";
+const RECENT_ENTRY_STORAGE_KEY = "fieldlog_recent_entries";
+const RECENT_ENTRY_LIMIT = 5;
+
+function readJsonStorage(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "null");
+    return value ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonStorage(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 捷徑存不了不影響本體 */ }
+}
+
+/** 記事只存 id、標題與所在資料夾的快照；標題以最後一次開啟時為準，找不到時點了會自動剔除。 */
+function readRecentEntries() {
+  const list = readJsonStorage(RECENT_ENTRY_STORAGE_KEY, []);
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((item) => item && Number.isInteger(Number(item.id)) && Number(item.id) > 0)
+    .filter((item, index, all) => all.findIndex((other) => Number(other.id) === Number(item.id)) === index)
+    .slice(0, RECENT_ENTRY_LIMIT);
+}
+
+function rememberRecentEntry(entry) {
+  const id = Number(entry?.id);
+  if (!Number.isInteger(id) || id <= 0) return;
+  const item = { id, title: String(entry.title || "（未命名）"), folderId: entry.folder_id ?? null, at: Date.now() };
+  writeJsonStorage(RECENT_ENTRY_STORAGE_KEY,
+    [item, ...readRecentEntries().filter((other) => Number(other.id) !== id)].slice(0, RECENT_ENTRY_LIMIT));
+  renderRecentFolders();
+}
+
+function forgetRecentEntry(id) {
+  writeJsonStorage(RECENT_ENTRY_STORAGE_KEY, readRecentEntries().filter((item) => Number(item.id) !== Number(id)));
+  renderRecentFolders();
+}
+
 function recentFolders() {
   const storedIds = readRecentFolderIds();
   const byId = new Map(FOLDERS.map((folder) => [Number(folder.id), folder]));
@@ -162,30 +205,59 @@ function recentFolders() {
   return folders;
 }
 
+function stickyColorsFor(folder) {
+  const section = folder ? (FOLDER_CATEGORY_META[folderSectionKey(folder)] || FOLDER_CATEGORY_META.misc) : FOLDER_CATEGORY_META.misc;
+  // 「其他」的底色是透明，便利貼需要一個實際的紙色
+  const bg = section.bg === "transparent" ? "#F1F5F9" : section.bg;
+  return { section, bg, accent: section.accent };
+}
+
 function renderRecentFolders() {
   const wrap = $("recent-folder-list");
   if (!wrap) return;
   const folders = recentFolders();
-  if (!folders.length) {
-    wrap.innerHTML = `<p class="sub">尚無最近使用的目錄。</p>`;
+  const folderAt = readJsonStorage(RECENT_FOLDER_AT_KEY, {}) || {};
+  const items = [
+    ...folders.map((folder, index) => ({ kind: "folder", folder, at: Number(folderAt[folder.id]) || (1000 - index) })),
+    ...readRecentEntries().map((entry) => ({ kind: "entry", entry, at: Number(entry.at) || 0 })),
+  ].sort((a, b) => b.at - a.at);
+  if (!items.length) {
+    wrap.innerHTML = `<p class="sub">尚無最近開啟的目錄或檔案。</p>`;
     return;
   }
-  wrap.innerHTML = folders.map((folder) => {
-    const path = folderDisplayPath(folder);
-    const section = FOLDER_CATEGORY_META[folderSectionKey(folder)] || FOLDER_CATEGORY_META.misc;
-    const parentPath = path.slice(0, -1).join("／") || section.label;
-    return `<button class="recent-folder-card" type="button" data-id="${folder.id}"
-      title="開啟 ${esc(path.join("／"))}"
-      style="--recent-accent:${section.accent};--recent-bg:${section.bg}">
-      <span class="recent-folder-icon" aria-hidden="true">${section.icon}</span>
-      <span class="recent-folder-copy">
-        <strong>${esc(folder.name)}</strong>
-        <small>${esc(parentPath)}</small>
-      </span>
+  wrap.innerHTML = items.map((item, index) => {
+    if (item.kind === "folder") {
+      const folder = item.folder;
+      const path = folderDisplayPath(folder);
+      const { section, bg, accent } = stickyColorsFor(folder);
+      const parentPath = path.slice(0, -1).join("／") || section.label;
+      return `<button class="recent-folder-card sticky-note" type="button" data-kind="folder" data-id="${folder.id}"
+        title="開啟 ${esc(path.join("／"))}" style="--recent-accent:${accent};--recent-bg:${bg};--tilt:${index % 2 ? "0.6deg" : "-0.6deg"}">
+        <span class="recent-folder-icon" aria-hidden="true">${section.icon}</span>
+        <span class="recent-folder-copy"><strong>${esc(folder.name)}</strong><small>📂 ${esc(parentPath)}</small></span>
+      </button>`;
+    }
+    const entry = item.entry;
+    const folder = entry.folderId ? FOLDERS.find((f) => Number(f.id) === Number(entry.folderId)) : null;
+    const { bg, accent } = stickyColorsFor(folder);
+    const where = folder ? folderDisplayPath(folder).join("／") : "⏳ 待分類";
+    return `<button class="recent-folder-card sticky-note" type="button" data-kind="entry" data-id="${entry.id}"
+      title="開啟 ${esc(entry.title)}" style="--recent-accent:${accent};--recent-bg:${bg};--tilt:${index % 2 ? "0.6deg" : "-0.6deg"}">
+      <span class="recent-folder-icon" aria-hidden="true">📝</span>
+      <span class="recent-folder-copy"><strong>${esc(entry.title)}</strong><small>${esc(where)}</small></span>
     </button>`;
   }).join("");
   wrap.querySelectorAll(".recent-folder-card").forEach((button) => {
-    button.onclick = () => openFolder(Number(button.dataset.id));
+    const id = Number(button.dataset.id);
+    button.onclick = button.dataset.kind === "entry"
+      ? async () => {
+        try { await openEntry(id); }
+        catch (err) {
+          if (/找不到/.test(err?.message || "")) { forgetRecentEntry(id); showToast("這筆記事已不存在，已從最近使用移除"); }
+          else showToast("開啟失敗：" + (err?.message || err));
+        }
+      }
+      : () => openFolder(id);
   });
 }
 
@@ -195,6 +267,9 @@ function rememberRecentFolder(id) {
   const nextIds = [numericId, ...readRecentFolderIds().filter((storedId) => storedId !== numericId)]
     .slice(0, RECENT_FOLDER_LIMIT);
   saveRecentFolderIds(nextIds);
+  const folderAt = readJsonStorage(RECENT_FOLDER_AT_KEY, {}) || {};
+  folderAt[numericId] = Date.now();
+  writeJsonStorage(RECENT_FOLDER_AT_KEY, Object.fromEntries(nextIds.map((fid) => [fid, folderAt[fid] || 0])));
   renderRecentFolders();
 }
 
@@ -226,7 +301,9 @@ let TRANSCRIBE_ENABLED = false;
 let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 // 待分類預設清單模式（本來就是待整理的內容，清單本來就夠緊湊），卡片模式
 // 是給想要一眼看縮圖式排版的人選的，不像資料夾內頁的卡片那麼大張。
-let INBOX_VIEW = localStorage.getItem("fieldlog_inbox_view") || "list";
+// v205 起預設改成便利貼；換新的儲存鍵，舊的「清單／卡片」偏好不會擋住新預設。
+const INBOX_VIEW_STORAGE_KEY = "fieldlog_inbox_view_v2";
+let INBOX_VIEW = (() => { try { return localStorage.getItem(INBOX_VIEW_STORAGE_KEY) || "sticky"; } catch { return "sticky"; } })();
 // 資料夾內的檔案排序。預設「新到舊」：一直往資料夾裡加東西的人，最需要看到的
 // 是剛剛丟進來的那一份，它不該被排在幾十個舊檔案後面。想按檔名找（同一系列的
 // 標準編號連號排在一起）再切到 name。
@@ -1504,8 +1581,35 @@ async function mergeFolder(sourceId, targetId) {
 
 function setInboxView(view) {
   INBOX_VIEW = view;
-  localStorage.setItem("fieldlog_inbox_view", view);
+  try { localStorage.setItem(INBOX_VIEW_STORAGE_KEY, view); } catch { /* 偏好存不了就只影響這次 */ }
   loadRecent();
+}
+
+/**
+ * 待分類便利貼。AI 已經自動歸檔、但使用者還沒確認的記事會留在這裡（使用者選的
+ * B 模式）：便利貼直接寫出 AI 放去哪裡，按「確認」或「改位置」之後才會消失——
+ * 兩個動作在後端都會清掉 auto_filed 標記，/entries/recent 就不再列出。
+ */
+function inboxStickyHtml(e) {
+  const kindIcon = e.att_count ? "📎" : "📝";
+  const dateLabel = `${e.updated_at ? "動過" : "建立"} ${esc(localDateTimeShort(e.updated_at || e.created_at))}`;
+  let status;
+  if (e.auto_filed_at && e.auto_filed_at !== "failed") {
+    status = `<span class="sticky-ai" title="${esc(e.auto_filed_reason || "AI 未說明理由")}">🤖 AI 已分到「${esc(e.folder_name || "資料夾")}」，請確認</span>
+      <span class="sticky-actions"><button class="sticky-confirm" type="button" data-id="${e.id}">✓ 確認</button><button class="entry-move" type="button" data-id="${e.id}">改位置</button></span>`;
+  } else if (e.suggestion_status === "pending" && e.suggested_folder_id) {
+    const confidence = Math.round(Math.max(0, Math.min(1, Number(e.filing_confidence || 0))) * 100);
+    status = `<span class="sticky-ai" title="${esc(e.filing_reason || "等待人工確認")}">🤖 建議放「${esc(e.suggested_folder_name || "資料夾")}」${confidence}%</span>
+      <span class="sticky-actions"><button class="entry-filing-accept" type="button" data-id="${e.id}">套用</button><button class="entry-move" type="button" data-id="${e.id}">改位置</button></span>`;
+  } else {
+    status = `<span class="sticky-actions"><button class="entry-move" type="button" data-id="${e.id}">📂 歸檔</button></span>`;
+  }
+  return `<div class="entry-row sticky-note inbox-sticky" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
+    <span class="sticky-icon" aria-hidden="true">${kindIcon}</span>
+    <span class="entry-title">${esc(e.title || "（未命名）")}</span>
+    <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
+    ${status}
+  </div>`;
 }
 
 // 「待分類」＝只列尚未放入正式資料夾的內容，以及歷史上 AI 分類後尚未確認的內容。
@@ -1517,15 +1621,30 @@ async function loadRecent() {
   const entries = await api("/entries/recent?limit=25");
   $("inbox-count").textContent = entries.length ? `（${entries.length}）` : "";
   $("inbox-panel").style.display = "block";
+  $("btn-inbox-sticky")?.classList.toggle("active", INBOX_VIEW === "sticky");
   $("btn-inbox-grid").classList.toggle("active", INBOX_VIEW === "grid");
   $("btn-inbox-list").classList.toggle("active", INBOX_VIEW === "list");
   $("inbox-list").className = `entry-list ${INBOX_VIEW}-view`;
   // 全部處理完了不再另外印一句「太好了」——標題旁的數字本來就會歸零，
   // 清單留白就是最直接的訊號，多一句話反而是視覺雜訊。
   $("inbox-list").innerHTML = entries.length
-    ? entries.map((e) => entryRowHtml(e, { showRecency: true })).join("")
+    ? entries.map((e) => INBOX_VIEW === "sticky" ? inboxStickyHtml(e) : entryRowHtml(e, { showRecency: true })).join("")
     : "";
   bindEntryRows($("inbox-list"));
+  $("inbox-list").querySelectorAll(".sticky-confirm").forEach((btn) => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      btn.disabled = true;
+      try {
+        await api(`/entries/${Number(btn.dataset.id)}/confirm-filing`, { method: "POST", body: "{}" });
+        showToast("已確認分類");
+        await loadRecent();
+      } catch (err) {
+        btn.disabled = false;
+        showToast("確認失敗：" + err.message);
+      }
+    };
+  });
 }
 
 /** 這筆現在待在哪裡：待處理清單要一眼看得出來，不然「移動」按下去也不知道從哪搬 */
@@ -2819,6 +2938,7 @@ async function showEntryEditor(entryId) {
 
 async function renderEntryEditor(entryId) {
   const entry = await api(`/entries/${entryId}`);
+  rememberRecentEntry(entry);
   const recordingAudio = (entry.attachments || []).filter((item) => item.kind === "audio" && !item.source_pdf_id);
   let initialAiNoteMarkdown = String(entry.ai_note?.markdown || "");
   const photos = (entry.attachments || []).filter((item) => isImageAtt(item) && !item.source_pdf_id);
@@ -4014,6 +4134,7 @@ async function openEntry(id) {
   }
   return withViewLoading("正在載入紀錄…", async () => {
   const e = await api(`/entries/${id}`);
+  rememberRecentEntry(e);
   // 上傳失敗的錄音會先留在瀏覽器 IndexedDB；以前這批檔案完全不會顯示，
   // 使用者只看得到空記事，以為錄音已遺失。即使還沒進 R2，也要把待補傳狀態
   // 顯示在同一筆記事的附件區，才能清楚知道檔案目前在哪裡。
@@ -7717,6 +7838,7 @@ function init() {
   initDesktopSidebarCollapse();
   initDesktopSidebarResize();
   initPreviewLayout();
+  if ($("btn-inbox-sticky")) $("btn-inbox-sticky").onclick = () => setInboxView("sticky");
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
@@ -7891,7 +8013,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=204").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=205").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
