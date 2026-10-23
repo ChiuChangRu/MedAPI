@@ -21,6 +21,7 @@ test("index.html：首頁各區全部整行堆疊，最近目錄、待處理、W
     'class="home-section home-search-section"', // 第二列：檢索
     'id="recent-folders-panel"',                 // 第三列：最近使用目錄
     'id="inbox-panel"',                          // 第四列上半：待處理
+    'id="news-panel"',                           // v212：最新情報在待分類下面
     'class="home-section home-toolbar-files"',   // 第四列下半：Wiki 檔案
     'class="home-section home-tools-section tinted"',   // 第五列：開發工具（v210 青灰底）
     'id="usage-details"',                        // 第六列：Cloudflare 用量
