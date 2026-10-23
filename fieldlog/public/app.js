@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "207";
+const APP_VERSION = "208";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -225,6 +225,42 @@ const STICKY_ICONS = {
   attachment: STICKY_SVG('<path d="M33 22L21.5 33.5a6 6 0 0 1-8.5-8.5L26 12a4 4 0 0 1 5.7 5.7L19 30.3a2 2 0 0 1-2.8-2.8L27 16.6"/>'),
 };
 
+STICKY_ICONS.box = STICKY_SVG('<path d="M6 15l18-8 18 8v19l-18 8-18-8z"/><path d="M6 15l18 8 18-8"/><path d="M24 23v19"/><path d="M15 11l18 8v6"/>');
+STICKY_ICONS.patent = STICKY_SVG('<path d="M12 6h18l7 7v18"/><path d="M12 6a2 2 0 0 0-2 2v30a2 2 0 0 0 2 2h10"/><path d="M16 15h12M16 21h12M16 27h6"/><circle cx="32" cy="34" r="6"/><path d="M28.5 39l-1.5 6 5-2.5 5 2.5-1.5-6"/>');
+STICKY_ICONS.needle = STICKY_SVG('<path d="M8 40l9-9"/><path d="M14 28l6 6"/><path d="M17 25l14-14 6 6-14 14z"/><path d="M31 11l4-4 6 6-4 4"/><path d="M38 6l4 4"/><path d="M22 26l3 3M26 22l3 3"/>');
+STICKY_ICONS.droplet = STICKY_SVG('<path d="M24 6c6 9 12 15 12 22a12 12 0 0 1-24 0c0-7 6-13 12-22z"/><path d="M18 30a6 6 0 0 0 6 6"/>');
+STICKY_ICONS.chat = STICKY_SVG('<path d="M6 10h24a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H16l-7 6v-6H6a3 3 0 0 1-3-3V13a3 3 0 0 1 3-3z"/><path d="M33 18h6a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-2v5l-6-5h-8"/><path d="M10 18h16M10 23h10"/>');
+STICKY_ICONS.mic = STICKY_SVG('<rect x="18" y="6" width="12" height="22" rx="6"/><path d="M12 22a12 12 0 0 0 24 0"/><path d="M24 34v8M17 42h14"/><path d="M18 14h4M18 19h4"/>');
+STICKY_ICONS.factory = STICKY_SVG('<path d="M5 41V22l10 6v-6l10 6v-6l10 6V8h7v33z"/><path d="M5 41h37"/><path d="M11 34h4M20 34h4M29 34h4"/>');
+STICKY_ICONS.flask = STICKY_SVG('<path d="M19 6h10"/><path d="M21 6v12L9 38a3 3 0 0 0 2.6 4.5h24.8A3 3 0 0 0 39 38L27 18V6"/><path d="M14 30h20"/><circle cx="20" cy="36" r="1.6" fill="#1F2933"/><circle cx="27" cy="34" r="1.6" fill="#1F2933"/>');
+STICKY_ICONS.chart = STICKY_ICONS.routine_report;
+STICKY_ICONS.book = STICKY_ICONS.literature;
+STICKY_ICONS.scales = STICKY_ICONS.qa_reg;
+STICKY_ICONS.cap = STICKY_ICONS.training;
+STICKY_ICONS.clipboard = STICKY_ICONS.project;
+
+// 依名稱挑插圖：同一分類的資料夾不會全部長得一樣。對不到關鍵字才退回分類圖示。
+const STICKY_KEYWORD_ICONS = [
+  [/包裝|包材|滅菌/, "box"],
+  [/專利/, "patent"],
+  [/針|穿刺|活檢/, "needle"],
+  [/塗層|塗佈|親水|抗結痂|膠/, "droplet"],
+  [/錄音|逐字/, "mic"],
+  [/會議|週會|討論|臨時/, "chat"],
+  [/市場|月報|週報|周報|KPI|報告/i, "chart"],
+  [/ISO|法規|標準|TFDA|FDA|規格/i, "scales"],
+  [/課|訓練|OJT|聯聖/i, "cap"],
+  [/廠商|供應商|請購|設備|查廠|巡廠/, "factory"],
+  [/實驗|測試|試驗|驗證|分析|量測/, "flask"],
+  [/文獻|論文|期刊/, "book"],
+];
+function stickyIconFor(name, fallbackKey) {
+  const hit = STICKY_KEYWORD_ICONS.find(([re]) => re.test(String(name || "")));
+  return STICKY_ICONS[hit ? hit[1] : fallbackKey] || STICKY_ICONS.misc;
+}
+// 工作台工具卡的 8 色紙，依位置輪替，讓同一分類的便利貼也看得出是不同張
+const STICKY_PALETTE = ["#D6E9F8", "#DEDCF5", "#FAF0B4", "#F8DCCB", "#D3F0DA", "#E5D9F7", "#F8D3DD", "#D2EEEA"];
+
 function stickyColorsFor(folder) {
   const key = folder ? folderSectionKey(folder) : "misc";
   const section = FOLDER_CATEGORY_META[key] || FOLDER_CATEGORY_META.misc;
@@ -244,26 +280,26 @@ function renderRecentFolders() {
     wrap.innerHTML = `<p class="sub">尚無最近開啟的目錄或檔案。</p>`;
     return;
   }
-  wrap.innerHTML = items.map((item) => {
+  wrap.innerHTML = items.map((item, index) => {
     if (item.kind === "folder") {
       const folder = item.folder;
       const path = folderDisplayPath(folder);
-      const { section, bg, accent, icon } = stickyColorsFor(folder);
+      const { section, accent } = stickyColorsFor(folder);
       const parentPath = path.slice(0, -1).join("／") || section.label;
       return `<button class="recent-folder-card sticky-note" type="button" data-kind="folder" data-id="${folder.id}"
-        title="開啟 ${esc(path.join("／"))}" style="--recent-accent:${accent};--recent-bg:${bg}">
-        <span class="recent-folder-icon">${icon}</span>
-        <span class="recent-folder-copy"><strong>${esc(folder.name)}</strong><small>資料夾｜${esc(parentPath)}</small></span>
+        title="開啟 ${esc(path.join("／"))}" style="--recent-accent:${accent};--recent-bg:${STICKY_PALETTE[index % STICKY_PALETTE.length]}">
+        <span class="recent-folder-icon">${stickyIconFor(folder.name, folderSectionKey(folder))}</span>
+        <span class="recent-folder-copy"><strong>${esc(folder.name)}</strong><small><i class="sticky-dot"></i>${esc(parentPath)}</small></span>
       </button>`;
     }
     const entry = item.entry;
     const folder = entry.folderId ? FOLDERS.find((f) => Number(f.id) === Number(entry.folderId)) : null;
-    const { bg, accent } = stickyColorsFor(folder);
+    const { accent } = stickyColorsFor(folder);
     const where = folder ? folder.name : "待分類";
     return `<button class="recent-folder-card sticky-note" type="button" data-kind="entry" data-id="${entry.id}"
-      title="開啟 ${esc(entry.title)}" style="--recent-accent:${accent};--recent-bg:${bg}">
-      <span class="recent-folder-icon">${STICKY_ICONS.entry}</span>
-      <span class="recent-folder-copy"><strong>${esc(entry.title)}</strong><small>檔案｜${esc(where)}</small></span>
+      title="開啟 ${esc(entry.title)}" style="--recent-accent:${accent};--recent-bg:${STICKY_PALETTE[index % STICKY_PALETTE.length]}">
+      <span class="recent-folder-icon">${stickyIconFor(entry.title, "entry")}</span>
+      <span class="recent-folder-copy"><strong>${esc(entry.title)}</strong><small><i class="sticky-dot"></i>檔案｜${esc(where)}</small></span>
     </button>`;
   }).join("");
   wrap.querySelectorAll(".recent-folder-card").forEach((button) => {
@@ -320,9 +356,10 @@ let TRANSCRIBE_ENABLED = false;
 let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
 // 待分類預設清單模式（本來就是待整理的內容，清單本來就夠緊湊），卡片模式
 // 是給想要一眼看縮圖式排版的人選的，不像資料夾內頁的卡片那麼大張。
-// v205 起預設改成便利貼；換新的儲存鍵，舊的「清單／卡片」偏好不會擋住新預設。
-const INBOX_VIEW_STORAGE_KEY = "fieldlog_inbox_view_v2";
-let INBOX_VIEW = (() => { try { return localStorage.getItem(INBOX_VIEW_STORAGE_KEY) || "sticky"; } catch { return "sticky"; } })();
+// v208：待分類預設回到清單（使用者回饋：待處理項目用清單掃比較快）；便利貼仍可手動切換。
+// 換新的儲存鍵，v205–v207 期間存下的「sticky」預設不會留著。
+const INBOX_VIEW_STORAGE_KEY = "fieldlog_inbox_view_v3";
+let INBOX_VIEW = (() => { try { return localStorage.getItem(INBOX_VIEW_STORAGE_KEY) || "list"; } catch { return "list"; } })();
 // 資料夾內的檔案排序。預設「新到舊」：一直往資料夾裡加東西的人，最需要看到的
 // 是剛剛丟進來的那一份，它不該被排在幾十個舊檔案後面。想按檔名找（同一系列的
 // 標準編號連號排在一起）再切到 name。
@@ -8032,7 +8069,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=207").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=208").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

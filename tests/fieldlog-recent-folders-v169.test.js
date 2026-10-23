@@ -47,9 +47,9 @@ test("只在資料夾內容成功載入後記錄，刪除、改名與搬移皆�
     "資料夾清單更新後要同步刷新最近目錄");
 });
 
-test("v205 最近使用改成便利貼：桌機自動排滿、手機一列兩張", () => {
-  assert.match(css, /\.recent-folder-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill, minmax\(150px, 1fr\)\)/);
-  assert.match(css, /@media \(max-width: 719px\) \{[\s\S]*\.recent-folder-list,[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+test("v208 最近使用便利貼：桌機固定小方卡、手機一列三張", () => {
+  assert.match(css, /\.recent-folder-list\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fill, minmax\(128px, 148px\)\)/);
+  assert.match(css, /@media \(max-width: 719px\) \{[\s\S]*\.recent-folder-list \{ grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.recent-folder-copy strong,[\s\S]*text-overflow:\s*ellipsis/,
     "過長名稱或路徑不能撐破卡片");
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.sticky-note/);
@@ -65,8 +65,8 @@ test("v205 最近使用混合目錄與檔案，依開啟時間排序；記事在
   assert.match(render, /forgetRecentEntry\(id\)/, "已刪除的記事點了要自動移除");
 });
 
-test("v205 待分類預設便利貼；AI 已分類未確認的直接顯示位置並可一鍵確認", () => {
-  assert.match(app, /localStorage\.getItem\(INBOX_VIEW_STORAGE_KEY\) \|\| "sticky"/);
+test("v208 待分類預設清單、可切換便利貼；AI 已分類未確認的直接顯示位置並可一鍵確認", () => {
+  assert.match(app, /localStorage\.getItem\(INBOX_VIEW_STORAGE_KEY\) \|\| "list"/);
   assert.match(html, /id="btn-inbox-sticky"/);
   const sticky = app.match(/function inboxStickyHtml\(e\)[\s\S]*?\n}/)?.[0] || "";
   assert.match(sticky, /AI 已分到/);
