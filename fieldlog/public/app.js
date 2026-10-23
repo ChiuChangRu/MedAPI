@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "206";
+const APP_VERSION = "207";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -205,11 +205,30 @@ function recentFolders() {
   return folders;
 }
 
+// 便利貼風格比照「PDCA 品質輔助系統」工具卡：粉彩紙色＋深色線條插圖。
+// 紙色與分類的語意色同一色相，只是調淡，首頁的色系分類仍一眼對得上。
+const STICKY_PAPER = {
+  project: "#F9D9DF", training: "#D5F0DC", admin: "#FBF1B9", literature: "#D7E9F8",
+  routine_report: "#E4E0F6", ai_adoption: "#D2EEEA", qa_reg: "#F8DDCB", misc: "#E3E8EE",
+};
+const STICKY_SVG = (body) => `<svg viewBox="0 0 48 48" fill="none" stroke="#1F2933" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const STICKY_ICONS = {
+  project: STICKY_SVG('<rect x="11" y="9" width="26" height="32" rx="3"/><path d="M18 9v-2h12v2"/><path d="M17 22l4 4 8-9"/><path d="M17 33h14"/>'),
+  training: STICKY_SVG('<path d="M4 19l20-9 20 9-20 9z"/><path d="M12 23v9c0 3 5 6 12 6s12-3 12-6v-9"/><path d="M44 19v11"/><circle cx="44" cy="32" r="1.6" fill="#1F2933"/>'),
+  admin: STICKY_SVG('<rect x="10" y="8" width="20" height="33" rx="1.5"/><path d="M30 18h9v23H30"/><path d="M15 14h3M22 14h3M15 20h3M22 20h3M15 26h3M22 26h3"/><path d="M17 41v-7h6v7"/>'),
+  literature: STICKY_SVG('<path d="M24 13c-4-3-10-4-17-3v26c7-1 13 0 17 3 4-3 10-4 17-3V10c-7-1-13 0-17 3z"/><path d="M24 13v26"/><path d="M12 17h7M12 22h7M29 17h7M29 22h7"/>'),
+  routine_report: STICKY_SVG('<path d="M7 40h34"/><rect x="10" y="26" width="6" height="14"/><rect x="21" y="18" width="6" height="22"/><rect x="32" y="11" width="6" height="29"/><circle cx="13" cy="20" r="1.6" fill="#1F2933"/><circle cx="24" cy="12" r="1.6" fill="#1F2933"/><circle cx="35" cy="6" r="1.6" fill="#1F2933"/><path d="M13 20l11-8 11-6"/>'),
+  ai_adoption: STICKY_SVG('<path d="M22 8l3 9 9 3-9 3-3 9-3-9-9-3 9-3z"/><path d="M36 28l1.5 4.5L42 34l-4.5 1.5L36 40l-1.5-4.5L30 34l4.5-1.5z"/>'),
+  qa_reg: STICKY_SVG('<path d="M24 8v32"/><path d="M14 40h20"/><path d="M10 14h28"/><path d="M10 14l-5 12h10z"/><path d="M38 14l-5 12h10z"/><circle cx="24" cy="10" r="2" fill="#1F2933"/>'),
+  misc: STICKY_SVG('<path d="M6 14a3 3 0 0 1 3-3h9l4 4h17a3 3 0 0 1 3 3v19a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z"/><path d="M6 20h36"/>'),
+  entry: STICKY_SVG('<path d="M13 6h15l9 9v25a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><path d="M28 6v9h9"/><path d="M17 23h14M17 29h14M17 35h9"/>'),
+  attachment: STICKY_SVG('<path d="M33 22L21.5 33.5a6 6 0 0 1-8.5-8.5L26 12a4 4 0 0 1 5.7 5.7L19 30.3a2 2 0 0 1-2.8-2.8L27 16.6"/>'),
+};
+
 function stickyColorsFor(folder) {
-  const section = folder ? (FOLDER_CATEGORY_META[folderSectionKey(folder)] || FOLDER_CATEGORY_META.misc) : FOLDER_CATEGORY_META.misc;
-  // 「其他」的底色是透明，便利貼需要一個實際的紙色
-  const bg = section.bg === "transparent" ? "#F1F5F9" : section.bg;
-  return { section, bg, accent: section.accent };
+  const key = folder ? folderSectionKey(folder) : "misc";
+  const section = FOLDER_CATEGORY_META[key] || FOLDER_CATEGORY_META.misc;
+  return { section, bg: STICKY_PAPER[key] || STICKY_PAPER.misc, accent: section.accent, icon: STICKY_ICONS[key] || STICKY_ICONS.misc };
 }
 
 function renderRecentFolders() {
@@ -225,26 +244,26 @@ function renderRecentFolders() {
     wrap.innerHTML = `<p class="sub">尚無最近開啟的目錄或檔案。</p>`;
     return;
   }
-  wrap.innerHTML = items.map((item, index) => {
+  wrap.innerHTML = items.map((item) => {
     if (item.kind === "folder") {
       const folder = item.folder;
       const path = folderDisplayPath(folder);
-      const { section, bg, accent } = stickyColorsFor(folder);
+      const { section, bg, accent, icon } = stickyColorsFor(folder);
       const parentPath = path.slice(0, -1).join("／") || section.label;
       return `<button class="recent-folder-card sticky-note" type="button" data-kind="folder" data-id="${folder.id}"
-        title="開啟 ${esc(path.join("／"))}" style="--recent-accent:${accent};--recent-bg:${bg};--tilt:${index % 2 ? "0.6deg" : "-0.6deg"}">
-        <span class="recent-folder-icon" aria-hidden="true">${section.icon}</span>
-        <span class="recent-folder-copy"><strong>${esc(folder.name)}</strong><small>📂 ${esc(parentPath)}</small></span>
+        title="開啟 ${esc(path.join("／"))}" style="--recent-accent:${accent};--recent-bg:${bg}">
+        <span class="recent-folder-icon">${icon}</span>
+        <span class="recent-folder-copy"><strong>${esc(folder.name)}</strong><small>資料夾｜${esc(parentPath)}</small></span>
       </button>`;
     }
     const entry = item.entry;
     const folder = entry.folderId ? FOLDERS.find((f) => Number(f.id) === Number(entry.folderId)) : null;
     const { bg, accent } = stickyColorsFor(folder);
-    const where = folder ? folderDisplayPath(folder).join("／") : "⏳ 待分類";
+    const where = folder ? folder.name : "待分類";
     return `<button class="recent-folder-card sticky-note" type="button" data-kind="entry" data-id="${entry.id}"
-      title="開啟 ${esc(entry.title)}" style="--recent-accent:${accent};--recent-bg:${bg};--tilt:${index % 2 ? "0.6deg" : "-0.6deg"}">
-      <span class="recent-folder-icon" aria-hidden="true">📝</span>
-      <span class="recent-folder-copy"><strong>${esc(entry.title)}</strong><small>${esc(where)}</small></span>
+      title="開啟 ${esc(entry.title)}" style="--recent-accent:${accent};--recent-bg:${bg}">
+      <span class="recent-folder-icon">${STICKY_ICONS.entry}</span>
+      <span class="recent-folder-copy"><strong>${esc(entry.title)}</strong><small>檔案｜${esc(where)}</small></span>
     </button>`;
   }).join("");
   wrap.querySelectorAll(".recent-folder-card").forEach((button) => {
@@ -1591,7 +1610,7 @@ function setInboxView(view) {
  * 兩個動作在後端都會清掉 auto_filed 標記，/entries/recent 就不再列出。
  */
 function inboxStickyHtml(e) {
-  const kindIcon = e.att_count ? "📎" : "📝";
+  const kindIcon = e.att_count ? STICKY_ICONS.attachment : STICKY_ICONS.entry;
   const dateLabel = `${e.updated_at ? "動過" : "建立"} ${esc(localDateTimeShort(e.updated_at || e.created_at))}`;
   let status;
   if (e.auto_filed_at && e.auto_filed_at !== "failed") {
@@ -1605,7 +1624,7 @@ function inboxStickyHtml(e) {
     status = `<span class="sticky-actions"><button class="entry-move" type="button" data-id="${e.id}">📂 歸檔</button></span>`;
   }
   return `<div class="entry-row sticky-note inbox-sticky" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
-    <span class="sticky-icon" aria-hidden="true">${kindIcon}</span>
+    <span class="sticky-icon">${kindIcon}</span>
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
     <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
     ${status}
@@ -8013,7 +8032,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=206").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=207").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
