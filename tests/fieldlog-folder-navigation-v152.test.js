@@ -13,7 +13,8 @@ test("目前資料夾可直接重新命名並刷新路徑", () => {
 });
 
 test("麵包屑各層可返回，MyWiki 固定回首頁", () => {
-  assert.match(html, /id="desktop-home-link"[^>]*>[^<]*<span[^>]*>🩷<\/span> MyWiki/);
+  // v210 起比照 PDCA 品質輔助系統，不用 emoji：品牌標記改成銅色小方塊
+  assert.match(html, /id="desktop-home-link"[^>]*><span class="brand-mark" aria-hidden="true"><\/span> MyWiki/);
   assert.match(app, /function renderFolderBreadcrumb/);
   assert.match(app, /data-folder-id/);
   assert.match(app, /data-section/);

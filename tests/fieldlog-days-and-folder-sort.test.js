@@ -95,7 +95,7 @@ test("(e) 「最近作業」改回只列還沒真正歸檔的：收件匣、暫�
 
 test("(e) 首頁面板統一叫「待分類」，不再叫「最近作業」", async () => {
   const html = await read("../fieldlog/public/index.html");
-  assert.match(html, /⏳ 待分類/);
+  assert.match(html, /id="home-inbox-title">待分類 /, "v210 起不用 emoji，標題文字仍是「待分類」");
   assert.doesNotMatch(html, /🕒 最近作業/, "舊名字會讓人誤以為這裡列的是不分歸檔狀態的全部最近動作");
 });
 

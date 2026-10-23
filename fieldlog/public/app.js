@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "209";
+const APP_VERSION = "210";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1275,7 +1275,7 @@ function renderDesktopFolderTree() {
       const expanded = EXPANDED_FOLDER_IDS.has(Number(folder.id));
       return `<div class="desktop-tree-row ${Number(CURRENT_FOLDER?.id) === Number(folder.id) ? "active" : ""}" data-id="${folder.id}" data-depth="${depth}" draggable="true" style="--tree-depth:${depth};--section-accent:${meta.accent}">
         ${childCount ? `<button class="desktop-tree-toggle" type="button" aria-label="${expanded ? "收合" : "展開"}${esc(folder.name)}">${expanded ? "▾" : "▸"}</button>` : `<span class="desktop-tree-toggle-spacer"></span>`}
-        <span class="desktop-tree-folder-icon">${folder.parent_id ? "📁" : "📂"}</span>
+        <span class="desktop-tree-folder-icon" aria-hidden="true"></span>
         <span class="desktop-tree-name">${esc(folder.name)}</span>
       </div>`;
     }).join("");
@@ -1283,7 +1283,7 @@ function renderDesktopFolderTree() {
       <div class="desktop-tree-section-head">
         <button class="desktop-tree-section-toggle" type="button" aria-expanded="${!collapsed}" aria-label="${collapsed ? "展開" : "收合"}${esc(meta.label)}">
           <span class="desktop-tree-section-caret">${collapsed ? "▸" : "▾"}</span>
-          <span class="desktop-tree-section-icon">${meta.icon}</span>
+          <span class="desktop-tree-section-icon" aria-hidden="true"></span>
           <strong>${esc(meta.label)}</strong><small>${total}</small>
         </button>
         <button class="desktop-tree-section-add" type="button" data-section="${key}" aria-label="在${esc(meta.label)}新增資料夾" title="在${esc(meta.label)}新增資料夾">＋</button>
@@ -1651,19 +1651,19 @@ function inboxStickyHtml(e) {
   const dateLabel = `${e.updated_at ? "動過" : "建立"} ${esc(localDateTimeShort(e.updated_at || e.created_at))}`;
   let status;
   if (e.auto_filed_at && e.auto_filed_at !== "failed") {
-    status = `<span class="sticky-ai" title="${esc(e.auto_filed_reason || "AI 未說明理由")}">🤖 AI 已分到「${esc(e.folder_name || "資料夾")}」，請確認</span>
-      <span class="sticky-actions"><button class="sticky-confirm" type="button" data-id="${e.id}">✓ 確認</button><button class="entry-move" type="button" data-id="${e.id}">改位置</button></span>`;
+    status = `<span class="sticky-ai" title="${esc(e.auto_filed_reason || "AI 未說明理由")}">AI 已分到「${esc(e.folder_name || "資料夾")}」，請確認</span>
+      <span class="sticky-actions"><button class="sticky-confirm" type="button" data-id="${e.id}">確認</button><button class="entry-move" type="button" data-id="${e.id}">改位置</button></span>`;
   } else if (e.suggestion_status === "pending" && e.suggested_folder_id) {
     const confidence = Math.round(Math.max(0, Math.min(1, Number(e.filing_confidence || 0))) * 100);
-    status = `<span class="sticky-ai" title="${esc(e.filing_reason || "等待人工確認")}">🤖 建議放「${esc(e.suggested_folder_name || "資料夾")}」${confidence}%</span>
+    status = `<span class="sticky-ai" title="${esc(e.filing_reason || "等待人工確認")}">建議放「${esc(e.suggested_folder_name || "資料夾")}」${confidence}%</span>
       <span class="sticky-actions"><button class="entry-filing-accept" type="button" data-id="${e.id}">套用</button><button class="entry-move" type="button" data-id="${e.id}">改位置</button></span>`;
   } else {
-    status = `<span class="sticky-actions"><button class="entry-move" type="button" data-id="${e.id}">📂 歸檔</button></span>`;
+    status = `<span class="sticky-actions"><button class="entry-move" type="button" data-id="${e.id}">歸檔</button></span>`;
   }
   return `<div class="entry-row sticky-note inbox-sticky" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <span class="sticky-icon">${kindIcon}</span>
     <span class="entry-title">${esc(e.title || "（未命名）")}</span>
-    <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span>
+    <span class="entry-meta">${dateLabel}${e.att_count ? `｜附件 ${e.att_count}` : ""}</span>
     ${status}
   </div>`;
 }
@@ -1673,6 +1673,68 @@ function inboxStickyHtml(e) {
 // 使用者剛手動搬移／編輯過的已分類記事
 // 會佔著最上面的位置，擠掉真正還沒處理的（2026-08-09 實際回報：套用天數
 // 會占住最上面的位置，擠掉真正需要處理的內容。
+// 最新情報：首頁顯示最近一筆【每日情報】記事。內文是 Routine 寫的固定格式純文字：
+// 【區塊】、■ 小標、「1. 項目」、「來源：網址」。只解析這幾種行，其他行略過；
+// 格式對不上時退回顯示前幾行原文，不會整塊空白。
+let NEWS_LOADED_AT = 0;
+async function loadNews(force = false) {
+  const body = $("news-body");
+  if (!body) return;
+  if (!force && Date.now() - NEWS_LOADED_AT < 5 * 60 * 1000) return;
+  NEWS_LOADED_AT = Date.now();
+  let intel;
+  try {
+    intel = await api("/intel/latest");
+  } catch (err) {
+    body.innerHTML = `<p class="sub">最新情報載入失敗：${esc(err.message)}</p>`;
+    return;
+  }
+  if (!intel?.id) {
+    $("news-meta").textContent = "";
+    body.innerHTML = `<p class="sub">還沒有每日情報。每日 Routine 啟用後，會在這裡顯示最近一次蒐集到的課程與 AI 動態。</p>`;
+    return;
+  }
+  $("news-meta").textContent = `${localDateTimeShort(intel.created_at)} 蒐集`;
+  const sections = [];
+  let current = null;
+  let lastItem = null;
+  const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : "");
+  for (const raw of String(intel.text || "").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^【.+】$/.test(line)) { current = { title: line.replace(/^【|】$/g, ""), items: [] }; sections.push(current); lastItem = null; continue; }
+    if (!current) continue;
+    if (/^■/.test(line)) { current.items.push({ sub: line.replace(/^■\s*/, "") }); lastItem = null; continue; }
+    const item = line.match(/^(\d+)\.\s*(.+)$/);
+    if (item) { lastItem = { text: item[2], links: [] }; current.items.push(lastItem); continue; }
+    const src = line.match(/^來源[:：]\s*(\S+)/);
+    if (src && safeUrl(src[1])) {
+      const target = lastItem || [...current.items].reverse().find((it) => it.sub);
+      if (target) (target.links ||= []).push(src[1]);
+    }
+  }
+  const visible = sections.filter((sec) => sec.items.some((it) => it.text));
+  const MAX_ITEMS = 10;
+  let shown = 0;
+  const html = visible.map((sec) => {
+    const rows = [];
+    for (const it of sec.items) {
+      if (shown >= MAX_ITEMS) break;
+      const links = (it.links || []).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">來源${it.links.length > 1 ? i + 1 : ""}</a>`).join(" ");
+      if (it.sub) { rows.push(`<li class="news-sub">${esc(it.sub)}${links ? ` <span class="news-links">${links}</span>` : ""}</li>`); continue; }
+      shown += 1;
+      const hot = /^🔥/.test(it.text) || sec.title.includes("新課程");
+      rows.push(`<li class="news-item${hot ? " hot" : ""}"><span class="news-text">${hot ? '<span class="news-badge">新</span>' : ""}${esc(it.text.replace(/^🔥\s*/, ""))}${links ? `<span class="news-links">${links}</span>` : ""}</span></li>`);
+    }
+    return rows.length ? `<div class="news-group"><h3>${esc(sec.title)}</h3><ul>${rows.join("")}</ul></div>` : "";
+  }).join("");
+  const total = visible.reduce((n, sec) => n + sec.items.filter((it) => it.text).length, 0);
+  body.innerHTML = `<div class="news-head"><strong>${esc(intel.title)}</strong><button class="btn small" id="news-open" type="button">開啟完整記事</button></div>`
+    + (html || `<pre class="news-raw">${esc(String(intel.text || "").split("\n").slice(0, 12).join("\n"))}</pre>`)
+    + (total > shown ? `<p class="sub news-more">另有 ${total - shown} 項，開啟完整記事查看。</p>` : "");
+  $("news-open").onclick = () => openEntry(intel.id);
+}
+
 async function loadRecent() {
   const entries = await api("/entries/recent?limit=25");
   $("inbox-count").textContent = entries.length ? `（${entries.length}）` : "";
@@ -1687,6 +1749,7 @@ async function loadRecent() {
     ? entries.map((e) => INBOX_VIEW === "sticky" ? inboxStickyHtml(e) : entryRowHtml(e, { showRecency: true })).join("")
     : "";
   bindEntryRows($("inbox-list"));
+  loadNews().catch(() => {});
   $("inbox-list").querySelectorAll(".sticky-confirm").forEach((btn) => {
     btn.onclick = async (ev) => {
       ev.stopPropagation();
@@ -1705,13 +1768,13 @@ async function loadRecent() {
 
 /** 這筆現在待在哪裡：待處理清單要一眼看得出來，不然「移動」按下去也不知道從哪搬 */
 function entryLocationLabel(e) {
-  if (e.folder_role === "staging") return "⏳ 待分類";
-  if (e.folder_name) return `📂 ${e.folder_name}`;
+  if (e.folder_role === "staging") return "待分類";
+  if (e.folder_name) return e.folder_name;
   if (e.folder_id) {
     const folder = FOLDERS.find((f) => f.id === e.folder_id);
-    return folder ? `📂 ${folder.name}` : "📂 資料夾";
+    return folder ? folder.name : "資料夾";
   }
-  return "⏳ 待分類";
+  return "待分類";
 }
 
 /**
@@ -1726,13 +1789,13 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   // 🤖＝這個位置是 AI 挑的，不是人放的。這個區別對法規／專利場景很重要：
   // 引用之前要知道哪些判斷出自機器。點一下可以確認或改掉。
   const aiChip = e.auto_filed_at && e.auto_filed_at !== "failed"
-    ? `<span class="entry-ai-actions"><button class="entry-ai-chip" type="button" data-id="${e.id}" title="AI 分類：${esc(e.auto_filed_reason || "未說明理由")}。點一下確認或改位置">🤖 AI 分類</button>${["auto_applied", "baseline_auto_applied"].includes(e.suggestion_status) ? `<button class="entry-filing-undo" type="button" data-id="${e.id}" title="復原到整理前的位置">復原</button>` : ""}</span>`
+    ? `<span class="entry-ai-actions"><button class="entry-ai-chip" type="button" data-id="${e.id}" title="AI 分類：${esc(e.auto_filed_reason || "未說明理由")}。點一下確認或改位置">AI 分類</button>${["auto_applied", "baseline_auto_applied"].includes(e.suggestion_status) ? `<button class="entry-filing-undo" type="button" data-id="${e.id}" title="復原到整理前的位置">復原</button>` : ""}</span>`
     : e.auto_filed_at === "failed"
-      ? `<span class="entry-ai-chip failed" title="${esc(e.auto_filed_reason || "AI 判斷不出來")}">🤖 待人工</span>`
+      ? `<span class="entry-ai-chip failed" title="${esc(e.auto_filed_reason || "AI 判斷不出來")}">待人工</span>`
       : "";
   const confidence = Math.round(Math.max(0, Math.min(1, Number(e.filing_confidence || 0))) * 100);
   const filingSuggestion = e.suggestion_status === "pending" && e.suggested_folder_id
-    ? `<span class="entry-filing-suggestion" title="${esc(e.filing_reason || "等待人工確認")}"><span>🤖 建議：${esc(e.suggested_folder_name || "資料夾")} ${confidence}%</span><button class="entry-filing-accept" type="button" data-id="${e.id}">套用</button><button class="entry-filing-reject" type="button" data-id="${e.id}">忽略</button></span>`
+    ? `<span class="entry-filing-suggestion" title="${esc(e.filing_reason || "等待人工確認")}"><span>建議：${esc(e.suggested_folder_name || "資料夾")} ${confidence}%</span><button class="entry-filing-accept" type="button" data-id="${e.id}">套用</button><button class="entry-filing-reject" type="button" data-id="${e.id}">忽略</button></span>`
     : "";
   const dateLabel = showRecency
     ? `${e.updated_at ? "動過" : "建立"} ${esc(localDateTimeShort(e.updated_at || e.created_at))}`
@@ -1743,13 +1806,13 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span class="entry-main"><span class="entry-title">${esc(e.title || "（未命名）")}</span>
-      <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}">✏️</button>
+      <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/></svg></button>
     </span>
     <span class="entry-secondary">${location}${aiChip}${filingSuggestion}
-      <span class="entry-meta">${dateLabel}${e.att_count ? `｜📎${e.att_count}` : ""}</span></span>
+      <span class="entry-meta">${dateLabel}${e.att_count ? `｜附件 ${e.att_count}` : ""}</span></span>
     <button class="entry-move" data-id="${e.id}" type="button" title="移至資料夾">移動</button>
     <button class="entry-merge" data-id="${e.id}" type="button" title="合併到另一筆記事">合併</button>
-    <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄">🗑</button>
+    <button class="entry-del" data-id="${e.id}" type="button" title="刪除這筆紀錄"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
   </div>`;
 }
 
@@ -8069,7 +8132,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=209").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=210").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

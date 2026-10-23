@@ -74,3 +74,15 @@ test("v208 待分類預設清單、可切換便利貼；AI 已分類未確認的
   assert.match(sticky, /class="entry-move"/, "改位置沿用既有移動流程（後端會清掉 AI 標記）");
   assert.match(app, /\/entries\/\$\{Number\(btn\.dataset\.id\)\}\/confirm-filing/);
 });
+
+test("v210 首頁比照 PDCA：深色頁首、最新情報區塊、首頁區塊標題不用 emoji", async () => {
+  assert.match(html, /<header class="home-app-head masthead">/);
+  assert.match(html, /id="news-panel"/);
+  assert.match(app, /api\("\/intel\/latest"\)/);
+  const worker = await read("../fieldlog/src/worker.js");
+  assert.match(worker, /path === "\/intel\/latest"/);
+  assert.match(worker, /title LIKE '【每日情報】%'/);
+  const titles = [...html.matchAll(/<h2 class="home-section-title"[^>]*>([^<]*)/g)].map((m) => m[1]);
+  assert.ok(titles.length >= 6);
+  for (const t of titles) assert.doesNotMatch(t, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, `區塊標題不應含 emoji：${t}`);
+});

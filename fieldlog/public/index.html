@@ -4,15 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>MyWiki</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🩷</text></svg>" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%231F2933%22/><rect x=%2230%22 y=%2230%22 width=%2240%22 height=%2240%22 rx=%228%22 fill=%22%23D8995F%22/></svg>" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<meta name="theme-color" content="#0f766e" />
+<meta name="theme-color" content="#1F2933" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=209" />
-<link rel="stylesheet" href="home.css?v=209" />
+<link rel="stylesheet" href="style.css?v=210" />
+<link rel="stylesheet" href="home.css?v=210" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -22,12 +22,12 @@
      不屬於第一～第四階資料夾樹。 -->
 <aside class="desktop-explorer-nav" id="desktop-explorer-nav" aria-label="MyWiki 資料夾">
   <div class="desktop-explorer-title">
-    <button class="desktop-home-link" id="desktop-home-link" type="button" title="回 MyWiki 首頁"><span aria-hidden="true">🩷</span> MyWiki</button>
+    <button class="desktop-home-link" id="desktop-home-link" type="button" title="回 MyWiki 首頁"><span class="brand-mark" aria-hidden="true"></span> MyWiki</button>
     <button class="desktop-sidebar-control" id="desktop-sidebar-close" type="button"
             aria-label="收合資料夾側欄" aria-controls="desktop-explorer-nav"
             aria-expanded="true" title="收合左欄">◀</button>
   </div>
-  <button class="desktop-shortcut active" id="desktop-pending" type="button">⏳ <span>待分類</span></button>
+  <button class="desktop-shortcut active" id="desktop-pending" type="button"><span class="side-dot" aria-hidden="true"></span><span>待分類</span></button>
   <div class="desktop-nav-divider"></div>
   <div class="desktop-folder-tree" id="desktop-folder-tree"></div>
   <button class="desktop-shortcut desktop-new-folder" id="desktop-new-folder" type="button">＋ <span>新增資料夾</span></button>
@@ -52,10 +52,17 @@
         aria-expanded="true" title="展開左欄">▶</button>
 <div class="container">
   <div id="view-home">
-    <header class="home-app-head">
-      <small>輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-      <a class="head-link" href="help.html?v=209">📖 使用說明</a>
+    <!-- v210 頁首比照 PDCA 品質輔助系統：深色帶＋銅色小標＋襯線標題，底部三色條 -->
+    <header class="home-app-head masthead">
+      <div class="masthead-copy">
+        <span class="masthead-eyebrow">Medical Device Field Notebook</span>
+        <div class="masthead-title">MyWiki 隨身記</div>
+        <small class="masthead-sub">輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
+      </div>
+      <nav class="masthead-actions" aria-label="其他頁面">
+        <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
+        <a class="head-link" href="help.html?v=210">使用說明</a>
+      </nav>
     </header>
 
     <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
@@ -71,18 +78,18 @@
       <!-- 第一列：輸入與草稿 -->
       <section class="home-section home-input-section" aria-labelledby="home-input-title">
         <div class="home-section-head">
-          <h2 class="home-section-title" id="home-input-title">✏️ 輸入與草稿</h2>
+          <h2 class="home-section-title" id="home-input-title">輸入與草稿</h2>
         </div>
         <div class="capture-grid">
-          <button class="cap-tile cap-video" id="btn-video">🎥<span>錄影</span></button>
-          <button class="cap-tile cap-photo" id="btn-photo">📷<span>拍照</span></button>
-          <button class="cap-tile cap-audio" id="btn-audio">🎙<span>錄音</span></button>
-          <button class="cap-tile cap-note" id="btn-quick-note">✏️<span>記事</span></button>
-          <button class="cap-tile cap-weekly" id="btn-weekly-report">📋<span>本週周報</span></button>
-          <button class="cap-tile cap-upload" id="btn-home-album" type="button">🖼️<span>相簿</span></button>
+          <button class="cap-tile cap-video" id="btn-video"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="M15.5 10l6-3v10l-6-3z"/></svg><span>錄影</span></button>
+          <button class="cap-tile cap-photo" id="btn-photo"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg><span>拍照</span></button>
+          <button class="cap-tile cap-audio" id="btn-audio"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21M8.5 21h7"/></svg><span>錄音</span></button>
+          <button class="cap-tile cap-note" id="btn-quick-note"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg><span>記事</span></button>
+          <button class="cap-tile cap-weekly" id="btn-weekly-report"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.5h6V4"/><path d="M8.5 10h7M8.5 14h7M8.5 18h4"/></svg><span>本週周報</span></button>
+          <button class="cap-tile cap-upload" id="btn-home-album" type="button"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.8"/><path d="M3 17l5-5 4 4 3-3 6 6"/></svg><span>相簿</span></button>
           <!-- 不可加 capture：iPhone／Android 加了就會強制開相機，無法選既有照片。 -->
           <input id="home-album-input" type="file" accept="image/*" multiple hidden />
-          <button class="cap-tile cap-file" id="btn-home-file" type="button">📁<span>檔案</span></button>
+          <button class="cap-tile cap-file" id="btn-home-file" type="button"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>檔案</span></button>
           <input id="home-file-input" type="file"
                  accept="video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv"
                  multiple hidden />
@@ -98,9 +105,9 @@
          現在跟 home-main-top／home-main-sections 拉成同一層的兄弟元素，
          各自獨立顯示／隱藏，不會互相拖累。 -->
     <section class="home-section home-search-section">
-      <h2 class="home-section-title">🔍 檢索</h2>
+      <h2 class="home-section-title">檢索</h2>
       <div class="home-search-bar">
-        <span class="home-search-icon" aria-hidden="true">🔍</span>
+        <span class="home-search-icon" aria-hidden="true"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg></span>
         <input type="search" id="home-search-input" class="home-search-input"
                placeholder="搜尋記事、附件、逐字稿…" autocomplete="off" />
         <button type="button" id="home-search-clear" class="home-search-clear" hidden aria-label="清除搜尋">✕</button>
@@ -112,9 +119,18 @@
 
       <!-- 最近使用目錄只記錄實際成功開啟的資料夾，以資料夾 id 追蹤，所以改名、
            搬移後仍會指向正確位置；已刪除的資料夾會在載入時自動剔除。 -->
-      <section class="home-section home-recent-folders" id="recent-folders-panel" aria-labelledby="recent-folders-title">
+      <!-- v210 最新情報：顯示最近一筆【每日情報】記事的條列重點（/api/intel/latest） -->
+      <section class="home-section home-news-section tinted" id="news-panel" aria-labelledby="news-title">
         <div class="home-section-head">
-          <h2 class="home-section-title" id="recent-folders-title">📌 最近使用</h2>
+          <h2 class="home-section-title" id="news-title">最新情報</h2>
+          <small id="news-meta"></small>
+        </div>
+        <div id="news-body" class="news-body"><p class="sub">讀取中…</p></div>
+      </section>
+
+      <section class="home-section home-recent-folders tinted" id="recent-folders-panel" aria-labelledby="recent-folders-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="recent-folders-title">最近使用</h2>
           <small>最近開啟的 5 個目錄＋5 筆檔案</small>
         </div>
         <div class="recent-folder-list" id="recent-folder-list">
@@ -132,53 +148,53 @@
            策略地圖 Wiki，那是另一套系統）。 -->
       <section class="home-section home-inbox-section" id="inbox-panel" aria-labelledby="home-inbox-title">
         <div class="home-section-head">
-          <h2 class="home-section-title" id="home-inbox-title">⏳ 待分類 <span id="inbox-count" class="count"></span></h2>
+          <h2 class="home-section-title" id="home-inbox-title">待分類 <span id="inbox-count" class="count"></span></h2>
           <div class="folder-view-toggle" aria-label="待處理顯示模式">
-            <button class="btn small" id="btn-inbox-sticky" type="button" title="便利貼模式">🗒 便利貼</button>
-            <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">▦ 卡片</button>
-            <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">☷ 清單</button>
+            <button class="btn small" id="btn-inbox-sticky" type="button" title="便利貼模式">便利貼</button>
+            <button class="btn small" id="btn-inbox-grid" type="button" title="卡片模式">卡片</button>
+            <button class="btn small" id="btn-inbox-list" type="button" title="清單模式">清單</button>
           </div>
         </div>
         <div id="inbox-list" class="entry-list"></div>
       </section>
 
       <section class="home-section home-toolbar-files">
-        <h2 class="home-section-title">📖 Wiki 檔案</h2>
+        <h2 class="home-section-title">Wiki 檔案</h2>
         <!-- 2026-08-09：卡片模式拿掉了（跟清單模式完全同一組資料、只是換個排版，
              沒有提供額外功能）。清單模式改成縮排樹狀，一次看到整棵四層資料夾樹，
              不用再點進去才看得到子資料夾。 -->
         <div class="folders-toolbar">
-          <button class="btn small" id="btn-folder-sort-home" type="button">🔤 名稱排序</button>
-          <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">⚙️ 管理分類</button>
+          <button class="btn small" id="btn-folder-sort-home" type="button">名稱排序</button>
+          <button class="btn small" id="btn-manage-categories" type="button" title="新增或刪除資料夾分類與醫材分類">管理分類</button>
           <button class="btn small primary" id="btn-new-folder">＋ 新增資料夾</button>
         </div>
         <div id="folder-list" class="folder-list"></div>
       </section>
 
       <!-- 第四列：開發工具 -->
-      <section class="home-section home-tools-section">
-        <h2 class="home-section-title">🛠 開發工具</h2>
+      <section class="home-section home-tools-section tinted">
+        <h2 class="home-section-title">開發工具</h2>
         <div class="toolbar-link-list">
           <a class="toolbar-link-card" href="patrol.html">
-            <span class="toolbar-link-icon" aria-hidden="true">🏭</span>
+            <span class="toolbar-link-icon" aria-hidden="true"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20V11l5 3v-3l5 3v-3l5 3V5h3v15z"/><path d="M3 20h18"/></svg></span>
             <span class="toolbar-link-text"><strong>巡廠整理</strong></span>
           </a>
           <a class="toolbar-link-card" href="https://medtec-2026.gogoyankee.workers.dev/" target="_blank" rel="noopener">
-            <span class="toolbar-link-icon" aria-hidden="true">🧪</span>
+            <span class="toolbar-link-icon" aria-hidden="true"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 3h5M10.5 3v6l-5.5 9.5A1.7 1.7 0 0 0 6.5 21h11a1.7 1.7 0 0 0 1.5-2.5L13.5 9V3"/><path d="M7.5 15h9"/></svg></span>
             <span class="toolbar-link-text"><strong>MedTec 2026</strong></span>
           </a>
           <a class="toolbar-link-card" href="https://chiuchangru.github.io/DMAIC/" target="_blank" rel="noopener">
-            <span class="toolbar-link-icon" aria-hidden="true">📈</span>
+            <span class="toolbar-link-icon" aria-hidden="true"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M6 16l4-5 3 3 5-7"/><circle cx="18" cy="7" r="1.2"/></svg></span>
             <span class="toolbar-link-text"><strong>DMAIC</strong></span>
           </a>
           <!-- claude.ai 上的 Artifact：要登入 claude.ai 才打得開，AI 用的是開啟者自己的 claude.ai 額度 -->
           <a class="toolbar-link-card" href="https://claude.ai/artifact/3jLxswUNecKJTLez6QCFSh" target="_blank" rel="noopener">
-            <span class="toolbar-link-icon" aria-hidden="true">🧮</span>
+            <span class="toolbar-link-icon" aria-hidden="true"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><rect x="8" y="6" width="8" height="3"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 17h.01M12 17h.01M15.5 17h.01"/></svg></span>
             <span class="toolbar-link-text"><strong>品質統計工作台</strong></span>
           </a>
           <!-- Elsevier 的 AI 文獻工具，需要自己的 ScienceDirect／機構帳號 -->
           <a class="toolbar-link-card" href="https://www.sciencedirect.com/leapspace" target="_blank" rel="noopener">
-            <span class="toolbar-link-icon" aria-hidden="true">🔬</span>
+            <span class="toolbar-link-icon" aria-hidden="true"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3l4 2-3 6-4-2z"/><path d="M8 10l-2 4"/><path d="M14 18a5 5 0 0 0-3-8.5"/><path d="M4 21h14"/><path d="M10 21v-3"/></svg></span>
             <span class="toolbar-link-text"><strong>Leapspace</strong></span>
           </a>
         </div>
@@ -188,7 +204,7 @@
            首頁都白白耗一次 Cloudflare 帳單查詢 -->
       <details class="home-section home-usage-section" id="usage-details">
         <summary class="home-usage-summary">
-          <h2 class="home-section-title" id="home-usage-title">☁️ Cloudflare 用量</h2>
+          <h2 class="home-section-title" id="home-usage-title">Cloudflare 用量</h2>
           <span class="usage-status-dot" id="usage-status-dot" hidden></span>
           <span class="usage-summary-chevron" aria-hidden="true">▾</span>
         </summary>
@@ -209,22 +225,22 @@
       <button class="btn small ghost folder-rename-current" id="btn-rename-current" type="button" title="重新命名目前資料夾">✏️ 重新命名</button>
       <div class="folder-actions">
         <div class="folder-view-toggle inner-view-toggle" aria-label="資料夾內容顯示模式">
-          <button class="btn small" id="btn-inner-grid" type="button" title="卡片模式">▦ 卡片</button>
-          <button class="btn small" id="btn-inner-list" type="button" title="清單模式">☷ 清單</button>
-          <button class="btn small" id="btn-inner-details" type="button" title="詳細資料模式">☰ 詳細</button>
+          <button class="btn small" id="btn-inner-grid" type="button" title="卡片模式">卡片</button>
+          <button class="btn small" id="btn-inner-list" type="button" title="清單模式">清單</button>
+          <button class="btn small" id="btn-inner-details" type="button" title="詳細資料模式">詳細</button>
         </div>
         <button class="btn small" id="btn-file-sort" type="button">🆕 新到舊</button>
         <button class="btn small preview-toggle" id="btn-toggle-preview" type="button" aria-pressed="true" hidden>▣ 預覽：開</button>
-        <button class="btn small" id="btn-folder-sort-inner" type="button" hidden>🔤 名稱排序</button>
+        <button class="btn small" id="btn-folder-sort-inner" type="button" hidden>名稱排序</button>
         <button class="btn small" id="btn-new-subfolder">＋ 子資料夾</button>
-        <button class="btn small" id="btn-video-f">🎥 錄影</button>
-        <button class="btn small" id="btn-photo-f">📷 拍照</button>
-        <button class="btn small" id="btn-audio-f">🎙 錄音</button>
-        <button class="btn small" id="btn-folder-entry">✏️ 新紀錄</button>
+        <button class="btn small" id="btn-video-f">錄影</button>
+        <button class="btn small" id="btn-photo-f">拍照</button>
+        <button class="btn small" id="btn-audio-f">錄音</button>
+        <button class="btn small" id="btn-folder-entry">新紀錄</button>
         <button class="btn small upload-btn" id="btn-folder-upload-file" type="button">＋ 上傳檔案</button>
         <input id="folder-upload-file-input" type="file" multiple hidden />
-        <button class="btn small" id="btn-folder-import-url" type="button">🔗 網址匯入</button>
-        <button class="btn small primary" id="btn-folder-export">📄 匯出給 AI</button>
+        <button class="btn small" id="btn-folder-import-url" type="button">網址匯入</button>
+        <button class="btn small primary" id="btn-folder-export">匯出給 AI</button>
       </div>
     </div>
     <div class="folder-workspace">
@@ -243,8 +259,8 @@
               <button class="btn small" id="file-preview-mode-content" role="tab" type="button" aria-pressed="false">文字內容</button>
               <button class="btn small" id="file-preview-mode-info" role="tab" type="button" aria-pressed="false">檔案資訊</button>
             </div>
-            <button class="btn small" id="folder-preview-transcribe" type="button" hidden>📝 擷取文字</button>
-            <button class="btn small primary" id="folder-preview-save" type="button" hidden>💾 儲存</button>
+            <button class="btn small" id="folder-preview-transcribe" type="button" hidden>擷取文字</button>
+            <button class="btn small primary" id="folder-preview-save" type="button" hidden>儲存</button>
             <button class="btn small ghost" id="folder-preview-edit" type="button" hidden>編輯</button>
             <a class="btn small ghost" id="folder-preview-open" href="#" target="_blank" rel="noopener">開啟原檔</a>
             <select class="preview-width-select" id="folder-preview-width" aria-label="調整右欄寬度" title="調整右欄寬度">
@@ -511,7 +527,7 @@
   <div class="capture-controls">
     <button id="capture-stop" class="capture-side-btn" type="button">⏹<span>結束</span></button>
     <button id="capture-snap" class="capture-snap" type="button" title="拍照（錄音不中斷）"></button>
-    <button id="capture-note" class="capture-side-btn" type="button">✏️<span>記事</span></button>
+    <button id="capture-note" class="capture-side-btn" type="button"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/></svg><span>記事</span></button>
   </div>
   <div class="capture-flash" id="capture-flash"></div>
 </div>
@@ -536,7 +552,7 @@
   <span class="audio-status" id="audio-status" role="status" aria-live="polite" hidden></span>
   <div class="audio-panel-actions" id="audio-record-actions">
     <button id="audio-folder-btn" type="button" title="分類到資料夾（錄音不中斷）">📂 資料夾</button>
-    <button id="audio-photo-btn" type="button" title="拍照">📷 拍照</button>
+    <button id="audio-photo-btn" type="button" title="拍照">拍照</button>
     <button id="audio-note-btn" type="button" title="記一句">✏️ 記一句</button>
     <button id="audio-rename-btn" type="button" title="錄音不中斷">✏️ 改檔名</button>
     <button id="audio-stop-btn" type="button" title="結束">⏹ 停止錄音</button>
@@ -565,10 +581,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=209"></script>
+<script src="pdf-editor.js?v=210"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=209"></script>
+<script src="richtext-editor.js?v=210"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -579,10 +595,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=209"></script>
-<script src="inspector.js?v=209"></script>
+<script src="file-selection.js?v=210"></script>
+<script src="inspector.js?v=210"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=209"></script>
+<script src="app.js?v=210"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

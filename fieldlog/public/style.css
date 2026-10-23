@@ -1,10 +1,13 @@
 :root {
-  --accent: #0f766e;        /* 隨身記主色（跟 Medtec 的展會紅刻意區分） */
-  --accent-dark: #115e59;
-  --bg: #f6f7f6;
-  --border: #e3e5e3;
-  --text: #1b1d1c;
-  --text-muted: #6b706d;
+  /* v210 配色比照「PDCA 品質輔助系統」：青灰主色、銅色重點、米色紙底、深藍墨色字 */
+  --accent: #4F7F7A;        /* 隨身記主色（跟 Medtec 的展會紅刻意區分） */
+  --accent-dark: #3E6763;
+  --copper: #B87333;
+  --copper-text: #985C24;
+  --bg: #F5F1EA;
+  --border: #E4DCCD;
+  --text: #1F2933;
+  --text-muted: #5A6570;
   --radius: 8px;
   --sidebar-width: 276px;   /* 桌機側欄寬度，可拖曳調整，見 app.js 的 initDesktopSidebarResize() */
   --preview-width: 400px;
@@ -2227,4 +2230,18 @@ body.reader-fullscreen .folder-preview {
   .desktop-tree-empty { color: #7C8791; }
   .desktop-explorer-resize:hover, .desktop-explorer-resize.dragging,
   body.sidebar-resizing .desktop-explorer-resize { background: var(--side-copper); }
+}
+
+
+/* v210 線條圖示（取代 emoji）：跟著文字顏色與大小 */
+.ln-icon {
+  width: 1.2em; height: 1.2em; flex: none; vertical-align: -0.22em;
+  fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+@media (min-width: 720px) {
+  .brand-mark { display: inline-block; width: 14px; height: 14px; border-radius: 3px; background: var(--side-copper, #D8995F); }
+  .side-dot { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: 2px; background: var(--side-copper, #D8995F); }
+  .desktop-tree-section-icon { display: inline-block; width: 10px; height: 10px; justify-self: center; border-radius: 2px; background: color-mix(in srgb, var(--section-accent) 80%, #fff); }
+  .desktop-tree-folder-icon { display: inline-block; width: 9px; height: 9px; border: 1.5px solid var(--side-muted, #A9B3BC); border-radius: 2px; }
+  .desktop-tree-row.active .desktop-tree-folder-icon { border-color: var(--side-copper, #D8995F); background: var(--side-copper, #D8995F); }
 }
