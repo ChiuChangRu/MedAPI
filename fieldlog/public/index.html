@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=214" />
-<link rel="stylesheet" href="home.css?v=214" />
+<link rel="stylesheet" href="style.css?v=215" />
+<link rel="stylesheet" href="home.css?v=215" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -62,7 +62,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=214">使用說明</a>
+        <a class="head-link" href="help.html?v=215">使用說明</a>
       </nav>
     </header>
 
@@ -168,6 +168,88 @@
           <small id="news-meta"></small>
         </div>
         <div id="news-body" class="news-body"><p class="sub">讀取中…</p></div>
+      </section>
+
+      <!-- v215 首頁小工具：畫板、Google 日曆、訂閱、常用網頁（皆可在桌機版面編輯中拖曳） -->
+      <section class="home-section home-sketch-section" id="sketch-panel" aria-labelledby="sketch-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="sketch-title">畫板</h2>
+          <small>手寫，或在照片上標註，存成一筆記事</small>
+        </div>
+        <div class="sketch-toolbar" role="toolbar" aria-label="畫板工具">
+          <span class="sketch-group" role="group" aria-label="顏色">
+            <button type="button" class="sketch-color active" data-color="#1F2933" style="--c:#1F2933" aria-label="墨黑"></button>
+            <button type="button" class="sketch-color" data-color="#B87333" style="--c:#B87333" aria-label="銅色"></button>
+            <button type="button" class="sketch-color" data-color="#4F7F7A" style="--c:#4F7F7A" aria-label="青灰"></button>
+            <button type="button" class="sketch-color" data-color="#B03A3A" style="--c:#B03A3A" aria-label="紅"></button>
+            <button type="button" class="sketch-color" data-color="#2E5AA8" style="--c:#2E5AA8" aria-label="藍"></button>
+          </span>
+          <span class="sketch-group" role="group" aria-label="粗細">
+            <button type="button" class="btn small sketch-size" data-size="2">細</button>
+            <button type="button" class="btn small sketch-size active" data-size="4">中</button>
+            <button type="button" class="btn small sketch-size" data-size="9">粗</button>
+          </span>
+          <span class="sketch-group">
+            <button type="button" class="btn small" id="sketch-eraser" aria-pressed="false">橡皮擦</button>
+            <label class="btn small" for="sketch-photo">上傳照片</label>
+            <input id="sketch-photo" type="file" accept="image/*" hidden />
+            <button type="button" class="btn small" id="sketch-undo">復原</button>
+            <button type="button" class="btn small" id="sketch-clear">清除</button>
+          </span>
+        </div>
+        <div class="sketch-stage"><canvas id="sketch-canvas" class="sketch-canvas" aria-label="畫板，可用滑鼠、觸控筆或手指書寫"></canvas></div>
+        <div class="sketch-save">
+          <input id="sketch-title-input" type="text" placeholder="標題（預設：手繪＋日期時間）" maxlength="80" />
+          <select id="sketch-folder" aria-label="存到哪個資料夾"><option value="">待分類</option></select>
+          <button type="button" class="btn small primary" id="sketch-save">存成記事</button>
+          <span class="sub" id="sketch-status" role="status"></span>
+        </div>
+      </section>
+
+      <section class="home-section home-calendar-section" id="calendar-panel" aria-labelledby="calendar-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="calendar-title">行程</h2>
+          <small id="calendar-meta">Google 日曆・未來 14 天</small>
+        </div>
+        <div id="calendar-body" class="widget-body"><p class="sub">讀取中…</p></div>
+        <details class="widget-settings" id="calendar-settings">
+          <summary>日曆設定</summary>
+          <p class="sub">Google 日曆 → 右上角齒輪「設定」→ 左側點你的日曆 → 往下找「iCal 格式的私人網址」→ 複製後貼在這裡。這個網址等同讀取日曆的鑰匙，只存在隨身記資料庫，不會顯示在畫面上。</p>
+          <div class="widget-form">
+            <input id="calendar-url" type="url" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" autocomplete="off" />
+            <button type="button" class="btn small primary" id="calendar-save">儲存</button>
+            <button type="button" class="btn small" id="calendar-clear">移除</button>
+          </div>
+        </details>
+      </section>
+
+      <section class="home-section home-feeds-section" id="feeds-panel" aria-labelledby="feeds-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="feeds-title">訂閱</h2>
+          <small>RSS／Atom・每則最新 5 則</small>
+        </div>
+        <div id="feeds-body" class="widget-body"><p class="sub">讀取中…</p></div>
+        <details class="widget-settings" id="feeds-settings">
+          <summary>管理訂閱</summary>
+          <div class="widget-form">
+            <input id="feed-url" type="url" placeholder="貼上 RSS 或 Atom 網址（https://…）" autocomplete="off" />
+            <button type="button" class="btn small primary" id="feed-add">新增</button>
+          </div>
+          <ul class="widget-manage-list" id="feed-manage"></ul>
+        </details>
+      </section>
+
+      <section class="home-section home-links-section" id="links-panel" aria-labelledby="links-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="links-title">常用網頁</h2>
+          <button type="button" class="btn small" id="links-manage" aria-pressed="false">管理</button>
+        </div>
+        <div id="links-list" class="toolbar-link-list links-list"><p class="sub">讀取中…</p></div>
+        <div class="widget-form links-form" id="links-form" hidden>
+          <input id="link-name" type="text" placeholder="名稱" maxlength="60" />
+          <input id="link-url" type="url" placeholder="https://…" />
+          <button type="button" class="btn small primary" id="link-add">新增</button>
+        </div>
       </section>
 
       <section class="home-section home-toolbar-files">
@@ -593,10 +675,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=214"></script>
+<script src="pdf-editor.js?v=215"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=214"></script>
+<script src="richtext-editor.js?v=215"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -607,10 +689,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=214"></script>
-<script src="inspector.js?v=214"></script>
+<script src="file-selection.js?v=215"></script>
+<script src="inspector.js?v=215"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=214"></script>
+<script src="app.js?v=215"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
