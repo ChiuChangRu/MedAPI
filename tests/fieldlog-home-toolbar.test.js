@@ -22,7 +22,7 @@ test("index.html：首頁各區全部整行堆疊，最近目錄、待處理、W
     'id="recent-folders-panel"',                 // 第三列：最近使用目錄
     'id="inbox-panel"',                          // 第四列上半：待處理
     'class="home-section home-toolbar-files"',   // 第四列下半：Wiki 檔案
-    'class="home-section home-tools-section"',   // 第五列：開發工具
+    'class="home-section home-tools-section tinted"',   // 第五列：開發工具（v210 青灰底）
     'id="usage-details"',                        // 第六列：Cloudflare 用量
   ];
   let cursor = -1;

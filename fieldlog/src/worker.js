@@ -133,7 +133,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "209";
+const UI_VERSION = "210";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1744,6 +1744,17 @@ async function handleApi(request, env, url, identity = {}) {
   // 只列「還需要你看一眼」的東西，AI 自動歸類但還沒確認的一樣列進來——
   // 那正是設計 🤖 標記／confirm-filing 的目的，不能讓這批東西完全沒有
   // 入口，只能靠使用者剛好逛進那個資料夾才會發現。
+  // 首頁「最新情報」：最近一筆【每日情報】記事（由每日 Routine 透過 MCP 新增），回傳純文字內文。
+  if (path === "/intel/latest" && method === "GET") {
+    const row = await db.prepare(
+      `SELECT id, title, body, body_format, created_at FROM entries
+        WHERE title LIKE '【每日情報】%' AND COALESCE(deleted_at, '') = ''
+        ORDER BY created_at DESC, id DESC LIMIT 1`
+    ).first();
+    if (!row) return json({});
+    const text = row.body_format === "html" ? htmlToPlainText(row.body || "") : String(row.body || "");
+    return json({ id: Number(row.id), title: row.title, created_at: row.created_at, text: text.slice(0, 20000) });
+  }
   if (path === "/entries/recent" && method === "GET") {
     const limit = Math.min(Number(url.searchParams.get("limit") || 25) || 25, 100);
     const { results } = await db.prepare(

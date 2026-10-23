@@ -614,3 +614,96 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .sticky-note, .sticky-note:hover { transform: none; transition: none; }
 }
+
+
+/* ===== v210 首頁外觀框架比照「PDCA 品質輔助系統」 =====
+   米色紙底、深色頁首帶（銅色小標＋襯線大標＋底部三色條）、白卡＋明顯邊框、
+   重點區塊用青灰底（tinted），區塊標題前一個銅色小方塊，不用 emoji。 */
+body { background: var(--bg); }
+#view-home { gap: 18px; }
+
+.home-app-head.masthead {
+  position: relative; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 14px 24px; padding: 22px 26px 30px; border-radius: 14px; overflow: hidden;
+  background: #1F2933; color: #F5F1EA;
+}
+.home-app-head.masthead::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
+  background: linear-gradient(90deg, #4F7F7A 0 40%, #B87333 40% 70%, #F5F1EA 70% 85%, #4F7F7A 85%);
+}
+.masthead-copy { display: grid; gap: 2px; min-width: 0; }
+.masthead-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #D8995F; }
+.masthead-title { font-family: Georgia, "Noto Serif TC", "Songti TC", serif; font-size: clamp(24px, 3.6vw, 34px); font-weight: 500; line-height: 1.15; color: #F5F1EA; }
+.masthead-sub { color: #C9C2B6; font-size: 13px; }
+.masthead-sub .app-version { color: #A9B3BC; }
+.masthead-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.home-app-head.masthead .head-link,
+.home-app-head.masthead #btn-deleted-items {
+  padding: 6px 14px; border: 1px solid rgba(245, 241, 234, .45); border-radius: 8px;
+  background: transparent; color: #F5F1EA; font: inherit; font-size: 14px; font-weight: 700; text-decoration: none; cursor: pointer;
+}
+.home-app-head.masthead .head-link:hover,
+.home-app-head.masthead #btn-deleted-items:hover { background: rgba(245, 241, 234, .12); }
+
+.home-section { padding: 20px 22px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: none; }
+.home-section.tinted { background: #CFDEDB; border-color: #A9C5C0; }
+.home-section-head { margin-bottom: 14px; }
+.home-section-title {
+  display: flex; align-items: center; gap: 10px;
+  font-family: Georgia, "Noto Serif TC", "Songti TC", serif; font-size: 20px; font-weight: 500; color: var(--text);
+}
+.home-section-title::before { content: ""; width: 12px; height: 12px; flex: none; border-radius: 3px; background: var(--copper); }
+.home-section-head > small, .home-recent-folders .home-section-head > small { color: var(--text-muted); font-size: 12.5px; }
+.home-section-title .count { font-family: "Noto Sans TC", sans-serif; font-size: 15px; color: var(--copper-text); }
+
+/* 輸入：白色按鈕＋線條圖示 */
+.home-input-section .cap-tile,
+.home-input-section .cap-video, .home-input-section .cap-photo, .home-input-section .cap-audio,
+.home-input-section .cap-note, .home-input-section .cap-weekly {
+  border: 1.5px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); font-weight: 700;
+}
+.home-input-section .cap-tile:hover { border-color: var(--accent); background: #fff; }
+.home-input-section .cap-tile .ln-icon { width: 22px; height: 22px; color: var(--text); }
+
+/* 檢索：比照 PDCA「問 AI」卡的銅色框 */
+.home-search-section { border-color: #E2B58C; }
+.home-search-bar { min-height: 46px; border: 1.5px solid var(--border); border-radius: 8px; background: #FCFAF6; }
+.home-search-bar:focus-within { border-color: var(--accent); }
+.home-search-icon { opacity: 1; color: var(--text-muted); display: inline-flex; }
+
+/* 待分類清單列 */
+#inbox-list .entry-row { border-color: var(--border); background: #fff; }
+#inbox-list .entry-row:hover { border-color: var(--accent); }
+.entry-where { color: var(--accent-dark); font-weight: 700; }
+.entry-rename .ln-icon, .entry-del .ln-icon { width: 16px; height: 16px; }
+
+/* 開發工具 */
+.toolbar-link-card { border: 1.5px solid var(--border); border-radius: 10px; background: #fff; }
+.toolbar-link-card:hover { border-color: var(--accent); }
+.toolbar-link-icon { display: inline-flex; color: var(--text); }
+.toolbar-link-icon .ln-icon { width: 24px; height: 24px; }
+
+/* 最新情報 */
+.news-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 10px; }
+.news-head strong { font-size: 15px; color: var(--text); }
+.news-body { display: grid; gap: 10px; }
+.news-group { padding: 12px 16px; border: 1px solid #A9C5C0; border-radius: 10px; background: #fff; }
+.news-group h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--accent-dark); }
+.news-group ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.news-item { display: grid; grid-template-columns: 6px minmax(0, 1fr); column-gap: 9px; font-size: 14px; line-height: 1.55; }
+.news-item::before { content: ""; width: 6px; height: 6px; margin-top: .6em; border-radius: 1px; background: var(--copper); }
+.news-text { min-width: 0; }
+.news-badge { margin-right: 6px; }
+.news-text .news-links { margin-left: 6px; white-space: nowrap; }
+.news-item.hot { font-weight: 700; }
+.news-badge { padding: 0 7px; border-radius: 999px; background: var(--copper); color: #fff; font-size: 11.5px; font-weight: 700; }
+.news-sub { margin-top: 4px; font-size: 12.5px; font-weight: 700; color: var(--text-muted); }
+.news-links a { color: var(--accent-dark); font-size: 12.5px; font-weight: 700; }
+.news-more { margin: 0; }
+.news-raw { margin: 0; white-space: pre-wrap; font: inherit; font-size: 13.5px; }
+
+@media (max-width: 719px) {
+  .home-app-head.masthead { padding: 18px 18px 26px; border-radius: 12px; }
+  .home-section { padding: 16px; }
+  .home-section-title { font-size: 18px; }
+}

@@ -184,8 +184,9 @@ test("(6) AI 歸的位置一定看得出來，而且可以確認或改掉", asyn
     read("../fieldlog/public/app.js"),
     read("../fieldlog/src/worker.js"),
   ]);
-  assert.match(app, /🤖 AI 分類/, "AI 分的要有標記");
-  assert.match(app, /🤖 待人工/, "AI 判斷不出來的也要標出來");
+  // v210 起不用 emoji，標記改為純文字
+  assert.match(app, />AI 分類<\/button>/, "AI 分的要有標記");
+  assert.match(app, />待人工<\/span>/, "AI 判斷不出來的也要標出來");
   assert.match(app, /confirm-filing/, "要能確認分類正確、拿掉標記");
   assert.match(worker, /const confirmFiledMatch = path\.match\(\/\^\\\/entries\\\/\(\\d\+\)\\\/confirm-filing\$\/\)/);
 });
