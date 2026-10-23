@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=211" />
-<link rel="stylesheet" href="home.css?v=211" />
+<link rel="stylesheet" href="style.css?v=212" />
+<link rel="stylesheet" href="home.css?v=212" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -61,7 +61,7 @@
       </div>
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=211">使用說明</a>
+        <a class="head-link" href="help.html?v=212">使用說明</a>
       </nav>
     </header>
 
@@ -119,15 +119,6 @@
 
       <!-- 最近使用目錄只記錄實際成功開啟的資料夾，以資料夾 id 追蹤，所以改名、
            搬移後仍會指向正確位置；已刪除的資料夾會在載入時自動剔除。 -->
-      <!-- v210 最新情報：顯示最近一筆【每日情報】記事的條列重點（/api/intel/latest） -->
-      <section class="home-section home-news-section tinted" id="news-panel" aria-labelledby="news-title">
-        <div class="home-section-head">
-          <h2 class="home-section-title" id="news-title">最新情報</h2>
-          <small id="news-meta"></small>
-        </div>
-        <div id="news-body" class="news-body"><p class="sub">讀取中…</p></div>
-      </section>
-
       <section class="home-section home-recent-folders tinted" id="recent-folders-panel" aria-labelledby="recent-folders-title">
         <div class="home-section-head">
           <h2 class="home-section-title" id="recent-folders-title">最近使用</h2>
@@ -156,6 +147,15 @@
           </div>
         </div>
         <div id="inbox-list" class="entry-list"></div>
+      </section>
+
+      <!-- v210 最新情報（v212 移到待分類下面）：顯示最近一筆【每日情報】記事的條列重點（/api/intel/latest） -->
+      <section class="home-section home-news-section tinted" id="news-panel" aria-labelledby="news-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="news-title">最新情報</h2>
+          <small id="news-meta"></small>
+        </div>
+        <div id="news-body" class="news-body"><p class="sub">讀取中…</p></div>
       </section>
 
       <section class="home-section home-toolbar-files">
@@ -581,10 +581,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=211"></script>
+<script src="pdf-editor.js?v=212"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=211"></script>
+<script src="richtext-editor.js?v=212"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -595,10 +595,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=211"></script>
-<script src="inspector.js?v=211"></script>
+<script src="file-selection.js?v=212"></script>
+<script src="inspector.js?v=212"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=211"></script>
+<script src="app.js?v=212"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
