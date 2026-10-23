@@ -707,3 +707,9 @@ body { background: var(--bg); }
   .home-section { padding: 16px; }
   .home-section-title { font-size: 18px; }
 }
+
+/* v211 最新情報：每則標題本身就是連結；免費標籤用綠色 */
+.news-title { color: var(--text); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.news-title:hover { color: var(--accent-dark); border-bottom-color: var(--accent-dark); }
+.news-badge.free { background: #2E7A4C; }
+.news-nolink { color: var(--text-muted); font-size: 12px; }
