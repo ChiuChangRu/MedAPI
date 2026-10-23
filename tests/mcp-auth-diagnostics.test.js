@@ -265,7 +265,7 @@ test("tools/list 可在 OAuth 前探索，並提供 ChatGPT 所需的標題、�
   }), ENV);
   assert.equal(res.status, 200);
   const { result } = await res.json();
-  assert.equal(result.tools.length, 29);
+  assert.equal(result.tools.length, 30);
   for (const tool of result.tools) {
     assert.ok(tool.title, `${tool.name} 缺少 title`);
     assert.equal(tool.inputSchema?.type, "object", `${tool.name} 的 inputSchema 無效`);

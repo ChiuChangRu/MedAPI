@@ -316,8 +316,9 @@ test("工具數與文件記載一致（改了工具就要同步改文件，不�
     readFile(new URL("../mcp/README.md", import.meta.url), "utf8"),
     readFile(new URL("../fieldlog/public/help.html", import.meta.url), "utf8"),
   ]);
-  const count = (src.match(/^\s{4}name: "/gm) || []).length;
-  assert.equal(count, 29, "工具數變了要一起更新文件");
+  const pdca = await readFile(new URL("../mcp/src/pdca.js", import.meta.url), "utf8");
+  const count = (src.match(/^\s{4}name: "/gm) || []).length + (pdca.match(/^\s{2}name: "/gm) || []).length;
+  assert.equal(count, 30, "工具數變了要一起更新文件");
   assert.match(connectGpt, new RegExp(`可用工具（${count} 個）`));
   assert.match(connectGpt, new RegExp(`抓到下面這 ${count} 個工具`));
   // README 講的是「其餘幾個唯讀」＝總數扣掉可寫入的（四支只能新增 ＋ 四支

@@ -15,6 +15,7 @@
 | `create_fieldlog_attachment` | 可寫入工具（之三）：把檔案（Word／Excel／PDF／圖片等，base64 傳入）上傳掛到一筆已存在的記事底下 | fieldlog 的 `/api/upload`（Service Binding＋PIN，只 INSERT，見下方說明） |
 | `search_exhibitors`／`get_exhibitor`／`search_visit_notes`／`search_exhibitor_files`／`list_exhibitor_files` | 展商名單＋團隊拜訪共筆＋附件內容全文（逐字稿/OCR）＋不用猜關鍵字的附件目錄 | medtec-2026 D1（共綁）＋ Service Binding 抓 `exhibitors.json` |
 | `sync_status` | 外部知識庫（litdb 等）的最後同步時間與最近同步紀錄——懷疑資料過時直接查事實 | fieldlog D1 的 `sources`／`sync_log` 表 |
+| `pdca_usage_stats` | PDCA品質輔助系統（DMAIC_02 medqs）匿名使用統計：開啟次數、版本、來源、工具、流程步驟、每日趨勢 | 獨立 D1 `pdca-usage`（`DB_PDCA`）；網頁端寫入走公開的 `POST /pdca/hit`，只收事件名稱，不含 IP／帳號／案件內容 |
 | `add_synonym` | 可寫入工具（之四）：搜不到但確定是「用詞沒對上」時，當場補一組同義詞對照，立刻生效 | fieldlog D1 的 `synonyms` 表（只 INSERT） |
 | `update_folder`／`move_folder`／`move_entry`／`delete_folder` | **資料夾整理工具**（2026-08-08 新增）：改資料夾名稱／色系分類／排序、搬資料夾、搬記事歸檔位置、刪除資料夾（不遺失資料，見下方說明） | fieldlog 的 `/api/folders`、`/api/entries`（Service Binding＋PIN，代理呼叫 fieldlog 既有的 PUT／DELETE 端點，見下方說明） |
 
@@ -31,7 +32,7 @@
 > AI 沒有「看得見架上有什麼」的工具，只能反覆猜詞，猜不中就誤判成「沒有資料」。
 > `list_fieldlog_entries`／`list_attachments`／`list_exhibitor_files` 就是為此而加。
 
-**鐵律：對記事的實際內容預設唯讀，例外分三組。** 其餘 20 個工具程式碼裡
+**鐵律：對記事的實際內容預設唯讀，例外分三組。** 其餘 21 個工具程式碼裡
 只有 SELECT 與 fetch。
 
 第一組（**只能新增**）：`create_fieldlog_entry`／`create_fieldlog_attachment`／

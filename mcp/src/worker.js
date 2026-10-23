@@ -39,6 +39,7 @@
 
 import { stripPdfMetadata } from "./textFold.js";
 import { authorizeMcpRequest, handleOAuthRoute, oauthUnauthorized } from "./oauth.js";
+import { PDCA_TOOL, handlePdcaHit } from "./pdca.js";
 // 不指定 /workerd 子路徑：package.json 的 conditional exports 會依實際 runtime
 // 自動選版本——node --test（跑測試用）拿到 node 版，wrangler 部署／dev 拿到
 // workerd 版。之前指定死 /workerd 直接讓 node --test 連 import 都失敗
@@ -1763,6 +1764,8 @@ const TOOLS = [
 const IMAGE_PROBE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAAAq0lEQVR42u3TQQ3AIBBFQUoqgTPn1cEZVdWEiIpATDVw2ybzFPxMdq8dUTI1n5ZqTy0CBAgQIECAAAESIECAAAECBAiQAAECBAgQIECAACEABAgQIECAAAESIECAAAECBAiQAAECBAjQL7pnrFSD3j5ckBcDBEiAAAECBAgQIECABAgQIECAAAECJECAAAECBAgQIAECBAgQIECAAAESIECAAAECBAiQAJ33AWJqBSAeWKJeAAAAAElFTkSuQmCC";
 
+TOOLS.push(PDCA_TOOL);
+
 const TOOLS_BY_NAME = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 const WRITE_TOOL_NAMES = new Set([
   "create_fieldlog_entry",
@@ -1809,6 +1812,7 @@ const TOOL_TITLES = {
   get_fieldlog_image: "取得隨身記圖片",
   get_fieldlog_image_base64: "取得圖片 Base64",
   image_probe: "檢查圖片資訊",
+  pdca_usage_stats: "PDCA 網站使用統計",
 };
 
 function publicToolDefinition(tool, request) {
@@ -1967,6 +1971,8 @@ export default {
         return rpcError(null, -32603, `伺服器錯誤：${err.message}`);
       }
     }
+    // PDCA品質輔助系統的匿名使用紀錄（公開寫入、只收事件名稱，見 pdca.js）
+    if (url.pathname === "/pdca/hit") return handlePdcaHit(request, env, CORS_HEADERS);
     if (url.pathname === "/") {
       // 部署健康檢查用；不透露任何資料。
       // 附上工具數是為了能從外部一眼判斷「這台有沒有部署到新版」——2026-08-01
