@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "212";
+const APP_VERSION = "213";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1673,6 +1673,165 @@ function inboxStickyHtml(e) {
 // 使用者剛手動搬移／編輯過的已分類記事
 // 會佔著最上面的位置，擠掉真正還沒處理的（2026-08-09 實際回報：套用天數
 // 會占住最上面的位置，擠掉真正需要處理的內容。
+// ===== v213 桌機首頁版面：一欄／兩欄＋拖曳排序，排版存在伺服器（所有桌機共用）=====
+// 手機（窄於 HOME_LAYOUT_MIN_WIDTH）完全不套用，維持 index.html 原本的單欄順序。
+// 「輸入與草稿」「檢索」不在 #home-main-sections 裡，固定在最上面不參與排版。
+const HOME_LAYOUT_SECTIONS = ["recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"];
+const HOME_LAYOUT_DEFAULT = { columns: 1, left: [...HOME_LAYOUT_SECTIONS], right: [] };
+const HOME_LAYOUT_MIN_WIDTH = 1000;
+let HOME_LAYOUT = null;
+let HOME_LAYOUT_EDITING = false;
+
+function normalizeHomeLayout(raw) {
+  const seen = new Set();
+  const pick = (list) => (Array.isArray(list) ? list : []).filter((id) => HOME_LAYOUT_SECTIONS.includes(id) && !seen.has(id) && seen.add(id));
+  const layout = { columns: Number(raw?.columns) === 2 ? 2 : 1, left: pick(raw?.left), right: pick(raw?.right) };
+  // 新增的區塊（或舊排版漏掉的）補到左欄最後，不會因為排版存檔而消失
+  for (const id of HOME_LAYOUT_SECTIONS) if (!seen.has(id)) layout.left.push(id);
+  if (layout.columns === 1) { layout.left = [...layout.left, ...layout.right]; layout.right = []; }
+  return layout;
+}
+
+function homeLayoutActive() {
+  return matchMedia(`(min-width: ${HOME_LAYOUT_MIN_WIDTH}px)`).matches;
+}
+
+function applyHomeLayout() {
+  const host = $("home-main-sections");
+  if (!host) return;
+  const sections = HOME_LAYOUT_SECTIONS.map((id) => $(id)).filter(Boolean);
+  let cols = host.querySelector(".home-cols");
+  if (!homeLayoutActive()) {
+    // 手機：放回原本的順序（工具列之後、Wiki 檔案之前），拿掉欄容器
+    if (cols) {
+      const wiki = host.querySelector(".home-toolbar-files");
+      const order = ["recent-folders-panel", "inbox-panel", "news-panel"];
+      for (const id of order) { const el = $(id); if (el) host.insertBefore(el, wiki || null); }
+      for (const id of ["tools-panel", "usage-details"]) { const el = $(id); if (el) host.appendChild(el); }
+      cols.remove();
+    }
+    if (HOME_LAYOUT_EDITING) setHomeLayoutEditing(false);
+    return;
+  }
+  const layout = normalizeHomeLayout(HOME_LAYOUT || HOME_LAYOUT_DEFAULT);
+  if (!cols) {
+    cols = document.createElement("div");
+    cols.className = "home-cols";
+    cols.innerHTML = `<div class="home-col" data-col="left"></div><div class="home-col" data-col="right"></div>`;
+    const toolbar = $("layout-toolbar");
+    host.insertBefore(cols, toolbar ? toolbar.nextSibling : host.firstChild);
+  }
+  cols.classList.toggle("two", layout.columns === 2);
+  const [left, right] = cols.querySelectorAll(".home-col");
+  for (const id of layout.left) { const el = $(id); if (el) left.appendChild(el); }
+  for (const id of layout.right) { const el = $(id); if (el) right.appendChild(el); }
+  for (const el of sections) if (!el.parentElement?.classList.contains("home-col")) left.appendChild(el);
+  $("layout-one")?.classList.toggle("active", layout.columns === 1);
+  $("layout-two")?.classList.toggle("active", layout.columns === 2);
+}
+
+function readHomeLayoutFromDom() {
+  const cols = $("home-main-sections")?.querySelector(".home-cols");
+  if (!cols) return normalizeHomeLayout(HOME_LAYOUT || HOME_LAYOUT_DEFAULT);
+  const ids = (col) => [...col.children].map((el) => el.id).filter((id) => HOME_LAYOUT_SECTIONS.includes(id));
+  const [left, right] = cols.querySelectorAll(".home-col");
+  return normalizeHomeLayout({ columns: cols.classList.contains("two") ? 2 : 1, left: ids(left), right: ids(right) });
+}
+
+function setHomeLayoutEditing(on) {
+  HOME_LAYOUT_EDITING = on && homeLayoutActive();
+  document.body.classList.toggle("home-layout-editing", HOME_LAYOUT_EDITING);
+  $("layout-toolbar").hidden = !HOME_LAYOUT_EDITING;
+  for (const id of HOME_LAYOUT_SECTIONS) {
+    const el = $(id);
+    if (!el) continue;
+    el.draggable = HOME_LAYOUT_EDITING;
+    el.classList.toggle("layout-movable", HOME_LAYOUT_EDITING);
+  }
+}
+
+async function saveHomeLayout(payload) {
+  try {
+    const r = await api("/home-layout", { method: "PUT", body: JSON.stringify(payload) });
+    HOME_LAYOUT = r.layout ? normalizeHomeLayout(r.layout) : null;
+    showToast(payload.reset ? "已恢復預設版面" : "版面已儲存");
+  } catch (err) {
+    showToast("版面儲存失敗：" + err.message);
+  }
+}
+
+function initHomeLayout() {
+  const host = $("home-main-sections");
+  if (!host || !$("btn-layout-edit")) return;
+  let dragging = null;
+  host.addEventListener("dragstart", (ev) => {
+    if (!HOME_LAYOUT_EDITING) return;
+    const el = ev.target.closest?.(".layout-movable");
+    if (!el) return;
+    dragging = el;
+    el.classList.add("layout-dragging");
+    ev.dataTransfer.effectAllowed = "move";
+    ev.dataTransfer.setData("text/plain", el.id);
+  });
+  host.addEventListener("dragend", () => {
+    dragging?.classList.remove("layout-dragging");
+    dragging = null;
+    host.querySelectorAll(".home-col.layout-over").forEach((c) => c.classList.remove("layout-over"));
+  });
+  host.addEventListener("dragover", (ev) => {
+    if (!HOME_LAYOUT_EDITING || !dragging) return;
+    const col = ev.target.closest?.(".home-col");
+    if (!col || (col.dataset.col === "right" && !col.closest(".home-cols").classList.contains("two"))) return;
+    ev.preventDefault();
+    host.querySelectorAll(".home-col.layout-over").forEach((c) => c !== col && c.classList.remove("layout-over"));
+    col.classList.add("layout-over");
+    // 依滑鼠高度插在最接近的區塊前面；拖到欄底就放最後
+    const after = [...col.querySelectorAll(":scope > .layout-movable:not(.layout-dragging)")]
+      .find((el) => ev.clientY < el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2);
+    if (after) col.insertBefore(dragging, after);
+    else col.appendChild(dragging);
+  });
+  host.addEventListener("drop", (ev) => { if (HOME_LAYOUT_EDITING) ev.preventDefault(); });
+
+  $("btn-layout-edit").onclick = () => {
+    if (!homeLayoutActive()) { showToast("版面編輯只在桌機寬螢幕提供"); return; }
+    setHomeLayoutEditing(!HOME_LAYOUT_EDITING);
+  };
+  $("layout-one").onclick = () => {
+    const layout = readHomeLayoutFromDom();
+    HOME_LAYOUT = normalizeHomeLayout({ ...layout, columns: 1 });
+    applyHomeLayout();
+  };
+  $("layout-two").onclick = () => {
+    const layout = readHomeLayoutFromDom();
+    if (layout.columns === 2) return;
+    // 從一欄切到兩欄：後半段區塊先放右欄，之後再自己拖
+    const half = Math.ceil(layout.left.length / 2);
+    HOME_LAYOUT = normalizeHomeLayout({ columns: 2, left: layout.left.slice(0, half), right: layout.left.slice(half) });
+    applyHomeLayout();
+  };
+  $("layout-reset").onclick = async () => {
+    HOME_LAYOUT = null;
+    applyHomeLayout();
+    await saveHomeLayout({ reset: true });
+  };
+  $("layout-done").onclick = async () => {
+    const layout = readHomeLayoutFromDom();
+    setHomeLayoutEditing(false);
+    await saveHomeLayout({ layout });
+  };
+  let wasActive = homeLayoutActive();
+  window.addEventListener("resize", () => {
+    const active = homeLayoutActive();
+    if (active !== wasActive) { wasActive = active; applyHomeLayout(); }
+  });
+  applyHomeLayout();
+  api("/home-layout").then((r) => {
+    HOME_LAYOUT = r?.layout ? normalizeHomeLayout(r.layout) : null;
+    applyHomeLayout();
+  }).catch(() => { /* 讀不到排版就維持預設，不影響首頁本身 */ });
+}
+
 // 最新情報：首頁顯示最近一筆【每日情報】記事。內文是 Routine 寫的固定格式純文字：
 // 【區塊】、■ 小標、「1. 項目」、「來源：網址」。只解析這幾種行，其他行略過；
 // 格式對不上時退回顯示前幾行原文，不會整塊空白。
@@ -7964,6 +8123,7 @@ function init() {
   initDesktopSidebarResize();
   initPreviewLayout();
   if ($("btn-inbox-sticky")) $("btn-inbox-sticky").onclick = () => setInboxView("sticky");
+  initHomeLayout();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
@@ -8138,7 +8298,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=212").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=213").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

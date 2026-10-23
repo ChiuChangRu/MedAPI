@@ -133,7 +133,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "212";
+const UI_VERSION = "213";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1744,6 +1744,40 @@ async function handleApi(request, env, url, identity = {}) {
   // 只列「還需要你看一眼」的東西，AI 自動歸類但還沒確認的一樣列進來——
   // 那正是設計 🤖 標記／confirm-filing 的目的，不能讓這批東西完全沒有
   // 入口，只能靠使用者剛好逛進那個資料夾才會發現。
+  // 桌機首頁排版（v213）：一欄／兩欄與各區塊所在欄位、順序。存在 settings，
+  // 所有桌機共用；手機不套用。只接受已知區塊 id，其餘一律丟掉，避免存進任意內容。
+  if (path === "/home-layout" && (method === "GET" || method === "PUT")) {
+    const KEY = "home.layout";
+    const ALLOWED = ["recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"];
+    const clean = (raw) => {
+      const seen = new Set();
+      const pick = (list) => (Array.isArray(list) ? list : [])
+        .map(String).filter((id) => ALLOWED.includes(id) && !seen.has(id) && seen.add(id));
+      const left = pick(raw?.left);
+      const right = pick(raw?.right);
+      return { columns: Number(raw?.columns) === 2 ? 2 : 1, left, right };
+    };
+    if (method === "GET") {
+      const row = await db.prepare("SELECT value, updated_at FROM settings WHERE key = ?").bind(KEY).first();
+      if (!row) return json({ layout: null });
+      let parsed = null;
+      try { parsed = JSON.parse(row.value); } catch { parsed = null; }
+      return json({ layout: parsed ? clean(parsed) : null, updated_at: row.updated_at });
+    }
+    const body = await request.json().catch(() => ({}));
+    if (body?.reset) {
+      await db.prepare("DELETE FROM settings WHERE key = ?").bind(KEY).run();
+      return json({ layout: null });
+    }
+    const layout = clean(body?.layout);
+    const stamp = now();
+    await db.prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    ).bind(KEY, JSON.stringify(layout), stamp).run();
+    return json({ layout, updated_at: stamp });
+  }
+
   // 首頁「最新情報」：最近一筆【每日情報】記事（由每日 Routine 透過 MCP 新增），回傳純文字內文。
   if (path === "/intel/latest" && method === "GET") {
     const row = await db.prepare(

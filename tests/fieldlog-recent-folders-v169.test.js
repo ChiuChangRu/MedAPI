@@ -86,3 +86,18 @@ test("v210 首頁比照 PDCA：深色頁首、最新情報區塊、首頁區塊�
   assert.ok(titles.length >= 6);
   for (const t of titles) assert.doesNotMatch(t, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, `區塊標題不應含 emoji：${t}`);
 });
+
+test("v213 桌機首頁版面：一欄／兩欄＋拖曳，存伺服器；手機不套用", async () => {
+  const worker = await read("../fieldlog/src/worker.js");
+  assert.match(worker, /path === "\/home-layout"/);
+  assert.match(worker, /const ALLOWED = \["recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"\]/,
+    "只接受已知區塊 id");
+  assert.match(html, /id="btn-layout-edit"/);
+  assert.match(html, /id="layout-toolbar" hidden/);
+  assert.match(html, /id="tools-panel"/);
+  assert.match(app, /const HOME_LAYOUT_MIN_WIDTH = 1000/);
+  const apply = app.match(/function applyHomeLayout\(\)[\s\S]*?\n}\n/)?.[0] || "";
+  assert.match(apply, /if \(!homeLayoutActive\(\)\)/, "窄螢幕要放回原本順序");
+  assert.match(css, /\.layout-edit-btn \{ display: none; \}/, "編輯按鈕預設隱藏，只有寬螢幕顯示");
+  assert.match(css, /@media \(min-width: 1000px\) \{\s*\.home-app-head\.masthead \.layout-edit-btn \{ display: inline-block; \}/);
+});
