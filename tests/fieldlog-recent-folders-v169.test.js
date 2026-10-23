@@ -90,8 +90,8 @@ test("v210 首頁比照 PDCA：深色頁首、最新情報區塊、首頁區塊�
 test("v213 桌機首頁版面：一欄／兩欄＋拖曳，存伺服器；手機不套用", async () => {
   const worker = await read("../fieldlog/src/worker.js");
   assert.match(worker, /path === "\/home-layout"/);
-  assert.match(worker, /const ALLOWED = \["recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"\]/,
-    "只接受已知區塊 id");
+  assert.match(worker, /const ALLOWED = \["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"\]/,
+    "只接受已知區塊 id（v214 起含輸入與檢索）");
   assert.match(html, /id="btn-layout-edit"/);
   assert.match(html, /id="layout-toolbar" hidden/);
   assert.match(html, /id="tools-panel"/);
@@ -100,4 +100,13 @@ test("v213 桌機首頁版面：一欄／兩欄＋拖曳，存伺服器；手機
   assert.match(apply, /if \(!homeLayoutActive\(\)\)/, "窄螢幕要放回原本順序");
   assert.match(css, /\.layout-edit-btn \{ display: none; \}/, "編輯按鈕預設隱藏，只有寬螢幕顯示");
   assert.match(css, /@media \(min-width: 1000px\) \{\s*\.home-app-head\.masthead \.layout-edit-btn \{ display: inline-block; \}/);
+});
+
+test("v214 除頁首外全部可移動；搜尋結果跟著檢索走，搜尋時只收起其他區塊", () => {
+  assert.match(html, /id="input-panel"/);
+  assert.match(html, /id="search-panel"/);
+  assert.match(app, /const HOME_LAYOUT_TOP_DEFAULT = \["input-panel", "search-panel"\]/);
+  assert.match(app, /layout\.left\.unshift\(\.\.\.missingTop\)/, "v213 舊排版沒有輸入／檢索時要補在最上面");
+  assert.match(app, /document\.body\.classList\.toggle\("home-searching", active && inColumns\)/);
+  assert.match(css, /body\.home-searching \.home-col:not\(:has\(#search-panel\)\) \{ display: none; \}/);
 });
