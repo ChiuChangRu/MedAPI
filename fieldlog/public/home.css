@@ -713,3 +713,37 @@ body { background: var(--bg); }
 .news-title:hover { color: var(--accent-dark); border-bottom-color: var(--accent-dark); }
 .news-badge.free { background: #2E7A4C; }
 .news-nolink { color: var(--text-muted); font-size: 12px; }
+
+/* ===== v213 桌機首頁版面：一欄／兩欄、拖曳排序（寬度 1000px 以上才有） ===== */
+.layout-edit-btn { display: none; }
+.home-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+.home-cols.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.home-cols:not(.two) > .home-col[data-col="right"] { display: none; }
+.home-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-content: start; min-width: 0; }
+.home-col > * { min-width: 0; max-width: 100%; }
+@media (min-width: 1000px) {
+  .home-app-head.masthead .layout-edit-btn { display: inline-block; }
+}
+.layout-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding: 12px 16px; border: 1.5px dashed var(--copper); border-radius: 12px; background: #FBF1E6;
+}
+.layout-toolbar strong { font-family: Georgia, "Noto Serif TC", serif; font-weight: 500; font-size: 16px; color: var(--copper-text); }
+.layout-toolbar .sub { margin: 0; flex: 1 1 auto; }
+.layout-cols { display: inline-flex; gap: 6px; }
+.layout-cols .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+body.home-layout-editing .home-col { min-height: 120px; padding: 8px; border: 1.5px dashed #A9C5C0; border-radius: 14px; }
+body.home-layout-editing .home-col.layout-over { border-color: var(--copper); background: rgba(184, 115, 51, .06); }
+.layout-movable { cursor: grab; outline: 2px solid transparent; transition: outline-color .15s ease; }
+.layout-movable:hover { outline-color: var(--copper); }
+.layout-movable > .home-section-head::after,
+details.layout-movable > summary::after {
+  content: "拖曳移動"; margin-left: auto; padding: 2px 10px; border-radius: 999px;
+  background: var(--copper); color: #fff; font-size: 12px; font-weight: 700; font-family: "Noto Sans TC", sans-serif;
+}
+.layout-movable.layout-dragging { opacity: .45; }
+/* 兩欄時欄位較窄：待分類清單列改成「標題一整行、其他資訊與按鈕換到下一行」 */
+.home-cols.two #inbox-list .entry-row { flex-wrap: wrap; align-items: center; row-gap: 6px; }
+.home-cols.two #inbox-list .entry-main { flex: 1 1 calc(100% - 40px); min-width: 0; }
+.home-cols.two #inbox-list .entry-title { white-space: normal; }
+.home-cols.two #inbox-list .entry-secondary { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
