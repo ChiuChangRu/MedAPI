@@ -176,7 +176,20 @@
             <span class="toolbar-link-icon" aria-hidden="true">🧮</span>
             <span class="toolbar-link-text"><strong>品質統計工作台</strong></span>
           </a>
+          <!-- Elsevier 的 AI 文獻工具，需要自己的 ScienceDirect／機構帳號 -->
+          <a class="toolbar-link-card" href="https://www.sciencedirect.com/leapspace" target="_blank" rel="noopener">
+            <span class="toolbar-link-icon" aria-hidden="true">🔬</span>
+            <span class="toolbar-link-text"><strong>Leapspace</strong></span>
+          </a>
         </div>
+        <!-- 外部網站多半禁止被嵌入（iframe），所以用搜尋框直接開新分頁到 ScienceDirect 搜尋結果。 -->
+        <form class="tool-search" id="sciencedirect-search" action="https://www.sciencedirect.com/search" method="get" target="_blank" rel="noopener">
+          <label for="sciencedirect-q">🔬 ScienceDirect 文獻搜尋</label>
+          <div class="tool-search-row">
+            <input id="sciencedirect-q" name="qs" type="search" placeholder="例：hydrophilic coating catheter" autocomplete="off" required />
+            <button class="btn small primary" type="submit">搜尋</button>
+          </div>
+        </form>
       </section>
 
       <!-- 第五列：Cloudflare 用量。預設收合、展開才打 /usage：避免每次開

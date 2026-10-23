@@ -599,3 +599,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .sticky-note, .sticky-note:hover { transform: none; transition: none; }
 }
+
+/* 開發工具下方的外部文獻搜尋：送出後開新分頁，不嵌入對方網站 */
+.tool-search { display: grid; gap: 6px; margin-top: 12px; }
+.tool-search label { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.tool-search-row { display: flex; gap: 8px; }
+.tool-search-row input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
