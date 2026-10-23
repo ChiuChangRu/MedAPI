@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "210";
+const APP_VERSION = "211";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1714,7 +1714,7 @@ async function loadNews(force = false) {
     }
   }
   const visible = sections.filter((sec) => sec.items.some((it) => it.text));
-  const MAX_ITEMS = 10;
+  const MAX_ITEMS = 12;
   let shown = 0;
   const html = visible.map((sec) => {
     const rows = [];
@@ -1724,7 +1724,13 @@ async function loadNews(force = false) {
       if (it.sub) { rows.push(`<li class="news-sub">${esc(it.sub)}${links ? ` <span class="news-links">${links}</span>` : ""}</li>`); continue; }
       shown += 1;
       const hot = /^🔥/.test(it.text) || sec.title.includes("新課程");
-      rows.push(`<li class="news-item${hot ? " hot" : ""}"><span class="news-text">${hot ? '<span class="news-badge">新</span>' : ""}${esc(it.text.replace(/^🔥\s*/, ""))}${links ? `<span class="news-links">${links}</span>` : ""}</span></li>`);
+      const free = /免費|免報名費/.test(it.text);
+      const label = esc(it.text.replace(/^🔥\s*/, ""));
+      // 每則都要能點：有連結就讓整段標題本身成為超連結；第二個以後的連結才另外列在後面
+      const firstLink = (it.links || [])[0];
+      const more = (it.links || []).slice(1).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">連結${i + 2}</a>`).join(" ");
+      const title = firstLink ? `<a class="news-title" href="${esc(firstLink)}" target="_blank" rel="noopener">${label}</a>` : `${label}<span class="news-nolink">（無連結）</span>`;
+      rows.push(`<li class="news-item${hot ? " hot" : ""}"><span class="news-text">${hot ? '<span class="news-badge">新</span>' : ""}${free ? '<span class="news-badge free">免費</span>' : ""}${title}${more ? `<span class="news-links">${more}</span>` : ""}</span></li>`);
     }
     return rows.length ? `<div class="news-group"><h3>${esc(sec.title)}</h3><ul>${rows.join("")}</ul></div>` : "";
   }).join("");
@@ -8132,7 +8138,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=210").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=211").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
