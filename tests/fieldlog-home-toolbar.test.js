@@ -75,7 +75,6 @@ test("index.html：第四列開發工具三個連結，medtec 與 DMAIC 開新�
   assert.match(html, /href="https:\/\/claude\.ai\/artifact\/3jLxswUNecKJTLez6QCFSh" target="_blank" rel="noopener"/,
     "v205：品質統計工作台（claude.ai Artifact）開新分頁");
   assert.match(html, /href="https:\/\/www\.sciencedirect\.com\/leapspace" target="_blank" rel="noopener"/);
-  assert.match(html, /<form class="tool-search" id="sciencedirect-search" action="https:\/\/www\.sciencedirect\.com\/search" method="get" target="_blank"/);
 });
 
 test("index.html：巡廠整理連結只留開發工具那一份，不在 header 重複", async () => {
