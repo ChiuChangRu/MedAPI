@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "214";
+const APP_VERSION = "215";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1681,7 +1681,8 @@ function inboxStickyHtml(e) {
 // ===== v213 桌機首頁版面：一欄／兩欄＋拖曳排序，排版存在伺服器（所有桌機共用）=====
 // 手機（窄於 HOME_LAYOUT_MIN_WIDTH）完全不套用，維持 index.html 原本的單欄順序。
 // v214 起除了頁首，所有區塊（含「輸入與草稿」「檢索」）都可以移動。
-const HOME_LAYOUT_SECTIONS = ["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"];
+const HOME_LAYOUT_SECTIONS = ["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel",
+  "sketch-panel", "calendar-panel", "feeds-panel", "links-panel", "tools-panel", "usage-details"];
 const HOME_LAYOUT_TOP_DEFAULT = ["input-panel", "search-panel"];
 const HOME_LAYOUT_DEFAULT = { columns: 1, left: [...HOME_LAYOUT_SECTIONS], right: [] };
 const HOME_LAYOUT_MIN_WIDTH = 1000;
@@ -1721,7 +1722,7 @@ function applyHomeLayout() {
       if (top && search) top.after(search);
       if (search && results) search.after(results);
       const wiki = host.querySelector(".home-toolbar-files");
-      const order = ["recent-folders-panel", "inbox-panel", "news-panel"];
+      const order = ["recent-folders-panel", "inbox-panel", "news-panel", "sketch-panel", "calendar-panel", "feeds-panel", "links-panel"];
       for (const id of order) { const el = $(id); if (el) host.insertBefore(el, wiki || null); }
       for (const id of ["tools-panel", "usage-details"]) { const el = $(id); if (el) host.appendChild(el); }
       cols.remove();
@@ -1851,6 +1852,303 @@ function initHomeLayout() {
     HOME_LAYOUT = r?.layout ? normalizeHomeLayout(r.layout) : null;
     applyHomeLayout();
   }).catch(() => { /* 讀不到排版就維持預設，不影響首頁本身 */ });
+}
+
+// ===== v215 首頁小工具：畫板、Google 日曆、訂閱、常用網頁 =====
+function initSketchPad() {
+  const canvas = $("sketch-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const state = { color: "#1F2933", size: 4, eraser: false, drawing: false, last: null, undo: [], dirty: false };
+  const stage = canvas.parentElement;
+
+  const paintWhite = () => { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.restore(); };
+  const resize = () => {
+    const cssW = Math.max(200, Math.floor(stage.clientWidth));
+    const cssH = Math.round(Math.min(520, Math.max(240, cssW * 0.62)));
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(cssW * ratio), h = Math.round(cssH * ratio);
+    if (canvas.width === w && canvas.height === h) return;
+    // 改變大小時保留已畫的內容（等比縮放到新尺寸）
+    const old = canvas.width ? (() => { const c = document.createElement("canvas"); c.width = canvas.width; c.height = canvas.height; c.getContext("2d").drawImage(canvas, 0, 0); return c; })() : null;
+    canvas.width = w; canvas.height = h;
+    canvas.style.height = `${cssH}px`;
+    paintWhite();
+    if (old) ctx.drawImage(old, 0, 0, w, h);
+  };
+  const snapshot = () => {
+    try { state.undo.push(ctx.getImageData(0, 0, canvas.width, canvas.height)); } catch { /* 太大就不留 */ }
+    if (state.undo.length > 20) state.undo.shift();
+  };
+  const point = (ev) => {
+    const r = canvas.getBoundingClientRect();
+    return { x: (ev.clientX - r.left) * (canvas.width / r.width), y: (ev.clientY - r.top) * (canvas.height / r.height) };
+  };
+  const lineWidth = (ev) => {
+    const ratio = canvas.width / canvas.getBoundingClientRect().width;
+    const pressure = ev.pointerType === "pen" && ev.pressure ? 0.5 + ev.pressure : 1;
+    return state.size * ratio * pressure * (state.eraser ? 4 : 1);
+  };
+  canvas.addEventListener("pointerdown", (ev) => {
+    if (document.body.classList.contains("home-layout-editing")) return;
+    ev.preventDefault();
+    canvas.setPointerCapture(ev.pointerId);
+    snapshot();
+    state.drawing = true;
+    state.last = point(ev);
+    ctx.beginPath();
+    ctx.fillStyle = state.eraser ? "#FFFFFF" : state.color;
+    ctx.arc(state.last.x, state.last.y, lineWidth(ev) / 2, 0, Math.PI * 2);
+    ctx.fill();
+    state.dirty = true;
+  });
+  canvas.addEventListener("pointermove", (ev) => {
+    if (!state.drawing) return;
+    const p = point(ev);
+    ctx.strokeStyle = state.eraser ? "#FFFFFF" : state.color;
+    ctx.lineWidth = lineWidth(ev);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(state.last.x, state.last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    state.last = p;
+  });
+  const stop = () => { state.drawing = false; state.last = null; };
+  canvas.addEventListener("pointerup", stop);
+  canvas.addEventListener("pointercancel", stop);
+
+  document.querySelectorAll(".sketch-color").forEach((b) => b.onclick = () => {
+    state.color = b.dataset.color; state.eraser = false;
+    $("sketch-eraser").setAttribute("aria-pressed", "false");
+    document.querySelectorAll(".sketch-color").forEach((x) => x.classList.toggle("active", x === b));
+  });
+  document.querySelectorAll(".sketch-size").forEach((b) => b.onclick = () => {
+    state.size = Number(b.dataset.size) || 4;
+    document.querySelectorAll(".sketch-size").forEach((x) => x.classList.toggle("active", x === b));
+  });
+  $("sketch-eraser").onclick = () => { state.eraser = !state.eraser; $("sketch-eraser").setAttribute("aria-pressed", String(state.eraser)); };
+  $("sketch-undo").onclick = () => { const img = state.undo.pop(); if (img) ctx.putImageData(img, 0, 0); };
+  $("sketch-clear").onclick = () => { snapshot(); paintWhite(); state.dirty = false; };
+  $("sketch-photo").onchange = (ev) => {
+    const file = ev.target.files?.[0];
+    ev.target.value = "";
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      snapshot();
+      paintWhite();
+      // 等比放進畫布中央，讓照片完整看得到，再在上面標註
+      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+      URL.revokeObjectURL(url);
+      state.dirty = true;
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); showToast("這個檔案無法當成圖片開啟"); };
+    img.src = url;
+  };
+  const fillFolders = () => {
+    const sel = $("sketch-folder");
+    const current = sel.value;
+    const options = FOLDERS.filter((f) => f.role !== "staging")
+      .map((f) => ({ id: f.id, label: folderDisplayPath(f).join("／") }))
+      .sort((a, b) => a.label.localeCompare(b.label, "zh-Hant"));
+    sel.innerHTML = `<option value="">待分類</option>` + options.map((o) => `<option value="${o.id}">${esc(o.label)}</option>`).join("");
+    sel.value = options.some((o) => String(o.id) === current) ? current : "";
+  };
+  $("sketch-folder").addEventListener("focus", fillFolders);
+  $("sketch-folder").addEventListener("pointerdown", fillFolders);
+  $("sketch-save").onclick = async () => {
+    const btn = $("sketch-save");
+    if (!state.dirty) { showToast("畫板是空的，先畫點東西再存"); return; }
+    btn.disabled = true;
+    $("sketch-status").textContent = "儲存中…";
+    try {
+      const stamp = new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }).replace(/\//g, "-");
+      const title = $("sketch-title-input").value.trim() || `手繪 ${stamp}`;
+      const folderId = $("sketch-folder").value ? Number($("sketch-folder").value) : await stagingFolderId();
+      const created = await api("/entries", { method: "POST", body: JSON.stringify({ title, folder_id: folderId || null, body: "" }) });
+      const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("畫布轉圖片失敗"))), "image/png"));
+      const t = new Date(Date.now() + 8 * 3600 * 1000).toISOString();
+      const filename = `手繪_${t.slice(0, 10).replace(/-/g, "")}-${t.slice(11, 19).replace(/:/g, "")}.png`;
+      await putFile(created.id, blob, filename, null, null);
+      $("sketch-status").textContent = "";
+      $("sketch-title-input").value = "";
+      paintWhite(); state.undo = []; state.dirty = false;
+      showToast("已存成記事", { actionLabel: "開啟", onAction: () => openEntry(created.id) });
+      loadRecent().catch(() => {});
+    } catch (err) {
+      $("sketch-status").textContent = "";
+      showToast("儲存失敗：" + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  resize();
+  if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(stage);
+  else window.addEventListener("resize", resize);
+}
+
+function fmtTaipei(iso, opts) {
+  return new Date(iso).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false, ...opts });
+}
+
+async function loadCalendarWidget() {
+  const body = $("calendar-body");
+  if (!body) return;
+  let r;
+  try { r = await api("/widgets/calendar"); }
+  catch (err) { body.innerHTML = `<p class="sub">行程載入失敗：${esc(err.message)}</p>`; return; }
+  if (!r.configured) {
+    body.innerHTML = `<p class="sub">還沒有連接 Google 日曆。打開下方「日曆設定」，貼上「iCal 格式的私人網址」即可顯示未來 14 天的行程。</p>`;
+    $("calendar-settings").open = true;
+    return;
+  }
+  if (r.error) { body.innerHTML = `<p class="sub">${esc(r.error)}</p>`; return; }
+  if (!r.events?.length) { body.innerHTML = `<p class="sub">未來 14 天沒有行程。</p>`; return; }
+  const groups = new Map();
+  for (const ev of r.events) {
+    const key = fmtTaipei(ev.start, { month: "numeric", day: "numeric", weekday: "short" });
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(ev);
+  }
+  const todayKey = fmtTaipei(new Date().toISOString(), { month: "numeric", day: "numeric", weekday: "short" });
+  body.innerHTML = [...groups].map(([day, list]) => `<div class="cal-day${day === todayKey ? " today" : ""}">
+      <h3>${esc(day)}${day === todayKey ? '<span class="cal-today">今天</span>' : ""}</h3>
+      <ul>${list.map((ev) => `<li><span class="cal-time">${ev.allDay ? "全天" : `${fmtTaipei(ev.start, { hour: "2-digit", minute: "2-digit" })}–${fmtTaipei(ev.end, { hour: "2-digit", minute: "2-digit" })}`}</span><span class="cal-title">${esc(ev.title)}${ev.location ? `<small>${esc(ev.location)}</small>` : ""}</span></li>`).join("")}</ul>
+    </div>`).join("") + (r.complex ? `<p class="sub">部分重複行程規則較複雜，只顯示第一次。</p>` : "");
+}
+
+async function loadFeedsWidget() {
+  const body = $("feeds-body");
+  if (!body) return;
+  let r;
+  try { r = await api("/widgets/feeds"); }
+  catch (err) { body.innerHTML = `<p class="sub">訂閱載入失敗：${esc(err.message)}</p>`; return; }
+  const feeds = r.feeds || [];
+  $("feed-manage").innerHTML = feeds.map((f) => `<li><span>${esc(f.title)}<small>${esc(f.url)}</small></span><button type="button" class="btn small" data-remove-feed="${esc(f.url)}">移除</button></li>`).join("");
+  $("feed-manage").querySelectorAll("[data-remove-feed]").forEach((b) => b.onclick = () => saveFeeds(feeds.map((f) => f.url).filter((u) => u !== b.dataset.removeFeed)));
+  if (!feeds.length) {
+    body.innerHTML = `<p class="sub">還沒有訂閱。打開下方「管理訂閱」，貼上網站的 RSS 或 Atom 網址。</p>`;
+    $("feeds-settings").open = true;
+    return;
+  }
+  body.innerHTML = feeds.map((f) => `<div class="feed-group">
+      <h3>${esc(f.title)}</h3>
+      ${f.error ? `<p class="sub">${esc(f.error)}</p>` : `<ul>${f.items.map((it) => `<li>${it.link ? `<a class="news-title" href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}${it.date ? `<small>${esc(fmtTaipei(it.date, { year: "numeric", month: "numeric", day: "numeric" }))}</small>` : ""}</li>`).join("") || '<li class="sub">目前沒有內容</li>'}</ul>`}
+    </div>`).join("");
+}
+
+async function saveFeeds(list) {
+  try {
+    const r = await api("/widgets/feeds", { method: "PUT", body: JSON.stringify({ feeds: list }) });
+    if (r.rejected) showToast("有網址不符合（需為 https 的 RSS／Atom 網址），已略過");
+    await loadFeedsWidget();
+  } catch (err) { showToast("訂閱儲存失敗：" + err.message); }
+}
+
+let LINKS = [];
+let LINKS_MANAGING = false;
+function renderLinks() {
+  const wrap = $("links-list");
+  if (!LINKS.length) {
+    wrap.innerHTML = `<p class="sub">還沒有常用網頁。按右上角「管理」新增名稱與網址。</p>`;
+    return;
+  }
+  wrap.innerHTML = LINKS.map((l, i) => {
+    let host = "";
+    try { host = new URL(l.url).hostname.replace(/^www\./, ""); } catch { host = ""; }
+    return `<div class="link-item${LINKS_MANAGING ? " managing" : ""}" draggable="${LINKS_MANAGING}" data-index="${i}">
+      <a class="toolbar-link-card" href="${esc(l.url)}" target="_blank" rel="noopener">
+        <span class="link-mark" aria-hidden="true">${esc((l.name || "?").slice(0, 1))}</span>
+        <span class="toolbar-link-text"><strong>${esc(l.name)}</strong><small>${esc(host)}</small></span>
+      </a>
+      ${LINKS_MANAGING ? `<span class="link-tools"><button type="button" class="btn small" data-move="-1" data-index="${i}" aria-label="往前">往前</button><button type="button" class="btn small" data-move="1" data-index="${i}" aria-label="往後">往後</button><button type="button" class="btn small" data-del="${i}">刪除</button></span>` : ""}
+    </div>`;
+  }).join("");
+  wrap.querySelectorAll("[data-del]").forEach((b) => b.onclick = () => saveLinks(LINKS.filter((_, i) => i !== Number(b.dataset.del))));
+  wrap.querySelectorAll("[data-move]").forEach((b) => b.onclick = () => {
+    const i = Number(b.dataset.index), j = i + Number(b.dataset.move);
+    if (j < 0 || j >= LINKS.length) return;
+    const next = [...LINKS]; [next[i], next[j]] = [next[j], next[i]];
+    saveLinks(next);
+  });
+  if (LINKS_MANAGING) {
+    let from = null;
+    wrap.querySelectorAll(".link-item").forEach((el) => {
+      el.addEventListener("dragstart", (ev) => { ev.stopPropagation(); from = Number(el.dataset.index); });
+      el.addEventListener("dragover", (ev) => { if (from !== null) { ev.preventDefault(); ev.stopPropagation(); } });
+      el.addEventListener("drop", (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        const to = Number(el.dataset.index);
+        if (from === null || from === to) return;
+        const next = [...LINKS]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved);
+        from = null;
+        saveLinks(next);
+      });
+    });
+  }
+}
+
+async function loadLinksWidget() {
+  try { LINKS = (await api("/widgets/links")).links || []; }
+  catch (err) { $("links-list").innerHTML = `<p class="sub">常用網頁載入失敗：${esc(err.message)}</p>`; return; }
+  renderLinks();
+}
+
+async function saveLinks(list) {
+  try {
+    LINKS = (await api("/widgets/links", { method: "PUT", body: JSON.stringify({ links: list }) })).links || [];
+    renderLinks();
+  } catch (err) { showToast("常用網頁儲存失敗：" + err.message); }
+}
+
+function initHomeWidgets() {
+  initSketchPad();
+  if ($("calendar-save")) {
+    $("calendar-save").onclick = async () => {
+      const url = $("calendar-url").value.trim();
+      if (!url) { showToast("請先貼上 iCal 私人網址"); return; }
+      try {
+        await api("/widgets/calendar", { method: "PUT", body: JSON.stringify({ url }) });
+        $("calendar-url").value = "";
+        $("calendar-settings").open = false;
+        showToast("已連接 Google 日曆");
+        await loadCalendarWidget();
+      } catch (err) { showToast(err.message); }
+    };
+    $("calendar-clear").onclick = async () => {
+      try { await api("/widgets/calendar", { method: "PUT", body: JSON.stringify({ clear: true }) }); showToast("已移除日曆連結"); await loadCalendarWidget(); }
+      catch (err) { showToast("移除失敗：" + err.message); }
+    };
+  }
+  if ($("feed-add")) {
+    $("feed-add").onclick = async () => {
+      const url = $("feed-url").value.trim();
+      if (!/^https:\/\//i.test(url)) { showToast("請貼上 https 開頭的 RSS 或 Atom 網址"); return; }
+      const current = [...$("feed-manage").querySelectorAll("[data-remove-feed]")].map((b) => b.dataset.removeFeed);
+      $("feed-url").value = "";
+      await saveFeeds([...current, url]);
+    };
+  }
+  if ($("links-manage")) {
+    $("links-manage").onclick = () => {
+      LINKS_MANAGING = !LINKS_MANAGING;
+      $("links-manage").setAttribute("aria-pressed", String(LINKS_MANAGING));
+      $("links-manage").textContent = LINKS_MANAGING ? "完成" : "管理";
+      $("links-form").hidden = !LINKS_MANAGING;
+      renderLinks();
+    };
+    $("link-add").onclick = async () => {
+      const name = $("link-name").value.trim();
+      const url = $("link-url").value.trim();
+      if (!name || !/^https?:\/\//i.test(url)) { showToast("請填名稱，網址需為 http:// 或 https:// 開頭"); return; }
+      $("link-name").value = ""; $("link-url").value = "";
+      await saveLinks([...LINKS, { name, url }]);
+    };
+  }
+  loadCalendarWidget().catch(() => {});
+  loadFeedsWidget().catch(() => {});
+  loadLinksWidget().catch(() => {});
 }
 
 // 最新情報：首頁顯示最近一筆【每日情報】記事。內文是 Routine 寫的固定格式純文字：
@@ -8145,6 +8443,7 @@ function init() {
   initPreviewLayout();
   if ($("btn-inbox-sticky")) $("btn-inbox-sticky").onclick = () => setInboxView("sticky");
   initHomeLayout();
+  initHomeWidgets();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
@@ -8319,7 +8618,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=214").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=215").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

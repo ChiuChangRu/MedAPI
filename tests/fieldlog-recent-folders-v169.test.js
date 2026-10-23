@@ -90,8 +90,10 @@ test("v210 首頁比照 PDCA：深色頁首、最新情報區塊、首頁區塊�
 test("v213 桌機首頁版面：一欄／兩欄＋拖曳，存伺服器；手機不套用", async () => {
   const worker = await read("../fieldlog/src/worker.js");
   assert.match(worker, /path === "\/home-layout"/);
-  assert.match(worker, /const ALLOWED = \["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"\]/,
-    "只接受已知區塊 id（v214 起含輸入與檢索）");
+  const allowed = worker.match(/const ALLOWED = \[([\s\S]*?)\];/)?.[1] || "";
+  for (const id of ["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"]) {
+    assert.match(allowed, new RegExp(`"${id}"`), `只接受已知區塊 id：缺 ${id}`);
+  }
   assert.match(html, /id="btn-layout-edit"/);
   assert.match(html, /id="layout-toolbar" hidden/);
   assert.match(html, /id="tools-panel"/);

@@ -59,6 +59,7 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
+import { cleanFeedList, cleanLinks, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
 import {
   canonicalFolderLocalName,
   findSiblingFolderNameConflict,
@@ -133,7 +134,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "214";
+const UI_VERSION = "215";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1744,11 +1745,95 @@ async function handleApi(request, env, url, identity = {}) {
   // 只列「還需要你看一眼」的東西，AI 自動歸類但還沒確認的一樣列進來——
   // 那正是設計 🤖 標記／confirm-filing 的目的，不能讓這批東西完全沒有
   // 入口，只能靠使用者剛好逛進那個資料夾才會發現。
+  // ---- 首頁小工具（v215）：Google 日曆、訂閱、常用網頁。設定存在 settings，
+  // 外部內容只在 Worker 端抓取並短暫快取在記憶體（同一個 isolate 內）。----
+  if (path.startsWith("/widgets/")) {
+    const getSetting = async (key) => (await db.prepare("SELECT value FROM settings WHERE key = ?").bind(key).first())?.value ?? null;
+    const putSetting = async (key, value) => db.prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    ).bind(key, value, now()).run();
+    const delSetting = async (key) => db.prepare("DELETE FROM settings WHERE key = ?").bind(key).run();
+    const cache = (globalThis.__widgetCache ||= new Map());
+    const cached = async (key, ttlMs, loader) => {
+      const hit = cache.get(key);
+      if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+      const value = await loader();
+      cache.set(key, { at: Date.now(), value });
+      return value;
+    };
+    const readJson = (raw, fallback) => { try { return JSON.parse(raw ?? "null") ?? fallback; } catch { return fallback; } };
+
+    if (path === "/widgets/calendar") {
+      const KEY = "widgets.calendar_url";
+      if (method === "PUT") {
+        const body = await request.json().catch(() => ({}));
+        if (body?.clear) { await delSetting(KEY); cache.delete("calendar"); return json({ configured: false }); }
+        const url = validCalendarUrl(body?.url);
+        if (!url) return bad("請貼上 Google 日曆「iCal 格式的私人網址」（https://calendar.google.com/calendar/ical/…/basic.ics）");
+        await putSetting(KEY, url);
+        cache.delete("calendar");
+        return json({ configured: true });
+      }
+      if (method !== "GET") return bad("不支援的方法", 405);
+      const url = await getSetting(KEY);
+      if (!url) return json({ configured: false, events: [] });
+      try {
+        const data = await cached("calendar", 5 * 60 * 1000, async () => {
+          const ics = await fetchText(url);
+          if (!/BEGIN:VCALENDAR/.test(ics)) throw new Error("讀到的內容不是日曆格式，請確認貼的是「iCal 格式的私人網址」");
+          const { from, to } = taipeiWindow(Date.now(), 14);
+          return eventsInRange(ics, from, to);
+        });
+        // 只回傳是否已設定，不把私人網址送回前端
+        return json({ configured: true, ...data, fetched_at: new Date(cache.get("calendar")?.at || Date.now()).toISOString() });
+      } catch (err) {
+        return json({ configured: true, events: [], error: `日曆讀取失敗：${err.message}` });
+      }
+    }
+
+    if (path === "/widgets/feeds") {
+      const KEY = "widgets.feeds";
+      if (method === "PUT") {
+        const body = await request.json().catch(() => ({}));
+        const feeds = cleanFeedList(body?.feeds);
+        const rejected = (Array.isArray(body?.feeds) ? body.feeds : []).length - feeds.length;
+        await putSetting(KEY, JSON.stringify(feeds));
+        return json({ feeds, rejected });
+      }
+      if (method !== "GET") return bad("不支援的方法", 405);
+      const feeds = cleanFeedList(readJson(await getSetting(KEY), []));
+      const results = await Promise.all(feeds.map(async (url) => {
+        try {
+          const parsed = await cached(`feed:${url}`, 30 * 60 * 1000, async () => parseFeed(await fetchText(url), 5));
+          return { url, title: parsed.title || new URL(url).hostname, items: parsed.items };
+        } catch (err) {
+          return { url, title: new URL(url).hostname, items: [], error: `讀取失敗：${err.message}` };
+        }
+      }));
+      return json({ feeds: results });
+    }
+
+    if (path === "/widgets/links") {
+      const KEY = "widgets.links";
+      if (method === "PUT") {
+        const body = await request.json().catch(() => ({}));
+        const links = cleanLinks(body?.links);
+        await putSetting(KEY, JSON.stringify(links));
+        return json({ links });
+      }
+      if (method !== "GET") return bad("不支援的方法", 405);
+      return json({ links: cleanLinks(readJson(await getSetting(KEY), [])) });
+    }
+    return bad("找不到小工具", 404);
+  }
+
   // 桌機首頁排版（v213）：一欄／兩欄與各區塊所在欄位、順序。存在 settings，
   // 所有桌機共用；手機不套用。只接受已知區塊 id，其餘一律丟掉，避免存進任意內容。
   if (path === "/home-layout" && (method === "GET" || method === "PUT")) {
     const KEY = "home.layout";
-    const ALLOWED = ["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"];
+    const ALLOWED = ["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details",
+      "sketch-panel", "calendar-panel", "feeds-panel", "links-panel"];
     const clean = (raw) => {
       const seen = new Set();
       const pick = (list) => (Array.isArray(list) ? list : [])
