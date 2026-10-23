@@ -81,8 +81,9 @@ body {
 
 .recent-folder-list {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+  padding: 4px 2px 6px;
 }
 
 .recent-folder-list > .sub {
@@ -473,15 +474,128 @@ body {
     min-height: 42px;
   }
 
-  .recent-folder-list {
-    grid-template-columns: 1fr;
-  }
-
-  .recent-folder-card {
-    padding: 9px 10px;
-  }
-
   .home-toolbar-files .folders-toolbar {
     flex-wrap: wrap;
   }
+}
+
+
+/* v205 便利貼：最近使用（目錄＋檔案）與待分類共用同一種紙片外觀。
+   顏色沿用資料夾色系分類（FOLDER_CATEGORY_META），右下角折角＋輕微傾斜，
+   讓「這是一張可以拿起來處理的紙」一眼可辨；減少動態時不傾斜。 */
+.sticky-note {
+  position: relative;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(27, 29, 28, .08), 0 6px 14px rgba(27, 29, 28, .10);
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.sticky-note::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 0 0 6px 0;
+  background: linear-gradient(135deg, rgba(0, 0, 0, .10) 0 50%, rgba(255, 255, 255, .7) 50% 100%);
+}
+.sticky-note:hover {
+  transform: rotate(0deg) translateY(-2px);
+  box-shadow: 0 2px 4px rgba(27, 29, 28, .10), 0 10px 20px rgba(27, 29, 28, .14);
+}
+
+.recent-folder-card.sticky-note {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 132px;
+  padding: 16px 12px 18px;
+  border: 0;
+  border-top: 5px solid var(--recent-accent, var(--accent));
+  background: var(--recent-bg, #FEF9C3);
+  text-align: center;
+}
+.recent-folder-card.sticky-note:hover {
+  border-color: var(--recent-accent, var(--accent));
+  background: var(--recent-bg, #FEF9C3);
+}
+.recent-folder-card.sticky-note .recent-folder-icon { font-size: 30px; line-height: 1; }
+.recent-folder-card.sticky-note .recent-folder-copy { align-items: center; width: 100%; }
+.recent-folder-card.sticky-note .recent-folder-copy strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.recent-folder-card.sticky-note .recent-folder-copy small { max-width: 100%; }
+
+/* 待分類便利貼：一律黃色，代表「還沒處理」 */
+#inbox-list.sticky-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+  padding: 4px 2px 6px;
+}
+#inbox-list.sticky-view .inbox-sticky {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 140px;
+  padding: 14px 14px 20px;
+  background: #FEF3A8;
+  border-top: 5px solid #CA8A04;
+  font-size: 13.5px;
+}
+#inbox-list.sticky-view .inbox-sticky:nth-child(even) { --tilt: 0.6deg; }
+#inbox-list.sticky-view .inbox-sticky:nth-child(odd) { --tilt: -0.6deg; }
+#inbox-list.sticky-view .inbox-sticky:hover { border-color: #CA8A04; }
+.inbox-sticky .sticky-icon { font-size: 22px; line-height: 1; }
+.inbox-sticky .entry-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: normal;
+}
+.inbox-sticky .entry-meta { color: #6B5B12; font-size: 11.5px; white-space: normal; }
+.inbox-sticky .sticky-ai {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .65);
+  color: #6D28D9;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.inbox-sticky .sticky-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.inbox-sticky .sticky-actions button {
+  padding: 4px 10px;
+  border: 1px solid rgba(0, 0, 0, .15);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .8);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.inbox-sticky .sticky-actions .sticky-confirm,
+.inbox-sticky .sticky-actions .entry-filing-accept { background: #15803D; border-color: #15803D; color: #fff; font-weight: 700; }
+
+@media (max-width: 719px) {
+  .recent-folder-list,
+  #inbox-list.sticky-view { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .recent-folder-card.sticky-note { min-height: 118px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sticky-note, .sticky-note:hover { transform: none; transition: none; }
 }
