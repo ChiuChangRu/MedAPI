@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "213";
+const APP_VERSION = "214";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -965,7 +965,12 @@ function initHomeSearch() {
   if (!input) return;
   const setActive = (active) => {
     resultsBox.hidden = !active;
-    mainSections.forEach((el) => { el.hidden = active; });
+    // 桌機排版（v214）把檢索放進欄位裡：只收起其他區塊，檢索與結果留在原位；
+    // 手機維持原本做法，整個收起上下兩個容器。
+    const inColumns = !!$("home-main-sections")?.querySelector(".home-cols");
+    if (inColumns && $("search-panel")) $("search-panel").after(resultsBox);
+    document.body.classList.toggle("home-searching", active && inColumns);
+    mainSections.forEach((el) => { el.hidden = active && !inColumns; });
     clearBtn.hidden = !input.value;
   };
   input.addEventListener("input", () => {
@@ -1675,8 +1680,9 @@ function inboxStickyHtml(e) {
 // 會占住最上面的位置，擠掉真正需要處理的內容。
 // ===== v213 桌機首頁版面：一欄／兩欄＋拖曳排序，排版存在伺服器（所有桌機共用）=====
 // 手機（窄於 HOME_LAYOUT_MIN_WIDTH）完全不套用，維持 index.html 原本的單欄順序。
-// 「輸入與草稿」「檢索」不在 #home-main-sections 裡，固定在最上面不參與排版。
-const HOME_LAYOUT_SECTIONS = ["recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"];
+// v214 起除了頁首，所有區塊（含「輸入與草稿」「檢索」）都可以移動。
+const HOME_LAYOUT_SECTIONS = ["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details"];
+const HOME_LAYOUT_TOP_DEFAULT = ["input-panel", "search-panel"];
 const HOME_LAYOUT_DEFAULT = { columns: 1, left: [...HOME_LAYOUT_SECTIONS], right: [] };
 const HOME_LAYOUT_MIN_WIDTH = 1000;
 let HOME_LAYOUT = null;
@@ -1686,7 +1692,11 @@ function normalizeHomeLayout(raw) {
   const seen = new Set();
   const pick = (list) => (Array.isArray(list) ? list : []).filter((id) => HOME_LAYOUT_SECTIONS.includes(id) && !seen.has(id) && seen.add(id));
   const layout = { columns: Number(raw?.columns) === 2 ? 2 : 1, left: pick(raw?.left), right: pick(raw?.right) };
-  // 新增的區塊（或舊排版漏掉的）補到左欄最後，不會因為排版存檔而消失
+  // 新增的區塊（或舊排版漏掉的）補回去，不會因為排版存檔而消失：
+  // 輸入與草稿／檢索放最上面（v213 存的排版沒有它們），其他補到左欄最後
+  const missingTop = HOME_LAYOUT_TOP_DEFAULT.filter((id) => !seen.has(id));
+  missingTop.forEach((id) => seen.add(id));
+  layout.left.unshift(...missingTop);
   for (const id of HOME_LAYOUT_SECTIONS) if (!seen.has(id)) layout.left.push(id);
   if (layout.columns === 1) { layout.left = [...layout.left, ...layout.right]; layout.right = []; }
   return layout;
@@ -1704,6 +1714,12 @@ function applyHomeLayout() {
   if (!homeLayoutActive()) {
     // 手機：放回原本的順序（工具列之後、Wiki 檔案之前），拿掉欄容器
     if (cols) {
+      const top = $("home-main-top");
+      if (top && $("input-panel")) top.appendChild($("input-panel"));
+      const search = $("search-panel");
+      const results = $("home-search-results");
+      if (top && search) top.after(search);
+      if (search && results) search.after(results);
       const wiki = host.querySelector(".home-toolbar-files");
       const order = ["recent-folders-panel", "inbox-panel", "news-panel"];
       for (const id of order) { const el = $(id); if (el) host.insertBefore(el, wiki || null); }
@@ -1726,6 +1742,10 @@ function applyHomeLayout() {
   for (const id of layout.left) { const el = $(id); if (el) left.appendChild(el); }
   for (const id of layout.right) { const el = $(id); if (el) right.appendChild(el); }
   for (const el of sections) if (!el.parentElement?.classList.contains("home-col")) left.appendChild(el);
+  // 搜尋結果永遠緊接在檢索區塊後面，檢索被拖到哪裡結果就出現在哪裡
+  const search = $("search-panel");
+  const results = $("home-search-results");
+  if (search && results) search.after(results);
   $("layout-one")?.classList.toggle("active", layout.columns === 1);
   $("layout-two")?.classList.toggle("active", layout.columns === 2);
 }
@@ -1775,6 +1795,7 @@ function initHomeLayout() {
   });
   host.addEventListener("dragend", () => {
     dragging?.classList.remove("layout-dragging");
+    if ($("search-panel") && $("home-search-results")) $("search-panel").after($("home-search-results"));
     dragging = null;
     host.querySelectorAll(".home-col.layout-over").forEach((c) => c.classList.remove("layout-over"));
   });
@@ -8298,7 +8319,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=213").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=214").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");

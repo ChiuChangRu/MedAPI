@@ -747,3 +747,8 @@ details.layout-movable > summary::after {
 .home-cols.two #inbox-list .entry-main { flex: 1 1 calc(100% - 40px); min-width: 0; }
 .home-cols.two #inbox-list .entry-title { white-space: normal; }
 .home-cols.two #inbox-list .entry-secondary { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
+/* v214 搜尋中（桌機排版）：只留下檢索區塊與搜尋結果，其餘區塊與版面工具列先收起 */
+body.home-searching .home-col > *:not(#search-panel):not(#home-search-results),
+body.home-searching #layout-toolbar { display: none !important; }
+body.home-searching .home-cols.two { grid-template-columns: minmax(0, 1fr); }
+body.home-searching .home-col:not(:has(#search-panel)) { display: none; }

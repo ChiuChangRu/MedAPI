@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=213" />
-<link rel="stylesheet" href="home.css?v=213" />
+<link rel="stylesheet" href="style.css?v=214" />
+<link rel="stylesheet" href="home.css?v=214" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -62,7 +62,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=213">使用說明</a>
+        <a class="head-link" href="help.html?v=214">使用說明</a>
       </nav>
     </header>
 
@@ -77,7 +77,7 @@
          （搜尋框＋結果框）要留在外面，見下方說明。 -->
     <div id="home-main-top" class="home-main-grid">
       <!-- 第一列：輸入與草稿 -->
-      <section class="home-section home-input-section" aria-labelledby="home-input-title">
+      <section class="home-section home-input-section" id="input-panel" aria-labelledby="home-input-title">
         <div class="home-section-head">
           <h2 class="home-section-title" id="home-input-title">輸入與草稿</h2>
         </div>
@@ -105,7 +105,7 @@
          整個空白（2026-08-19 使用者回報「搜尋文字內容會整個反白沒東西」）。
          現在跟 home-main-top／home-main-sections 拉成同一層的兄弟元素，
          各自獨立顯示／隱藏，不會互相拖累。 -->
-    <section class="home-section home-search-section">
+    <section class="home-section home-search-section" id="search-panel">
       <h2 class="home-section-title">檢索</h2>
       <div class="home-search-bar">
         <span class="home-search-icon" aria-hidden="true"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg></span>
@@ -593,10 +593,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=213"></script>
+<script src="pdf-editor.js?v=214"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=213"></script>
+<script src="richtext-editor.js?v=214"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -607,10 +607,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=213"></script>
-<script src="inspector.js?v=213"></script>
+<script src="file-selection.js?v=214"></script>
+<script src="inspector.js?v=214"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=213"></script>
+<script src="app.js?v=214"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
