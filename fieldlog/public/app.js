@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "215";
+const APP_VERSION = "216";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -3054,7 +3054,7 @@ function recordGroupCardHtml(e, atts) {
   return `<div class="record-group-card explorer-item" data-id="${e.id}" data-recording="${counts.audio ? "1" : "0"}">
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
-    <small>${esc(localDateTimeShort(e.created_at))}｜📎${atts.length}${summary ? `｜${summary}` : ""}</small>
+    <small class="record-group-meta"><span class="record-group-date">${esc(localDateTimeShort(e.created_at))}</span><span class="record-group-summary">｜📎${atts.length}${summary ? `｜${summary}` : ""}</span></small>
     ${status ? `<small class="recording-status recording-card-status ${status.tone}">${esc(status.label)}</small>` : ""}
     ${counts.audio
       ? `<button class="record-group-manage" type="button" data-id="${e.id}" title="錄音操作" aria-label="錄音操作">⋯</button>`
