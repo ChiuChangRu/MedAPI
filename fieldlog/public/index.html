@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=215" />
-<link rel="stylesheet" href="home.css?v=215" />
+<link rel="stylesheet" href="style.css?v=216" />
+<link rel="stylesheet" href="home.css?v=216" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -52,17 +52,13 @@
         aria-expanded="true" title="展開左欄">▶</button>
 <div class="container">
   <div id="view-home">
-    <!-- v210 頁首比照 PDCA 品質輔助系統：深色帶＋銅色小標＋襯線標題，底部三色條 -->
+    <!-- v216 拿掉深色標題帶與「隨身記」字樣（辦公場合不顯示），只留右側三個按鈕 -->
     <header class="home-app-head masthead">
-      <div class="masthead-copy">
-        <span class="masthead-eyebrow">Medical Device Field Notebook</span>
-        <div class="masthead-title">MyWiki 隨身記</div>
-        <small class="masthead-sub">輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      </div>
       <nav class="masthead-actions" aria-label="其他頁面">
+        <small id="app-version" class="app-version"></small>
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=215">使用說明</a>
+        <a class="head-link" href="help.html?v=216">使用說明</a>
       </nav>
     </header>
 
@@ -531,7 +527,7 @@
      跑完前畫面會空白一段時間，容易讓人以為當機。用百分比讓使用者知道還在動。 -->
 <div class="overlay boot-loading-overlay open" id="boot-loading-overlay" role="status" aria-live="polite" aria-busy="true">
   <div class="modal narrow boot-loading-box">
-    <div class="boot-loading-title">🎒 正在開啟 MyWiki</div>
+    <div class="boot-loading-title">正在開啟 MyWiki</div>
     <p class="boot-loading-stage" id="boot-loading-stage">準備載入程式…</p>
     <div class="usage-bar boot-loading-bar" role="progressbar" aria-label="MyWiki 載入進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="3">
       <i id="boot-loading-bar-fill" style="width:3%"></i>
@@ -563,8 +559,7 @@
 <!-- 登入 -->
 <div class="overlay" id="login-overlay">
   <div class="modal narrow">
-    <h2>🎒 隨身記</h2>
-    <p class="sub">輸入 PIN 碼進入。</p>
+    <h2>輸入 PIN 碼</h2>
     <input type="password" id="login-pin" placeholder="PIN" />
     <div class="modal-actions"><button class="btn primary" id="btn-login">進入</button></div>
     <p class="sub" id="login-error" style="color:#b91c1c; display:none;"></p>
@@ -675,10 +670,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=215"></script>
+<script src="pdf-editor.js?v=216"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=215"></script>
+<script src="richtext-editor.js?v=216"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -689,10 +684,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=215"></script>
-<script src="inspector.js?v=215"></script>
+<script src="file-selection.js?v=216"></script>
+<script src="inspector.js?v=216"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=215"></script>
+<script src="app.js?v=216"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

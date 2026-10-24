@@ -622,28 +622,17 @@ body {
 body { background: var(--bg); }
 #view-home { gap: 18px; }
 
-.home-app-head.masthead {
-  position: relative; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
-  gap: 14px 24px; padding: 22px 26px 30px; border-radius: 14px; overflow: hidden;
-  background: #1F2933; color: #F5F1EA;
-}
-.home-app-head.masthead::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
-  background: linear-gradient(90deg, #4F7F7A 0 40%, #B87333 40% 70%, #F5F1EA 70% 85%, #4F7F7A 85%);
-}
-.masthead-copy { display: grid; gap: 2px; min-width: 0; }
-.masthead-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #D8995F; }
-.masthead-title { font-family: Georgia, "Noto Serif TC", "Songti TC", serif; font-size: clamp(24px, 3.6vw, 34px); font-weight: 500; line-height: 1.15; color: #F5F1EA; }
-.masthead-sub { color: #C9C2B6; font-size: 13px; }
-.masthead-sub .app-version { color: #A9B3BC; }
-.masthead-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* v216 頁首只剩右側按鈕：不要深色帶、標題與三色條 */
+.home-app-head.masthead { display: flex; justify-content: flex-end; }
+.masthead-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.masthead-actions .app-version { color: var(--text-muted); font-size: 12px; }
 .home-app-head.masthead .head-link,
 .home-app-head.masthead #btn-deleted-items {
-  padding: 6px 14px; border: 1px solid rgba(245, 241, 234, .45); border-radius: 8px;
-  background: transparent; color: #F5F1EA; font: inherit; font-size: 14px; font-weight: 700; text-decoration: none; cursor: pointer;
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: #fff; color: var(--text); font: inherit; font-size: 14px; font-weight: 700; text-decoration: none; cursor: pointer;
 }
 .home-app-head.masthead .head-link:hover,
-.home-app-head.masthead #btn-deleted-items:hover { background: rgba(245, 241, 234, .12); }
+.home-app-head.masthead #btn-deleted-items:hover { background: #F5F1EA; }
 
 .home-section { padding: 20px 22px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: none; }
 .home-section.tinted { background: #CFDEDB; border-color: #A9C5C0; }
@@ -703,7 +692,6 @@ body { background: var(--bg); }
 .news-raw { margin: 0; white-space: pre-wrap; font: inherit; font-size: 13.5px; }
 
 @media (max-width: 719px) {
-  .home-app-head.masthead { padding: 18px 18px 26px; border-radius: 12px; }
   .home-section { padding: 16px; }
   .home-section-title { font-size: 18px; }
 }
