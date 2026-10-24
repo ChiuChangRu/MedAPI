@@ -37,6 +37,7 @@
  *   MEDTEC_URL   — 參展系統網址（如 https://medtec-2026.xxx.workers.dev）
  */
 
+import { handleIsland } from "./island.js";
 import { stripPdfMetadata } from "./textFold.js";
 import { authorizeMcpRequest, handleOAuthRoute, oauthUnauthorized } from "./oauth.js";
 // 不指定 /workerd 子路徑：package.json 的 conditional exports 會依實際 runtime
@@ -1937,6 +1938,7 @@ async function handleMcp(request, env, auth = {}) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/island") return handleIsland(request, env, authorizeMcpRequest);
     const oauthResponse = await handleOAuthRoute(request, env);
     if (oauthResponse) return oauthResponse;
     if (url.pathname === "/mcp") {
@@ -1984,3 +1986,4 @@ export default {
     return json({ error: "not found" }, 404);
   },
 };
+

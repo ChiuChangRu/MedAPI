@@ -1091,6 +1091,24 @@ async function boot(preloadedFolders = null) {
   syncPendingFiles();
   setBootProgress(100, "載入完成");
   setTimeout(hideBootProgress, 180);
+  await openLinkedKnowledgeRecord();
+}
+
+let linkedKnowledgeRecordOpened = false;
+async function openLinkedKnowledgeRecord() {
+  if (linkedKnowledgeRecordOpened) return;
+  const params = new URLSearchParams(location.search);
+  const entryId = Number(params.get("entry"));
+  const folderId = Number(params.get("folder"));
+  if (!Number.isSafeInteger(entryId) || !Number.isSafeInteger(folderId)) return;
+  if (entryId <= 0 && folderId <= 0) return;
+  linkedKnowledgeRecordOpened = true;
+  try {
+    if (entryId > 0) await openEntry(entryId);
+    else if (FOLDERS.some(f => Number(f.id) === folderId)) await openFolder(folderId);
+  } catch {
+    showToast("無法開啟指定紀錄，請在知識庫內查詢。");
+  }
 }
 
 async function loadFolders(preloadedFolders = null) {
@@ -8618,7 +8636,7 @@ function init() {
   window.addEventListener("beforeunload", guardRecordingNavigation);
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("online", syncPendingFiles);
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=215").then((registration) => registration.update()).catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js?v=island-links").then((registration) => registration.update()).catch(() => {});
 
   showBootProgress("檢查登入狀態…");
   setBootProgress(8, "連線到 MyWiki…");
@@ -8631,3 +8649,4 @@ function init() {
 }
 
 init();
+
