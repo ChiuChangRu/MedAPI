@@ -2245,3 +2245,100 @@ body.reader-fullscreen .folder-preview {
   .desktop-tree-folder-icon { display: inline-block; width: 9px; height: 9px; border: 1.5px solid var(--side-muted, #A9B3BC); border-radius: 2px; }
   .desktop-tree-row.active .desktop-tree-folder-icon { border-color: var(--side-copper, #D8995F); background: var(--side-copper, #D8995F); }
 }
+
+/* v216 資料夾「詳細」模式：檔案列、錄音／資料包卡、筆記列三種結構原本各自排版，
+   欄位對不齊，預覽欄打開後名稱還會被擠成一個字。這裡統一成同一組欄位：
+   把手｜圖示｜名稱｜日期｜狀態｜操作×3。清單寬度不足 720px（例如右側預覽
+   開著）時改兩行：名稱獨佔第一行，日期與狀態移到第二行，操作鈕固定在右側。
+   前面累積了多層舊覆寫，這裡用 #folder-entries 起頭確保這組規則最後生效。 */
+@media (min-width: 720px) {
+  #folder-entries.details-view { container-type: inline-size; container-name: folder-details; }
+  #folder-entries.details-view > .child-folder-card,
+  #folder-entries.details-view > .folder-file-row,
+  #folder-entries.details-view > .record-group-card,
+  #folder-entries.details-view > .entry-row {
+    display: grid; position: relative; min-height: 44px; padding: 5px 8px; flex-wrap: nowrap;
+    grid-template-columns: 20px 24px minmax(0, 1fr) 92px 112px 44px 44px 32px;
+    grid-template-areas: "drag icon name date status a1 a2 a3";
+    grid-template-rows: auto; align-items: center; column-gap: 8px; row-gap: 2px;
+  }
+  #folder-entries.details-view > * > * {
+    position: static; transform: none; margin: 0; min-width: 0; max-width: none; flex: none;
+  }
+  /* 把手 */
+  #folder-entries.details-view > .entry-row > .entry-drag,
+  #folder-entries.details-view > .record-group-card > .record-group-drag {
+    grid-area: drag; width: 20px; padding: 0; text-align: center;
+  }
+  /* 圖示 */
+  #folder-entries.details-view > .folder-file-row > .folder-file-icon,
+  #folder-entries.details-view > .child-folder-card > span,
+  #folder-entries.details-view > .record-group-card > span { grid-area: icon; font-size: 18px; text-align: center; }
+  #folder-entries.details-view > .entry-row::before {
+    content: ""; grid-area: icon; justify-self: center; width: 12px; height: 15px;
+    border: 1.5px solid var(--text-muted); border-radius: 2px; opacity: .55;
+  }
+  /* 名稱：一律單行省略 */
+  #folder-entries.details-view > .folder-file-row > .folder-file-name,
+  #folder-entries.details-view > .child-folder-card > strong,
+  #folder-entries.details-view > .record-group-card > strong,
+  #folder-entries.details-view > .entry-row > .entry-main {
+    grid-area: name; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    -webkit-line-clamp: unset; font-size: 14px;
+  }
+  #folder-entries.details-view > .entry-row > .entry-main { display: flex; align-items: center; gap: 4px; }
+  #folder-entries.details-view > .entry-row .entry-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #folder-entries.details-view > .entry-row .entry-rename { flex: none; }
+  /* 日期（筆記列的 AI 分類標籤也放這裡，所以橫跨日期＋狀態兩欄） */
+  #folder-entries.details-view > .folder-file-row > .folder-file-meta,
+  #folder-entries.details-view > .record-group-card > .record-group-meta {
+    grid-area: date; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 12px; color: var(--text-muted);
+  }
+  #folder-entries.details-view .record-group-summary { display: none; }
+  #folder-entries.details-view > .entry-row > .entry-secondary {
+    grid-area: auto; grid-row: 1; grid-column: date / span 2;
+    display: flex; align-items: center; gap: 6px;
+    white-space: nowrap; overflow: hidden; font-size: 12px;
+  }
+  /* 狀態 */
+  #folder-entries.details-view > .record-group-card > .recording-card-status {
+    grid-area: status; justify-self: start;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* 操作：同一欄位、同一尺寸 */
+  #folder-entries.details-view > .entry-row > .entry-move,
+  #folder-entries.details-view > .child-folder-card > .child-folder-move,
+  #folder-entries.details-view > .record-group-card > .record-group-rename { grid-area: a1; }
+  #folder-entries.details-view > .entry-row > .entry-merge,
+  #folder-entries.details-view > .child-folder-card > .child-folder-edit,
+  #folder-entries.details-view > .record-group-card > .record-group-move,
+  #folder-entries.details-view > .folder-file-row > .folder-file-delete { grid-area: a2; }
+  #folder-entries.details-view > .entry-row > .entry-del,
+  #folder-entries.details-view > .record-group-card > .record-group-del,
+  #folder-entries.details-view > .record-group-card > .record-group-manage,
+  #folder-entries.details-view > .folder-file-row > .folder-file-manage { grid-area: a3; }
+  #folder-entries.details-view > * > :is(.entry-move, .entry-merge, .child-folder-move, .child-folder-edit, .record-group-rename, .record-group-move, .folder-file-delete) {
+    justify-self: stretch; width: auto; height: 30px; padding: 0 2px; font-size: 12px; opacity: 1;
+  }
+  #folder-entries.details-view > * > :is(.entry-del, .record-group-del, .record-group-manage, .folder-file-manage) {
+    justify-self: stretch; width: 32px; height: 30px; padding: 0; font-size: 15px; opacity: 1;
+  }
+}
+@container folder-details (max-width: 719px) {
+  #folder-entries.details-view > .child-folder-card,
+  #folder-entries.details-view > .folder-file-row,
+  #folder-entries.details-view > .record-group-card,
+  #folder-entries.details-view > .entry-row {
+    grid-template-columns: 20px 24px minmax(0, 1fr) auto 40px 40px 32px;
+    grid-template-areas:
+      "drag icon name name   name name name"
+      "drag icon date status a1   a2   a3";
+    column-gap: 6px;
+  }
+  #folder-entries.details-view > .entry-row > .entry-secondary { grid-row: 2; grid-column: date / span 2; }
+  /* 錄音卡第二行只有「⋯」，狀態可以延伸到空著的 a1／a2，日期才不會被擠掉 */
+  #folder-entries.details-view > .record-group-card > .recording-card-status {
+    grid-area: auto; grid-row: 2; grid-column: status / span 3; justify-self: end; font-size: 11px; padding: 2px 7px;
+  }
+}
