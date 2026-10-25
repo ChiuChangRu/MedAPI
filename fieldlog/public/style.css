@@ -1317,10 +1317,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .folder-content-list.list-view { gap: 2px; }
 .folder-content-list.list-view > .explorer-item { min-height: 38px; }
 .folder-content-list.details-view > .explorer-item { min-height: 62px; }
+/* 清單模式下，子資料夾／單檔／錄音資料包／純文字筆記四種卡片混在同一份
+   清單裡，圖示到名稱的距離必須完全一致，否則上下行的標題文字會對不齊
+   （2026-10-02 實際回報「文件目錄很亂，對齊亂七八糟」）。統一規則：
+   每一列都是「padding 10px ＋ 24px 寬的圖示欄 ＋ 7px 間距 ＋ 名稱」，
+   圖示本身一律 18px，不管底層是用 flex 還是 grid 排版，算出來的
+   文字起始位置都要一樣。 */
 .folder-content-list.list-view > .child-folder-card,
 .folder-content-list.list-view > .record-group-card { display: flex; align-items: center; gap: 7px; padding: 6px 10px; }
 .folder-content-list.list-view > .child-folder-card > span,
-.folder-content-list.list-view > .record-group-card > span { flex: none; font-size: 18px; }
+.folder-content-list.list-view > .record-group-card > span { flex: none; width: 24px; font-size: 18px; text-align: center; }
 .folder-content-list.list-view > .child-folder-card > strong,
 .folder-content-list.list-view > .record-group-card > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder-content-list.list-view > .child-folder-card > small,
@@ -1333,16 +1339,26 @@ hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .folder-content-list.list-view .record-group-del,
 .folder-content-list.list-view .record-group-manage { display: none; }
 .folder-content-list.list-view > .folder-file-row { grid-template-columns: 24px minmax(0, 1fr); gap: 7px; padding: 6px 10px; }
+.folder-content-list.list-view > .folder-file-row .folder-file-icon { font-size: 18px; }
 .folder-content-list.list-view > .folder-file-row .folder-file-meta,
 .folder-content-list.list-view > .folder-file-row .folder-file-delete,
 .folder-content-list.list-view > .folder-file-row .folder-file-manage { display: none; }
-.folder-content-list.list-view > .entry-row { min-height: 38px; padding: 6px 10px; }
+.folder-content-list.list-view > .entry-row { min-height: 38px; padding: 6px 10px; gap: 7px; }
 .folder-content-list.list-view > .entry-row .entry-meta,
 .folder-content-list.list-view > .entry-row .entry-secondary,
 .folder-content-list.list-view > .entry-row .entry-drag,
 .folder-content-list.list-view > .entry-row .entry-move,
 .folder-content-list.list-view > .entry-row .entry-merge,
 .folder-content-list.list-view > .entry-row .entry-del { display: none; }
+/* 筆記本來沒有圖示，資料夾／檔案／錄音都有，混在同一份清單裡才會看起來
+   標題忽左忽右。只在資料夾清單（explorer-item）補一個同寬的圖示，別的
+   畫面（例如首頁「待處理」）沿用的是同一支 entryRowHtml()，但沒傳
+   explorer:true，不會長出這個圖示，不受影響。 */
+.entry-explorer-icon { display: none; }
+.folder-content-list.list-view > .entry-row > .entry-explorer-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: 24px; font-size: 18px;
+}
 .folder-content-list.details-view { gap: 0; border-top: 1px solid var(--border); }
 .folder-content-list.details-view > .explorer-item {
   border-radius: 0; border-width: 0 0 1px; box-shadow: none;

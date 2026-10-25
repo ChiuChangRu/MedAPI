@@ -2305,7 +2305,14 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   // 資料夾內頁已由標題／麵包屑清楚標示目前位置，不要在每一筆下面重複一次路徑。
   // 最近作業與待分類仍要顯示位置，否則使用者看不出記事現在放在哪裡。
   const location = explorer ? "" : `<span class="entry-where">${esc(entryLocationLabel(e))}</span>`;
+  // 資料夾內頁跟子資料夾／檔案／錄音資料包混在同一份清單裡，那三種卡片在
+  // 清單模式都是「圖示＋名稱」開頭、圖示佔同樣寬度，筆記卻完全沒有圖示，
+  // 標題硬是比別行靠左一大截，清單看起來上下不齊（2026-10-02 實際回報）。
+  // 補一個跟其他三種圖示同寬的筆記圖示，只在資料夾清單（explorer）出現，
+  // 不影響首頁「待處理」等其他沿用 .entry-row 的畫面。
+  const explorerIcon = explorer ? `<span class="entry-explorer-icon">🗒️</span>` : "";
   return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
+    ${explorerIcon}
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
     <span class="entry-main"><span class="entry-title">${esc(e.title || "（未命名）")}</span>
       <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/></svg></button>
