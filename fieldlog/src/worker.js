@@ -59,7 +59,7 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
-import { cleanFeedList, cleanLinks, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
+import { cleanFeedList, cleanLinks, cleanTodos, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
 import {
   canonicalFolderLocalName,
   findSiblingFolderNameConflict,
@@ -134,7 +134,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "216";
+const UI_VERSION = "217";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1825,6 +1825,17 @@ async function handleApi(request, env, url, identity = {}) {
       if (method !== "GET") return bad("不支援的方法", 405);
       return json({ links: cleanLinks(readJson(await getSetting(KEY), [])) });
     }
+    if (path === "/widgets/todos") {
+      const KEY = "widgets.todos";
+      if (method === "PUT") {
+        const body = await request.json().catch(() => ({}));
+        const todos = cleanTodos(body?.todos);
+        await putSetting(KEY, JSON.stringify(todos));
+        return json({ todos });
+      }
+      if (method !== "GET") return bad("不支援的方法", 405);
+      return json({ todos: cleanTodos(readJson(await getSetting(KEY), [])) });
+    }
     return bad("找不到小工具", 404);
   }
 
@@ -1833,7 +1844,7 @@ async function handleApi(request, env, url, identity = {}) {
   if (path === "/home-layout" && (method === "GET" || method === "PUT")) {
     const KEY = "home.layout";
     const ALLOWED = ["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel", "tools-panel", "usage-details",
-      "sketch-panel", "calendar-panel", "feeds-panel", "links-panel"];
+      "sketch-panel", "calendar-panel", "feeds-panel", "links-panel", "todo-panel"];
     const clean = (raw) => {
       const seen = new Set();
       const pick = (list) => (Array.isArray(list) ? list : [])
