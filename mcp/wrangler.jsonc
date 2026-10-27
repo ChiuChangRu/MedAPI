@@ -31,6 +31,12 @@
       "binding": "DB_MEDTEC",
       "database_name": "medtec-2026",
       "database_id": "bbb39534-bcf7-45b3-b068-60be5c3b198b"
+    },
+    {
+      // PDCA品質輔助系統（DMAIC_02 medqs）匿名使用紀錄；獨立一庫，不碰生產資料
+      "binding": "DB_PDCA",
+      "database_name": "pdca-usage",
+      "database_id": "ba29a2c8-50f1-4699-9639-fedfba7a2b97"
     }
   ],
   "services": [
