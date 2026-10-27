@@ -879,3 +879,14 @@ body.home-layout-editing .sketch-canvas { pointer-events: none; }
 .home-app-head.masthead .home-input-section .cap-tile { box-shadow: 0 4px 0 rgba(90, 66, 18, .45); }
 .home-app-head.masthead .home-input-section .cap-tile:hover { box-shadow: 0 7px 0 rgba(90, 66, 18, .45); }
 .home-app-head.masthead .home-input-section .cap-tile:active { box-shadow: 0 2px 0 rgba(90, 66, 18, .45); }
+
+/* v220 配色「B 霧綠森林」：頁首改霧灰綠底＋深綠字；粉彩按鈕加白框，避免和淺色底糊在一起 */
+.home-app-head.masthead { background: #B9D0BE; color: #24382B; }
+.home-app-head.masthead .head-link,
+.home-app-head.masthead #btn-deleted-items { color: #24382B; border-color: rgba(36, 56, 43, .5); background: rgba(255, 255, 255, .38); }
+.home-app-head.masthead .head-link:hover,
+.home-app-head.masthead #btn-deleted-items:hover { background: rgba(255, 255, 255, .7); }
+.home-app-head.masthead .app-version { color: #4A5E50; }
+.home-app-head.masthead .home-input-section .cap-tile { outline: 2px solid rgba(255, 255, 255, .75); box-shadow: 0 4px 0 rgba(40, 80, 55, .30); }
+.home-app-head.masthead .home-input-section .cap-tile:hover { box-shadow: 0 7px 0 rgba(40, 80, 55, .30); }
+.home-app-head.masthead .home-input-section .cap-tile:active { box-shadow: 0 2px 0 rgba(40, 80, 55, .30); }

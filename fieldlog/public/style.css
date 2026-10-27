@@ -2342,3 +2342,29 @@ body.reader-fullscreen .folder-preview {
     grid-area: auto; grid-row: 2; grid-column: status / span 3; justify-self: end; font-size: 11px; padding: 2px 7px;
   }
 }
+
+/* ===== v220 配色「B 霧綠森林」：桌機側欄改淺灰綠底＋深綠墨色字（取代 v209 深藍灰）；頁面底色改霧白綠 ===== */
+:root { --bg: #F3F5F0; }
+@media (min-width: 720px) {
+  .desktop-explorer-nav {
+    --side-bg: #E2EAE2; --side-panel: #D5E1D6; --side-hover: rgba(40, 70, 50, .07);
+    --side-active: #C6D8C9; --side-text: #2F3E35; --side-muted: #65786B; --side-copper: #4F7F6A;
+    --side-line: rgba(40, 70, 50, .15);
+    border-right-color: #C9D6CA;
+  }
+  .desktop-explorer-title { color: #24382B; }
+  .desktop-explorer-nav .desktop-sidebar-control:hover { color: #24382B; }
+  .desktop-sidebar-open { background: #E2EAE2; border-color: #C9D6CA; color: #2F3E35; }
+  .desktop-sidebar-open:hover { background: #C6D8C9; color: #24382B; }
+  .desktop-explorer-nav .desktop-shortcut.active,
+  .desktop-explorer-nav .desktop-tree-row.active { color: #1F3326; }
+  .desktop-tree-section-head { color: #24382B; box-shadow: inset 3px 0 0 var(--section-accent); }
+  .desktop-tree-section-head:hover { background: #C6D8C9; }
+  .desktop-tree-section-add { background: rgba(40, 70, 50, .08); }
+  .desktop-tree-section-add:hover { background: rgba(40, 70, 50, .16); }
+  .desktop-tree-section.drop-target, .desktop-tree-row.drop-target { background: rgba(79, 127, 106, .16); }
+  .desktop-tree-toggle { background: rgba(40, 70, 50, .07); color: #4A5E50; }
+  .desktop-tree-toggle:hover { background: rgba(40, 70, 50, .15); color: #1F3326; }
+  .desktop-tree-empty { color: #7A8B7F; }
+  .desktop-tree-section-icon { background: var(--section-accent); }
+}
