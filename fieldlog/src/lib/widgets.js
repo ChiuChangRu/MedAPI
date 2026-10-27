@@ -34,6 +34,34 @@ export function validFeedUrl(raw) {
 }
 
 /** 常用網頁：名稱 1–60 字、網址 http/https、最多 30 筆，重複網址去掉 */
+/**
+ * 首頁待辦清單：整份清單一次存讀。只保留已知欄位並限制長度與筆數，
+ * 避免任意內容寫進 settings。entry_id 指向來源記事（例如會議錄音的 AI 彙整）。
+ */
+export function cleanTodos(list) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(list) ? list : []) {
+    const text = String(item?.text || "").trim().slice(0, 300);
+    if (!text) continue;
+    let id = String(item?.id || "").trim().slice(0, 40);
+    if (!id || seen.has(id)) id = `t${Date.now().toString(36)}${out.length}`;
+    seen.add(id);
+    const entryId = Number(item?.entry_id);
+    out.push({
+      id,
+      text,
+      done: item?.done === true,
+      group: String(item?.group || "").trim().slice(0, 60),
+      entry_id: Number.isInteger(entryId) && entryId > 0 ? entryId : null,
+      created_at: String(item?.created_at || "").slice(0, 30),
+      done_at: item?.done === true ? String(item?.done_at || "").slice(0, 30) : "",
+    });
+    if (out.length >= 200) break;
+  }
+  return out;
+}
+
 export function cleanLinks(list) {
   const out = [];
   const seen = new Set();

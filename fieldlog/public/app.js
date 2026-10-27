@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "216";
+const APP_VERSION = "217";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1699,7 +1699,7 @@ function inboxStickyHtml(e) {
 // ===== v213 桌機首頁版面：一欄／兩欄＋拖曳排序，排版存在伺服器（所有桌機共用）=====
 // 手機（窄於 HOME_LAYOUT_MIN_WIDTH）完全不套用，維持 index.html 原本的單欄順序。
 // v214 起除了頁首，所有區塊（含「輸入與草稿」「檢索」）都可以移動。
-const HOME_LAYOUT_SECTIONS = ["input-panel", "search-panel", "recent-folders-panel", "inbox-panel", "news-panel",
+const HOME_LAYOUT_SECTIONS = ["input-panel", "search-panel", "todo-panel", "recent-folders-panel", "inbox-panel", "news-panel",
   "sketch-panel", "calendar-panel", "feeds-panel", "links-panel", "tools-panel", "usage-details"];
 const HOME_LAYOUT_TOP_DEFAULT = ["input-panel", "search-panel"];
 const HOME_LAYOUT_DEFAULT = { columns: 1, left: [...HOME_LAYOUT_SECTIONS], right: [] };
@@ -1716,6 +1716,12 @@ function normalizeHomeLayout(raw) {
   const missingTop = HOME_LAYOUT_TOP_DEFAULT.filter((id) => !seen.has(id));
   missingTop.forEach((id) => seen.add(id));
   layout.left.unshift(...missingTop);
+  // v217 待辦清單：舊排版沒有它時放在檢索下面，不要沉到最底
+  if (!seen.has("todo-panel")) {
+    seen.add("todo-panel");
+    const at = layout.left.indexOf("search-panel");
+    layout.left.splice(at >= 0 ? at + 1 : 0, 0, "todo-panel");
+  }
   for (const id of HOME_LAYOUT_SECTIONS) if (!seen.has(id)) layout.left.push(id);
   if (layout.columns === 1) { layout.left = [...layout.left, ...layout.right]; layout.right = []; }
   return layout;
@@ -1740,7 +1746,7 @@ function applyHomeLayout() {
       if (top && search) top.after(search);
       if (search && results) search.after(results);
       const wiki = host.querySelector(".home-toolbar-files");
-      const order = ["recent-folders-panel", "inbox-panel", "news-panel", "sketch-panel", "calendar-panel", "feeds-panel", "links-panel"];
+      const order = ["todo-panel", "recent-folders-panel", "inbox-panel", "news-panel", "sketch-panel", "calendar-panel", "feeds-panel", "links-panel"];
       for (const id of order) { const el = $(id); if (el) host.insertBefore(el, wiki || null); }
       for (const id of ["tools-panel", "usage-details"]) { const el = $(id); if (el) host.appendChild(el); }
       cols.remove();
@@ -2120,6 +2126,67 @@ async function saveLinks(list) {
   } catch (err) { showToast("常用網頁儲存失敗：" + err.message); }
 }
 
+// 首頁待辦清單（v217）：整份存在 settings 的 widgets.todos。同一個 group
+// 的項目排在一起，group 有來源記事時標題可點開那筆記事（例如會議錄音的 AI 彙整）。
+let TODOS = [];
+function renderTodos() {
+  const wrap = $("todo-list");
+  if (!wrap) return;
+  const open = TODOS.filter((t) => !t.done).length;
+  $("todo-count").textContent = TODOS.length ? `${open} 項未完成／共 ${TODOS.length} 項` : "";
+  $("todo-clear-done").hidden = !TODOS.some((t) => t.done);
+  if (!TODOS.length) {
+    wrap.innerHTML = `<p class="sub">目前沒有待辦。在下方輸入後按 Enter 新增。</p>`;
+    return;
+  }
+  const groups = [];
+  for (const t of TODOS) {
+    let g = groups.find((x) => x.name === t.group);
+    if (!g) groups.push(g = { name: t.group, entryId: t.entry_id, items: [] });
+    if (!g.entryId && t.entry_id) g.entryId = t.entry_id;
+    g.items.push(t);
+  }
+  wrap.innerHTML = groups.map((g) => {
+    // 未完成在上、已完成沉到組內最下面，順序保持原本加入的先後
+    const items = [...g.items.filter((t) => !t.done), ...g.items.filter((t) => t.done)];
+    const left = g.items.filter((t) => !t.done).length;
+    const head = g.name
+      ? `<div class="todo-group-head">${g.entryId
+        ? `<button type="button" class="todo-group-link" data-entry="${g.entryId}" title="開啟來源記事">${esc(g.name)}</button>`
+        : `<strong>${esc(g.name)}</strong>`}<small>${left ? `剩 ${left} 項` : "全部完成"}</small></div>`
+      : "";
+    return `<div class="todo-group">${head}<ul>${items.map((t) => `<li class="todo-item${t.done ? " done" : ""}">
+      <label><input type="checkbox" data-todo="${esc(t.id)}"${t.done ? " checked" : ""} /><span>${esc(t.text)}</span></label>
+      <button type="button" class="todo-del" data-del-todo="${esc(t.id)}" title="刪除這一項" aria-label="刪除這一項"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </li>`).join("")}</ul></div>`;
+  }).join("");
+  wrap.querySelectorAll("[data-todo]").forEach((box) => box.onchange = () => {
+    const at = new Date().toISOString();
+    saveTodos(TODOS.map((t) => t.id === box.dataset.todo ? { ...t, done: box.checked, done_at: box.checked ? at : "" } : t));
+  });
+  wrap.querySelectorAll("[data-del-todo]").forEach((b) => b.onclick = () => saveTodos(TODOS.filter((t) => t.id !== b.dataset.delTodo)));
+  wrap.querySelectorAll("[data-entry]").forEach((b) => b.onclick = () => openEntry(Number(b.dataset.entry)).catch((err) => showToast("開啟失敗：" + err.message)));
+}
+
+async function loadTodosWidget() {
+  try { TODOS = (await api("/widgets/todos")).todos || []; }
+  catch (err) { $("todo-list").innerHTML = `<p class="sub">待辦清單載入失敗：${esc(err.message)}</p>`; return; }
+  renderTodos();
+}
+
+async function saveTodos(list) {
+  // 先更新畫面，勾選不用等網路；失敗時重新讀回伺服器上的版本
+  TODOS = list;
+  renderTodos();
+  try {
+    TODOS = (await api("/widgets/todos", { method: "PUT", body: JSON.stringify({ todos: list }) })).todos || [];
+    renderTodos();
+  } catch (err) {
+    showToast("待辦儲存失敗：" + err.message);
+    await loadTodosWidget();
+  }
+}
+
 function initHomeWidgets() {
   initSketchPad();
   if ($("calendar-save")) {
@@ -2167,6 +2234,17 @@ function initHomeWidgets() {
   loadCalendarWidget().catch(() => {});
   loadFeedsWidget().catch(() => {});
   loadLinksWidget().catch(() => {});
+  if ($("todo-form")) {
+    $("todo-form").onsubmit = (ev) => {
+      ev.preventDefault();
+      const text = $("todo-text").value.trim();
+      if (!text) return;
+      $("todo-text").value = "";
+      saveTodos([...TODOS, { id: `t${Date.now().toString(36)}`, text, done: false, group: "", entry_id: null, created_at: new Date().toISOString() }]);
+    };
+    $("todo-clear-done").onclick = () => saveTodos(TODOS.filter((t) => !t.done));
+    loadTodosWidget().catch(() => {});
+  }
 }
 
 // 最新情報：首頁顯示最近一筆【每日情報】記事。內文是 Routine 寫的固定格式純文字：
