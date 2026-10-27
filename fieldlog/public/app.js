@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "217";
+const APP_VERSION = "218";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1699,9 +1699,9 @@ function inboxStickyHtml(e) {
 // ===== v213 桌機首頁版面：一欄／兩欄＋拖曳排序，排版存在伺服器（所有桌機共用）=====
 // 手機（窄於 HOME_LAYOUT_MIN_WIDTH）完全不套用，維持 index.html 原本的單欄順序。
 // v214 起除了頁首，所有區塊（含「輸入與草稿」「檢索」）都可以移動。
-const HOME_LAYOUT_SECTIONS = ["input-panel", "search-panel", "todo-panel", "recent-folders-panel", "inbox-panel", "news-panel",
+const HOME_LAYOUT_SECTIONS = ["search-panel", "todo-panel", "recent-folders-panel", "inbox-panel", "news-panel",
   "sketch-panel", "calendar-panel", "feeds-panel", "links-panel", "tools-panel", "usage-details"];
-const HOME_LAYOUT_TOP_DEFAULT = ["input-panel", "search-panel"];
+const HOME_LAYOUT_TOP_DEFAULT = ["search-panel"];   // v218 輸入與草稿移進頁首，不再參與排版
 const HOME_LAYOUT_DEFAULT = { columns: 1, left: [...HOME_LAYOUT_SECTIONS], right: [] };
 const HOME_LAYOUT_MIN_WIDTH = 1000;
 let HOME_LAYOUT = null;
@@ -1739,8 +1739,7 @@ function applyHomeLayout() {
   if (!homeLayoutActive()) {
     // 手機：放回原本的順序（工具列之後、Wiki 檔案之前），拿掉欄容器
     if (cols) {
-      const top = $("home-main-top");
-      if (top && $("input-panel")) top.appendChild($("input-panel"));
+      const top = $("home-main-top");   // v218 輸入與草稿已移進頁首，這個容器保留為檢索的定位點
       const search = $("search-panel");
       const results = $("home-search-results");
       if (top && search) top.after(search);

@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=217" />
-<link rel="stylesheet" href="home.css?v=217" />
+<link rel="stylesheet" href="style.css?v=218" />
+<link rel="stylesheet" href="home.css?v=218" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -52,31 +52,9 @@
         aria-expanded="true" title="展開左欄">▶</button>
 <div class="container">
   <div id="view-home">
-    <!-- v210 頁首比照 PDCA 品質輔助系統：深色帶＋銅色小標＋襯線標題，底部三色條 -->
+    <!-- v210 頁首深色帶＋底部三色條；v218 拿掉標題文字，改放輸入工具（正方形可愛風）＋右側功能按鈕 -->
     <header class="home-app-head masthead">
-      <div class="masthead-copy">
-        <span class="masthead-eyebrow">Medical Device Field Notebook</span>
-        <div class="masthead-title">MyWiki 隨身記</div>
-        <small class="masthead-sub">輸入、待分類、整理 <span id="app-version" class="app-version"></span></small>
-      </div>
-      <nav class="masthead-actions" aria-label="其他頁面">
-        <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
-        <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=217">使用說明</a>
-      </nav>
-    </header>
-
-    <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
-    <div class="stale-banner" id="stale-version-banner" hidden></div>
-
-    <!-- 首頁五列（2026-08-09 二次修正）：改回直向堆疊的整行區塊，不是並排的
-         四欄——欄位太窄會把資料夾樹（縮排＋色系底）擠爛，上一版才修過這個
-         問題。只有第三列內部左右分兩欄（待處理｜Wiki 檔案），其餘列都是
-         獨立整行。第一列（輸入與草稿）跟第三～五列分成兩個 home-main-grid
-         容器，中間夾著檢索——搜尋啟動時兩個容器都要跟著藏起來，但檢索本身
-         （搜尋框＋結果框）要留在外面，見下方說明。 -->
-    <div id="home-main-top" class="home-main-grid">
-      <!-- 第一列：輸入與草稿 -->
+      <!-- v218 輸入與草稿移進頁首最上面（取代原本的標題文字），不再參與首頁拖曳排版；右側三個功能按鈕保留 -->
       <section class="home-section home-input-section" id="input-panel" aria-labelledby="home-input-title">
         <div class="home-section-head">
           <h2 class="home-section-title" id="home-input-title">輸入與草稿</h2>
@@ -96,7 +74,25 @@
                  multiple hidden />
         </div>
       </section>
-    </div>
+      <nav class="masthead-actions" aria-label="其他頁面">
+        <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
+        <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
+        <a class="head-link" href="help.html?v=218">使用說明</a>
+        <span id="app-version" class="app-version"></span>
+      </nav>
+    </header>
+
+    <!-- 瀏覽器載到的 app.js 版本與伺服器不一致時才顯示（見 app.js 的 showVersion） -->
+    <div class="stale-banner" id="stale-version-banner" hidden></div>
+
+    <!-- 首頁五列（2026-08-09 二次修正）：改回直向堆疊的整行區塊，不是並排的
+         四欄——欄位太窄會把資料夾樹（縮排＋色系底）擠爛，上一版才修過這個
+         問題。只有第三列內部左右分兩欄（待處理｜Wiki 檔案），其餘列都是
+         獨立整行。第一列（輸入與草稿）跟第三～五列分成兩個 home-main-grid
+         容器，中間夾著檢索——搜尋啟動時兩個容器都要跟著藏起來，但檢索本身
+         （搜尋框＋結果框）要留在外面，見下方說明。 -->
+
+    <div id="home-main-top" class="home-main-grid"></div>
 
     <!-- 第二列：檢索。搜尋框固定不隨搜尋結果顯示／隱藏而跟著消失。搜尋結果框
          （home-search-results）過去巢狀放在 home-main-sections 裡面——一啟動
@@ -688,10 +684,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=217"></script>
+<script src="pdf-editor.js?v=218"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=217"></script>
+<script src="richtext-editor.js?v=218"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -702,10 +698,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=217"></script>
-<script src="inspector.js?v=217"></script>
+<script src="file-selection.js?v=218"></script>
+<script src="inspector.js?v=218"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=217"></script>
+<script src="app.js?v=218"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

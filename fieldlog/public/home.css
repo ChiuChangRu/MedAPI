@@ -830,3 +830,40 @@ body.home-layout-editing .sketch-canvas { pointer-events: none; }
 .todo-del:hover { opacity: 1; color: #b91c1c; }
 .todo-form { display: flex; gap: 8px; margin-top: 10px; }
 .todo-form input { flex: 1; min-width: 0; }
+
+#home-main-top:empty { display: none; }
+/* ===== v218 頁首：拿掉標題文字，輸入工具放最上面（正方形可愛風）；右側三個功能按鈕保留 ===== */
+.home-app-head.masthead { align-items: flex-end; padding: 18px 22px 26px; }
+.home-app-head.masthead .home-input-section { flex: 1 1 560px; min-width: 0; padding: 0; border: 0; background: transparent; }
+.home-app-head.masthead .home-section-head { margin-bottom: 10px; }
+.home-app-head.masthead .home-section-title { color: #F5F1EA; font-size: 17px; }
+.home-app-head.masthead .home-section-title::before { background: #D8995F; border-radius: 50%; }
+.home-app-head.masthead .home-input-section .capture-grid { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; }
+.home-app-head.masthead .home-input-section .cap-tile {
+  --tile: #FFE3D3; --tile-ink: #8A4A24;
+  flex-direction: column; gap: 6px; width: 86px; height: 86px; min-height: 0; aspect-ratio: 1 / 1; padding: 8px 6px;
+  border: 0; border-radius: 22px; background: var(--tile); color: var(--tile-ink);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, .28); transition: transform .15s ease, box-shadow .15s ease;
+}
+.home-app-head.masthead .home-input-section .cap-tile:hover { transform: translateY(-3px) rotate(-2deg); background: var(--tile); border: 0; box-shadow: 0 7px 0 rgba(0, 0, 0, .28); }
+.home-app-head.masthead .home-input-section .cap-tile:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0, 0, 0, .28); }
+.home-app-head.masthead .home-input-section .cap-tile .ln-icon {
+  width: 40px; height: 40px; padding: 8px; box-sizing: border-box; border-radius: 50%; background: #fff; color: var(--tile-ink); stroke-width: 2.2;
+}
+.home-app-head.masthead .home-input-section .cap-tile span { color: var(--tile-ink); font-size: 13.5px; font-weight: 800; letter-spacing: .04em; }
+.home-app-head.masthead .home-input-section .cap-video  { --tile: #FFD6D6; --tile-ink: #A23B3B; }
+.home-app-head.masthead .home-input-section .cap-photo  { --tile: #FFE3C2; --tile-ink: #9A5A12; }
+.home-app-head.masthead .home-input-section .cap-audio  { --tile: #FFF1B8; --tile-ink: #7E6400; }
+.home-app-head.masthead .home-input-section .cap-note   { --tile: #D5F2DC; --tile-ink: #2E7044; }
+.home-app-head.masthead .home-input-section .cap-weekly { --tile: #CFEFF0; --tile-ink: #1F6B6E; }
+.home-app-head.masthead .home-input-section .cap-upload { --tile: #D9E6FF; --tile-ink: #2F55A4; }
+.home-app-head.masthead .home-input-section .cap-file   { --tile: #EADCFB; --tile-ink: #6A3FA0; }
+.home-app-head.masthead .masthead-actions { align-items: center; }
+.home-app-head.masthead .app-version { color: #A9B3BC; font-size: 12px; }
+@media (max-width: 719px) {
+  .home-app-head.masthead .home-input-section { flex-basis: 100%; }
+  .home-app-head.masthead .home-input-section .capture-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .home-app-head.masthead .home-input-section .cap-tile { width: auto; height: auto; border-radius: 18px; }
+  .home-app-head.masthead .home-input-section .cap-tile .ln-icon { width: 34px; height: 34px; padding: 7px; }
+  .home-app-head.masthead .home-input-section .cap-tile span { font-size: 12.5px; }
+}

@@ -104,10 +104,11 @@ test("v213 桌機首頁版面：一欄／兩欄＋拖曳，存伺服器；手機
   assert.match(css, /@media \(min-width: 1000px\) \{\s*\.home-app-head\.masthead \.layout-edit-btn \{ display: inline-block; \}/);
 });
 
-test("v214 除頁首外全部可移動；搜尋結果跟著檢索走，搜尋時只收起其他區塊", () => {
-  assert.match(html, /id="input-panel"/);
+test("v214 除頁首外全部可移動（v218 起輸入與草稿在頁首，不參與排版）；搜尋結果跟著檢索走，搜尋時只收起其他區塊", () => {
+  assert.match(html, /<header class="home-app-head masthead">\s*<!--[^>]*-->\s*<section class="home-section home-input-section" id="input-panel"/);
   assert.match(html, /id="search-panel"/);
-  assert.match(app, /const HOME_LAYOUT_TOP_DEFAULT = \["input-panel", "search-panel"\]/);
+  assert.match(app, /const HOME_LAYOUT_TOP_DEFAULT = \["search-panel"\]/);
+  assert.doesNotMatch(app, /HOME_LAYOUT_SECTIONS = \[[^\]]*"input-panel"/);
   assert.match(app, /layout\.left\.unshift\(\.\.\.missingTop\)/, "v213 舊排版沒有輸入／檢索時要補在最上面");
   assert.match(app, /document\.body\.classList\.toggle\("home-searching", active && inColumns\)/);
   assert.match(css, /body\.home-searching \.home-col:not\(:has\(#search-panel\)\) \{ display: none; \}/);
