@@ -867,3 +867,15 @@ body.home-layout-editing .sketch-canvas { pointer-events: none; }
   .home-app-head.masthead .home-input-section .cap-tile .ln-icon { width: 34px; height: 34px; padding: 7px; }
   .home-app-head.masthead .home-input-section .cap-tile span { font-size: 12.5px; }
 }
+
+/* v219 頁首：拿掉「輸入與草稿」標題（保留給螢幕閱讀器），底色改土黃色；按鈕與版本號改深色字以維持對比 */
+.home-app-head.masthead { background: #C9A44E; color: #3A2D10; }
+.home-app-head.masthead .home-section-head { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+.home-app-head.masthead .head-link,
+.home-app-head.masthead #btn-deleted-items { color: #3A2D10; border-color: rgba(58, 45, 16, .55); background: rgba(255, 250, 235, .35); }
+.home-app-head.masthead .head-link:hover,
+.home-app-head.masthead #btn-deleted-items:hover { background: rgba(255, 250, 235, .65); }
+.home-app-head.masthead .app-version { color: #5C4A1E; }
+.home-app-head.masthead .home-input-section .cap-tile { box-shadow: 0 4px 0 rgba(90, 66, 18, .45); }
+.home-app-head.masthead .home-input-section .cap-tile:hover { box-shadow: 0 7px 0 rgba(90, 66, 18, .45); }
+.home-app-head.masthead .home-input-section .cap-tile:active { box-shadow: 0 2px 0 rgba(90, 66, 18, .45); }
