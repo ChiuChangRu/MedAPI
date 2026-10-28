@@ -2411,3 +2411,17 @@ body.reader-fullscreen .folder-preview {
   body:has(#view-folder:not([style*="none"])):has(#file-selection-bar:not([hidden])) .container { padding-bottom: 20px; }
   .folder-workspace-main { padding-bottom: 90px; }
 }
+
+/* v227 錄音中拍照：錄音面板原本蓋在相機快門上。相機開著時面板縮成畫面上方一條
+   「● 錄音中 00:23」（只顯示、不可操作，避免誤按停止），快門與「完成」露出來。
+   錄音不中斷；按「完成」關相機後面板恢復原樣。 */
+body.audio-camera-open .audio-badge {
+  top: calc(10px + env(safe-area-inset-top)); bottom: auto; left: 50%; right: auto; transform: translateX(-50%);
+  width: auto; min-width: 0; max-height: none; overflow: visible;
+  padding: 6px 14px; gap: 0; border-width: 1px; border-radius: 999px;
+  background: rgba(239, 246, 255, .92); pointer-events: none;
+}
+body.audio-camera-open .audio-badge > :not(.audio-panel-heading),
+body.audio-camera-open .audio-badge .audio-minimize-btn { display: none !important; }
+body.audio-camera-open .audio-badge .audio-panel-heading strong { flex: none; font-size: 14px; }
+body.audio-camera-open .audio-badge .audio-panel-heading #audio-timer { font-size: 15px; }
