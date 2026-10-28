@@ -41,6 +41,7 @@ import { handleIsland } from "./island.js";
 import { stripPdfMetadata } from "./textFold.js";
 import { authorizeMcpRequest, handleOAuthRoute, oauthUnauthorized } from "./oauth.js";
 import { PDCA_TOOL, handlePdcaHit } from "./pdca.js";
+import { handleRelay, isRelayPath } from "./relay.js";
 // 不指定 /workerd 子路徑：package.json 的 conditional exports 會依實際 runtime
 // 自動選版本——node --test（跑測試用）拿到 node 版，wrangler 部署／dev 拿到
 // workerd 版。之前指定死 /workerd 直接讓 node --test 連 import 都失敗
@@ -1943,6 +1944,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/api/island") return handleIsland(request, env, authorizeMcpRequest);
+    // PDCA 網頁自帶 key 的 StepFun 轉送（不碰 MyWiki 資料，見 relay.js）
+    if (isRelayPath(url.pathname)) return handleRelay(request);
     const oauthResponse = await handleOAuthRoute(request, env);
     if (oauthResponse) return oauthResponse;
     if (url.pathname === "/mcp") {
