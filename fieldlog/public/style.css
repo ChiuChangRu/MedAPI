@@ -2368,3 +2368,9 @@ body.reader-fullscreen .folder-preview {
   .desktop-tree-empty { color: #7A8B7F; }
   .desktop-tree-section-icon { background: var(--section-accent); }
 }
+
+/* v221 Word 排版預覽 */
+.docx-preview { display: grid; gap: 8px; min-width: 0; }
+.docx-preview-status { margin: 0; color: var(--text-muted); font-size: 13px; }
+.docx-preview-stage { min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #E9E4DA; max-height: calc(100vh - 220px); }
+.docx-preview-note { margin: 0; color: var(--text-muted); font-size: 12px; }
