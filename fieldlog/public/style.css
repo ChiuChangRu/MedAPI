@@ -2378,3 +2378,17 @@ body.reader-fullscreen .folder-preview {
 .docx-preview-status { margin: 0; color: var(--text-muted); font-size: 13px; }
 .docx-preview-stage { min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #E9E4DA; max-height: calc(100vh - 220px); }
 .docx-preview-note { margin: 0; color: var(--text-muted); font-size: 12px; }
+
+/* v224 Word 文字編輯 */
+.docx-edit { display: grid; gap: 10px; min-width: 0; }
+.docx-edit-help { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.docx-edit-help p { margin: 0; font-size: 13px; line-height: 1.5; }
+.docx-edit-warn { color: #9a3412; font-weight: 600; }
+#docx-edit-versions details { font-size: 13px; }
+#docx-edit-versions ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+#docx-edit-versions li { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.docx-edit-para { display: grid; gap: 3px; }
+.docx-edit-para small { color: var(--text-muted); font-size: 12px; }
+.docx-edit-mixed { color: #9a3412; font-weight: 600; }
+.docx-edit-para textarea { width: 100%; min-width: 0; font-family: inherit; font-size: 14px; line-height: 1.6; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; resize: vertical; background: #fff; }
+.docx-edit-para.locked p { margin: 0; padding: 6px 8px; border: 1px dashed var(--border); border-radius: 6px; color: var(--text-muted); font-size: 13px; white-space: pre-wrap; background: #FAFAF8; }

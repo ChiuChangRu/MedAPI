@@ -14,6 +14,13 @@ function loadScript(src) {
   });
 }
 
+// docx-edit.js（v224 文字編輯）也要用 JSZip，共用同一支自架檔
+export async function loadJsZip() {
+  if (!window.JSZip) await loadScript("./vendor/jszip.min.js");
+  if (!window.JSZip) throw new Error("JSZip 載入失敗");
+  return window.JSZip;
+}
+
 function loadLibrary() {
   // docx-preview 的 UMD 版本讀全域 JSZip，所以要先載 JSZip
   libraryPromise ||= (async () => {

@@ -228,8 +228,17 @@ export async function permanentlyDeleteTrashItem(db, files, trashId, vectorIndex
       const { results } = await db.prepare(`SELECT id, key FROM attachments WHERE entry_id IN (${marks})`).bind(...part).all();
       attachments.push(...(results || []));
     }
+    // v224 線上編輯留下的舊版本（attachment_versions）也一起刪，不留孤兒檔案。
+    // 舊資料庫可能還沒有這張表，查不到就當沒有版本。
+    const versions = [];
+    for (const part of chunks(attachments.map((a) => a.id))) {
+      const marks = part.map(() => "?").join(",");
+      const { results } = await db.prepare(`SELECT id, key FROM attachment_versions WHERE attachment_id IN (${marks})`)
+        .bind(...part).all().catch(() => ({ results: [] }));
+      versions.push(...(results || []));
+    }
     if (attachments.length && !files) throw new Error("缺少 R2 FILES binding，拒絕永久刪除以免留下孤兒檔案");
-    const settled = await Promise.allSettled(attachments.map((attachment) => files.delete(attachment.key)));
+    const settled = await Promise.allSettled([...attachments, ...versions].map((attachment) => files.delete(attachment.key)));
     const failed = settled.filter((result) => result.status === "rejected");
     if (failed.length) throw new Error(`R2 有 ${failed.length} 個檔案刪除失敗，保留資料庫紀錄後重試`);
     for (const part of chunks(entryIds)) {
@@ -248,6 +257,9 @@ export async function permanentlyDeleteTrashItem(db, files, trashId, vectorIndex
         db.prepare(`DELETE FROM history WHERE folder_id IN (${marks})`).bind(...part),
         db.prepare(`DELETE FROM folders WHERE id IN (${marks})`).bind(...part),
       );
+    }
+    for (const part of chunks(versions.map((v) => v.id))) {
+      statements.push(db.prepare(`DELETE FROM attachment_versions WHERE id IN (${part.map(() => "?").join(",")})`).bind(...part));
     }
     statements.push(db.prepare("DELETE FROM trash_items WHERE id = ? AND state = 'purging'").bind(trashId));
     await runStatements(db, statements);

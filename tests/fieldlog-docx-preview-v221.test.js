@@ -13,7 +13,7 @@ test("docx 走排版預覽，不再只顯示抽出的純文字", async () => {
   const docxAt = app.indexOf('ext === "docx" || /wordprocessingml');
   assert.ok(docxAt > 0, "app.js 有 docx 預覽分支");
   assert.ok(docxAt < app.indexOf("} else if (modernOffice) {"), "docx 分支在舊的純文字分支之前");
-  assert.match(app, /import\("\.\/docx-preview\.js\?v=221"\)/);
+  assert.match(app, /import\("\.\/docx-preview\.js\?v=224"\)/);
 });
 
 test("docx 預覽元件：自架函式庫、shadow root、安全選項", async () => {
