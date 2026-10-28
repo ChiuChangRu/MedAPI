@@ -134,7 +134,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "223";
+const UI_VERSION = "224";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1082,6 +1082,45 @@ async function autoRenameAttachment(db, att, extractedText) {
   ).bind(next, att.id).run();
   await logHistory(db, att.entry_id, null, "自動重新命名", `${original} → ${next}`);
   return true;
+}
+
+const OFFICE_MIME = {
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+/** 可以在網頁上直接改內容的 Office 檔：xlsx（儲存格）、docx（v224 段落文字） */
+function editableOfficeKind(att) {
+  const name = String(att.filename || ""), mime = String(att.mime || "");
+  if (/\.xlsx$/i.test(name) || /spreadsheetml\.sheet/i.test(mime)) return "xlsx";
+  if (/\.docx$/i.test(name) || /wordprocessingml\.document/i.test(mime)) return "docx";
+  return "";
+}
+
+const VERSION_KEEP = 10;
+const VERSION_MERGE_MS = 30 * 60 * 1000;
+
+/**
+ * 線上編輯存檔時把被取代的舊檔留成一個版本。自動儲存很頻繁，所以 30 分鐘內
+ * 已經留過版本就不再多留（直接刪掉中間稿），每份檔案最多保留 10 個版本。
+ */
+async function keepAttachmentVersion(env, db, old) {
+  const latest = await db.prepare(
+    "SELECT id, created_at FROM attachment_versions WHERE attachment_id = ? ORDER BY id DESC LIMIT 1"
+  ).bind(old.id).first();
+  if (latest && Date.now() - Date.parse(String(latest.created_at).replace(" ", "T")) < VERSION_MERGE_MS) {
+    await env.FILES.delete(old.key).catch(() => {});
+    return;
+  }
+  await db.prepare("INSERT INTO attachment_versions (attachment_id, key, size, content_hash, created_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(old.id, old.key, old.size || 0, old.content_hash || "", now()).run();
+  const { results: extra = [] } = await db.prepare(
+    "SELECT id, key FROM attachment_versions WHERE attachment_id = ? ORDER BY id DESC LIMIT -1 OFFSET ?"
+  ).bind(old.id, VERSION_KEEP).all();
+  for (const row of extra) {
+    await env.FILES.delete(row.key).catch(() => {});
+    await db.prepare("DELETE FROM attachment_versions WHERE id = ?").bind(row.id).run();
+  }
 }
 
 async function activeAttachment(db, id) {
@@ -3214,21 +3253,21 @@ async function handleApi(request, env, url, identity = {}) {
     const id = Number(attContentMatch[1]);
     const old = await activeAttachment(db, id);
     if (!old) return bad("找不到附件", 404);
-    if (!/\.xlsx$/i.test(String(old.filename || "")) && !/spreadsheetml\.sheet/i.test(String(old.mime || ""))) {
-      return bad("只有 .xlsx 檔案可以直接編輯");
-    }
+    const kind = editableOfficeKind(old);
+    if (!kind) return bad("只有 .xlsx 與 .docx 檔案可以直接編輯");
     const body = await request.arrayBuffer();
     if (!body.byteLength) return bad("空檔案");
     if (body.byteLength > 50 * 1024 * 1024) return bad("檔案過大（上限 50MB）");
     const digest = await crypto.subtle.digest("SHA-256", body);
     const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    if (contentHash === old.content_hash) return json({ ok: true, id, key: old.key, filename: old.filename, size: old.size, mime: old.mime, content_hash: contentHash, unchanged: true });
     const duplicate = await db.prepare(
       "SELECT id, filename FROM attachments WHERE entry_id = ? AND id <> ? AND content_hash = ?"
     ).bind(old.entry_id, id, contentHash).first();
     if (duplicate) return json({ ok: false, error: `相同檔案已存在：${duplicate.filename || "另一份附件"}` }, 409);
-    const safeFilename = String(old.filename || "file.xlsx").replace(/[^\w.\-一-鿿]+/g, "_");
+    const safeFilename = String(old.filename || `file.${kind}`).replace(/[^\w.\-一-鿿]+/g, "_");
     const key = `${old.entry_id}/${Date.now()}-${id}-${safeFilename}`;
-    const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const mime = OFFICE_MIME[kind];
     await env.FILES.put(key, body, { httpMetadata: { contentType: mime } });
     try {
       await db.prepare(
@@ -3238,9 +3277,36 @@ async function handleApi(request, env, url, identity = {}) {
       await env.FILES.delete(key).catch(() => {});
       throw error;
     }
-    if (old.key && old.key !== key) await env.FILES.delete(old.key).catch(() => {});
-    await logHistory(db, old.entry_id, null, "編輯 Excel 檔案", `${old.filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
+    if (old.key && old.key !== key) await keepAttachmentVersion(env, db, old);
+    await logHistory(db, old.entry_id, null, kind === "docx" ? "編輯 Word 檔案" : "編輯 Excel 檔案", `${old.filename}（${(body.byteLength / 1024 / 1024).toFixed(1)}MB）`);
     return json({ ok: true, id, key, filename: old.filename, size: body.byteLength, mime, content_hash: contentHash });
+  }
+  // v224 檔案版本：列出可還原的舊版；還原＝把目前的檔案存成一個舊版，再換回選定的版本
+  const attVersionsMatch = path.match(/^\/attachments\/(\d+)\/versions$/);
+  if (attVersionsMatch && method === "GET") {
+    const id = Number(attVersionsMatch[1]);
+    if (!await activeAttachment(db, id)) return bad("找不到附件", 404);
+    const { results = [] } = await db.prepare(
+      "SELECT id, size, created_at FROM attachment_versions WHERE attachment_id = ? ORDER BY id DESC"
+    ).bind(id).all();
+    return json({ versions: results });
+  }
+  const attRestoreMatch = path.match(/^\/attachments\/(\d+)\/versions\/(\d+)\/restore$/);
+  if (attRestoreMatch && method === "POST") {
+    const id = Number(attRestoreMatch[1]);
+    const old = await activeAttachment(db, id);
+    if (!old) return bad("找不到附件", 404);
+    const version = await db.prepare("SELECT * FROM attachment_versions WHERE id = ? AND attachment_id = ?")
+      .bind(Number(attRestoreMatch[2]), id).first();
+    if (!version) return bad("找不到這個版本", 404);
+    await db.batch([
+      db.prepare("UPDATE attachments SET key = ?, size = ?, content_hash = ?, ocr_text = '', ocr_at = '' WHERE id = ?")
+        .bind(version.key, version.size, version.content_hash || "", id),
+      db.prepare("UPDATE attachment_versions SET key = ?, size = ?, content_hash = ?, created_at = ? WHERE id = ?")
+        .bind(old.key, old.size || 0, old.content_hash || "", now(), version.id),
+    ]);
+    await logHistory(db, old.entry_id, null, "還原檔案版本", `${old.filename}（還原到 ${version.created_at} 的版本）`);
+    return json({ ok: true, id, key: version.key, size: version.size });
   }
   const attMatch = path.match(/^\/attachments\/(\d+)$/);
   if (attMatch && method === "PUT") {

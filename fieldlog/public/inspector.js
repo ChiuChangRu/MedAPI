@@ -263,6 +263,11 @@ async function renderInspectorFile(item, tab) {
       await renderXlsxEditor(entry.id, a);
       return;
     }
+    if (/\.docx$/i.test(a.filename || "") || /wordprocessingml\.document/i.test(a.mime || "")) {
+      const { renderDocxEditor } = await import("./docx-edit.js?v=224");
+      await renderDocxEditor(a);
+      return;
+    }
     await renderInspectorAttachmentText(entry, [a]);
     return;
   }

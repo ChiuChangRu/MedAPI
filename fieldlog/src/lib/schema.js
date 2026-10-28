@@ -243,6 +243,16 @@ export const SCHEMA = [
     created_at TEXT NOT NULL,
     decided_at TEXT DEFAULT ''
   )`,
+  // v224 檔案版本：線上編輯 Word／Excel 存檔時，舊檔不刪，記在這裡供還原。
+  // 30 分鐘內連續存檔只保留一個舊版，每份檔案最多 10 版（見 worker.js keepAttachmentVersion）。
+  `CREATE TABLE IF NOT EXISTS attachment_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    attachment_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    size INTEGER DEFAULT 0,
+    content_hash TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS synonyms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     canonical TEXT NOT NULL,
