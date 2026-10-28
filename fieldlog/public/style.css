@@ -2333,9 +2333,13 @@ body.reader-fullscreen .folder-preview {
     grid-template-columns: 20px 24px minmax(0, 1fr) auto 40px 40px 32px;
     grid-template-areas:
       "drag icon name name   name name name"
-      "drag icon date status a1   a2   a3";
+      ".    .    date status a1   a2   a3";
     column-gap: 6px;
   }
+  /* v223：圖示與拖曳把手只佔第一行，跟檔名同一行對齊（原本跨兩行置中，看起來沒對齊） */
+  #folder-entries.details-view > * > :is(.folder-file-icon, .entry-drag, .record-group-drag),
+  #folder-entries.details-view > :is(.child-folder-card, .record-group-card) > span,
+  #folder-entries.details-view > .entry-row::before { align-self: center; }
   #folder-entries.details-view > .entry-row > .entry-secondary { grid-row: 2; grid-column: date / span 2; }
   /* 錄音卡第二行只有「⋯」，狀態可以延伸到空著的 a1／a2，日期才不會被擠掉 */
   #folder-entries.details-view > .record-group-card > .recording-card-status {
