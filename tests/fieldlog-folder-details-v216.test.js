@@ -26,3 +26,8 @@ test("錄音卡日期與附件摘要分開，詳細模式只顯示日期", async
   assert.match(app, /<span class="record-group-summary">/);
   assert.match(css, /#folder-entries\.details-view \.record-group-summary \{ display: none; \}/);
 });
+
+test("v223 窄版：圖示與拖曳把手只佔第一行，跟檔名對齊", async () => {
+  const css = await read("../fieldlog/public/style.css");
+  assert.match(css, /"\.    \.    date status a1   a2   a3"/, "第二行左側兩格留空");
+});
