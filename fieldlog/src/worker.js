@@ -134,7 +134,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "221";
+const UI_VERSION = "222";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1183,6 +1183,70 @@ function parseNotionPageId(input) {
   return `${id32.slice(0, 8)}-${id32.slice(8, 12)}-${id32.slice(12, 16)}-${id32.slice(16, 20)}-${id32.slice(20)}`;
 }
 
+function planError(message, status = 400) {
+  return { error: message, status };
+}
+
+/**
+ * 建資料夾前的共用檢查（名稱、上層存在、四層上限、同層同名、分類）。
+ * POST /folders 與「同意 AI 建議」共用，兩條路徑的規則才不會分歧。
+ */
+async function planFolder(db, body) {
+  const requestedName = (body.name || "").trim();
+  if (!requestedName) return planError("name 為必填");
+  const type = (body.type || "其他").trim() || "其他";
+  const parentId = body.parent_id ? Number(body.parent_id) : null;
+  const requestedCategory = String(body.category || (parentId ? "" : "project")).trim();
+  if (requestedCategory && !FOLDER_CATEGORIES.includes(requestedCategory)) {
+    return planError(`category 只能是 ${FOLDER_CATEGORIES.join("／")} 其中之一`);
+  }
+  // 四層知識架構：第 1 層產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
+  // 再深下去分類就失去意義（也會讓匯出與麵包屑難讀），所以擋在第 4 層。
+  let depth = 1;
+  let category = requestedCategory || "misc";
+  if (parentId) {
+    let parent = await db.prepare(
+      "SELECT id, parent_id, category FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+    ).bind(parentId).first();
+    if (!parent) return planError("找不到上層資料夾", 404);
+    while (parent.parent_id) {
+      parent = await db.prepare(
+        "SELECT id, parent_id, category FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
+      ).bind(parent.parent_id).first();
+      if (!parent) return planError("找不到上層資料夾", 404);
+    }
+    category = FOLDER_CATEGORIES.includes(parent.category) ? parent.category : "misc";
+    const parentDepth = await folderDepth(db, parentId);
+    if (!parentDepth) return planError("找不到上層資料夾", 404);
+    if (parentDepth >= MAX_FOLDER_DEPTH) {
+      return planError(`資料夾最多 ${MAX_FOLDER_DEPTH} 層，不能再新增子資料夾`);
+    }
+    depth = parentDepth + 1;
+  }
+  // 根資料夾可以保留「專案｜檢體針」這類分類名稱；子資料夾只存本層名稱。
+  const name = parentId ? canonicalFolderLocalName(requestedName) : requestedName.slice(0, 80);
+  if (!name) return planError("name 為必填");
+  const siblingConflict = await findSiblingFolderNameConflict(db, { parentId, name, category });
+  if (siblingConflict) return { ...planError(`同一層已經有「${name}」資料夾`, 409), conflict: siblingConflict };
+  return { name, type, category, parentId, depth, conflict: null };
+}
+
+async function insertPlannedFolder(db, plan, detailSuffix = "") {
+  const r = await db.prepare("INSERT INTO folders (name, type, category, parent_id, created_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(plan.name, plan.type.slice(0, 60), plan.category, plan.parentId, now()).run();
+  await logHistory(db, null, r.meta.last_row_id, "建立資料夾", `${plan.name}（${plan.type}，第 ${plan.depth} 層）${detailSuffix}`);
+  return Number(r.meta.last_row_id);
+}
+
+// MyWiki MCP（GPT、Claude 等 AI）經 Service Binding 呼叫時，網址主機是 fieldlog.internal；
+// 瀏覽器不可能打到這個主機，所以可以用來分辨「AI 經 MCP」與「本人在網頁上操作」。
+function isMcpCaller(url) {
+  return url.hostname === "fieldlog.internal";
+}
+
+const AI_FOLDER_MODE_KEY = "ai.folder_create_mode";
+const AI_FOLDER_MAX_PENDING = 10;
+
 async function handleApi(request, env, url, identity = {}) {
   const db = env.DB;
   await ensureSchema(db, now());
@@ -1415,47 +1479,89 @@ async function handleApi(request, env, url, identity = {}) {
     return json(results);
   }
   if (path === "/folders" && method === "POST") {
+    // v222：AI 不能直接建立資料夾，只能用 suggest_folder 提出建議，由使用者在首頁同意
+    if (isMcpCaller(url)) return bad("AI 不能直接建立資料夾，請改用 suggest_folder 提出建議，由使用者在首頁確認", 403);
+    const plan = await planFolder(db, await request.json().catch(() => ({})));
+    if (plan.error) return bad(plan.error, plan.status);
+    const id = await insertPlannedFolder(db, plan);
+    return json({ id, ok: true, depth: plan.depth, max_depth: MAX_FOLDER_DEPTH });
+  }
+
+  // ---- v222 AI 建議新增資料夾：AI 提出 → 使用者在首頁同意／拒絕 ----
+  if (path === "/folder-suggestions/mode" && (method === "GET" || method === "PUT")) {
+    if (method === "PUT") {
+      if (isMcpCaller(url)) return bad("只有使用者本人可以變更這個設定", 403);
+      const body = await request.json().catch(() => ({}));
+      const mode = body.mode === "off" ? "off" : "suggest";
+      await db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+        .bind(AI_FOLDER_MODE_KEY, mode, now()).run();
+      return json({ mode });
+    }
+    const row = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(AI_FOLDER_MODE_KEY).first();
+    return json({ mode: row?.value === "off" ? "off" : "suggest" });
+  }
+  if (path === "/folder-suggestions" && method === "GET") {
+    const status = ["pending", "approved", "rejected"].includes(url.searchParams.get("status")) ? url.searchParams.get("status") : "pending";
+    const { results = [] } = await db.prepare(
+      `SELECT s.*, p.name AS parent_name FROM folder_suggestions s
+       LEFT JOIN folders p ON p.id = s.parent_id AND COALESCE(p.deleted_at, '') = ''
+       WHERE s.status = ? ORDER BY s.id DESC LIMIT 50`
+    ).bind(status).all();
+    const modeRow = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(AI_FOLDER_MODE_KEY).first();
+    return json({ mode: modeRow?.value === "off" ? "off" : "suggest", suggestions: results });
+  }
+  if (path === "/folder-suggestions" && method === "POST") {
+    const modeRow = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(AI_FOLDER_MODE_KEY).first();
+    if (modeRow?.value === "off") return bad("使用者已關閉「AI 建議新增資料夾」，請把內容放進既有資料夾或待分類", 403);
     const body = await request.json().catch(() => ({}));
-    const requestedName = (body.name || "").trim();
-    if (!requestedName) return bad("name 為必填");
-    const type = (body.type || "其他").trim() || "其他";
-    const parentId = body.parent_id ? Number(body.parent_id) : null;
-    const requestedCategory = String(body.category || (parentId ? "" : "project")).trim();
-    if (requestedCategory && !FOLDER_CATEGORIES.includes(requestedCategory)) {
-      return bad(`category 只能是 ${FOLDER_CATEGORIES.join("／")} 其中之一`);
+    const plan = await planFolder(db, body);
+    if (plan.conflict) {
+      return json({ error: `同一層已經有「${plan.conflict.name}」資料夾，請直接使用它`, existing_folder_id: Number(plan.conflict.id) }, 409);
     }
-    // 四層知識架構：第 1 層產品／專案 → 2 文件類型 → 3 主題／試驗／標準系列 → 4 年份／版本。
-    // 再深下去分類就失去意義（也會讓匯出與麵包屑難讀），所以擋在第 4 層。
-    let depth = 1;
-    let category = requestedCategory || "misc";
-    if (parentId) {
-      let parent = await db.prepare(
-        "SELECT id, parent_id, category FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
-      ).bind(parentId).first();
-      if (!parent) return bad("找不到上層資料夾", 404);
-      while (parent.parent_id) {
-        parent = await db.prepare(
-          "SELECT id, parent_id, category FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''"
-        ).bind(parent.parent_id).first();
-        if (!parent) return bad("找不到上層資料夾", 404);
-      }
-      category = FOLDER_CATEGORIES.includes(parent.category) ? parent.category : "misc";
-      const parentDepth = await folderDepth(db, parentId);
-      if (!parentDepth) return bad("找不到上層資料夾", 404);
-      if (parentDepth >= MAX_FOLDER_DEPTH) {
-        return bad(`資料夾最多 ${MAX_FOLDER_DEPTH} 層，不能再新增子資料夾`);
-      }
-      depth = parentDepth + 1;
+    if (plan.error) return bad(plan.error, plan.status);
+    const same = await db.prepare(
+      "SELECT id FROM folder_suggestions WHERE status = 'pending' AND name = ? AND COALESCE(parent_id, 0) = ?"
+    ).bind(plan.name, plan.parentId || 0).first();
+    if (same) return json({ ok: true, id: Number(same.id), duplicate: true, status: "pending" });
+    const pending = await db.prepare("SELECT COUNT(*) AS n FROM folder_suggestions WHERE status = 'pending'").first();
+    if (Number(pending?.n || 0) >= AI_FOLDER_MAX_PENDING) {
+      return bad(`已有 ${AI_FOLDER_MAX_PENDING} 筆資料夾建議等待使用者確認，請先把內容放進既有資料夾或待分類`, 429);
     }
-    // 根資料夾可以保留「專案｜檢體針」這類分類名稱；子資料夾只存本層名稱。
-    const name = parentId ? canonicalFolderLocalName(requestedName) : requestedName.slice(0, 80);
-    if (!name) return bad("name 為必填");
-    const siblingConflict = await findSiblingFolderNameConflict(db, { parentId, name, category });
-    if (siblingConflict) return bad(`同一層已經有「${name}」資料夾`, 409);
-    const r = await db.prepare("INSERT INTO folders (name, type, category, parent_id, created_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(name, type.slice(0, 60), category, parentId, now()).run();
-    await logHistory(db, null, r.meta.last_row_id, "建立資料夾", `${name}（${type}，第 ${depth} 層）`);
-    return json({ id: r.meta.last_row_id, ok: true, depth, max_depth: MAX_FOLDER_DEPTH });
+    const r = await db.prepare(
+      `INSERT INTO folder_suggestions (name, parent_id, category, type, reason, requested_by, source, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+    ).bind(
+      plan.name, plan.parentId, plan.category, plan.type.slice(0, 60),
+      String(body.reason || "").trim().slice(0, 500),
+      String(body.requested_by || "").trim().slice(0, 40),
+      isMcpCaller(url) ? "mcp" : "web", now(),
+    ).run();
+    return json({ ok: true, id: Number(r.meta.last_row_id), status: "pending" });
+  }
+  const suggestionDecision = path.match(/^\/folder-suggestions\/(\d+)\/(approve|reject)$/);
+  if (suggestionDecision && method === "POST") {
+    // AI 不能自己同意自己的建議
+    if (isMcpCaller(url)) return bad("只有使用者本人可以同意或拒絕資料夾建議", 403);
+    const id = Number(suggestionDecision[1]);
+    const suggestion = await db.prepare("SELECT * FROM folder_suggestions WHERE id = ? AND status = 'pending'").bind(id).first();
+    if (!suggestion) return bad("找不到待確認的建議（可能已處理過）", 404);
+    if (suggestionDecision[2] === "reject") {
+      await db.prepare("UPDATE folder_suggestions SET status = 'rejected', decided_at = ? WHERE id = ?").bind(now(), id).run();
+      return json({ ok: true, status: "rejected" });
+    }
+    const body = await request.json().catch(() => ({}));
+    const plan = await planFolder(db, {
+      name: String(body.name || suggestion.name),
+      type: suggestion.type || "其他",
+      parent_id: suggestion.parent_id,
+      category: suggestion.parent_id ? "" : suggestion.category,
+    });
+    if (plan.error) return bad(plan.error, plan.status);
+    const who = suggestion.requested_by ? `AI 建議（${suggestion.requested_by}）` : "AI 建議";
+    const folderId = await insertPlannedFolder(db, plan, `；${who}，使用者已確認`);
+    await db.prepare("UPDATE folder_suggestions SET status = 'approved', folder_id = ?, name = ?, decided_at = ? WHERE id = ?")
+      .bind(folderId, plan.name, now(), id).run();
+    return json({ ok: true, status: "approved", folder_id: folderId });
   }
 
   // ---- 分類字典（資料夾層級分類＋醫材分類，使用者自己增刪改）----

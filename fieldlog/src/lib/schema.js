@@ -227,6 +227,22 @@ export const SCHEMA = [
   // 是「只有 fieldlog 帶 migration」這個原則下的一個例外；fieldlog 首頁的
   // /search 端點（2026-08-09）同樣要用到這張表，補進這裡才符合原本的原則，
   // IF NOT EXISTS 對已經由 mcp 建過的既有資料庫是無害的 no-op。
+  // v222 AI 建議新增資料夾：AI（經 MyWiki MCP）只能提出建議，使用者在首頁同意後
+  // 才真的建立。status：pending／approved／rejected；folder_id 是同意後建出的資料夾。
+  `CREATE TABLE IF NOT EXISTS folder_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_id INTEGER,
+    category TEXT DEFAULT '',
+    type TEXT DEFAULT '',
+    reason TEXT DEFAULT '',
+    requested_by TEXT DEFAULT '',
+    source TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    folder_id INTEGER,
+    created_at TEXT NOT NULL,
+    decided_at TEXT DEFAULT ''
+  )`,
   `CREATE TABLE IF NOT EXISTS synonyms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     canonical TEXT NOT NULL,

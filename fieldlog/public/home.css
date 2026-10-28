@@ -890,3 +890,15 @@ body.home-layout-editing .sketch-canvas { pointer-events: none; }
 .home-app-head.masthead .home-input-section .cap-tile { outline: 2px solid rgba(255, 255, 255, .75); box-shadow: 0 4px 0 rgba(40, 80, 55, .30); }
 .home-app-head.masthead .home-input-section .cap-tile:hover { box-shadow: 0 7px 0 rgba(40, 80, 55, .30); }
 .home-app-head.masthead .home-input-section .cap-tile:active { box-shadow: 0 2px 0 rgba(40, 80, 55, .30); }
+
+/* v222 AI 建議新增資料夾 */
+.folder-suggestions { display: grid; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--copper, #B87333); border-radius: 10px; background: #FBF4EC; }
+.folder-suggestions-title { margin: 0; font-size: 13px; font-weight: 700; color: var(--copper, #B87333); }
+.folder-suggestion { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; padding: 8px 0 0; border-top: 1px dashed var(--border); }
+.folder-suggestion:first-of-type { border-top: 0; padding-top: 0; }
+.folder-suggestion-main { flex: 1 1 260px; display: grid; gap: 3px; min-width: 0; }
+.folder-suggestion-name { font-size: 14px; font-weight: 600; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.folder-suggestion-main small { color: var(--text-muted); overflow-wrap: anywhere; }
+.folder-suggestion-actions { display: flex; gap: 6px; flex: none; }
+.ai-folder-mode { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.ai-folder-mode select { font-size: 12px; padding: 2px 6px; }

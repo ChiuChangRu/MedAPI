@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "221";
+const APP_VERSION = "222";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2314,7 +2314,67 @@ async function loadNews(force = false) {
   $("news-open").onclick = () => openEntry(intel.id);
 }
 
+// v222 AI 建議新增資料夾：GPT、Claude 經 MyWiki MCP 只能「建議」，
+// 這裡列出待確認的建議，使用者可先改名再同意，或拒絕。同意／拒絕只有網頁能做。
+function folderSuggestionPath(s) {
+  if (!s.parent_id) return FOLDER_CATEGORY_META[s.category]?.label || "最上層";
+  const parent = FOLDERS.find((f) => Number(f.id) === Number(s.parent_id));
+  return parent ? folderDisplayPath(parent).join(" ／ ") : (s.parent_name || `資料夾 ${s.parent_id}`);
+}
+
+async function loadFolderSuggestions() {
+  const wrap = $("folder-suggestions");
+  if (!wrap) return;
+  let data;
+  try { data = await api("/folder-suggestions"); } catch { wrap.hidden = true; return; }
+  if ($("ai-folder-mode")) $("ai-folder-mode").value = data.mode === "off" ? "off" : "suggest";
+  const list = data.suggestions || [];
+  wrap.hidden = !list.length;
+  wrap.innerHTML = list.length ? `<p class="folder-suggestions-title">AI 建議新增資料夾（${list.length}）</p>` + list.map((s) => `
+    <div class="folder-suggestion" data-id="${s.id}">
+      <div class="folder-suggestion-main">
+        <input class="folder-suggestion-name" type="text" value="${esc(s.name)}" maxlength="80" aria-label="資料夾名稱，可修改後再同意" />
+        <small>位置：${esc(folderSuggestionPath(s))}${s.requested_by ? `｜提出：${esc(s.requested_by)}` : ""}</small>
+        ${s.reason ? `<small class="folder-suggestion-reason">理由：${esc(s.reason)}</small>` : ""}
+      </div>
+      <div class="folder-suggestion-actions">
+        <button type="button" class="btn small primary" data-approve="${s.id}">同意建立</button>
+        <button type="button" class="btn small" data-reject="${s.id}">拒絕</button>
+      </div>
+    </div>`).join("") : "";
+  wrap.querySelectorAll("[data-approve]").forEach((b) => b.onclick = async () => {
+    const card = b.closest(".folder-suggestion");
+    const name = card.querySelector(".folder-suggestion-name").value.trim();
+    if (!name) { showToast("請先填資料夾名稱"); return; }
+    b.disabled = true;
+    try {
+      await api(`/folder-suggestions/${b.dataset.approve}/approve`, { method: "POST", body: JSON.stringify({ name }) });
+      showToast(`已建立資料夾「${name}」`);
+      await Promise.all([loadFolders(), loadFolderSuggestions()]);
+    } catch (err) { b.disabled = false; showToast("建立失敗：" + err.message); }
+  });
+  wrap.querySelectorAll("[data-reject]").forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await api(`/folder-suggestions/${b.dataset.reject}/reject`, { method: "POST", body: "{}" });
+      await loadFolderSuggestions();
+    } catch (err) { b.disabled = false; showToast("操作失敗：" + err.message); }
+  });
+}
+
+function initFolderSuggestions() {
+  const select = $("ai-folder-mode");
+  if (!select) return;
+  select.onchange = async () => {
+    try {
+      await api("/folder-suggestions/mode", { method: "PUT", body: JSON.stringify({ mode: select.value }) });
+      showToast(select.value === "off" ? "已禁止 AI 新增資料夾" : "AI 新增資料夾：先建議，由你確認");
+    } catch (err) { showToast("設定失敗：" + err.message); }
+  };
+}
+
 async function loadRecent() {
+  loadFolderSuggestions().catch(() => {});
   const entries = await api("/entries/recent?limit=25");
   $("inbox-count").textContent = entries.length ? `（${entries.length}）` : "";
   $("inbox-panel").style.display = "block";
@@ -8543,6 +8603,7 @@ function init() {
   if ($("btn-inbox-sticky")) $("btn-inbox-sticky").onclick = () => setInboxView("sticky");
   initHomeLayout();
   initHomeWidgets();
+  initFolderSuggestions();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
