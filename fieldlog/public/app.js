@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "226";
+const APP_VERSION = "227";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -8491,6 +8491,8 @@ async function openAudioPhotoPopup() {
   $("audio-photo-video").srcObject = AUDIO_PHOTO_STREAM;
   $("audio-photo-count").textContent = AUDIO.photos ? `📷 ${AUDIO.photos}` : "";
   $("audio-photo-popup").style.display = "flex";
+  // v227 錄音面板（z-index 95）比相機畫面（80）高，會蓋住快門；相機開著時縮成上方一條
+  document.body.classList.add("audio-camera-open");
 }
 
 function closeAudioPhotoPopup() {
@@ -8500,6 +8502,7 @@ function closeAudioPhotoPopup() {
   AUDIO_PHOTO_STREAM = null;
   $("audio-photo-video").srcObject = null;
   $("audio-photo-popup").style.display = "none";
+  document.body.classList.remove("audio-camera-open");
 }
 
 async function audioPhotoSnap() {
