@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "224";
+const APP_VERSION = "225";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -3034,32 +3034,79 @@ function sortFolderFiles(items) {
     || Number(b.attachment.id) - Number(a.attachment.id));
 }
 
+// v225 資料夾內容排序：new（日期新到舊，預設）／old（舊到新）／name（名稱 A→Z）／
+// name-desc（Z→A）／type（類型）／type-desc。子資料夾一律排在內容前面。
+const FILE_SORT_LABELS = {
+  new: "日期：新到舊", old: "日期：舊到新", name: "名稱：A→Z", "name-desc": "名稱：Z→A",
+  type: "類型：A→Z", "type-desc": "類型：Z→A",
+};
+
 function setFileSort(sort) {
-  FILE_SORT = sort;
-  localStorage.setItem("fieldlog_file_sort", sort);
+  FILE_SORT = FILE_SORT_LABELS[sort] ? sort : "new";
+  localStorage.setItem("fieldlog_file_sort", FILE_SORT);
   if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id);
 }
 
+// 工具列按鈕：在日期、名稱、類型三種之間輪替（方向在詳細模式的排序列切換）
+function cycleFileSort() {
+  const order = ["new", "name", "type"];
+  const current = FILE_SORT.startsWith("name") ? "name" : FILE_SORT.startsWith("type") ? "type" : "new";
+  setFileSort(order[(order.indexOf(current) + 1) % order.length]);
+}
+
+// 排序列：點同一欄就反向，點別欄用該欄的預設方向（日期新到舊、名稱與類型 A→Z）
+function toggleFileSortKey(key) {
+  const next = {
+    date: FILE_SORT === "new" ? "old" : "new",
+    name: FILE_SORT === "name" ? "name-desc" : "name",
+    type: FILE_SORT === "type" ? "type-desc" : "type",
+  }[key];
+  if (next) setFileSort(next);
+}
+
 function syncFileSortButton() {
+  if (!FILE_SORT_LABELS[FILE_SORT]) FILE_SORT = "new";
   const button = $("btn-file-sort");
-  if (!button) return;
-  button.textContent = FILE_SORT === "name" ? "🔤 名稱排序" : "🆕 新到舊";
-  button.title = FILE_SORT === "name"
-    ? "目前依名稱排序，點一下改成新到舊（子資料夾仍排在內容前面）"
-    : "目前新到舊，點一下改成依名稱排序（子資料夾仍排在內容前面）";
+  if (button) {
+    button.textContent = FILE_SORT_LABELS[FILE_SORT];
+    button.title = "點一下切換日期／名稱／類型排序；詳細模式可在清單上方切換方向（子資料夾仍排在內容前面）";
+  }
+  const key = FILE_SORT.startsWith("name") ? "name" : FILE_SORT.startsWith("type") ? "type" : "date";
+  const descending = FILE_SORT === "new" || FILE_SORT.endsWith("-desc");
+  document.querySelectorAll("#folder-sort-bar [data-sort-key]").forEach((b) => {
+    const active = b.dataset.sortKey === key;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-pressed", String(active));
+    b.dataset.dir = active ? (descending ? "desc" : "asc") : "";
+  });
+}
+
+// 類型排序用的分組：筆記 → 錄音 → 資料包 → 檔案依副檔名（同類型再比名稱）
+function explorerTypeKey(item) {
+  if (item.kind === "note") return "0 筆記";
+  if (item.kind === "package") return item.recording ? "1 錄音" : "2 資料包";
+  const ext = String(item.name || "").split(".").pop().toLowerCase();
+  return `3 ${ext || "~"}`;
 }
 
 function sortExplorerItems(items) {
+  // 跟 Windows 檔案總管一樣：數字、英文開頭的排在中文前面，再依中文排序規則比
+  const latin = (name) => (/^[0-9A-Za-z]/.test(String(name || "")) ? 0 : 1);
+  const byName = (a, b) => latin(a.name) - latin(b.name)
+    || String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant", { numeric: true, sensitivity: "base" });
+  const byNew = (a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || Number(b.id || 0) - Number(a.id || 0);
   return items.sort((a, b) => {
     // Windows 檔案總管的常見行為：資料夾先於內容，但全部仍在同一個內容區。
     const group = Number(a.kind !== "folder") - Number(b.kind !== "folder");
     if (group) return group;
-    if (FILE_SORT === "name") {
-      return String(a.name || "").localeCompare(String(b.name || ""), "zh-Hant", { numeric: true, sensitivity: "base" })
-        || Number(b.id || 0) - Number(a.id || 0);
+    switch (FILE_SORT) {
+      case "name": return byName(a, b) || byNew(a, b);
+      case "name-desc": return byName(b, a) || byNew(a, b);
+      case "old": return byNew(b, a);
+      case "type": return explorerTypeKey(a).localeCompare(explorerTypeKey(b)) || byName(a, b);
+      case "type-desc": return explorerTypeKey(b).localeCompare(explorerTypeKey(a)) || byName(a, b);
+      default: return byNew(a, b);
     }
-    return String(b.createdAt || "").localeCompare(String(a.createdAt || ""))
-      || Number(b.id || 0) - Number(a.id || 0);
   });
 }
 
@@ -3148,13 +3195,14 @@ async function openFolder(id) {
         return [{ kind: "file", id: a.id, name: a.filename, createdAt: a.created_at || e.created_at, html: folderFileHtml(a, e.id) }];
       }
       if (isRecordingEntry(e) || atts.length > 1) {
-        return [{ kind: "package", id: e.id, name: e.title, createdAt: e.created_at, html: recordGroupCardHtml(e, atts) }];
+        return [{ kind: "package", id: e.id, name: e.title, createdAt: e.created_at, recording: isRecordingEntry(e), html: recordGroupCardHtml(e, atts) }];
       }
       return [{ kind: "note", id: e.id, name: e.title, createdAt: e.created_at, html: entryRowHtml(e, { explorer: true }) }];
     }),
   ];
   sortExplorerItems(explorerItems);
   $("folder-entries").className = `folder-content-list ${activeView}-view`;
+  if ($("folder-sort-bar")) $("folder-sort-bar").hidden = activeView !== "details" || !explorerItems.length;
   $("folder-entries").innerHTML = explorerItems.length
     ? explorerItems.map((item) => item.html).join("")
     : `<p class="sub">這個資料夾還沒有內容。</p>`;
@@ -8639,7 +8687,8 @@ function init() {
     try { await api("/trash", { method: "DELETE" }); showToast("垃圾桶已清空"); await loadTrash(); }
     catch (error) { showToast("清空失敗：" + error.message); }
   };
-  $("btn-file-sort").onclick = () => setFileSort(FILE_SORT === "name" ? "new" : "name");
+  $("btn-file-sort").onclick = cycleFileSort;
+  document.querySelectorAll("#folder-sort-bar [data-sort-key]").forEach((b) => { b.onclick = () => toggleFileSortKey(b.dataset.sortKey); });
   $("btn-folder-sort-home").onclick = toggleFolderSort;
   $("btn-folder-sort-inner").onclick = toggleFolderSort;
   syncFolderSortButtons();
