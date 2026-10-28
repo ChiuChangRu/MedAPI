@@ -2392,3 +2392,12 @@ body.reader-fullscreen .folder-preview {
 .docx-edit-mixed { color: #9a3412; font-weight: 600; }
 .docx-edit-para textarea { width: 100%; min-width: 0; font-family: inherit; font-size: 14px; line-height: 1.6; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; resize: vertical; background: #fff; }
 .docx-edit-para.locked p { margin: 0; padding: 6px 8px; border: 1px dashed var(--border); border-radius: 6px; color: var(--text-muted); font-size: 13px; white-space: pre-wrap; background: #FAFAF8; }
+
+/* v225 詳細模式排序列 */
+.folder-sort-bar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; margin: 0 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+.folder-sort-bar > span { margin-right: 6px; }
+.folder-sort-key { border: 0; background: none; padding: 4px 10px; border-radius: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
+.folder-sort-key:hover { background: rgba(31, 41, 51, .06); }
+.folder-sort-key.active { font-weight: 700; color: var(--accent); background: rgba(79, 127, 122, .10); }
+.folder-sort-key[data-dir="asc"]::after { content: " ▲"; font-size: 10px; }
+.folder-sort-key[data-dir="desc"]::after { content: " ▼"; font-size: 10px; }
