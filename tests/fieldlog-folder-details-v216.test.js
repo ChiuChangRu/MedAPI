@@ -31,3 +31,11 @@ test("v223 窄版：圖示與拖曳把手只佔第一行，跟檔名對齊", asy
   const css = await read("../fieldlog/public/style.css");
   assert.match(css, /"\.    \.    date status a1   a2   a3"/, "第二行左側兩格留空");
 });
+
+test("v226 桌機資料夾頁：底部留白放進左側清單，右欄預覽不會被推高", async () => {
+  const css = await read("../fieldlog/public/style.css");
+  const block = css.slice(css.indexOf("/* v226 桌機資料夾頁"));
+  assert.match(block, /body:has\(#view-folder:not\(\[style\*="none"\]\)\) \.container/);
+  assert.match(block, /padding-bottom: 20px/);
+  assert.match(block, /\.folder-workspace-main \{ padding-bottom: 90px; \}/);
+});

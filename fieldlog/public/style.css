@@ -2401,3 +2401,13 @@ body.reader-fullscreen .folder-preview {
 .folder-sort-key.active { font-weight: 700; color: var(--accent); background: rgba(79, 127, 122, .10); }
 .folder-sort-key[data-dir="asc"]::after { content: " ▲"; font-size: 10px; }
 .folder-sort-key[data-dir="desc"]::after { content: " ▼"; font-size: 10px; }
+
+/* v226 桌機資料夾頁：右欄預覽是 sticky，不能超出 .folder-workspace 的底部。
+   原本頁面底部的 60px（選取檔案時 90px）留白在工作區外面，頁面一捲到底，
+   右欄就被往上推，下方空出一大段。改成整頁只留 20px（等於右欄距視窗底部的距離），
+   選取列需要的空間放進左側清單裡面，最後一列一樣不會被選取列擋住。 */
+@media (min-width: 1000px) {
+  body:has(#view-folder:not([style*="none"])) .container,
+  body:has(#view-folder:not([style*="none"])):has(#file-selection-bar:not([hidden])) .container { padding-bottom: 20px; }
+  .folder-workspace-main { padding-bottom: 90px; }
+}
