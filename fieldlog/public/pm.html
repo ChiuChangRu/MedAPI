@@ -15,7 +15,7 @@ try{if(localStorage.getItem('pm_theme')==='dark')document.documentElement.setAtt
   --bg:#ffffff;--chrome:#f3f3f3;--chrome2:#e9e9e9;--ink:#1a1a1a;--mute:#666;--line:#d9d9d9;--line2:#ececec;
   --sel:#d6d6d6;--hover:#eef4fb;--sum:#fafafa;--accent:#1f5f8b;--accent-soft:#e3eef6;
   --done:#2f7d4f;--done-soft:#e2f2e8;--warn:#a5560f;--warn-soft:#fbeedd;--bad:#b3261e;--bad-soft:#fbe4e2;
-  --bar:#4a7fa8;--bar-done:#3f8f5f;--bar-fc:#c98a3a;--pencil:#e0a100;
+  --bar:#4a7fa8;--bar-done:#3f8f5f;--bar-fc:#c98a3a;--pencil:#e0a100;--projb:#d0782a;
 }
 :root[data-theme="dark"]{
   --bg:#1c1d1f;--chrome:#26282b;--chrome2:#2e3034;--ink:#e4e4e4;--mute:#9aa0a6;--line:#3a3d42;--line2:#2c2f33;
@@ -89,7 +89,7 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 .g-scale span{position:absolute;top:18px;white-space:nowrap;border-left:1px solid var(--line);padding-left:3px}
 .gin{min-width:1200px;--gn:300px}
 /* 年份灰底（隔年交替）＋月份淡虛線：畫在一層背景，橫跨所有列 */
-#g{position:relative}
+#g,#mg{position:relative}
 .g-grid{position:absolute;top:0;bottom:0;left:var(--gn);right:0;pointer-events:none;z-index:0}
 .g-yband{position:absolute;top:0;bottom:0;background:rgba(0,0,0,.05)}
 .g-mline{position:absolute;top:0;bottom:0;border-left:1px dashed rgba(0,0,0,.10)}
@@ -102,10 +102,20 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 .g-cmp.mark{width:3px;height:8px;top:12px}
 .g-row.has-cmp .g-bar{top:3px}
 .legend .cmpi{background:#9a9a9a}
+/* 多案總覽：兩案不同色＋列首標籤 */
+.g-bar.pa{background:var(--bar)}.g-bar.pb{background:var(--projb)}
+.g-bar.pa.sumb{background:var(--bar);opacity:.6}.g-bar.pb.sumb{background:var(--projb);opacity:.6}
+.chip{display:inline-block;min-width:18px;text-align:center;font-size:11px;line-height:16px;border-radius:2px;color:#fff;margin-right:4px;padding:0 3px}
+.chip.pa{background:var(--bar)}.chip.pb{background:var(--projb)}
+.g-row.lane td,.g-row.lane{font-weight:700}
+.g-row.lane .g-name{background:var(--chrome2)}
+.mseg{display:inline-flex;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-right:12px}
+.mseg button{border:0;background:var(--bg);padding:2px 10px;cursor:pointer;white-space:nowrap}
+.mseg button.on{background:var(--accent);color:#fff}
 .kpis .cmp{color:var(--mute)}
 #ct td.num{text-align:right}
 /* 甘特圖：圖例固定在上，捲動區內凍結「名稱」欄（左）與時間標題（上） */
-section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
+section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 .gscroll{flex:1;min-height:0;overflow:auto}
 .g-name{position:sticky;left:0;z-index:1;background:var(--bg)}
 .g-row.sum .g-name{background:var(--sum)}
@@ -147,6 +157,7 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
   <button class="tab on" data-t="tbl" type="button">任務</button>
   <button class="tab" data-t="gantt" type="button">甘特圖</button>
   <button class="tab" data-t="cmpt" type="button">比較</button>
+  <button class="tab" data-t="multi" type="button">多案總覽</button>
   <button class="tab" data-t="rule" type="button">依據與規則</button>
   <span class="seg" id="mode"><button data-m="tpl" class="on" type="button">合理時程（套版）</button><button data-m="fc" type="button">現況預測</button></span>
   <span class="kpis" id="kpis"></span>
@@ -161,6 +172,10 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 <section id="cmpt" hidden><div class="doc" style="max-width:none">
 <p class="note" id="cmpNote">請在上方「比較對象」選一個案件。</p>
 <table class="grid" id="ct"></table></div></section>
+<section id="multi" hidden>
+  <div class="legend" id="mLegend"></div>
+  <div class="gscroll"><div class="gin" id="mg"></div></div>
+</section>
 <section id="rule" hidden><div class="doc">
 <h2>本案件的工天與前置任務依據</h2>
 <ul id="notes"><li class="note">（載入資料後顯示）</li></ul>
@@ -182,6 +197,8 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 <li>上方「比較對象」選另一個案件後，甘特圖橫軸改為「開始後第 N 個月」：本案藍條從本案開始日起算；比較對象灰條用它的 Excel 壓縮排程（原排開始～壓縮後完成），從它的 Excel 原排最早開始日起算。</li>
 <li>比較對象若原排開始晚於壓縮完成（Excel 未填修改後開始日），只畫壓縮完成的灰點。</li>
 <li>兩案以任務代碼對應；本案有、比較對象沒有的任務標「新增」。</li>
+<li>比較對象的 Excel 壓縮排程：開始＝原排開始、完成＝壓縮後完成；原排開始晚於壓縮後完成（Excel 未填修改後開始日）的任務，開始日改以「壓縮後完成 − 原排工期」回推，標 *。</li>
+<li>「多案總覽」：本案（藍）與比較對象（橘）畫在同一條實際日期軸。「分區」上下分開各自保持 WBS 順序；「依時間穿插」只列任務、依開始日排序，看同一時段兩案各在做什麼。</li>
 </ul>
 <h2>現況預測的規則</h2>
 <ul>
@@ -319,7 +336,7 @@ function render(){
       <td class="ana wrapc">${r.flag==='warn'?'<span class="pill p-warn">注意</span> ':''}${esc(r.note||'')}</td></tr>`;
   }
   t.innerHTML=h+'</tbody>';
-  renderKpi(); renderGantt(today); renderCompareTable();
+  renderKpi(); renderGantt(today); renderCompareTable(); renderMulti(today);
 }
 // ===== 比較：對方的 Excel 壓縮排程（F＝原排開始、I＝壓縮後完成），以對方最早的 F 為第 0 天 =====
 function setCompare(json){
@@ -328,26 +345,38 @@ function setCompare(json){
   const by=Object.fromEntries(tasks.map(r=>[r.k,r]));
   const fs=tasks.filter(r=>r.F).map(r=>pd(r.F));
   const t0=fs.length?new Date(Math.min(...fs)):null;
-  // 摘要／階段：子項 F 最小～I 最大
+  // 壓縮排程的起訖：開始＝原排開始(F)、完成＝壓縮後完成(I)。
+  // F 晚於 I（Excel 未填修改後開始日）時：開始＝壓縮後完成 − 原排工期(G−F，曆天)，保留原排工期往前推（使用者指定規則）。
   for(const r of tasks){
-    if(r.t==='phase'||r.t==='sum'){
-      const ch=tasks.filter(x=>x.t!=='phase'&&x.t!=='sum'&&(r.t==='sum'?x.par===r.k:x.ph===r.k));
-      const F=ch.filter(x=>x.F).map(x=>pd(x.F)), I=ch.filter(x=>x.I).map(x=>pd(x.I));
-      r._s=F.length?new Date(Math.min(...F)):null; r._f=I.length?new Date(Math.max(...I)):null;
-    } else { r._s=r.F?pd(r.F):null; r._f=r.I?pd(r.I):null; }
+    if(r.t==='phase'||r.t==='sum')continue;
+    r._f=r.I?pd(r.I):null; r._s=r.F?pd(r.F):null; r._back=false;
+    if(r._s&&r._f&&r._s>r._f){
+      const dur=r.G?Math.round((pd(r.G)-pd(r.F))/864e5):0;
+      r._s=addD(r._f,-dur); r._back=true;
+    }
   }
-  CMP={meta:json.meta||{},byK:by,t0};
+  // 摘要／階段：子項開始最小～完成最大
+  for(const r of tasks){
+    if(r.t!=='phase'&&r.t!=='sum')continue;
+    const ch=tasks.filter(x=>x.t!=='phase'&&x.t!=='sum'&&(r.t==='sum'?x.par===r.k:x.ph===r.k));
+    const S=ch.filter(x=>x._s).map(x=>x._s), E=ch.filter(x=>x._f).map(x=>x._f);
+    r._s=S.length?new Date(Math.min(...S)):null; r._f=E.length?new Date(Math.max(...E)):null;
+  }
+  // 比較對象自己的 WBS 號（多案總覽要顯示）
+  {let p=0,c=0;const sub={};for(const r of tasks){if(r.t==='phase'){p++;c=0;r._wbs=String(p);r._lvl=1;continue}
+    if(r.par&&by[r.par]){sub[r.par]=(sub[r.par]||0)+1;r._wbs=by[r.par]._wbs+'.'+sub[r.par];r._lvl=3;continue}c++;r._wbs=p+'.'+c;r._lvl=2;}}
+  CMP={meta:json.meta||{},byK:by,tasks,t0};
 }
 const dayOf=(d,t0)=>d&&t0?Math.round((d-t0)/864e5):null;   // 第 N 天（曆天，第 0 天＝開始日）
 function cmpRow(r){ if(!CMP)return null; const c=CMP.byK[r.k]; if(!c||!c._f)return null;
-  const s=dayOf(c._s,CMP.t0), f=dayOf(c._f,CMP.t0); return {s,f,valid:s!=null&&s<=f,I:c.I,F:c.F}; }
+  const s=dayOf(c._s,CMP.t0), f=dayOf(c._f,CMP.t0); return {s,f,valid:s!=null&&s<=f,I:c.I,F:c.F,back:c._back}; }
 function ownStart(){return nextWd(pd(document.getElementById('start').value))}
 function renderCompareTable(){
   const ct=document.getElementById('ct'), note=document.getElementById('cmpNote');
   if(!CMP){ct.innerHTML='';note.textContent='請在上方「比較對象」選一個案件。';return}
   const t0=ownStart();
   note.innerHTML=`本案「${esc(META.name||'')}」第 0 天＝開始日 ${fd(t0)}；比較對象「${esc(CMP.meta.name||'')}」用 Excel 壓縮排程，第 0 天＝其 Excel 原排最早開始日 ${fd(CMP.t0)}。天數皆為曆天。差異＝本案完成天數 − 比較對象完成天數。`;
-  let h=`<thead><tr class="cols"><th class="name">名稱</th><th>WBS號</th><th>本案工期<br>(工天)</th><th>本案開始</th><th>本案完成</th><th>本案完成<br>第N天</th><th>比較：Excel原排開始</th><th>比較：壓縮完成</th><th>比較完成<br>第N天</th><th>差異(天)</th><th>說明</th></tr></thead><tbody>`;
+  let h=`<thead><tr class="cols"><th class="name">名稱</th><th>WBS號</th><th>本案工期<br>(工天)</th><th>本案開始</th><th>本案完成</th><th>本案完成<br>第N天</th><th>比較：壓縮排程開始</th><th>比較：壓縮完成</th><th>比較完成<br>第N天</th><th>差異(天)</th><th>說明</th></tr></thead><tbody>`;
   for(const r of D){
     if(hidden(r))continue;
     const sum=r.t===PH||r.t==='sum'; const c=cmpRow(r); const own=dayOf(r.f,t0);
@@ -356,9 +385,9 @@ function renderCompareTable(){
     const cc=CMP.byK[r.k];
     h+=`<tr class="${sum?'sum':''}"><td class="name"><span class="tw" style="padding-left:${(r.lvl-1)*18}px">${sum?ICON_SUM:ICON_TASK}${esc(r.name)}</span></td><td>${r.wbs}</td>
     <td class="num">${sum?wdBetween(r.s,r.f):r.dur}</td><td>${fd(r.s)}</td><td>${fd(r.f)}</td><td class="num">${own}</td>
-    <td>${cc&&cc._s?fd(cc._s):''}</td><td>${cc&&cc._f?fd(cc._f):''}</td><td class="num">${c?c.f:''}</td>
+    <td>${cc&&cc._s?fd(cc._s)+(cc._back?' *':''):''}</td><td>${cc&&cc._f?fd(cc._f):''}</td><td class="num">${c?c.f:''}</td>
     <td class="num">${diff==null?'':`<span class="pill ${dcls}">${diff>0?'+':''}${diff}</span>`}</td>
-    <td class="wrapc">${cc?(c&&!c.valid?'比較對象原排開始晚於壓縮完成（Excel 未填修改後開始日）':''):'<span class="pill p-run">本案新增</span>'}</td></tr>`;
+    <td class="wrapc">${cc?(c&&c.back?'比較對象原排開始晚於壓縮完成，開始日改以「壓縮完成 − 原排工期」回推 *':''):'<span class="pill p-run">本案新增</span>'}</td></tr>`;
   }
   ct.innerHTML=h+'</tbody>';
 }
@@ -428,6 +457,51 @@ function renderGanttCompare(){
   document.getElementById('g').innerHTML=h;
 }
 
+// ===== 多案總覽：本案（目前排程模式）＋比較對象（Excel 壓縮排程），同一條實際日期軸 =====
+let MLAYOUT='lane';
+const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
+function renderMulti(today){
+  const lg=document.getElementById('mLegend'), g=document.getElementById('mg');
+  if(!CMP){lg.innerHTML='';g.innerHTML='<p class="note" style="padding:12px">請在上方「比較對象」選一個案件，才能和本案排在同一條時間軸上。</p>';return}
+  const ta=tagOf(META), tb=tagOf(CMP.meta);
+  lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button></span>
+    <span><i style="background:var(--bar)"></i>${esc(ta)}｜${esc(META.name||'本案')}（${mode==='fc'?'現況預測':'合理時程'}）</span>
+    <span><i style="background:var(--projb)"></i>${esc(tb)}｜${esc(CMP.meta.name||'比較對象')}（Excel 壓縮排程；* 為回推開始日）</span>
+    <span><i style="background:var(--accent);width:2px"></i>今天</span>`;
+  // 兩案的列：{p:'a'|'b', wbs, lvl, name, s, f, sum, back}
+  const A=D.filter(r=>r.s&&r.f).map(r=>({p:'a',wbs:r.wbs,lvl:r.lvl,name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',ph:r.t===PH}));
+  const B=CMP.tasks.filter(r=>r._s&&r._f).map(r=>({p:'b',wbs:r._wbs,lvl:r._lvl,name:r.name,s:r._s,f:r._f,sum:r.t==='phase'||r.t==='sum',ph:r.t==='phase',back:r._back}));
+  let rows;
+  if(MLAYOUT==='lane'){
+    const LA=[{lane:1,p:'a',name:`${ta}｜${META.name||'本案'}`},...A], LB=[{lane:1,p:'b',name:`${tb}｜${CMP.meta.name||'比較對象'}`},...B];
+    // 先開始的案件排上面
+    const sa=Math.min(...A.map(r=>r.s)), sb=Math.min(...B.map(r=>r.s));
+    rows=sb<sa?[...LB,...LA]:[...LA,...LB];
+  } else {
+    // 依時間穿插：只列任務（不含階段／摘要），依開始日排序；同日先列本案
+    rows=[...A,...B].filter(r=>!r.sum).sort((x,y)=>x.s-y.s||(x.p<y.p?-1:1)||x.f-y.f);
+  }
+  const all=[...A,...B];
+  const min=new Date(Math.min(...all.map(r=>r.s))), max=new Date(Math.max(...all.map(r=>r.f)));
+  const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1)); const span=(max-s0)/864e5+31; const end=addD(s0,span);
+  const x=d=>((d-s0)/864e5/span*100).toFixed(3)+'%';
+  const bands=[], lines=[];
+  for(let y=s0.getUTCFullYear();;y++){const a=new Date(Math.max(s0,Date.UTC(y,0,1))), b=new Date(Math.min(end,Date.UTC(y+1,0,1)));if(a>=end)break;bands.push([a,b]);}
+  let sc='';
+  for(let d=new Date(s0);d<end;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){sc+=`<span style="left:${x(d)}">${d.getUTCMonth()+1}</span>`; if(d>s0&&d.getUTCMonth()!==0)lines.push(d);}
+  const tl=(today>=s0&&today<=end)?`<div class="g-today" style="left:${x(today)}"></div>`:'';
+  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5<45?'':a.getUTCFullYear())}${sc}</div></div>${gridLayer(x,bands,lines)}`;
+  for(const r of rows){
+    if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip p${r.p}">${esc(r.p==='a'?ta:tb)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
+    const ind=MLAYOUT==='lane'?8+(r.lvl-1)*14:8;
+    const w=`calc(${x(addD(r.f,1))} - ${x(r.s)})`;
+    const tip=`${r.p==='a'?ta:tb} ${r.wbs} ${r.name}：${fd(r.s)}${r.back?'*':''} → ${fd(r.f)}`;
+    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip p${r.p}">${esc(r.p==='a'?ta:tb)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar p${r.p} ${r.sum?'sumb':''}" style="left:${x(r.s)};width:${w}" title="${esc(tip)}"></div></div></div>`;
+  }
+  g.innerHTML=h;
+}
+document.getElementById('mLegend').addEventListener('click',e=>{const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
+
 // ===== 互動 =====
 document.getElementById('t').addEventListener('click',e=>{
   const tg=e.target.closest('[data-tog]');
@@ -440,7 +514,7 @@ document.getElementById('mode').addEventListener('click',e=>{const b=e.target.cl
   render()});
 document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
-  ['tbl','gantt','cmpt','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t)});
+  ['tbl','gantt','cmpt','multi','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t)});
 ['start','today'].forEach(id=>document.getElementById(id).addEventListener('change',render));
 document.getElementById('today').value=new Date().toISOString().slice(0,10);
 function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('theme').textContent=dark?'☀ 白色模式':'☾ 深色模式'}
