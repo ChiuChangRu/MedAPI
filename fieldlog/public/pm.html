@@ -150,6 +150,14 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .w-name{width:220px}.w-pred{width:150px}.w-num{width:56px;text-align:right}.w-txt{width:120px}.w-m{width:220px}
 .grid td.cond{white-space:nowrap}
 .grid td.cond select{margin-right:3px}
+.g-bar.ed{cursor:grab;touch-action:none}
+.g-bar.ed:hover{outline:2px solid var(--accent);outline-offset:1px}
+.g-bar .gh{position:absolute;right:-3px;top:-3px;bottom:-3px;width:8px;cursor:ew-resize}
+.pop [hidden]{display:none!important}
+.pop{position:fixed;z-index:60;background:var(--bg);border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.18);padding:10px 12px;display:flex;flex-direction:column;gap:6px;width:280px;font-size:13px}
+.pop label{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--mute)}
+.pop input,.pop select{font:inherit;padding:2px 4px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:150px}
+.pop .pp-act{display:flex;justify-content:flex-end;gap:6px;margin-top:4px}
 </style>
 </head>
 <body>
@@ -172,6 +180,8 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
     <button class="act" id="btnAdd" type="button" title="在選取列之後新增任務">＋ 新增任務</button>
     <button class="act" id="btnDel" type="button" title="刪除選取的任務">刪除任務</button>
     <button class="act" id="btnBase" type="button" title="把目前計劃開始／完成存成「預計開始日／原本預計完成」">設為基準</button>
+    <button class="act" id="btnLink" type="button" title="把「指定日期」的任務改成接前置任務，延遲天數自動算到日期不變">轉為連動</button>
+    <button class="act" id="btnUndo" type="button" title="復原上一步" disabled>↶ 復原</button>
     <span class="dirty" id="dirty"></span>
   </span>
   <span class="kpis" id="kpis"></span>
@@ -194,12 +204,20 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <li>階段列與摘要列不能編輯：開始＝子項最早開始、完成＝子項最晚完成。</li>
 <li>半自動初次載入時，完全依 Excel 壓縮版：每個任務設為「指定日期」＝壓縮版開始日，歷時＝壓縮版開始到「修改後預計完成」之間的工作天。原排開始晚於修改後完成的任務（Excel 未填修改後開始日），開始日＝修改後完成 − 原排工期，標 *。壓縮完成日落在假日時，計劃完成會是前一個工作天。</li>
 </ul>
+<h2>甘特圖直接編輯</h2>
+<ul>
+<li>在「多案總覽」，目前選的案件的條狀可以拖動：拖整條＝改開始日；拖右緣＝改歷時；點一下＝跳出小視窗輸入起始條件與歷時。其他案件只能看。</li>
+<li>拖動「前置任務」型的任務時，改的是決定它開始日的那個前置任務的延遲天數，連動保留；「指定日期」型的任務改日期。設為前置任務的後續任務會跟著重算。</li>
+<li>「轉為連動」：把指定日期的任務改成接前置任務，延遲天數自動算到日期不變；壓縮重疊處會是負延遲。</li>
+<li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
+</ul>
 <h2>前置任務寫法（比照 PLM：填前置任務的 WBS 號）</h2>
 <table>
 <tr><th>寫法</th><th>意義</th><th>鼎新 XML &lt;Type&gt;</th><th>&lt;LinkLag&gt;</th></tr>
 <tr><td><code>4.1</code></td><td>WBS 4.1 完成後的下一個工作天開始（FS）</td><td>1</td><td>0</td></tr>
 <tr><td><code>4.1+5d</code></td><td>WBS 4.1 完成後再隔 5 個工作天開始</td><td>1</td><td>24000</td></tr>
 <tr><td><code>7.3SS+30d</code></td><td>WBS 7.3 開始後第 30 個工作天開始</td><td>3</td><td>144000</td></tr>
+<tr><td><code>5.13-20d</code></td><td>WBS 5.13 完成前 20 個工作天就開始（重疊）</td><td>1</td><td>-96000</td></tr>
 </table>
 <p class="note">多個前置任務用逗號分開，取最晚的那個。LinkLag 單位 0.1 分鐘、LagFormat=7；1 工天＝4800。PLM 畫面上 SS／延遲的顯示寫法 *尚未確認。</p>
 <h2>存檔與匯出</h2>
@@ -242,7 +260,11 @@ const addD=(d,n)=>new Date(d.getTime()+n*864e5);
 const isWd=d=>{const k=fd(d);if(MAKEUP.has(k))return true;const w=d.getUTCDay();return w!==0&&w!==6&&!HOLIDAYS.has(k)};
 const nextWd=d=>{while(!isWd(d))d=addD(d,1);return d};
 const prevWd=d=>{while(!isWd(d))d=addD(d,-1);return d};
-const addWd=(d,n)=>{d=nextWd(d);let c=0;while(c<n){d=addD(d,1);if(isWd(d))c++}return d};
+const addWd=(d,n)=>{ // 從工作日 d 起算第 n 個工作日；n 可為負（往前數）
+  if(n>=0){d=nextWd(d);let c=0;while(c<n){d=addD(d,1);if(isWd(d))c++}return d}
+  d=prevWd(d);let c=0;while(c<-n){d=addD(d,-1);if(isWd(d))c++}return d};
+const wdDiff=(a,b)=>b>=a?wdBetween(a,b)-1:-(wdBetween(b,a)-1); // addWd(a,n)=b 的 n（a、b 皆為工作日）
+const predBase=(p,t)=>t==='SS'?p.s:addWd(p.f,1); // 延遲 0 時的開始日
 const finishOf=(s,dur)=>addWd(s,Math.max(dur,1)-1);
 const wdBetween=(a,b)=>{let n=0,d=a;while(d<=b){if(isWd(d))n++;d=addD(d,1)}return n};
 const cdBetween=(a,b)=>Math.round((b-a)/864e5)+1;
@@ -278,7 +300,7 @@ function compute(tasks,startStr){
       if(r.sm!=='fix'&&!preds.every(([k])=>done[k]||by[k].t==='sum'))continue;
       let es=r.sm==='fix'&&r.fix?nextWd(pd(r.fix)):start;
       if(r.sm!=='fix'){
-        for(const [k,t,l] of preds){const p=by[k];if(!p.s)continue;const c=t==='SS'?addWd(p.s,l||0):addWd(p.f,1+(l||0));if(c>es)es=c;}
+        for(const [k,t,l] of preds){const p=by[k];if(!p.s)continue;const c=addWd(predBase(p,t),l||0);if(c>es)es=c;}
       }
       r.s=es; r.f=finishOf(es,r.dur||1); done[r.k]=1; progressed=true;
     }
@@ -299,6 +321,11 @@ function setData(json){
   document.getElementById('notes').innerHTML=(META.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('')||'<li class="note">（資料未附說明）</li>';
   render();
 }
+const UNDO=[];
+function pushUndo(){UNDO.push(JSON.stringify({D,META}));if(UNDO.length>40)UNDO.shift();document.getElementById('btnUndo').disabled=false}
+function undo(){const x=UNDO.pop();if(!x)return;const o=JSON.parse(x);D=o.D;META=o.META;byK=Object.fromEntries(D.map(r=>[r.k,r]));
+  document.getElementById('start').value=META.default_start||document.getElementById('start').value;
+  document.getElementById('btnUndo').disabled=!UNDO.length;setDirty(true);render()}
 function setDirty(v){DIRTY=v;document.getElementById('btnSave').disabled=!v;document.getElementById('dirty').textContent=v?'● 尚未存檔':''}
 const W=()=>wbsMap(D);
 const predText=(r,wm)=>(r.pred||[]).filter(([k])=>byK[k]).map(([k,t,l])=>wm[k][0]+(t==='SS'?'SS':'')+(l?(l>0?'+':'')+l+'d':'')).join(', ');
@@ -357,7 +384,7 @@ function renderKpi(){
 }
 // 編輯：change 事件（離開欄位或按 Enter）才重算
 document.getElementById('t').addEventListener('change',e=>{
-  const el=e.target.closest('[data-f]'); if(!el)return; const tr=el.closest('tr[data-k]'); const r=byK[tr.dataset.k]; const f=el.dataset.f;
+  const el=e.target.closest('[data-f]'); if(!el)return; const tr=el.closest('tr[data-k]'); pushUndo(); const r=byK[tr.dataset.k]; const f=el.dataset.f;
   if(f==='sm'){ if(el.value==='fix'&&!r.fix)r.fix=fd(r.s||pd(document.getElementById('start').value)); r.sm=el.value; }
   else if(f==='pred'){ const {out,bad}=parsePred(el.value,W()); if(out.some(([k])=>k===r.k)){alert('不能把自己設為前置任務');render();return}
     r.pred=out; if(bad.length)alert('看不懂或找不到的前置任務：'+bad.join('、')+'\n寫法例：4.1、4.1+5d、7.3SS+30d'); }
@@ -372,13 +399,13 @@ document.getElementById('t').addEventListener('click',e=>{
   const tr=e.target.closest('tr[data-k]'); if(tr){SEL=tr.dataset.k;document.querySelectorAll('#t tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel')}
 });
 document.getElementById('t').addEventListener('focusin',e=>{const tr=e.target.closest('tr[data-k]');if(tr&&SEL!==tr.dataset.k){SEL=tr.dataset.k;document.querySelectorAll('#t tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel')}});
-['start'].forEach(id=>document.getElementById(id).addEventListener('change',e=>{META.default_start=e.target.value;setDirty(true);render()}));
+['start'].forEach(id=>document.getElementById(id).addEventListener('change',e=>{pushUndo();META.default_start=e.target.value;setDirty(true);render()}));
 document.getElementById('today').addEventListener('change',render);
 // 新增／刪除／基準
 document.getElementById('btnAdd').onclick=()=>{
   if(!D.length)return; const sel=byK[SEL];
   if(!sel){alert('請先點選一列，新任務會加在它後面');return}
-  const k='n'+Date.now().toString(36);
+  pushUndo(); const k='n'+Date.now().toString(36);
   let nt={k,no:'',ph:sel.t===PH?sel.k:sel.ph,name:'新任務',rd:'',co:'',dur:5,sm:'pred',pred:[]};
   let at=D.indexOf(sel)+1;
   if(sel.t==='sum'){nt.par=sel.k; while(at<D.length&&D[at].par===sel.k)at++;}
@@ -391,12 +418,13 @@ document.getElementById('btnDel').onclick=()=>{
   if(r.t===PH){alert('階段列不能刪除');return}
   if(r.t==='sum'&&D.some(x=>x.par===r.k)){alert('摘要任務底下還有子項，請先刪除子項');return}
   if(!confirm(`刪除「${r.name}」？依賴它的任務會改接它的前置任務。`))return;
+  pushUndo();
   for(const x of D){ if(!x.pred)continue; if(x.pred.some(([k])=>k===r.k)){ x.pred=x.pred.filter(([k])=>k!==r.k).concat((r.pred||[]).filter(([k])=>!x.pred.some(([kk])=>kk===k))); } }
   D.splice(D.indexOf(r),1); delete byK[r.k]; SEL=null; setDirty(true); render();
 };
 document.getElementById('btnBase').onclick=()=>{
   if(!confirm('把每個任務目前的「計劃開始／計劃結束」寫進「預計開始日／原本預計完成」（Excel 基準欄）？原本的基準會被覆蓋。'))return;
-  for(const r of D){if(r.t===PH||r.t==='sum'||!r.s)continue; r.F=fd(r.s); r.G=fd(r.f);} setDirty(true); render();
+  pushUndo(); for(const r of D){if(r.t===PH||r.t==='sum'||!r.s)continue; r.F=fd(r.s); r.G=fd(r.f);} setDirty(true); render();
 };
 
 // ===== 存檔：寫回 MyWiki 那筆記事 =====
@@ -420,7 +448,7 @@ document.getElementById('btnSave').onclick=async()=>{
 window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
 
 // ===== 多案總覽：PM工具裡所有勾選的案件，畫在同一條實際日期軸 =====
-let MLAYOUT='lane'; const MOFF=new Set();
+let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null;
 const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
 function gridLayer(x,bands,lines){
   return `<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
@@ -431,7 +459,7 @@ function caseRows(id,json,color){
   let tasks;
   if(isCur)tasks=D; else {tasks=migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])}))); compute(tasks,meta.default_start||fd(new Date()));}
   const wm=wbsMap(tasks);
-  const rows=tasks.filter(r=>r.s&&r.f).map(r=>({c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back}));
+  const rows=tasks.filter(r=>r.s&&r.f).map(r=>({k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back}));
   return {tag,name:meta.name||'',color,rows};
 }
 let MSEQ=0;
@@ -470,12 +498,81 @@ async function renderMulti(today){
     if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip ${r.c}">${esc(r.tag)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
     const ind=MLAYOUT==='lane'?8+(r.lvl-1)*14:8;
     const tip=`${r.tag} ${r.wbs} ${r.name}：${fd(r.s)}${r.back?'*':''} → ${fd(r.f)}`;
-    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.tag)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''}" style="left:${x(r.s)};width:calc(${x(addD(r.f,1))} - ${x(r.s)})" title="${esc(tip)}"></div></div></div>`;
+    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.tag)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''} ${r.ed?'ed':''}" ${r.ed?`data-k="${esc(r.k)}"`:''} style="left:${x(r.s)};width:calc(${x(addD(r.f,1))} - ${x(r.s)})" title="${esc(tip)}${r.ed?'\n拖動＝改開始日；拖右緣＝改歷時；點一下＝輸入':''}">${r.ed?'<span class="gh"></span>':''}</div></div></div>`;
   }
-  g.innerHTML=h;
+  g.innerHTML=h; GAX={s0,span};
 }
 document.getElementById('mLegend').addEventListener('click',e=>{const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
 document.getElementById('mLegend').addEventListener('change',e=>{const c=e.target.closest('input[data-case]');if(!c)return;c.checked?MOFF.delete(c.dataset.case):MOFF.add(c.dataset.case);render()});
+
+// ===== 甘特圖直接編輯（只限目前案件）=====
+// 移動：指定日期 → 改日期；前置任務 → 改「主導前置」的延遲天數，保留連動。右緣：改歷時。點一下：小視窗輸入。
+function setStart(r,ns){
+  if(r.sm==='fix'||!(r.pred||[]).some(([k])=>byK[k]&&byK[k].s)){r.sm='fix';r.fix=fd(ns);return ''}
+  // 找出決定開始日的前置任務（算出來最晚的那個），改它的延遲
+  let best=null;
+  for(const p of r.pred){const q=byK[p[0]];if(!q||!q.s)continue;const c=addWd(predBase(q,p[1]),p[2]||0);if(!best||c>best.c)best={p,q,c};}
+  best.p[2]=wdDiff(predBase(best.q,best.p[1]),ns);
+  // 其他前置任務若仍把開始日卡得更晚，提示
+  for(const p of r.pred){if(p===best.p)continue;const q=byK[p[0]];if(q&&q.s&&addWd(predBase(q,p[1]),p[2]||0)>ns)return '另一個前置任務仍限制開始日，請在任務表調整其延遲';}
+  return '';
+}
+let DRAG=null;
+document.getElementById('mg').addEventListener('pointerdown',e=>{
+  const bar=e.target.closest('.g-bar.ed'); if(!bar||!GAX)return;
+  const r=byK[bar.dataset.k]; if(!r||!r.s)return;
+  const track=bar.parentElement.getBoundingClientRect();
+  DRAG={bar,r,x0:e.clientX,mode:e.target.classList.contains('gh')?'resize':'move',pxPerDay:track.width/GAX.span,left0:bar.offsetLeft,w0:bar.offsetWidth,moved:false};
+  bar.setPointerCapture(e.pointerId); e.preventDefault();
+});
+document.getElementById('mg').addEventListener('pointermove',e=>{
+  if(!DRAG)return; const dx=e.clientX-DRAG.x0; if(Math.abs(dx)>3)DRAG.moved=true; if(!DRAG.moved)return;
+  if(DRAG.mode==='move')DRAG.bar.style.transform=`translateX(${dx}px)`; else DRAG.bar.style.width=Math.max(4,DRAG.w0+dx)+'px';
+  const days=Math.round(dx/DRAG.pxPerDay);
+  document.getElementById('msg').textContent=DRAG.mode==='move'?`開始日 ${fd(nextWd(addD(DRAG.r.s,days)))}`:`完成日 ${fd(prevWd(addD(DRAG.r.f,days)))}`;
+});
+document.getElementById('mg').addEventListener('pointerup',e=>{
+  if(!DRAG)return; const d=DRAG; DRAG=null; d.bar.style.transform='';
+  if(!d.moved){openPop(d.r,e.clientX,e.clientY);return}
+  const days=Math.round((e.clientX-d.x0)/d.pxPerDay); if(!days){render();return}
+  pushUndo(); let warn='';
+  if(d.mode==='move')warn=setStart(d.r,nextWd(addD(d.r.s,days)));
+  else{const nf=prevWd(addD(d.r.f,days)); d.r.dur=Math.max(1,wdBetween(d.r.s,nf<d.r.s?d.r.s:nf));}
+  setDirty(true); render(); document.getElementById('msg').textContent=warn||'已調整，後續連動任務已重算';
+});
+// 小視窗
+function openPop(r,cx,cy){
+  closePop(); const wm=W(); const box=document.createElement('div'); box.className='pop'; box.id='pop';
+  box.innerHTML=`<b>${esc(wm[r.k][0])} ${esc(r.name)}</b>
+    <label>起始條件 <select data-p="sm"><option value="pred" ${r.sm!=='fix'?'selected':''}>前置任務</option><option value="fix" ${r.sm==='fix'?'selected':''}>指定日期</option></select></label>
+    <label class="pp-pred">前置任務 <input data-p="pred" value="${esc(predText(r,wm))}" placeholder="例 4.1, 7.3SS+30d"></label>
+    <label class="pp-fix">開始日期 <input type="date" data-p="fix" value="${esc(r.fix||fd(r.s))}"></label>
+    <label>歷時（工天） <input type="number" min="1" data-p="dur" value="${r.dur||1}"></label>
+    <div class="pp-act"><button class="act" data-a="cancel" type="button">取消</button><button class="act primary" data-a="ok" type="button">確定</button></div>`;
+  document.body.appendChild(box);
+  const sync=()=>{const fix=box.querySelector('[data-p=sm]').value==='fix';box.querySelector('.pp-pred').hidden=fix;box.querySelector('.pp-fix').hidden=!fix};
+  sync(); box.querySelector('[data-p=sm]').onchange=sync;
+  box.style.left=Math.min(cx,innerWidth-300)+'px'; box.style.top=Math.min(cy+8,innerHeight-230)+'px';
+  box.onclick=ev=>{const a=ev.target.dataset.a;if(!a)return;if(a==='cancel'){closePop();return}
+    const sm=box.querySelector('[data-p=sm]').value; pushUndo();
+    if(sm==='fix'){r.sm='fix';r.fix=box.querySelector('[data-p=fix]').value||fd(r.s)}
+    else{const {out,bad}=parsePred(box.querySelector('[data-p=pred]').value,W()); if(out.some(([k])=>k===r.k)){alert('不能把自己設為前置任務');UNDO.pop();return}
+      if(bad.length){alert('看不懂或找不到的前置任務：'+bad.join('、'));UNDO.pop();return} r.sm='pred';r.pred=out}
+    r.dur=Math.max(1,parseInt(box.querySelector('[data-p=dur]').value,10)||1);
+    closePop(); setDirty(true); render();};
+}
+function closePop(){const p=document.getElementById('pop');if(p)p.remove()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closePop(); if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
+document.getElementById('btnUndo').onclick=undo;
+// 轉為連動：指定日期 → 前置任務，每個前置的延遲都算到「日期不變」（壓縮處會出現負延遲）
+document.getElementById('btnLink').onclick=()=>{
+  const cand=D.filter(r=>r.t!==PH&&r.t!=='sum'&&r.sm==='fix'&&r.s&&(r.pred||[]).some(([k])=>byK[k]&&byK[k].t!==PH&&byK[k].s));
+  if(!cand.length){alert('沒有可轉換的任務（需為「指定日期」且資料裡有前置任務）');return}
+  if(!confirm(`把 ${cand.length} 個「指定日期」任務改成接前置任務？\n日期維持不變；比前置任務早開始的地方會出現負延遲（例如 5.13-20d，代表重疊 20 個工作天）。`))return;
+  pushUndo(); let neg=0;
+  for(const r of cand){r.pred=r.pred.filter(([k])=>byK[k]&&byK[k].t!==PH&&byK[k].s).map(([k,t])=>{const l=wdDiff(predBase(byK[k],t),r.s);if(l<0)neg++;return [k,t,l]});r.sm='pred';}
+  setDirty(true); render(); document.getElementById('msg').textContent=`已轉換 ${cand.length} 個任務，其中 ${neg} 個前置關係為負延遲（壓縮重疊）`;
+};
 
 // ===== 匯出 Excel：用 MyWiki 上的公司範本，只填內容不動格式 =====
 const xmlEsc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -629,7 +726,7 @@ document.getElementById('btnPlm').onclick=()=>{
 document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
   ['tbl','multi','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t);
-  document.getElementById('editTools').style.visibility=b.dataset.t==='tbl'?'visible':'hidden'});
+  document.getElementById('editTools').style.visibility=b.dataset.t==='rule'?'hidden':'visible'});
 document.getElementById('today').value=fd(new Date());
 function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('theme').textContent=dark?'☀ 白色模式':'☾ 深色模式'}
 document.getElementById('theme').addEventListener('click',()=>{
