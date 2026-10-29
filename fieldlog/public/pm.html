@@ -138,66 +138,82 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .login-box input{padding:6px;border:1px solid var(--line);background:var(--bg)}
 .login-box button{padding:6px;border:0;background:var(--accent);color:#fff;cursor:pointer}
 @media (max-width:640px){.gin{--gn:150px}.g-row,.g-head{grid-template-columns:150px 1fr}.grid td.name{min-width:200px}#proj{min-width:0;max-width:60vw}}
+
+/* 編輯 */
+.act{border:1px solid var(--line);background:var(--bg);padding:3px 10px;border-radius:2px;cursor:pointer;white-space:nowrap}
+.act.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.act:disabled{opacity:.45;cursor:not-allowed}
+.edit-tools{display:inline-flex;gap:6px;align-items:center;margin-left:12px}
+.dirty{color:var(--bad);font-size:12px}
+.in{font:inherit;font-size:12px;padding:1px 4px;border:1px solid var(--line);border-radius:2px;background:var(--bg);color:var(--ink)}
+.in:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.w-name{width:220px}.w-pred{width:150px}.w-num{width:56px;text-align:right}.w-txt{width:120px}.w-m{width:220px}
+.grid td.cond{white-space:nowrap}
+.grid td.cond select{margin-right:3px}
 </style>
 </head>
 <body>
 <div class="bar">
   <span class="title">📅 PM 工具</span>
   <label>案件 <select id="proj"><option>（讀取中…）</option></select></label>
-  <label>開始日 <input type="date" id="start"></label>
+  <label>專案開始日 <input type="date" id="start"></label>
   <label>今天 <input type="date" id="today"></label>
+  <button class="act primary" id="btnSave" type="button" disabled>💾 存檔</button>
+  <button class="act" id="btnXlsx" type="button">匯出 Excel</button>
+  <button class="act" id="btnPlm" type="button">匯出 PLM</button>
   <button class="home" id="theme" type="button" title="切換白色／深色模式"></button>
   <a class="home" href="index.html" style="margin-left:0">‹ 回首頁</a>
 </div>
 <div class="bar2">
   <button class="tab on" data-t="tbl" type="button">任務</button>
-  <button class="tab" data-t="gantt" type="button">甘特圖</button>
   <button class="tab" data-t="multi" type="button">多案總覽</button>
   <button class="tab" data-t="rule" type="button">依據與規則</button>
-  <span class="seg" id="mode"><button data-m="tpl" class="on" type="button">合理時程（套版）</button><button data-m="fc" type="button">現況預測</button></span>
+  <span class="edit-tools" id="editTools">
+    <button class="act" id="btnAdd" type="button" title="在選取列之後新增任務">＋ 新增任務</button>
+    <button class="act" id="btnDel" type="button" title="刪除選取的任務">刪除任務</button>
+    <button class="act" id="btnBase" type="button" title="把目前計劃開始／完成存成「預計開始日／原本預計完成」">設為基準</button>
+    <span class="dirty" id="dirty"></span>
+  </span>
   <span class="kpis" id="kpis"></span>
 </div>
 
 <main>
 <section id="tbl"><table class="grid" id="t"></table></section>
-<section id="gantt" hidden>
-  <div class="legend"><span><i style="background:var(--bar-done)"></i>已完成（實際）</span><span><i style="background:var(--bar)"></i>合理時程</span><span><i style="background:var(--bar-fc)"></i>預測（未完成）</span><span><i style="background:var(--bad);width:3px"></i>Excel 壓縮後完成日</span><span><i style="background:var(--accent);width:2px"></i>今天</span></div>
-  <div class="gscroll"><div class="gin" id="g"></div></div>
-</section>
 <section id="multi" hidden>
   <div class="legend" id="mLegend"></div>
   <div class="gscroll"><div class="gin" id="mg"></div></div>
 </section>
 <section id="rule" hidden><div class="doc">
-<h2>本案件的工天與前置任務依據</h2>
+<h2>本案件的依據說明</h2>
 <ul id="notes"><li class="note">（載入資料後顯示）</li></ul>
+<h2>時程怎麼算</h2>
+<ul>
+<li>每個任務由「起始條件」和「歷時（工作天）」決定：起始條件選「指定日期」就從該日開始；選「前置任務」就接在前置任務之後。完成日＝開始日起算第「歷時」個工作天。</li>
+<li>工作天跳過週六日與政府行政機關辦公日曆的國定假日、補假（2026、2027 年）；有補班日時算工作天。2028 年以後辦公日曆尚未公布，只跳過週六日。</li>
+<li>指定日期落在假日時，順延到下一個工作天。</li>
+<li>階段列與摘要列不能編輯：開始＝子項最早開始、完成＝子項最晚完成。</li>
+<li>半自動初次載入時，完全依 Excel 壓縮版：每個任務設為「指定日期」＝壓縮版開始日，歷時＝壓縮版開始到「修改後預計完成」之間的工作天。原排開始晚於修改後完成的任務（Excel 未填修改後開始日），開始日＝修改後完成 − 原排工期，標 *。壓縮完成日落在假日時，計劃完成會是前一個工作天。</li>
+</ul>
 <h2>前置任務寫法（比照 PLM：填前置任務的 WBS 號）</h2>
 <table>
 <tr><th>寫法</th><th>意義</th><th>鼎新 XML &lt;Type&gt;</th><th>&lt;LinkLag&gt;</th></tr>
-<tr><td><code>4.1</code></td><td>WBS 4.1 完成後才開始（FS，PLM 預設）</td><td>1</td><td>0</td></tr>
-<tr><td><code>7.3SS+30d</code></td><td>WBS 7.3 開始後 30 工天開始</td><td>3</td><td>144000（30×8×60×10）</td></tr>
-<tr><td><code>5.2FF</code></td><td>同時完成</td><td>0</td><td>0</td></tr>
+<tr><td><code>4.1</code></td><td>WBS 4.1 完成後的下一個工作天開始（FS）</td><td>1</td><td>0</td></tr>
+<tr><td><code>4.1+5d</code></td><td>WBS 4.1 完成後再隔 5 個工作天開始</td><td>1</td><td>24000</td></tr>
+<tr><td><code>7.3SS+30d</code></td><td>WBS 7.3 開始後第 30 個工作天開始</td><td>3</td><td>144000</td></tr>
 </table>
-<p class="note">LinkLag 單位為 0.1 分鐘、LagFormat=7；1 工天＝4800。PLM 畫面上 FS 只顯示 WBS 號（依 PLM 截圖）；SS／FF 與延遲天數在 PLM 畫面上的顯示寫法 *尚未確認。</p>
-<h2>欄位說明</h2>
+<p class="note">多個前置任務用逗號分開，取最晚的那個。LinkLag 單位 0.1 分鐘、LagFormat=7；1 工天＝4800。PLM 畫面上 SS／延遲的顯示寫法 *尚未確認。</p>
+<h2>存檔與匯出</h2>
 <ul>
-<li>「計劃工期」＝工作天（週一至週五，未扣國定假日）；摘要列的「計劃工作量」＝子任務工期加總 × 8 小時（與 PLM 摘要列算法一致）。</li>
-<li>灰底「分析欄位」為本工具附加，PLM 沒有：建議依據、鼎新原排、Excel 原排／實際／壓縮後完成日、差異、說明。</li>
+<li>「存檔」把目前案件寫回 MyWiki「PM工具」資料夾的那筆「PM資料｜」記事（隨身記會保留修改歷程）。</li>
+<li>「匯出 Excel」：用「PM工具」資料夾裡標題以「PM範本｜」開頭的記事所附的 .xlsx 當範本，只填內容、不動格式；一個案件一張工作表。欄位：預計開始日／原本預計完成＝基準（「設為基準」可更新；沒有基準的新任務先填目前計劃）；修改後預計開始／完成＝目前計劃；工作天數＝修改後完成 − 修改後開始 + 1（曆天，公式）；實際開始／完成、進度說明＝網頁輸入。圖表讀「修改後預計開始」與工作天數。</li>
+<li>「匯出 PLM」：鼎新 XML（MSPDI）。自動在最前面補「開發總覽」（設計開發總覽表、客戶開發委任單、開發工作細分查核表），其餘 WBS 號因此往後一號。「指定日期」的任務以「不早於該日開始」輸出、不帶前置連結；「前置任務」的任務輸出前置連結。日曆只寫週一至週五，國定假日沒有寫進 XML *，匯入後若鼎新依自己的日曆重排，日期可能和網頁不同。</li>
 </ul>
-<h2>多案總覽的規則</h2>
+<h2>多案總覽</h2>
 <ul>
-<li>自動列出「PM工具」資料夾裡所有案件，勾選要看的案件，畫在同一條實際日期軸上；顏色依案件固定（半自動橘、其他依序藍、綠、紫）。</li>
-<li>每個案件用自己的時程：有 Excel 壓縮資料的案件（半自動）一律用 Excel 壓縮排程；沒有的案件（例如全自動）用合理時程，開始日取該案件的預設開始日；目前選的案件則依上方「開始日」與模式計算。</li>
-<li>Excel 壓縮排程：開始＝原排開始、完成＝壓縮後完成；原排開始晚於壓縮後完成（Excel 未填修改後開始日）時，開始日＝壓縮後完成 − 原排工期，標 *。</li>
+<li>自動列出「PM工具」所有案件，勾選要看的案件，畫在同一條實際日期軸；半自動橘、其他依序藍、綠、紫。</li>
 <li>「分區」：各案上下分開，保持 WBS 順序，先開始的案件在上。「依時間穿插」：只列任務，依開始日排序。</li>
 </ul>
-<h2>現況預測的規則</h2>
-<ul>
-<li>有實際完成日 → 用實際日期。</li>
-<li>有實際開始、未完成 → 從實際開始起算計劃工期；若已超過今天，完成日至少為今天。</li>
-<li>未開始 → 依前置任務推算，且不早於今天的下一個工作日。</li>
-<li>資料中標記 <code>noK</code> 的任務，實際開始日只是先期作業，不採用；標記 <code>fcStart</code> 的任務視為從該日已開始。</li>
-</ul>
+<p class="note">假日資料來源：中華民國政府行政機關辦公日曆表（政府資料開放平台），經 ruyut/TaiwanCalendar 整理之 JSON。</p>
 </div></section>
 </main>
 
@@ -208,245 +224,237 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <input id="login-pin" type="password" placeholder="PIN" autocomplete="off">
 <button id="login-submit" type="button">確定</button></div></div>
 
+<script src="vendor/jszip.min.js"></script>
 <script>
 // ===== 資料：不放在程式裡（repo 是公開的），一律從 MyWiki「PM工具」資料夾讀取 =====
-// 資料記事：標題以「PM資料｜」開頭，內文是 JSON {meta, tasks}；需 PIN 才讀得到。
 const PH='phase';
-let D=[], byK={}, META={}, mode='tpl', SEL=null;
-const CASES={}; let ENTRIES=[];
+let D=[], byK={}, META={}, SEL=null, DIRTY=false, CUR_ID=null;
 const COLLAPSED=new Set();
+const CASES={}; let ENTRIES=[];
+const PM_FOLDER='PM工具', PM_PREFIX='PM資料｜', TPL_PREFIX='PM範本｜';
 
-// ===== 工作日工具 =====
-const pd=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
+// ===== 工作日：週末＋政府辦公日曆（國定假日、補假；補班日算工作天）=====
+const HOLIDAYS=new Set(["2026-01-01","2026-02-16","2026-02-17","2026-02-18","2026-02-19","2026-02-20","2026-02-27","2026-04-03","2026-04-06","2026-05-01","2026-06-19","2026-09-25","2026-09-28","2026-10-09","2026-10-26","2026-12-25","2027-01-01","2027-02-04","2027-02-05","2027-02-08","2027-02-09","2027-02-10","2027-03-01","2027-04-05","2027-04-06","2027-04-30","2027-06-09","2027-09-15","2027-09-28","2027-10-11","2027-10-25","2027-12-24","2027-12-31"]);
+const MAKEUP=new Set([]); // 補班日（週末上班）；2026、2027 年無
+const pd=s=>{const [y,m,d]=String(s).split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
 const fd=d=>d?d.toISOString().slice(0,10):'';
-const isWd=d=>{const w=d.getUTCDay();return w!==0&&w!==6};
 const addD=(d,n)=>new Date(d.getTime()+n*864e5);
+const isWd=d=>{const k=fd(d);if(MAKEUP.has(k))return true;const w=d.getUTCDay();return w!==0&&w!==6&&!HOLIDAYS.has(k)};
 const nextWd=d=>{while(!isWd(d))d=addD(d,1);return d};
+const prevWd=d=>{while(!isWd(d))d=addD(d,-1);return d};
 const addWd=(d,n)=>{d=nextWd(d);let c=0;while(c<n){d=addD(d,1);if(isWd(d))c++}return d};
 const finishOf=(s,dur)=>addWd(s,Math.max(dur,1)-1);
 const wdBetween=(a,b)=>{let n=0,d=a;while(d<=b){if(isWd(d))n++;d=addD(d,1)}return n};
 const cdBetween=(a,b)=>Math.round((b-a)/864e5)+1;
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-// WBS 編號：階段＝1,2,3…；階段下任務＝x.1…；摘要任務的子項＝x.y.1…
-function assignWbs(){
-  let p=0,c=0; const sub={};
-  for(const r of D){
-    if(r.t===PH){p++;c=0;r.wbs=String(p);r.lvl=1;continue}
-    if(r.par&&byK[r.par]){sub[r.par]=(sub[r.par]||0)+1;r.wbs=byK[r.par].wbs+'.'+sub[r.par];r.lvl=3;continue}
-    c++;r.wbs=p+'.'+c;r.lvl=2;
+// ===== 資料整理：WBS、舊資料轉成「起始條件＋歷時」=====
+function wbsMap(tasks){const by=Object.fromEntries(tasks.map(r=>[r.k,r]));let p=0,c=0;const sub={},out={};
+  for(const r of tasks){if(r.t===PH){p++;c=0;out[r.k]=[String(p),1];continue}
+    if(r.par&&by[r.par]){sub[r.par]=(sub[r.par]||0)+1;out[r.k]=[out[r.par][0]+'.'+sub[r.par],3];continue}c++;out[r.k]=[p+'.'+c,2];}return out}
+// 半自動（帶 Excel 壓縮資料）：指定日期＝壓縮版開始、歷時＝到修改後完成的工作天；其他：接前置任務
+function migrate(tasks){
+  for(const r of tasks){
+    if(r.t===PH||r.t==='sum'||r.sm)continue;
+    if(r.I){
+      let s=r.F?pd(r.F):pd(r.I); const f=pd(r.I); r.back=false;
+      if(s>f){const dur=r.G?Math.round((pd(r.G)-pd(r.F))/864e5):0; s=addD(f,-dur); r.back=true;}
+      s=nextWd(s); r.sm='fix'; r.fix=fd(s); r.dur=Math.max(1,wdBetween(s,f));
+    } else { r.sm='pred'; }
+    r.pred=r.pred||[];
   }
+  return tasks;
 }
-const predText=r=>(r.pred||[]).map(([k,t,l])=>byK[k].wbs+(t==='FS'&&!l?'':t)+(l?(l>0?'+':'')+l+'d':'')).join(', ');
+// ===== 計算：每個任務的開始／完成；階段、摘要彙總 =====
+function compute(tasks,startStr){
+  const by=Object.fromEntries(tasks.map(r=>[r.k,r])); const start=nextWd(pd(startStr));
+  const leaf=tasks.filter(r=>r.t!==PH&&r.t!=='sum'); const done={}; let guard=0;
+  for(const r of leaf){r.s=r.f=null;r.err=''}
+  while(Object.keys(done).length<leaf.length&&guard++<1000){
+    let progressed=false;
+    for(const r of leaf){
+      if(done[r.k])continue;
+      const preds=(r.pred||[]).filter(([k])=>by[k]&&by[k].t!==PH);
+      if(r.sm!=='fix'&&!preds.every(([k])=>done[k]||by[k].t==='sum'))continue;
+      let es=r.sm==='fix'&&r.fix?nextWd(pd(r.fix)):start;
+      if(r.sm!=='fix'){
+        for(const [k,t,l] of preds){const p=by[k];if(!p.s)continue;const c=t==='SS'?addWd(p.s,l||0):addWd(p.f,1+(l||0));if(c>es)es=c;}
+      }
+      r.s=es; r.f=finishOf(es,r.dur||1); done[r.k]=1; progressed=true;
+    }
+    if(!progressed){for(const r of leaf)if(!done[r.k]){r.err='前置任務循環或找不到';r.s=start;r.f=finishOf(start,r.dur||1);done[r.k]=1;}}
+  }
+  const roll=(rows,r)=>{rows=rows.filter(x=>x.s);if(!rows.length){r.s=r.f=null;return}r.s=new Date(Math.min(...rows.map(x=>x.s)));r.f=new Date(Math.max(...rows.map(x=>x.f)));r.work=rows.reduce((a,x)=>a+(x.dur||0),0)*8};
+  tasks.filter(r=>r.t==='sum').forEach(s=>roll(leaf.filter(x=>x.par===s.k),s));
+  tasks.filter(r=>r.t===PH).forEach(p=>roll(tasks.filter(x=>x.ph===p.k&&x.t!==PH),p));
+  return start;
+}
 
+// ===== 目前案件 =====
 function setData(json){
-  META=json.meta||{}; D=json.tasks||[];
-  byK=Object.fromEntries(D.map(r=>[r.k,r]));
-  assignWbs(); COLLAPSED.clear(); SEL=null;
-  document.getElementById('start').value=META.default_start||document.getElementById('start').value||new Date().toISOString().slice(0,10);
+  META=json.meta||{}; D=migrate(json.tasks||[]);
+  byK=Object.fromEntries(D.map(r=>[r.k,r])); COLLAPSED.clear(); SEL=null; setDirty(false);
+  document.getElementById('start').value=META.default_start||fd(new Date());
   document.getElementById('src').textContent=`資料：${META.name||''}｜${META.source||''}｜${META.version||''}（${META.updated||''}）`;
   document.getElementById('notes').innerHTML=(META.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('')||'<li class="note">（資料未附說明）</li>';
   render();
 }
-
-function schedule(){
-  const start=nextWd(pd(document.getElementById('start').value));
-  const today=pd(document.getElementById('today').value);
-  const tAfter=nextWd(addD(today,1));
-  const done={};
-  const leaf=D.filter(r=>r.t!==PH&&r.t!=='sum');
-  let guard=0;
-  while(Object.keys(done).length<leaf.length&&guard++<500){
-    for(const r of leaf){
-      if(done[r.k])continue;
-      if(!(r.pred||[]).every(([k])=>done[k]))continue;
-      let es=start;
-      for(const [k,t,l] of r.pred||[]){
-        const p=byK[k];
-        const cand=t==='SS'?addWd(p.s,l):addWd(p.f,1+l);
-        if(cand>es)es=cand;
-      }
-      r.state='plan';
-      if(mode==='fc'){
-        if(r.K&&r.L){r.s=pd(r.K);r.f=pd(r.L);r.state='done'}
-        else if((r.K&&!r.noK)||r.fcStart){
-          r.s=nextWd(pd(r.K&&!r.noK?r.K:r.fcStart));
-          let f=finishOf(r.s,r.dur); if(f<today)f=nextWd(today); r.f=f; r.state='run';
-        } else { if(es<tAfter)es=tAfter; r.s=es; r.f=finishOf(es,r.dur); r.state='fc'; }
-      } else { r.s=es; r.f=finishOf(es,r.dur); }
-      done[r.k]=1;
-    }
+function setDirty(v){DIRTY=v;document.getElementById('btnSave').disabled=!v;document.getElementById('dirty').textContent=v?'● 尚未存檔':''}
+const W=()=>wbsMap(D);
+const predText=(r,wm)=>(r.pred||[]).filter(([k])=>byK[k]).map(([k,t,l])=>wm[k][0]+(t==='SS'?'SS':'')+(l?(l>0?'+':'')+l+'d':'')).join(', ');
+function parsePred(text,wm){
+  const inv=Object.fromEntries(Object.entries(wm).map(([k,v])=>[v[0],k])); const out=[]; const bad=[];
+  for(const part of String(text||'').split(/[,，、\s]+/).filter(Boolean)){
+    const m=part.match(/^([\d.]+?)(FS|SS)?(?:([+-]\d+)d?)?$/i);
+    if(!m||!inv[m[1]]||byK[inv[m[1]]].t===PH){bad.push(part);continue}
+    out.push([inv[m[1]],(m[2]||'FS').toUpperCase(),m[3]?Number(m[3]):0]);
   }
-  const rollup=(rows,r)=>{if(!rows.length)return;r.s=new Date(Math.min(...rows.map(x=>x.s)));r.f=new Date(Math.max(...rows.map(x=>x.f)));r.work=rows.reduce((a,x)=>a+(x.dur||0),0)*8;};
-  D.filter(r=>r.t==='sum').forEach(s=>rollup(leaf.filter(x=>x.par===s.k),s));
-  D.filter(r=>r.t===PH).forEach(p=>rollup(leaf.filter(x=>x.ph===p.k),p));
-  return {today};
+  return {out,bad};
 }
 
-// 收合：階段收合藏住整個階段；摘要任務收合藏住子項
+// ===== 任務表 =====
 const hidden=r=>(r.t!==PH&&COLLAPSED.has(r.ph))||(r.par&&COLLAPSED.has(r.par));
 const ICON_SUM='<svg class="ico" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" fill="#fff" stroke="#b33" /><path d="M1.5 5.5h13" stroke="#b33"/><path d="M4 8h8M4 10.5h6" stroke="#999"/></svg>';
 const ICON_TASK='<svg class="ico" viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" fill="#f4f4f4" stroke="#999"/><path d="M5 5h6M5 7.5h6M5 10h4" stroke="#aaa"/></svg>';
-
-function stateCell(r){
-  if(mode!=='fc'||!r.state)return '';
-  const m={done:['p-done','已完成'],run:['p-run','進行中'],fc:['p-wait','未開始']}[r.state];
-  return m?`<span class="pill ${m[0]}">${m[1]}</span>`:'';
-}
-function diffCell(r){
-  if(!r.I||!r.f||r.state==='done')return '';
-  const d=Math.round((r.f-pd(r.I))/864e5);
-  if(d<=0)return `<span class="pill p-done">${d===0?'±0':d+' 天'}</span>`;
-  return `<span class="pill ${d>60?'p-bad':'p-warn'}">+${d} 天</span>`;
-}
 function render(){
   if(!D.length)return;
-  const {today}=schedule();
+  compute(D,document.getElementById('start').value);
+  const wm=W(); for(const r of D){r.wbs=wm[r.k][0];r.lvl=wm[r.k][1]}
   const t=document.getElementById('t');
-  let h=`<thead><tr class="grp"><th class="name" colspan="1"></th><th colspan="9">PLM 欄位</th><th class="ana" colspan="8">分析欄位</th></tr>
-  <tr class="cols"><th class="name">名稱</th><th>WBS號</th><th>計劃開始時間</th><th>計劃結束時間</th><th>前置任務</th><th>執行人</th><th>計劃工期</th><th>✔</th><th>執行角色</th><th>計劃工作量</th>
-  <th class="ana">協力單位</th><th class="ana">工期依據</th><th class="ana">鼎新原排</th><th class="ana">Excel原排<br>曆天/工天</th><th class="ana">Excel實際<br>工天</th><th class="ana">Excel壓縮<br>完成日</th><th class="ana">差異</th><th class="ana">說明</th></tr></thead><tbody>`;
+  let h=`<thead><tr class="grp"><th class="name"></th><th colspan="10">計劃（可直接編輯）</th><th class="ana" colspan="4">Excel 基準（參考）</th></tr>
+  <tr class="cols"><th class="name">名稱</th><th>WBS號</th><th>起始條件</th><th>歷時<br>(工天)</th><th>計劃開始時間</th><th>計劃結束時間</th><th>執行人</th><th>協力單位</th><th>實際開始</th><th>實際完成</th><th>進度說明</th>
+  <th class="ana">預計開始日</th><th class="ana">原本預計完成</th><th class="ana">Excel 修改後完成(原)</th><th class="ana">說明</th></tr></thead><tbody>`;
   for(const r of D){
     if(hidden(r))continue;
     const sum=r.t===PH||r.t==='sum';
-    const ind=(r.lvl-1)*18;
-    const canTog=sum;
-    const tog=canTog?`<span class="tog" data-tog="${esc(r.k)}">${COLLAPSED.has(r.k)?'▶':'▼'}</span>`:'<span class="tog"></span>';
-    const name=`<span class="tw" style="padding-left:${ind}px">${tog}${sum?ICON_SUM:ICON_TASK}${esc(r.name)}${r.cls?` <span class="pill p-wait">${esc(r.cls)} *</span>`:''}</span>`;
-    const ori=r.F&&r.G?`${cdBetween(pd(r.F),pd(r.G))} / ${wdBetween(pd(r.F),pd(r.G))}`:'';
-    const act=r.K&&r.L?wdBetween(pd(r.K),pd(r.L)):'';
-    const dur=sum?wdBetween(r.s,r.f):r.dur;
+    const tog=sum?`<span class="tog" data-tog="${esc(r.k)}">${COLLAPSED.has(r.k)?'▶':'▼'}</span>`:'<span class="tog"></span>';
+    const name=sum?esc(r.name):`<input class="in w-name" data-f="name" value="${esc(r.name)}">`;
+    const nameCell=`<span class="tw" style="padding-left:${(r.lvl-1)*18}px">${tog}${sum?ICON_SUM:ICON_TASK}${name}${r.back?' <span class="pill p-wait" title="開始日由修改後完成回推">*</span>':''}</span>`;
+    let cond='', dur='';
+    if(!sum){
+      cond=`<select class="in" data-f="sm"><option value="pred" ${r.sm!=='fix'?'selected':''}>前置任務</option><option value="fix" ${r.sm==='fix'?'selected':''}>指定日期</option></select>`+
+        (r.sm==='fix'?`<input type="date" class="in" data-f="fix" value="${esc(r.fix||'')}">`:`<input class="in w-pred" data-f="pred" value="${esc(predText(r,wm))}" placeholder="例 4.1, 7.3SS+30d（空白＝專案開始日）">`)+
+        (r.err?` <span class="pill p-bad">${esc(r.err)}</span>`:'');
+      dur=`<input type="number" min="1" class="in w-num" data-f="dur" value="${r.dur||1}">`;
+    } else dur=r.s?wdBetween(r.s,r.f):'';
     h+=`<tr class="${sum?'sum':''} ${SEL===r.k?'sel':''}" data-k="${esc(r.k)}">
-      <td class="name">${name}</td><td>${r.wbs}</td><td>${fd(r.s)}</td><td>${fd(r.f)} ${stateCell(r)}</td>
-      <td class="pred"><code>${sum?'':esc(predText(r))}</code></td><td>${sum?'':esc(r.rd||'')}</td><td class="num">${dur}</td>
-      <td class="pencil">✎</td><td>${sum?'':'RD'}</td><td class="num">${sum?(r.work||0).toFixed(1):''}</td>
-      <td class="ana">${sum?'':esc(r.co||'')}</td><td class="ana">${r.t===PH?'':(r.t==='sum'?'子項彙總':esc(r.basis||''))}</td>
-      <td class="ana num">${r.xwd??''}</td><td class="ana num">${ori}</td><td class="ana num">${act}</td>
-      <td class="ana">${r.t===PH?'':esc(r.I||'')}</td><td class="ana">${sum?'':diffCell(r)}</td>
+      <td class="name">${nameCell}</td><td>${r.wbs}</td><td class="cond">${cond}</td><td class="num">${dur}</td>
+      <td>${fd(r.s)}</td><td>${fd(r.f)}</td>
+      <td>${sum?'':`<input class="in w-txt" data-f="rd" value="${esc(r.rd||'')}">`}</td>
+      <td>${sum?'':`<input class="in w-txt" data-f="co" value="${esc(r.co||'')}">`}</td>
+      <td>${sum?'':`<input type="date" class="in" data-f="K" value="${esc(r.K||'')}">`}</td>
+      <td>${sum?'':`<input type="date" class="in" data-f="L" value="${esc(r.L||'')}">`}</td>
+      <td>${sum?'':`<input class="in w-m" data-f="M" value="${esc(r.M||'')}">`}</td>
+      <td class="ana">${sum?'':esc(r.F||'')}</td><td class="ana">${sum?'':esc(r.G||'')}</td><td class="ana">${sum?'':esc(r.I||'')}</td>
       <td class="ana wrapc">${r.flag==='warn'?'<span class="pill p-warn">注意</span> ':''}${esc(r.note||'')}</td></tr>`;
   }
   t.innerHTML=h+'</tbody>';
-  renderKpi(); renderGantt(today); renderMulti(today);
+  renderKpi(); renderMulti(pd(document.getElementById('today').value));
 }
-// ===== 多案共用：Excel 壓縮排程／合理時程的日期計算（寫在 _s/_f，不影響任務分頁） =====
-// 案件是否帶 Excel 壓縮排程（有「壓縮後完成日」I）
-const hasExcel=tasks=>tasks.some(r=>r.I);
-// 摘要／階段：子項開始最小～完成最大（寫在 _s/_f）
-function rollupAlt(tasks){
-  for(const r of tasks){
-    if(r.t!=='phase'&&r.t!=='sum')continue;
-    const ch=tasks.filter(x=>x.t!=='phase'&&x.t!=='sum'&&(r.t==='sum'?x.par===r.k:x.ph===r.k));
-    const S=ch.filter(x=>x._s).map(x=>x._s), E=ch.filter(x=>x._f).map(x=>x._f);
-    r._s=S.length?new Date(Math.min(...S)):null; r._f=E.length?new Date(Math.max(...E)):null;
-  }
-}
-// Excel 壓縮排程：開始＝原排開始(F)、完成＝壓縮後完成(I)。
-// F 晚於 I（Excel 未填修改後開始日）時：開始＝壓縮後完成 − 原排工期(G−F，曆天)，保留原排工期往前推（使用者指定規則）。
-function fillCompressed(tasks){
-  for(const r of tasks){
-    if(r.t==='phase'||r.t==='sum')continue;
-    r._f=r.I?pd(r.I):null; r._s=r.F?pd(r.F):null; r._back=false;
-    if(r._s&&r._f&&r._s>r._f){
-      const dur=r.G?Math.round((pd(r.G)-pd(r.F))/864e5):0;
-      r._s=addD(r._f,-dur); r._back=true;
-    }
-  }
-  rollupAlt(tasks);
-  const fs=tasks.filter(r=>r.F).map(r=>pd(r.F));
-  return fs.length?new Date(Math.min(...fs)):null;
-}
-// 合理時程（沒有 Excel 資料的案件用）：依前置任務＋工期從開始日推算，規則與任務分頁相同
-function fillPlanned(tasks,start){
-  const by=Object.fromEntries(tasks.map(r=>[r.k,r])); const leaf=tasks.filter(r=>r.t!=='phase'&&r.t!=='sum');
-  const done={}; let guard=0; start=nextWd(start);
-  while(Object.keys(done).length<leaf.length&&guard++<500){
-    for(const r of leaf){
-      if(done[r.k]||!(r.pred||[]).every(([k])=>done[k]||!by[k]))continue;
-      let es=start;
-      for(const [k,t,l] of r.pred||[]){const p=by[k];if(!p)continue;const c=t==='SS'?addWd(p._s,l):addWd(p._f,1+l);if(c>es)es=c;}
-      r._s=es; r._f=finishOf(es,r.dur||1); r._back=false; done[r.k]=1;
-    }
-  }
-  rollupAlt(tasks);
-  return start;
-}
-function ownStart(){return nextWd(pd(document.getElementById('start').value))}
 function renderKpi(){
-  const k=(key,label)=>{const r=byK[key];if(!r||!r.f)return '';const d=r.I?Math.round((r.f-pd(r.I))/864e5):null;
-    return `<span>${label} <b>${fd(r.f)}</b>${d!=null?` <span class="${d>0?'late':''}">(壓縮 ${r.I}，${d>0?'+':''}${d} 天)</span>`:''}</span>`};
-  // 里程碑取各審查階段／認證階段的最後一個任務
-  const last=ph=>{const xs=D.filter(r=>r.ph===ph&&r.t!==PH);return xs.length?xs[xs.length-1].k:null};
-  const ms=D.filter(r=>r.t===PH&&/^(C\d|認證)/.test(r.k)).map(p=>[last(p.k),p.name]);
-  document.getElementById('kpis').innerHTML=ms.filter(([kk])=>kk).map(([kk,n])=>k(kk,n.split(' ')[0])).join('');
+  const last=ph=>{const xs=D.filter(r=>r.ph===ph&&r.t!==PH&&r.f);return xs.length?xs[xs.length-1]:null};
+  document.getElementById('kpis').innerHTML=D.filter(r=>r.t===PH&&/^(C\d|認證)/.test(r.k)).map(p=>{const r=last(p.k);return r?`<span>${esc(p.name.split(' ')[0])} <b>${fd(r.f)}</b></span>`:''}).join('');
 }
-function renderGantt(today){
-  const rows=D.filter(r=>!hidden(r));
-  const min=new Date(Math.min(...D.map(r=>r.s)));const max=new Date(Math.max(...D.map(r=>r.f),...D.filter(r=>r.I).map(r=>pd(r.I))));
-  const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1));const span=(max-s0)/864e5+31;
-  const x=d=>((d-s0)/864e5/span*100).toFixed(3)+'%';
-  let sc='';for(let d=new Date(s0);d<=max;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){
-    const m=d.getUTCMonth()+1;sc+=`<span style="left:${x(d)}">${m}</span>`}
-  const end=addD(s0,span); const bands=[], lines=[];
-  for(let y=s0.getUTCFullYear();;y++){const a=new Date(Math.max(s0,Date.UTC(y,0,1))), b=new Date(Math.min(end,Date.UTC(y+1,0,1)));if(a>=end)break;bands.push([a,b]);}
-  for(let d=new Date(Date.UTC(s0.getUTCFullYear(),s0.getUTCMonth()+1,1));d<end;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1)))if(d.getUTCMonth()!==0)lines.push(d);
-  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5<45?'':a.getUTCFullYear())}${sc}</div></div>${gridLayer(x,bands,lines)}`;
-  const tl=(today>=s0&&today<=end)?`<div class="g-today" style="left:${x(today)}"></div>`:'';
-  for(const r of rows){
-    const sum=r.t===PH||r.t==='sum';
-    const cls=sum?'sumb':(mode==='fc'?(r.state==='done'?'done':'fc'):'');
-    const w=`calc(${x(addD(r.f,1))} - ${x(r.s)})`;
-    const forced=(!sum&&r.I)?`<div class="g-forced" style="left:${x(pd(r.I))}" title="Excel 壓縮完成 ${r.I}"></div>`:'';
-    h+=`<div class="g-row ${sum?'sum':''}"><div class="g-name" style="padding-left:${8+(r.lvl-1)*14}px" title="${esc(r.name)}">${r.wbs} ${esc(r.name)}</div><div class="g-track">${tl}<div class="g-bar ${cls}" style="left:${x(r.s)};width:${w}" title="${fd(r.s)} → ${fd(r.f)}"></div>${forced}</div></div>`;
-  }
-  document.getElementById('g').innerHTML=h;
-}
+// 編輯：change 事件（離開欄位或按 Enter）才重算
+document.getElementById('t').addEventListener('change',e=>{
+  const el=e.target.closest('[data-f]'); if(!el)return; const tr=el.closest('tr[data-k]'); const r=byK[tr.dataset.k]; const f=el.dataset.f;
+  if(f==='sm'){ if(el.value==='fix'&&!r.fix)r.fix=fd(r.s||pd(document.getElementById('start').value)); r.sm=el.value; }
+  else if(f==='pred'){ const {out,bad}=parsePred(el.value,W()); if(out.some(([k])=>k===r.k)){alert('不能把自己設為前置任務');render();return}
+    r.pred=out; if(bad.length)alert('看不懂或找不到的前置任務：'+bad.join('、')+'\n寫法例：4.1、4.1+5d、7.3SS+30d'); }
+  else if(f==='dur'){ r.dur=Math.max(1,parseInt(el.value,10)||1); }
+  else { r[f]=el.value.trim(); if(f==='name'&&!r[f])r[f]='（未命名）'; }
+  setDirty(true); render();
+});
+document.getElementById('t').addEventListener('click',e=>{
+  const tg=e.target.closest('[data-tog]');
+  if(tg){const k=tg.dataset.tog;COLLAPSED.has(k)?COLLAPSED.delete(k):COLLAPSED.add(k);render();return}
+  if(e.target.closest('input,select'))return;
+  const tr=e.target.closest('tr[data-k]'); if(tr){SEL=tr.dataset.k;document.querySelectorAll('#t tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel')}
+});
+document.getElementById('t').addEventListener('focusin',e=>{const tr=e.target.closest('tr[data-k]');if(tr&&SEL!==tr.dataset.k){SEL=tr.dataset.k;document.querySelectorAll('#t tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel')}});
+['start'].forEach(id=>document.getElementById(id).addEventListener('change',e=>{META.default_start=e.target.value;setDirty(true);render()}));
+document.getElementById('today').addEventListener('change',render);
+// 新增／刪除／基準
+document.getElementById('btnAdd').onclick=()=>{
+  if(!D.length)return; const sel=byK[SEL];
+  if(!sel){alert('請先點選一列，新任務會加在它後面');return}
+  const k='n'+Date.now().toString(36);
+  let nt={k,no:'',ph:sel.t===PH?sel.k:sel.ph,name:'新任務',rd:'',co:'',dur:5,sm:'pred',pred:[]};
+  let at=D.indexOf(sel)+1;
+  if(sel.t==='sum'){nt.par=sel.k; while(at<D.length&&D[at].par===sel.k)at++;}
+  else if(sel.par){nt.par=sel.par; nt.pred=[[sel.k,'FS',0]];}
+  else if(sel.t!==PH){nt.pred=[[sel.k,'FS',0]];}
+  D.splice(at,0,nt); byK[k]=nt; SEL=k; setDirty(true); render();
+};
+document.getElementById('btnDel').onclick=()=>{
+  const r=byK[SEL]; if(!r){alert('請先點選要刪除的任務');return}
+  if(r.t===PH){alert('階段列不能刪除');return}
+  if(r.t==='sum'&&D.some(x=>x.par===r.k)){alert('摘要任務底下還有子項，請先刪除子項');return}
+  if(!confirm(`刪除「${r.name}」？依賴它的任務會改接它的前置任務。`))return;
+  for(const x of D){ if(!x.pred)continue; if(x.pred.some(([k])=>k===r.k)){ x.pred=x.pred.filter(([k])=>k!==r.k).concat((r.pred||[]).filter(([k])=>!x.pred.some(([kk])=>kk===k))); } }
+  D.splice(D.indexOf(r),1); delete byK[r.k]; SEL=null; setDirty(true); render();
+};
+document.getElementById('btnBase').onclick=()=>{
+  if(!confirm('把每個任務目前的「計劃開始／計劃結束」寫進「預計開始日／原本預計完成」（Excel 基準欄）？原本的基準會被覆蓋。'))return;
+  for(const r of D){if(r.t===PH||r.t==='sum'||!r.s)continue; r.F=fd(r.s); r.G=fd(r.f);} setDirty(true); render();
+};
 
-// 背景格線：bands＝[[起,迄],…] 交替灰底；lines＝月份虛線位置（皆為 x() 可吃的值）
+// ===== 存檔：寫回 MyWiki 那筆記事 =====
+const RUNTIME=['s','f','wbs','lvl','err','work'];
+function serialize(){
+  const tasks=D.map(r=>{const o={};for(const [k,v] of Object.entries(r)){if(RUNTIME.includes(k)||v===''||v==null)continue;o[k]=v}return o});
+  const meta={...META,updated:fd(new Date())};
+  return '{"meta":'+JSON.stringify(meta)+',\n"tasks":[\n'+tasks.map(x=>JSON.stringify(x)).join(',\n')+'\n]}';
+}
+document.getElementById('btnSave').onclick=async()=>{
+  const st=document.getElementById('msg');
+  try{
+    st.textContent='存檔中…';
+    const body=serialize();
+    const res=await fetch('/api/entries/'+CUR_ID,{method:'PUT',headers:{'content-type':'application/json','x-pin':pin()},body:JSON.stringify({body})});
+    if(res.status===401){showLogin();throw new Error('PIN 錯誤')}
+    if(!res.ok){const b=await res.json().catch(()=>({}));throw new Error(b.error||`HTTP ${res.status}`)}
+    CASES[CUR_ID]=JSON.parse(body); setDirty(false); st.textContent='已存檔（'+new Date().toLocaleTimeString()+'）'; render();
+  }catch(e){st.textContent='存檔失敗：'+e.message}
+};
+window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
+
+// ===== 多案總覽：PM工具裡所有勾選的案件，畫在同一條實際日期軸 =====
+let MLAYOUT='lane'; const MOFF=new Set();
+const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
 function gridLayer(x,bands,lines){
   return `<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
 }
 const scaleBands=(x,bands,label)=>bands.map(([a,b],i)=>(i%2?'':`<span class="ylab" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></span>`)+(label(i,a,b)?`<span class="ytxt" style="left:${x(a)}">${label(i,a,b)}</span>`:'')).join('');
-
-// ===== 多案總覽：PM工具裡所有勾選的案件，畫在同一條實際日期軸 =====
-let MLAYOUT='lane', CUR_ID=null; const MOFF=new Set(); // MOFF：取消勾選的案件 id
-const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
-const wbsOf=tasks=>{const by=Object.fromEntries(tasks.map(r=>[r.k,r]));let p=0,c=0;const sub={};const out={};
-  for(const r of tasks){if(r.t==='phase'){p++;c=0;out[r.k]=[String(p),1];continue}
-    if(r.par&&by[r.par]){sub[r.par]=(sub[r.par]||0)+1;out[r.k]=[out[r.par][0]+'.'+sub[r.par],3];continue}c++;out[r.k]=[p+'.'+c,2];}return out};
-// 取得一個案件在總覽裡的列：Excel 案件→壓縮排程；其他→合理時程（目前案件用上方開始日與模式）
 function caseRows(id,json,color){
-  const isCur=String(id)===CUR_ID; const meta=json.meta||{}; const tag=tagOf(meta);
-  let tasks, src;
-  if(isCur&&!hasExcel(D)){tasks=D.map(r=>({...r,_s:r.s,_f:r.f,_back:false})); src=(mode==='fc'?'現況預測':'合理時程')+`（開始日 ${fd(ownStart())}）`;}
-  else{
-    tasks=(json.tasks||[]).map(r=>({...r}));
-    if(hasExcel(tasks)){fillCompressed(tasks); src='Excel 壓縮排程';}
-    else{const st=fillPlanned(tasks,pd(meta.default_start||fd(new Date()))); src=`合理時程（開始日 ${fd(st)}）`;}
-  }
-  const W=wbsOf(tasks);
-  const rows=tasks.filter(r=>r._s&&r._f).map(r=>({c:color,tag,wbs:W[r.k][0],lvl:W[r.k][1],name:r.name,s:r._s,f:r._f,sum:r.t==='phase'||r.t==='sum',back:r._back}));
-  return {tag,name:meta.name||'',src,color,rows};
+  const isCur=String(id)===CUR_ID; const meta=isCur?META:(json.meta||{}); const tag=tagOf(meta);
+  let tasks;
+  if(isCur)tasks=D; else {tasks=migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])}))); compute(tasks,meta.default_start||fd(new Date()));}
+  const wm=wbsMap(tasks);
+  const rows=tasks.filter(r=>r.s&&r.f).map(r=>({c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back}));
+  return {tag,name:meta.name||'',color,rows};
 }
+let MSEQ=0;
 async function renderMulti(today){
+  const seq=++MSEQ;
   const lg=document.getElementById('mLegend'), g=document.getElementById('mg');
   if(!ENTRIES.length){lg.innerHTML='';g.innerHTML='';return}
-  // 顏色：半自動固定橘，其他依序藍、綠、紫
-  const pal=['pa','pc','pd']; let pi=0;
-  const cases=[];
+  const pal=['pa','pc','pd']; let pi=0; const cases=[];
   for(const e of ENTRIES){
-    let json; try{json=await fetchCase(e.id)}catch{continue}
+    let json; try{json=String(e.id)===CUR_ID?{meta:META,tasks:D}:await fetchCase(e.id)}catch{continue}
     const tag=tagOf(json.meta); const color=tag==='半'?'pb':pal[(pi++)%pal.length];
     cases.push({id:String(e.id),json,color,title:e.title.slice(PM_PREFIX.length)});
   }
+  if(seq!==MSEQ)return;
   lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button></span>
     <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span>${esc(c.title)}</label>`).join('')}</span>
     <span>* 為回推開始日</span><span><i style="background:var(--accent);width:2px"></i>今天</span>`;
-  const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color));
+  const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color)).filter(c=>c.rows.length);
   if(!sel.length){g.innerHTML='<p class="note" style="padding:12px">請至少勾選一個案件。</p>';return}
   let rows;
   if(MLAYOUT==='lane'){
     sel.sort((a,b)=>Math.min(...a.rows.map(r=>r.s))-Math.min(...b.rows.map(r=>r.s)));
-    rows=sel.flatMap(c=>[{lane:1,c:c.color,tag:c.tag,name:`${c.name}｜${c.src}`},...c.rows]);
+    rows=sel.flatMap(c=>[{lane:1,c:c.color,tag:c.tag,name:c.name},...c.rows]);
   } else rows=sel.flatMap(c=>c.rows).filter(r=>!r.sum).sort((x,y)=>x.s-y.s||x.f-y.f);
   const all=sel.flatMap(c=>c.rows);
   const min=new Date(Math.min(...all.map(r=>r.s))), max=new Date(Math.max(...all.map(r=>r.f)));
@@ -469,21 +477,160 @@ async function renderMulti(today){
 document.getElementById('mLegend').addEventListener('click',e=>{const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
 document.getElementById('mLegend').addEventListener('change',e=>{const c=e.target.closest('input[data-case]');if(!c)return;c.checked?MOFF.delete(c.dataset.case):MOFF.add(c.dataset.case);render()});
 
-// ===== 互動 =====
-document.getElementById('t').addEventListener('click',e=>{
-  const tg=e.target.closest('[data-tog]');
-  if(tg){const k=tg.dataset.tog;COLLAPSED.has(k)?COLLAPSED.delete(k):COLLAPSED.add(k);render();return}
-  const tr=e.target.closest('tr[data-k]'); if(tr){SEL=tr.dataset.k;render()}
-});
-document.getElementById('mode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;mode=b.dataset.m;
-  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
-  document.getElementById('msg').textContent=mode==='fc'?'現況預測：已完成用實際日期，未完成依計劃工期往後推':'合理時程：全部依計劃工期與前置任務從開始日推算（套版用）';
-  render()});
+// ===== 匯出 Excel：用 MyWiki 上的公司範本，只填內容不動格式 =====
+const xmlEsc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const serial=d=>Math.round((d-Date.UTC(1899,11,30))/864e5);
+function colOf(ref){return ref.replace(/\d+/g,'')}
+function sheetSafe(n){return String(n||'工作表').replace(/[\[\]:*?\/\\]/g,'_').replace(/'/g,'’').slice(0,31)}
+async function loadTemplate(){
+  const folders=await api('/folders'); const f=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER));
+  const entries=await api('/entries?folder_id='+f.id+'&include=attachments');
+  const e=entries.find(x=>String(x.title||'').startsWith(TPL_PREFIX));
+  const att=e&&(e.attachments||[]).find(a=>/\.xlsx$/i.test(a.filename||''));
+  if(!att)throw new Error(`「${PM_FOLDER}」裡找不到標題以「${TPL_PREFIX}」開頭、附有 .xlsx 的範本記事`);
+  const raw=await api('/attachments/'+att.id+'/raw?mode=inline');
+  const bin=atob(raw.data); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+  return u8;
+}
+document.getElementById('btnXlsx').onclick=async()=>{
+  const st=document.getElementById('msg');
+  try{
+    if(!window.JSZip)throw new Error('JSZip 未載入');
+    st.textContent='讀取 Excel 範本…';
+    const zip=await JSZip.loadAsync(await loadTemplate());
+    const P='xl/worksheets/sheet1.xml';
+    const sx=await zip.file(P).async('string');
+    const doc=new DOMParser().parseFromString(sx,'application/xml');
+    const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+    const rowsEl=[...doc.getElementsByTagNameNS(NS,'row')]; const rowByNum=n=>rowsEl.find(r=>r.getAttribute('r')===String(n));
+    const tplRow=n=>{const r=rowByNum(n);return {attrs:[...r.attributes].filter(a=>a.name!=='r').map(a=>[a.name,a.value]),cells:Object.fromEntries([...r.getElementsByTagNameNS(NS,'c')].map(c=>[colOf(c.getAttribute('r')),c.getAttribute('s')]))}};
+    const S={first:tplRow(5),mid:tplRow(6),last:tplRow(7),single:tplRow(64)};
+    const ser=new XMLSerializer();
+    const keepTop=[1,2,3,4].map(n=>rowByNum(n));
+    const footer=[65,66,67,68].map(n=>rowByNum(n)).filter(Boolean);
+    // 任務列：每個非階段列一列；A 欄放階段（合併）
+    const rows=D.filter(r=>r.t!==PH);
+    const byPh={}; rows.forEach(r=>{(byPh[r.ph]=byPh[r.ph]||[]).push(r)});
+    const first=5; let rn=first; const out=[]; const merges=['A1:W2','A3:M3']; const rowNum={};
+    rows.forEach(r=>rowNum[r.k]=0);
+    const phOrder=D.filter(r=>r.t===PH).map(p=>p.k);
+    for(const ph of phOrder){
+      const list=byPh[ph]||[]; if(!list.length)continue; const startRow=rn;
+      list.forEach((r,i)=>{
+        const st=list.length===1?S.single:(i===0?S.first:(i===list.length-1?S.last:S.mid));
+        rowNum[r.k]=rn;
+        const cells=[];
+        const cell=(col,inner,t)=>{const s=st.cells[col];cells.push(`<c r="${col}${rn}"${s?` s="${s}"`:''}${t?` t="${t}"`:''}${inner?'>'+inner+'</c>':'/>'}`)};
+        const str=(col,v)=>v?cell(col,`<is><t xml:space="preserve">${xmlEsc(v)}</t></is>`,'inlineStr'):cell(col);
+        const num=(col,v)=>v!=null&&v!==''?cell(col,`<v>${v}</v>`):cell(col);
+        const date=(col,v)=>num(col,v?serial(typeof v==='string'?pd(v):v):'');
+        str('A',i===0?(D.find(p=>p.k===ph)||{}).k:'');
+        const no=r.no||''; if(/^\d+$/.test(no))num('B',no); else str('B',no);
+        str('C',r.name); str('D',r.rd); str('E',r.co);
+        const noBase=!r.F&&!r.G; date('F',noBase?r.s:r.F); date('G',noBase?r.f:r.G); date('H',r.s); date('I',r.f);
+        cell('J',`<f>I${rn}-H${rn}+1</f><v>${r.s&&r.f?cdBetween(r.s,r.f):''}</v>`);
+        date('K',r.K); date('L',r.L); str('M',r.M);
+        for(const col of Object.keys(st.cells)) if(!'ABCDEFGHIJKLM'.includes(col)) cell(col);
+        const attrs=st.attrs.map(([k,v])=>` ${k}="${v}"`).join('');
+        out.push(`<row r="${rn}"${attrs}>${cells.join('')}</row>`); rn++;
+      });
+      if(rn-1>startRow)merges.push(`A${startRow}:A${rn-1}`);
+    }
+    const lastData=rn-1; const shift=lastData-64;
+    // 頁尾列往下移
+    const footerXml=footer.map(r=>{let x=ser.serializeToString(r); const old=Number(r.getAttribute('r')); const nw=old+shift;
+      x=x.replace(new RegExp(`(<row[^>]* r=")${old}"`),`$1${nw}"`).replace(new RegExp(`( r="[A-Z]+)${old}"`,'g'),`$1${nw}"`);
+      if(old===67)x=x.replace(/<c r="V\d+"([^>]*?)\/>/,`<c r="V${nw}"$1><v>${serial(pd(fd(new Date())))}</v></c>`);
+      return x.replace(/ xmlns="[^"]*"/g,'');}).join('');
+    for(const m of ['A66:B66','E66:F66','N66:O66','V66:W66','V67:W67'])merges.push(m.replace(/\d+/g,n=>Number(n)+shift));
+    // 表頭：公司名稱＋案件名、負責人、年份標籤
+    let top=keepTop.map(r=>ser.serializeToString(r).replace(/ xmlns="[^"]*"/g,'')).join('');
+    const title=(META.name||'')+'-進度管制表';
+    top=top.replace(/(<c r="A1"[^>]*><is>)([\s\S]*?)(<\/is>)/,(m,a,b,c)=>{const company=(b.replace(/<[^>]+>/g,'').split('\n')[0]||'');return a+`<t xml:space="preserve">${xmlEsc(company+'\n'+title)}</t>`+c});
+    if(META.owner)top=top.replace(/(<c r="A3"[^>]*><is>)([\s\S]*?)(<\/is>)/,(m,a,b,c)=>a+`<t xml:space="preserve">${xmlEsc('專案負責人:'+META.owner)}</t>`+c);
+    // 依任務期間估年份標籤（O3、R3、V3）
+    const leaf=rows.filter(r=>r.s); const minD=new Date(Math.min(...leaf.map(r=>r.s))), maxD=new Date(Math.max(...leaf.map(r=>r.f)));
+    const ys=[]; for(let y=minD.getUTCFullYear();y<=maxD.getUTCFullYear();y++)ys.push(y);
+    ['O','R','V'].forEach((c,i)=>{top=top.replace(new RegExp(`(<c r="${c}3"[^>]*?)(?:/>|>[\\s\\S]*?</c>)`),(m,a)=>ys[i]?`${a.replace(/ t="[^"]*"/,'')}><v>${ys[i]}</v></c>`:`${a.replace(/ t="[^"]*"/,'')}/>`)});
+    let sheet=sx.replace(/<sheetData>[\s\S]*<\/sheetData>/,`<sheetData>${top}${out.join('')}${footerXml}</sheetData>`);
+    sheet=sheet.replace(/<mergeCells[\s\S]*?<\/mergeCells>/,`<mergeCells count="${merges.length}">${merges.map(m=>`<mergeCell ref="${m}"/>`).join('')}</mergeCells>`);
+    sheet=sheet.replace(/<dimension ref="[^"]*"\/>/,`<dimension ref="A1:X${68+shift}"/>`);
+    sheet=sheet.replace(/(<\/mergeCells>(?:<phoneticPr[^>]*\/>)?)/,`$1<conditionalFormatting sqref="J5:J${lastData}"><cfRule type="expression" dxfId="10" priority="1"><formula>$I5&lt;1</formula></cfRule></conditionalFormatting>`);
+    zip.file(P,sheet);
+    // 工作表名稱
+    const name=sheetSafe(META.name);
+    for(const pth of ['xl/workbook.xml','docProps/app.xml']){let x=await zip.file(pth).async('string');x=x.replace(/範本/g,xmlEsc(name)).replace(/\$A\$1:\$W\$\d+/,`$A$1:$W$${67+shift}`);zip.file(pth,x)}
+    // 圖表：範圍改成新列數、開始欄改讀 H（修改後預計開始）、快取值同步、座標軸範圍
+    const CP='xl/charts/chart1.xml'; let ch=await zip.file(CP).async('string');
+    const q=`'${name.replace(/'/g,"''")}'`;
+    ch=ch.replace(/'[^']*'!\$C\$5:\$C\$\d+/g,`${q}!$C$5:$C$${lastData}`).replace(/'[^']*'!\$F\$5:\$F\$\d+/g,`${q}!$H$5:$H$${lastData}`).replace(/'[^']*'!\$J\$5:\$J\$\d+/g,`${q}!$J$5:$J$${lastData}`);
+    const pts=(arr)=>`<c:ptCount val="${arr.length}"/>`+arr.map((v,i)=>v===''||v==null?'':`<c:pt idx="${i}"><c:v>${xmlEsc(v)}</c:v></c:pt>`).join('');
+    const cats=rows.map(r=>r.name), starts=rows.map(r=>r.s?serial(r.s):''), lens=rows.map(r=>r.s&&r.f?cdBetween(r.s,r.f):'');
+    ch=ch.replace(/(<c:f>[^<]*\$C\$5:\$C\$\d+<\/c:f><c:strCache>)[\s\S]*?(<\/c:strCache>)/g,(m,a,b)=>a+pts(cats)+b);
+    ch=ch.replace(/(<c:f>[^<]*\$H\$5:\$H\$\d+<\/c:f><c:numCache>(?:<c:formatCode>[^<]*<\/c:formatCode>)?)[\s\S]*?(<\/c:numCache>)/g,(m,a,b)=>a+pts(starts)+b);
+    ch=ch.replace(/(<c:f>[^<]*\$J\$5:\$J\$\d+<\/c:f><c:numCache>(?:<c:formatCode>[^<]*<\/c:formatCode>)?)[\s\S]*?(<\/c:numCache>)/g,(m,a,b)=>a+pts(lens)+b);
+    const axMin=serial(new Date(Date.UTC(minD.getUTCFullYear(),minD.getUTCMonth(),1))), axMax=serial(new Date(Date.UTC(maxD.getUTCFullYear(),maxD.getUTCMonth()+1,1)));
+    ch=ch.replace(/<c:max val="[\d.]+"\/>/,`<c:max val="${axMax}"/>`).replace(/<c:min val="[\d.]+"\/>/,`<c:min val="${axMin}"/>`);
+    zip.file(CP,ch);
+    // 圖表位置：下緣跟著最後一列
+    const DP='xl/drawings/drawing1.xml'; let dr=await zip.file(DP).async('string');
+    dr=dr.replace(/(<xdr:twoCellAnchor[^>]*>(?:(?!<\/xdr:twoCellAnchor>)[\s\S])*?<xdr:graphicFrame[\s\S]*?<\/xdr:twoCellAnchor>)/,m=>m);
+    const anchors=dr.split('</xdr:twoCellAnchor>');
+    for(let i=0;i<anchors.length;i++) if(/graphicFrame/.test(anchors[i])) anchors[i]=anchors[i].replace(/(<xdr:to>[\s\S]*?<xdr:row>)\d+(<\/xdr:row>)/,`$1${lastData}$2`);
+    zip.file(DP,anchors.join('</xdr:twoCellAnchor>'));
+    const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    download(blob,`${name}_進度管制表_${fd(new Date())}.xlsx`);
+    st.textContent='已匯出 Excel';
+  }catch(e){st.textContent='匯出 Excel 失敗：'+e.message}
+};
+function download(blob,fn){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+
+// ===== 匯出 PLM（鼎新 MSPDI XML），最前面自動補「開發總覽」=====
+document.getElementById('btnPlm').onclick=()=>{
+  const st=document.getElementById('msg');
+  try{
+    const start=nextWd(pd(document.getElementById('start').value));
+    const ov={k:'__OV',t:PH,name:'開發總覽'};
+    const ovKids=['設計開發總覽表','客戶開發委任單','開發工作細分查核表'].map((n,i)=>{const s=start,f=finishOf(start,21);return {k:'__OV'+i,ph:'__OV',name:n,dur:21,s,f,pred:[],rd:''}});
+    ov.s=start; ov.f=ovKids[0].f;
+    const all=[ov,...ovKids,...D];
+    const wm=wbsMap(all); const uid={}; all.forEach((r,i)=>uid[r.k]=i+1);
+    const iso=(d,end)=>fd(d)+(end?'T08:00:00':'T00:00:00');
+    const hrs=wd=>`PT${wd*8}H0M0S`;
+    // 資源：執行人拆開
+    const people=[]; const split=s=>String(s||'').split(/[、,，\s]+/).filter(Boolean);
+    all.forEach(r=>split(r.rd).forEach(p=>{if(!people.includes(p))people.push(p)}));
+    const tasks=[`<Task><UID>0</UID><ID>0</ID><Name>${xmlEsc(META.name||'')}</Name><Type>0</Type><IsNull>0</IsNull><WBS>0</WBS><OutlineNumber>0</OutlineNumber><OutlineLevel>0</OutlineLevel><Priority>500</Priority><Summary>1</Summary><Active>1</Active><Manual>0</Manual></Task>`];
+    const asg=[]; let aid=1;
+    for(const r of all){
+      if(!r.s)continue;
+      const sum=r.t===PH||r.t==='sum'; const wd=wdBetween(r.s,r.f); const [wbs,lvl]=wm[r.k];
+      const pct=r.L?100:0;
+      const links=(r.sm==='fix'?[]:(r.pred||[])).filter(([k])=>uid[k]).map(([k,t,l])=>`<PredecessorLink><PredecessorUID>${uid[k]}</PredecessorUID><Type>${t==='SS'?3:1}</Type>${l?`<LinkLag>${l*4800}</LinkLag><LagFormat>7</LagFormat>`:''}</PredecessorLink>`).join('');
+      const cons=r.sm==='fix'?`<ConstraintType>4</ConstraintType><ConstraintDate>${iso(r.s)}</ConstraintDate>`:'<ConstraintType>0</ConstraintType>';
+      tasks.push(`<Task><UID>${uid[r.k]}</UID><ID>${uid[r.k]}</ID><Name>${xmlEsc(r.name)}</Name><Type>0</Type><IsNull>0</IsNull><WBS>${wbs}</WBS><OutlineNumber>${wbs}</OutlineNumber><OutlineLevel>${lvl}</OutlineLevel><Priority>500</Priority><Start>${iso(r.s)}</Start><Finish>${iso(r.f,1)}</Finish><Duration>${hrs(wd)}</Duration><DurationFormat>7</DurationFormat><Work>${hrs(wd)}</Work><Milestone>0</Milestone><Summary>${sum?1:0}</Summary><PercentComplete>${pct}</PercentComplete>${r.K?`<ActualStart>${iso(pd(r.K))}</ActualStart>`:''}${r.L?`<ActualFinish>${iso(pd(r.L),1)}</ActualFinish>`:''}${cons}<CalendarUID>1</CalendarUID>${links}<Active>1</Active><Manual>0</Manual></Task>`);
+      if(!sum) for(const p of split(r.rd)) asg.push(`<Assignment><UID>${aid++}</UID><TaskUID>${uid[r.k]}</TaskUID><ResourceUID>${people.indexOf(p)+1}</ResourceUID><Start>${iso(r.s)}</Start><Finish>${iso(r.f,1)}</Finish><Units>1</Units><Work>${hrs(wd)}</Work></Assignment>`);
+    }
+    const res=people.map((p,i)=>`<Resource><UID>${i+1}</UID><ID>${i+1}</ID><Name>${xmlEsc(p)}</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>1</MaxUnits><CalendarUID>1</CalendarUID></Resource>`).join('');
+    const wk=[1,2,3,4,5,6,7].map(d=>d===1||d===7?`<WeekDay><DayType>${d}</DayType><DayWorking>0</DayWorking></WeekDay>`:`<WeekDay><DayType>${d}</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime><WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime></WorkingTimes></WeekDay>`).join('');
+    const fin=new Date(Math.max(...all.filter(r=>r.f).map(r=>r.f)));
+    const xml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project xmlns="http://schemas.microsoft.com/project"><SaveVersion>9</SaveVersion><Title>${xmlEsc(META.name||'')}</Title><ScheduleFromStart>1</ScheduleFromStart><StartDate>${iso(start)}</StartDate><FinishDate>${iso(fin,1)}</FinishDate><CalendarUID>1</CalendarUID><DefaultStartTime>08:00:00</DefaultStartTime><MinutesPerDay>480</MinutesPerDay><MinutesPerWeek>2400</MinutesPerWeek><DaysPerMonth>20</DaysPerMonth><DurationFormat>7</DurationFormat><WorkFormat>2</WorkFormat><WeekStartDay>1</WeekStartDay><CurrentDate>${fd(new Date())}T08:00:00</CurrentDate>
+<Calendars><Calendar><UID>1</UID><Name>標準</Name><IsBaseCalendar>1</IsBaseCalendar><WeekDays>${wk}</WeekDays></Calendar></Calendars>
+<Tasks>${tasks.join('\n')}</Tasks>
+<Resources>${res}</Resources>
+<Assignments>${asg.join('')}</Assignments></Project>`;
+    download(new Blob([xml],{type:'application/xml'}),`${sheetSafe(META.name)}_PLM_${fd(new Date())}.xml`);
+    st.textContent='已匯出 PLM XML（已補開發總覽）';
+  }catch(e){st.textContent='匯出 PLM 失敗：'+e.message}
+};
+
+// ===== 分頁、主題 =====
 document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
-  ['tbl','gantt','multi','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t)});
-['start','today'].forEach(id=>document.getElementById(id).addEventListener('change',render));
-document.getElementById('today').value=new Date().toISOString().slice(0,10);
+  ['tbl','multi','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t);
+  document.getElementById('editTools').style.visibility=b.dataset.t==='tbl'?'visible':'hidden'});
+document.getElementById('today').value=fd(new Date());
 function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('theme').textContent=dark?'☀ 白色模式':'☾ 深色模式'}
 document.getElementById('theme').addEventListener('click',()=>{
   const dark=document.documentElement.getAttribute('data-theme')!=='dark';
@@ -492,7 +639,6 @@ document.getElementById('theme').addEventListener('click',()=>{
   syncThemeBtn();
 });
 syncThemeBtn();
-document.getElementById('msg').textContent='合理時程：全部依計劃工期與前置任務從開始日推算（套版用）';
 
 // ---------- PIN／API（跟 app.js 共用 localStorage key，主 App 登入過這裡不用再登一次）----------
 function pin(){return localStorage.getItem('fieldlog_pin')||''}
@@ -507,11 +653,11 @@ async function api(path){
   if(!res.ok){const b=await res.json().catch(()=>({}));throw new Error(b.error||`HTTP ${res.status}`)}
   return res.json();
 }
-const PM_FOLDER='PM工具', PM_PREFIX='PM資料｜';
 function parseBody(text){
   const t=String(text||'').trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
   return JSON.parse(t.slice(t.indexOf('{'),t.lastIndexOf('}')+1));
 }
+async function fetchCase(id){ if(!CASES[id]){const e=await api('/entries/'+id); CASES[id]=parseBody(e.body);} return CASES[id]; }
 async function loadProjects(){
   const st=document.getElementById('msg'), sel=document.getElementById('proj');
   try{
@@ -528,19 +674,20 @@ async function loadProjects(){
     sel.value=pick; await loadEntry(pick);
   }catch(e){st.textContent='讀取失敗：'+e.message}
 }
-async function fetchCase(id){ if(!CASES[id]){const e=await api('/entries/'+id); CASES[id]=parseBody(e.body);} return CASES[id]; }
 async function loadEntry(id){
   const st=document.getElementById('msg');
   try{
     st.textContent='讀取案件資料…';
     const data=await fetchCase(id);
     CUR_ID=String(id);
-    setData(data);
+    setData(JSON.parse(JSON.stringify(data)));
     try{localStorage.setItem('pm_last_entry',String(id))}catch{}
-    st.textContent=mode==='fc'?'現況預測：已完成用實際日期，未完成依計劃工期往後推':'合理時程：全部依計劃工期與前置任務從開始日推算（套版用）';
+    st.textContent='';
   }catch(err){st.textContent='案件資料格式錯誤或讀取失敗：'+err.message}
 }
-document.getElementById('proj').addEventListener('change',e=>loadEntry(e.target.value));
+document.getElementById('proj').addEventListener('change',async e=>{
+  if(DIRTY&&!confirm('目前案件尚未存檔，切換會放棄修改。確定？')){e.target.value=CUR_ID;return}
+  await loadEntry(e.target.value)});
 if(!pin())showLogin(); else loadProjects();
 </script>
 </body>
