@@ -115,6 +115,7 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 <div class="bar">
   <span class="title">📅 PM 工具</span>
   <label>案件 <select id="proj"><option>（讀取中…）</option></select></label>
+  <label>規格 <select id="scope"><option value="all">全部規格</option><option value="noCN">最短規格（不含導引針）</option></select></label>
   <label>開始日 <input type="date" id="start"></label>
   <label>今天 <input type="date" id="today"></label>
   <a class="home" href="index.html">‹ 回首頁</a>
@@ -147,6 +148,7 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 <h2>欄位說明</h2>
 <ul>
 <li>「計劃工期」＝工作天（週一至週五，未扣國定假日）；摘要列的「計劃工作量」＝子任務工期加總 × 8 小時（與 PLM 摘要列算法一致）。</li>
+<li>「規格」選單：選「最短規格（不含導引針）」時，適用規格標「含導引針」的任務不列入，前置關係中的這些任務也一併略過；可用來看不含導引針那條路徑本身的時程。</li>
 <li>灰底「分析欄位」為本工具附加，PLM 沒有：建議依據、鼎新原排、Excel 原排／實際／壓縮後完成日、差異、說明。</li>
 </ul>
 <h2>現況預測的規則</h2>
@@ -170,7 +172,7 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 // ===== 資料：不放在程式裡（repo 是公開的），一律從 MyWiki「PM工具」資料夾讀取 =====
 // 資料記事：標題以「PM資料｜」開頭，內文是 JSON {meta, tasks}；需 PIN 才讀得到。
 const PH='phase';
-let D=[], byK={}, META={}, mode='tpl', SEL=null;
+let D=[], byK={}, META={}, mode='tpl', SEL=null, SCOPE='all';
 const COLLAPSED=new Set();
 
 // ===== 工作日工具 =====
@@ -194,7 +196,7 @@ function assignWbs(){
     c++;r.wbs=p+'.'+c;r.lvl=2;
   }
 }
-const predText=r=>(r.pred||[]).map(([k,t,l])=>byK[k].wbs+(t==='FS'&&!l?'':t)+(l?(l>0?'+':'')+l+'d':'')).join(', ');
+const predText=r=>activePred(r).map(([k,t,l])=>byK[k].wbs+(t==='FS'&&!l?'':t)+(l?(l>0?'+':'')+l+'d':'')).join(', ');
 
 function setData(json){
   META=json.meta||{}; D=json.tasks||[];
@@ -206,19 +208,22 @@ function setData(json){
   render();
 }
 
+// 規格篩選：選「最短規格」時，適用規格為 CN 的任務不存在，前置關係也一併略過
+const active=r=>!(SCOPE==='noCN'&&r.scope==='CN');
+const activePred=r=>(r.pred||[]).filter(([k])=>byK[k]&&active(byK[k]));
 function schedule(){
   const start=nextWd(pd(document.getElementById('start').value));
   const today=pd(document.getElementById('today').value);
   const tAfter=nextWd(addD(today,1));
   const done={};
-  const leaf=D.filter(r=>r.t!==PH&&r.t!=='sum');
+  const leaf=D.filter(r=>r.t!==PH&&r.t!=='sum'&&active(r));
   let guard=0;
   while(Object.keys(done).length<leaf.length&&guard++<500){
     for(const r of leaf){
       if(done[r.k])continue;
-      if(!(r.pred||[]).every(([k])=>done[k]))continue;
+      if(!activePred(r).every(([k])=>done[k]))continue;
       let es=start;
-      for(const [k,t,l] of r.pred||[]){
+      for(const [k,t,l] of activePred(r)){
         const p=byK[k];
         const cand=t==='SS'?addWd(p.s,l):addWd(p.f,1+l);
         if(cand>es)es=cand;
@@ -234,14 +239,14 @@ function schedule(){
       done[r.k]=1;
     }
   }
-  const rollup=(rows,r)=>{if(!rows.length)return;r.s=new Date(Math.min(...rows.map(x=>x.s)));r.f=new Date(Math.max(...rows.map(x=>x.f)));r.work=rows.reduce((a,x)=>a+(x.dur||0),0)*8;};
+  const rollup=(rows,r)=>{if(!rows.length){r.s=r.f=null;return}r.s=new Date(Math.min(...rows.map(x=>x.s)));r.f=new Date(Math.max(...rows.map(x=>x.f)));r.work=rows.reduce((a,x)=>a+(x.dur||0),0)*8;};
   D.filter(r=>r.t==='sum').forEach(s=>rollup(leaf.filter(x=>x.par===s.k),s));
   D.filter(r=>r.t===PH).forEach(p=>rollup(leaf.filter(x=>x.ph===p.k),p));
   return {today};
 }
 
 // 收合：階段收合藏住整個階段；摘要任務收合藏住子項
-const hidden=r=>(r.t!==PH&&COLLAPSED.has(r.ph))||(r.par&&COLLAPSED.has(r.par));
+const hidden=r=>!active(r)||((r.t===PH||r.t==='sum')&&!r.s)||(r.t!==PH&&COLLAPSED.has(r.ph))||(r.par&&COLLAPSED.has(r.par));
 const ICON_SUM='<svg class="ico" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" fill="#fff" stroke="#b33" /><path d="M1.5 5.5h13" stroke="#b33"/><path d="M4 8h8M4 10.5h6" stroke="#999"/></svg>';
 const ICON_TASK='<svg class="ico" viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" fill="#f4f4f4" stroke="#999"/><path d="M5 5h6M5 7.5h6M5 10h4" stroke="#aaa"/></svg>';
 
@@ -260,9 +265,9 @@ function render(){
   if(!D.length)return;
   const {today}=schedule();
   const t=document.getElementById('t');
-  let h=`<thead><tr class="grp"><th class="name" colspan="1"></th><th colspan="9">PLM 欄位</th><th class="ana" colspan="8">分析欄位</th></tr>
+  let h=`<thead><tr class="grp"><th class="name" colspan="1"></th><th colspan="9">PLM 欄位</th><th class="ana" colspan="9">分析欄位</th></tr>
   <tr class="cols"><th class="name">名稱</th><th>WBS號</th><th>計劃開始時間</th><th>計劃結束時間</th><th>前置任務</th><th>執行人</th><th>計劃工期</th><th>✔</th><th>執行角色</th><th>計劃工作量</th>
-  <th class="ana">協力單位</th><th class="ana">工期依據</th><th class="ana">鼎新原排</th><th class="ana">Excel原排<br>曆天/工天</th><th class="ana">Excel實際<br>工天</th><th class="ana">Excel壓縮<br>完成日</th><th class="ana">差異</th><th class="ana">說明</th></tr></thead><tbody>`;
+  <th class="ana">適用規格</th><th class="ana">協力單位</th><th class="ana">工期依據</th><th class="ana">鼎新原排</th><th class="ana">Excel原排<br>曆天/工天</th><th class="ana">Excel實際<br>工天</th><th class="ana">Excel壓縮<br>完成日</th><th class="ana">差異</th><th class="ana">說明</th></tr></thead><tbody>`;
   for(const r of D){
     if(hidden(r))continue;
     const sum=r.t===PH||r.t==='sum';
@@ -277,7 +282,7 @@ function render(){
       <td class="name">${name}</td><td>${r.wbs}</td><td>${fd(r.s)}</td><td>${fd(r.f)} ${stateCell(r)}</td>
       <td class="pred"><code>${sum?'':esc(predText(r))}</code></td><td>${sum?'':esc(r.rd||'')}</td><td class="num">${dur}</td>
       <td class="pencil">✎</td><td>${sum?'':'RD'}</td><td class="num">${sum?(r.work||0).toFixed(1):''}</td>
-      <td class="ana">${sum?'':esc(r.co||'')}</td><td class="ana">${r.t===PH?'':(r.t==='sum'?'子項彙總':esc(r.basis||''))}</td>
+      <td class="ana">${sum?'':(r.scope==='CN'?'<span class="pill p-run">含導引針</span>':'全部')}</td><td class="ana">${sum?'':esc(r.co||'')}</td><td class="ana">${r.t===PH?'':(r.t==='sum'?'子項彙總':esc(r.basis||''))}</td>
       <td class="ana num">${r.xwd??''}</td><td class="ana num">${ori}</td><td class="ana num">${act}</td>
       <td class="ana">${r.t===PH?'':esc(r.I||'')}</td><td class="ana">${sum?'':diffCell(r)}</td>
       <td class="ana wrapc">${r.flag==='warn'?'<span class="pill p-warn">注意</span> ':''}${esc(r.note||'')}</td></tr>`;
@@ -289,13 +294,14 @@ function renderKpi(){
   const k=(key,label)=>{const r=byK[key];if(!r||!r.f)return '';const d=r.I?Math.round((r.f-pd(r.I))/864e5):null;
     return `<span>${label} <b>${fd(r.f)}</b>${d!=null?` <span class="${d>0?'late':''}">(壓縮 ${r.I}，${d>0?'+':''}${d} 天)</span>`:''}</span>`};
   // 里程碑取各審查階段／認證階段的最後一個任務
-  const last=ph=>{const xs=D.filter(r=>r.ph===ph&&r.t!==PH);return xs.length?xs[xs.length-1].k:null};
+  const last=ph=>{const xs=D.filter(r=>r.ph===ph&&r.t!==PH&&active(r));return xs.length?xs[xs.length-1].k:null};
   const ms=D.filter(r=>r.t===PH&&/^(C\d|認證)/.test(r.k)).map(p=>[last(p.k),p.name]);
   document.getElementById('kpis').innerHTML=ms.filter(([kk])=>kk).map(([kk,n])=>k(kk,n.split(' ')[0])).join('');
 }
 function renderGantt(today){
   const rows=D.filter(r=>!hidden(r));
-  const min=new Date(Math.min(...D.map(r=>r.s)));const max=new Date(Math.max(...D.map(r=>r.f),...D.filter(r=>r.I).map(r=>pd(r.I))));
+  const A=D.filter(r=>active(r)&&r.s);
+  const min=new Date(Math.min(...A.map(r=>r.s)));const max=new Date(Math.max(...A.map(r=>r.f),...A.filter(r=>r.I).map(r=>pd(r.I))));
   const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1));const span=(max-s0)/864e5+31;
   const x=d=>((d-s0)/864e5/span*100).toFixed(3)+'%';
   let sc='';for(let d=new Date(s0);d<=max;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){
@@ -325,6 +331,7 @@ document.getElementById('mode').addEventListener('click',e=>{const b=e.target.cl
 document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
   ['tbl','gantt','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t)});
+document.getElementById('scope').addEventListener('change',e=>{SCOPE=e.target.value;render()});
 ['start','today'].forEach(id=>document.getElementById(id).addEventListener('change',render));
 document.getElementById('today').value=new Date().toISOString().slice(0,10);
 document.getElementById('msg').textContent='合理時程：全部依計劃工期與前置任務從開始日推算（套版用）';
