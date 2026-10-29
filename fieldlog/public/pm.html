@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PM 工具</title>
+<script>
+// 預設白色模式（比照 PLM）；只有使用者自己切過深色才套用，不跟系統設定走
+try{if(localStorage.getItem('pm_theme')==='dark')document.documentElement.setAttribute('data-theme','dark')}catch{}
+</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
 <style>
 /* 介面比照鼎新 PLM 專案任務畫面：灰色表頭、細格線、樹狀 WBS、整列選取 */
@@ -13,11 +17,6 @@
   --done:#2f7d4f;--done-soft:#e2f2e8;--warn:#a5560f;--warn-soft:#fbeedd;--bad:#b3261e;--bad-soft:#fbe4e2;
   --bar:#4a7fa8;--bar-done:#3f8f5f;--bar-fc:#c98a3a;--pencil:#e0a100;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#1c1d1f;--chrome:#26282b;--chrome2:#2e3034;--ink:#e4e4e4;--mute:#9aa0a6;--line:#3a3d42;--line2:#2c2f33;
-  --sel:#3b3f45;--hover:#22303d;--sum:#212326;--accent:#7db4dc;--accent-soft:#1d3142;
-  --done:#7cc79a;--done-soft:#1c3326;--warn:#e3a35c;--warn-soft:#3a2a17;--bad:#f08a82;--bad-soft:#3d1f1d;
-  --bar:#5d93bd;--bar-done:#5aa877;--bar-fc:#d49a4f;--pencil:#e6b33a;}}
 :root[data-theme="dark"]{
   --bg:#1c1d1f;--chrome:#26282b;--chrome2:#2e3034;--ink:#e4e4e4;--mute:#9aa0a6;--line:#3a3d42;--line2:#2c2f33;
   --sel:#3b3f45;--hover:#22303d;--sum:#212326;--accent:#7db4dc;--accent-soft:#1d3142;
@@ -33,7 +32,7 @@ button,select,input{font:inherit;color:inherit}
 .bar label{color:var(--mute);display:flex;align-items:center;gap:4px}
 .bar select,.bar input[type=date]{padding:3px 6px;border:1px solid var(--line);border-radius:2px;background:var(--bg)}
 #proj{min-width:240px;font-weight:700;color:var(--ink)}
-.bar a.home{margin-left:auto;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--bg);padding:3px 10px;border-radius:2px}
+.bar .home{cursor:pointer;font-size:13px;margin-left:auto;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--bg);padding:3px 10px;border-radius:2px}
 .bar2{display:flex;align-items:center;flex-wrap:wrap;gap:0;padding:0 10px;background:var(--chrome);border-bottom:1px solid var(--line)}
 .tab{white-space:nowrap;border:1px solid transparent;border-bottom:0;background:transparent;padding:5px 14px;cursor:pointer;margin-bottom:-1px}
 .tab.on{background:var(--bg);border-color:var(--line);font-weight:700}
@@ -117,7 +116,8 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
   <label>案件 <select id="proj"><option>（讀取中…）</option></select></label>
   <label>開始日 <input type="date" id="start"></label>
   <label>今天 <input type="date" id="today"></label>
-  <a class="home" href="index.html">‹ 回首頁</a>
+  <button class="home" id="theme" type="button" title="切換白色／深色模式"></button>
+  <a class="home" href="index.html" style="margin-left:0">‹ 回首頁</a>
 </div>
 <div class="bar2">
   <button class="tab on" data-t="tbl" type="button">任務</button>
@@ -327,6 +327,14 @@ document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.cl
   ['tbl','gantt','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t)});
 ['start','today'].forEach(id=>document.getElementById(id).addEventListener('change',render));
 document.getElementById('today').value=new Date().toISOString().slice(0,10);
+function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('theme').textContent=dark?'☀ 白色模式':'☾ 深色模式'}
+document.getElementById('theme').addEventListener('click',()=>{
+  const dark=document.documentElement.getAttribute('data-theme')!=='dark';
+  if(dark)document.documentElement.setAttribute('data-theme','dark');else document.documentElement.removeAttribute('data-theme');
+  try{localStorage.setItem('pm_theme',dark?'dark':'light')}catch{}
+  syncThemeBtn();
+});
+syncThemeBtn();
 document.getElementById('msg').textContent='合理時程：全部依計劃工期與前置任務從開始日推算（套版用）';
 
 // ---------- PIN／API（跟 app.js 共用 localStorage key，主 App 登入過這裡不用再登一次）----------
