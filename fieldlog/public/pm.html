@@ -155,7 +155,9 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 :root[data-theme="dark"] .g-hol{background:rgba(255,255,255,.10)}
 .g-grid.days{background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.07) 0 1px,transparent 1px var(--pd))}
 :root[data-theme="dark"] .g-grid.days{background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.08) 0 1px,transparent 1px var(--pd))}
-.g-scale.dz{height:52px}
+.g-scale.wz{height:52px}.g-scale.dz{height:68px}
+.g-scale .wlab{position:absolute;top:35px;border-left:1px solid var(--line);padding:0 0 0 3px;font-size:10px;overflow:hidden}
+.g-scale.dz .dlab,.g-scale.dz .hb{top:51px}
 .g-scale .dlab{position:absolute;top:36px;border-left:0;padding:0;text-align:center;font-size:10px}
 .g-scale .dlab.h{color:var(--bad)}
 .g-scale .hb{position:absolute;top:34px;bottom:0;background:rgba(110,110,110,.16);border-left:0;padding:0}
@@ -228,7 +230,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <li>拖動「前置任務」型的任務時，改的是決定它開始日的那個前置任務的延遲天數，連動保留；「指定日期」型的任務改日期。設為前置任務的後續任務會跟著重算。</li>
 <li>「轉為連動」：把指定日期的任務改成接前置任務，延遲天數自動算到日期不變；壓縮重疊處會是負延遲。</li>
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
-<li>縮放：圖例列的「縮放」滑桿往右放大，最大到每天一格（顯示日期，假日＝週末＋國定假日以灰底與紅字標示）；也可按住 Ctrl 用滾輪縮放；放大時任務名稱直接寫在條塊上（太短就寫在右邊）；「全覽」＝整張放進畫面，「跳到今天」＝放大並捲到今天。放大後橫向捲動，拖曳以「天」為單位對齊。</li>
+<li>縮放：圖例列的「縮放」滑桿往右放大，最大到每天一格（顯示日期，假日＝週末＋國定假日以灰底與紅字標示）；也可按住 Ctrl 用滾輪縮放；放大到週以上時標題顯示週次 W1、W2…（ISO 8601：週一為一週開始，含 1 月 4 日的那週為 W1；有些年份會有 W53）；放大時任務名稱直接寫在條塊上（太短就寫在右邊）；「全覽」＝整張放進畫面，「跳到今天」＝放大並捲到今天。放大後橫向捲動，拖曳以「天」為單位對齊。</li>
 </ul>
 <h2>前置任務寫法（比照 PLM：填前置任務的 WBS 號）</h2>
 <table>
@@ -467,6 +469,7 @@ document.getElementById('btnSave').onclick=async()=>{
 window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
 
 // ===== 多案總覽：PM工具裡所有勾選的案件，畫在同一條實際日期軸 =====
+const isoW=d=>{const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));t.setUTCDate(t.getUTCDate()+4-(t.getUTCDay()||7));return Math.ceil(((t-Date.UTC(t.getUTCFullYear(),0,1))/864e5+1)/7)};
 let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null; const ZMAX=28;
 const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
 function gridLayer(x,bands,lines){
@@ -523,9 +526,11 @@ async function renderMulti(today){
   // 假日（週末＋國定假日）連續區段
   let hol='', hhd='', dl='';
   if(hz){let a=null;for(let d=new Date(s0);d<=end;d=addD(d,1)){const off=!isWd(d)&&d<end;if(off&&!a)a=d;if(!off&&a){hol+=`<div class="g-hol" style="left:${x(a)};width:calc(${x(d)} - ${x(a)})"></div>`;if(dz)hhd+=`<span class="hb" style="left:${x(a)};width:calc(${x(d)} - ${x(a)})"></span>`;a=null}}}
+  // 週次（ISO 8601：週一開始，含 1/4 的那週為 W1）
+  if(hz)for(let d=addD(s0,(8-(s0.getUTCDay()||7))%7);d<end;d=addD(d,7))dl+=`<span class="wlab" style="left:${x(d)};width:${7*pd}px" title="${d.getUTCFullYear()} 第 ${isoW(d)} 週（${fd(d)} 起）">${7*pd>=28?'W':''}${isoW(d)}</span>`;
   if(dz)for(let d=new Date(s0);d<end;d=addD(d,1))dl+=`<span class="dlab ${isWd(d)?'':'h'}" style="left:${x(d)};width:${pd}px">${d.getUTCDate()}</span>`;
   const grid=gridLayer(x,bands,lines).replace('<div class="g-grid">',`<div class="g-grid ${dz?'days':''}">${hol}`);
-  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale ${dz?'dz':''}">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5*pd<40?'':a.getUTCFullYear())}${sc}${hhd}${dl}</div></div>${grid}`;
+  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale ${dz?'dz':hz?'wz':''}">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5*pd<40?'':a.getUTCFullYear())}${sc}${hhd}${dl}</div></div>${grid}`;
   for(const r of rows){
     if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip ${r.c}">${esc(r.tag)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
     const ind=MLAYOUT==='lane'?8+(r.lvl-1)*14:8;
