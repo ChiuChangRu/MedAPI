@@ -166,7 +166,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <main>
 <section id="tbl"><table class="grid" id="t"></table></section>
 <section id="gantt" hidden>
-  <div class="legend"><span><i style="background:var(--bar-done)"></i>已完成（實際）</span><span><i style="background:var(--bar)"></i>合理時程</span><span><i style="background:var(--bar-fc)"></i>預測（未完成）</span><span><i style="background:var(--bad);width:3px"></i>Excel 壓縮後完成日</span><span><i style="background:var(--accent);width:2px"></i>今天</span><span id="cmpLegend" hidden><i class="cmpi"></i>比較對象：Excel 壓縮排程（灰條；只有完成日者為灰點）</span></div>
+  <div class="legend"><span><i style="background:var(--bar-done)"></i>已完成（實際）</span><span><i style="background:var(--bar)"></i>合理時程</span><span><i style="background:var(--bar-fc)"></i>預測（未完成）</span><span><i style="background:var(--bad);width:3px"></i>Excel 壓縮後完成日</span><span><i style="background:var(--accent);width:2px"></i>今天</span><span id="cmpLegend" hidden><i class="cmpi"></i>比較對象（灰條）</span></div>
   <div class="gscroll"><div class="gin" id="g"></div></div>
 </section>
 <section id="cmpt" hidden><div class="doc" style="max-width:none">
@@ -339,14 +339,20 @@ function render(){
   renderKpi(); renderGantt(today); renderCompareTable(); renderMulti(today);
 }
 // ===== 比較：對方的 Excel 壓縮排程（F＝原排開始、I＝壓縮後完成），以對方最早的 F 為第 0 天 =====
-function setCompare(json){
-  if(!json){CMP=null;return}
-  const tasks=json.tasks||[];
-  const by=Object.fromEntries(tasks.map(r=>[r.k,r]));
-  const fs=tasks.filter(r=>r.F).map(r=>pd(r.F));
-  const t0=fs.length?new Date(Math.min(...fs)):null;
-  // 壓縮排程的起訖：開始＝原排開始(F)、完成＝壓縮後完成(I)。
-  // F 晚於 I（Excel 未填修改後開始日）時：開始＝壓縮後完成 − 原排工期(G−F，曆天)，保留原排工期往前推（使用者指定規則）。
+// 案件是否帶 Excel 壓縮排程（有「壓縮後完成日」I）
+const hasExcel=tasks=>tasks.some(r=>r.I);
+// 摘要／階段：子項開始最小～完成最大（寫在 _s/_f）
+function rollupAlt(tasks){
+  for(const r of tasks){
+    if(r.t!=='phase'&&r.t!=='sum')continue;
+    const ch=tasks.filter(x=>x.t!=='phase'&&x.t!=='sum'&&(r.t==='sum'?x.par===r.k:x.ph===r.k));
+    const S=ch.filter(x=>x._s).map(x=>x._s), E=ch.filter(x=>x._f).map(x=>x._f);
+    r._s=S.length?new Date(Math.min(...S)):null; r._f=E.length?new Date(Math.max(...E)):null;
+  }
+}
+// Excel 壓縮排程：開始＝原排開始(F)、完成＝壓縮後完成(I)。
+// F 晚於 I（Excel 未填修改後開始日）時：開始＝壓縮後完成 − 原排工期(G−F，曆天)，保留原排工期往前推（使用者指定規則）。
+function fillCompressed(tasks){
   for(const r of tasks){
     if(r.t==='phase'||r.t==='sum')continue;
     r._f=r.I?pd(r.I):null; r._s=r.F?pd(r.F):null; r._back=false;
@@ -355,17 +361,36 @@ function setCompare(json){
       r._s=addD(r._f,-dur); r._back=true;
     }
   }
-  // 摘要／階段：子項開始最小～完成最大
-  for(const r of tasks){
-    if(r.t!=='phase'&&r.t!=='sum')continue;
-    const ch=tasks.filter(x=>x.t!=='phase'&&x.t!=='sum'&&(r.t==='sum'?x.par===r.k:x.ph===r.k));
-    const S=ch.filter(x=>x._s).map(x=>x._s), E=ch.filter(x=>x._f).map(x=>x._f);
-    r._s=S.length?new Date(Math.min(...S)):null; r._f=E.length?new Date(Math.max(...E)):null;
+  rollupAlt(tasks);
+  const fs=tasks.filter(r=>r.F).map(r=>pd(r.F));
+  return fs.length?new Date(Math.min(...fs)):null;
+}
+// 合理時程（沒有 Excel 資料的案件用）：依前置任務＋工期從開始日推算，規則與任務分頁相同
+function fillPlanned(tasks,start){
+  const by=Object.fromEntries(tasks.map(r=>[r.k,r])); const leaf=tasks.filter(r=>r.t!=='phase'&&r.t!=='sum');
+  const done={}; let guard=0; start=nextWd(start);
+  while(Object.keys(done).length<leaf.length&&guard++<500){
+    for(const r of leaf){
+      if(done[r.k]||!(r.pred||[]).every(([k])=>done[k]||!by[k]))continue;
+      let es=start;
+      for(const [k,t,l] of r.pred||[]){const p=by[k];if(!p)continue;const c=t==='SS'?addWd(p._s,l):addWd(p._f,1+l);if(c>es)es=c;}
+      r._s=es; r._f=finishOf(es,r.dur||1); r._back=false; done[r.k]=1;
+    }
   }
+  rollupAlt(tasks);
+  return start;
+}
+function setCompare(json){
+  if(!json){CMP=null;return}
+  const tasks=json.tasks||[];
+  const by=Object.fromEntries(tasks.map(r=>[r.k,r]));
+  const excel=hasExcel(tasks);
+  const meta=json.meta||{};
+  const t0=excel?fillCompressed(tasks):fillPlanned(tasks,pd(meta.default_start||fd(new Date())));
   // 比較對象自己的 WBS 號（多案總覽要顯示）
   {let p=0,c=0;const sub={};for(const r of tasks){if(r.t==='phase'){p++;c=0;r._wbs=String(p);r._lvl=1;continue}
     if(r.par&&by[r.par]){sub[r.par]=(sub[r.par]||0)+1;r._wbs=by[r.par]._wbs+'.'+sub[r.par];r._lvl=3;continue}c++;r._wbs=p+'.'+c;r._lvl=2;}}
-  CMP={meta:json.meta||{},byK:by,tasks,t0};
+  CMP={meta,byK:by,tasks,t0,src:excel?'Excel 壓縮排程':`合理時程（開始日 ${fd(t0)}）`};
 }
 const dayOf=(d,t0)=>d&&t0?Math.round((d-t0)/864e5):null;   // 第 N 天（曆天，第 0 天＝開始日）
 function cmpRow(r){ if(!CMP)return null; const c=CMP.byK[r.k]; if(!c||!c._f)return null;
@@ -375,8 +400,8 @@ function renderCompareTable(){
   const ct=document.getElementById('ct'), note=document.getElementById('cmpNote');
   if(!CMP){ct.innerHTML='';note.textContent='請在上方「比較對象」選一個案件。';return}
   const t0=ownStart();
-  note.innerHTML=`本案「${esc(META.name||'')}」第 0 天＝開始日 ${fd(t0)}；比較對象「${esc(CMP.meta.name||'')}」用 Excel 壓縮排程，第 0 天＝其 Excel 原排最早開始日 ${fd(CMP.t0)}。天數皆為曆天。差異＝本案完成天數 − 比較對象完成天數。`;
-  let h=`<thead><tr class="cols"><th class="name">名稱</th><th>WBS號</th><th>本案工期<br>(工天)</th><th>本案開始</th><th>本案完成</th><th>本案完成<br>第N天</th><th>比較：壓縮排程開始</th><th>比較：壓縮完成</th><th>比較完成<br>第N天</th><th>差異(天)</th><th>說明</th></tr></thead><tbody>`;
+  note.innerHTML=`本案「${esc(META.name||'')}」第 0 天＝開始日 ${fd(t0)}；比較對象「${esc(CMP.meta.name||'')}」用${esc(CMP.src)}，第 0 天＝${fd(CMP.t0)}。天數皆為曆天。差異＝本案完成天數 − 比較對象完成天數。`;
+  let h=`<thead><tr class="cols"><th class="name">名稱</th><th>WBS號</th><th>本案工期<br>(工天)</th><th>本案開始</th><th>本案完成</th><th>本案完成<br>第N天</th><th>比較：開始</th><th>比較：完成</th><th>比較完成<br>第N天</th><th>差異(天)</th><th>說明</th></tr></thead><tbody>`;
   for(const r of D){
     if(hidden(r))continue;
     const sum=r.t===PH||r.t==='sum'; const c=cmpRow(r); const own=dayOf(r.f,t0);
@@ -464,16 +489,21 @@ function renderMulti(today){
   const lg=document.getElementById('mLegend'), g=document.getElementById('mg');
   if(!CMP){lg.innerHTML='';g.innerHTML='<p class="note" style="padding:12px">請在上方「比較對象」選一個案件，才能和本案排在同一條時間軸上。</p>';return}
   const ta=tagOf(META), tb=tagOf(CMP.meta);
+  // 每個案件用自己的正確時程：有 Excel 壓縮資料的（半自動）一律用壓縮排程；沒有的（全自動）用合理時程
+  const ownExcel=hasExcel(D);
+  if(ownExcel)fillCompressed(D);
+  const srcA=ownExcel?'Excel 壓縮排程':(mode==='fc'?'現況預測':'合理時程')+`（開始日 ${fd(ownStart())}）`;
+  // 顏色依案件固定：半自動＝橘、其他＝藍；兩案同類時第二案用橘
+  const colA=ta==='半'?'pb':'pa', colB=(tb==='半'||colA==='pa')?'pb':'pa';
   lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button></span>
-    <span><i style="background:var(--bar)"></i>${esc(ta)}｜${esc(META.name||'本案')}（${mode==='fc'?'現況預測':'合理時程'}）</span>
-    <span><i style="background:var(--projb)"></i>${esc(tb)}｜${esc(CMP.meta.name||'比較對象')}（Excel 壓縮排程；* 為回推開始日）</span>
-    <span><i style="background:var(--accent);width:2px"></i>今天</span>`;
-  // 兩案的列：{p:'a'|'b', wbs, lvl, name, s, f, sum, back}
-  const A=D.filter(r=>r.s&&r.f).map(r=>({p:'a',wbs:r.wbs,lvl:r.lvl,name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',ph:r.t===PH}));
-  const B=CMP.tasks.filter(r=>r._s&&r._f).map(r=>({p:'b',wbs:r._wbs,lvl:r._lvl,name:r.name,s:r._s,f:r._f,sum:r.t==='phase'||r.t==='sum',ph:r.t==='phase',back:r._back}));
+    <span><i style="background:var(${colA==='pa'?'--bar':'--projb'})"></i>${esc(ta)}｜${esc(META.name||'本案')}：${esc(srcA)}</span>
+    <span><i style="background:var(${colB==='pa'?'--bar':'--projb'})"></i>${esc(tb)}｜${esc(CMP.meta.name||'比較對象')}：${esc(CMP.src)}</span>
+    <span>* 為回推開始日</span><span><i style="background:var(--accent);width:2px"></i>今天</span>`;
+  const A=D.map(r=>{const s=ownExcel?r._s:r.s, f=ownExcel?r._f:r.f;return s&&f?{p:'a',c:colA,wbs:r.wbs,lvl:r.lvl,name:r.name,s,f,sum:r.t===PH||r.t==='sum',back:ownExcel&&r._back}:null}).filter(Boolean);
+  const B=CMP.tasks.filter(r=>r._s&&r._f).map(r=>({p:'b',c:colB,wbs:r._wbs,lvl:r._lvl,name:r.name,s:r._s,f:r._f,sum:r.t==='phase'||r.t==='sum',back:r._back}));
   let rows;
   if(MLAYOUT==='lane'){
-    const LA=[{lane:1,p:'a',name:`${ta}｜${META.name||'本案'}`},...A], LB=[{lane:1,p:'b',name:`${tb}｜${CMP.meta.name||'比較對象'}`},...B];
+    const LA=[{lane:1,p:'a',c:colA,name:`${ta}｜${META.name||'本案'}`},...A], LB=[{lane:1,p:'b',c:colB,name:`${tb}｜${CMP.meta.name||'比較對象'}`},...B];
     // 先開始的案件排上面
     const sa=Math.min(...A.map(r=>r.s)), sb=Math.min(...B.map(r=>r.s));
     rows=sb<sa?[...LB,...LA]:[...LA,...LB];
@@ -492,11 +522,11 @@ function renderMulti(today){
   const tl=(today>=s0&&today<=end)?`<div class="g-today" style="left:${x(today)}"></div>`:'';
   let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5<45?'':a.getUTCFullYear())}${sc}</div></div>${gridLayer(x,bands,lines)}`;
   for(const r of rows){
-    if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip p${r.p}">${esc(r.p==='a'?ta:tb)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
+    if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip ${r.c}">${esc(r.p==='a'?ta:tb)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
     const ind=MLAYOUT==='lane'?8+(r.lvl-1)*14:8;
     const w=`calc(${x(addD(r.f,1))} - ${x(r.s)})`;
     const tip=`${r.p==='a'?ta:tb} ${r.wbs} ${r.name}：${fd(r.s)}${r.back?'*':''} → ${fd(r.f)}`;
-    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip p${r.p}">${esc(r.p==='a'?ta:tb)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar p${r.p} ${r.sum?'sumb':''}" style="left:${x(r.s)};width:${w}" title="${esc(tip)}"></div></div></div>`;
+    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.p==='a'?ta:tb)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''}" style="left:${x(r.s)};width:${w}" title="${esc(tip)}"></div></div></div>`;
   }
   g.innerHTML=h;
 }
