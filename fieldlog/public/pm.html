@@ -159,6 +159,13 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .g-scale .dlab{position:absolute;top:36px;border-left:0;padding:0;text-align:center;font-size:10px}
 .g-scale .dlab.h{color:var(--bad)}
 .g-scale .hb{position:absolute;top:34px;bottom:0;background:rgba(110,110,110,.16);border-left:0;padding:0}
+.gz .g-row{min-height:24px}.gz .g-track{height:22px}
+.gz .g-bar:not(.sumb){height:16px;top:3px}
+.gz .g-bar.sumb{top:9px}
+.g-bar .bl{font-size:11px;line-height:16px;white-space:nowrap;pointer-events:none}
+.g-bar .bl.bin{position:sticky;left:calc(var(--gn) + 2px);display:inline-block;padding:0 4px;color:#fff;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:top}
+.g-bar .bl.bout{position:absolute;left:calc(100% + 4px);top:0;color:var(--ink)}
+.g-bar.sumb .bl.bout{top:-6px;font-weight:700}
 .zoom{display:inline-flex;align-items:center;gap:6px}
 .zoom input[type=range]{width:140px}
 .zoom button{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:1px 8px;cursor:pointer}
@@ -221,7 +228,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <li>拖動「前置任務」型的任務時，改的是決定它開始日的那個前置任務的延遲天數，連動保留；「指定日期」型的任務改日期。設為前置任務的後續任務會跟著重算。</li>
 <li>「轉為連動」：把指定日期的任務改成接前置任務，延遲天數自動算到日期不變；壓縮重疊處會是負延遲。</li>
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
-<li>縮放：圖例列的「縮放」滑桿往右放大，最大到每天一格（顯示日期，假日＝週末＋國定假日以灰底與紅字標示）；也可按住 Ctrl 用滾輪縮放；「全覽」＝整張放進畫面，「跳到今天」＝放大並捲到今天。放大後橫向捲動，拖曳以「天」為單位對齊。</li>
+<li>縮放：圖例列的「縮放」滑桿往右放大，最大到每天一格（顯示日期，假日＝週末＋國定假日以灰底與紅字標示）；也可按住 Ctrl 用滾輪縮放；放大時任務名稱直接寫在條塊上（太短就寫在右邊）；「全覽」＝整張放進畫面，「跳到今天」＝放大並捲到今天。放大後橫向捲動，拖曳以「天」為單位對齊。</li>
 </ul>
 <h2>前置任務寫法（比照 PLM：填前置任務的 WBS 號）</h2>
 <table>
@@ -506,7 +513,7 @@ async function renderMulti(today){
   const fit=Math.max(1200,sc0.clientWidth)-gn, fitPd=fit/span;
   const pd=ZOOMV>0?fitPd*Math.pow(Math.max(1,ZMAX/fitPd),ZOOMV/100):fitPd;
   const keepDay=ZANCHOR!=null?ZANCHOR:(sc0.scrollLeft+ (sc0.clientWidth-gn)/2)/(GAX?GAX.pd:pd);
-  g.style.width=ZOOMV>0?Math.round(gn+span*pd)+'px':''; g.style.setProperty('--pd',pd+'px');
+  g.style.width=ZOOMV>0?Math.round(gn+span*pd)+'px':''; g.classList.toggle('gz',ZOOMV>0); g.style.setProperty('--pd',pd+'px');
   const dz=pd>=14, hz=pd>=3;
   const bands=[], lines=[];
   for(let y=s0.getUTCFullYear();;y++){const a=new Date(Math.max(s0,Date.UTC(y,0,1))), b=new Date(Math.min(end,Date.UTC(y+1,0,1)));if(a>=end)break;bands.push([a,b]);}
@@ -523,7 +530,7 @@ async function renderMulti(today){
     if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip ${r.c}">${esc(r.tag)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
     const ind=MLAYOUT==='lane'?8+(r.lvl-1)*14:8;
     const tip=`${r.tag} ${r.wbs} ${r.name}：${fd(r.s)}${r.back?'*':''} → ${fd(r.f)}`;
-    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.tag)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''} ${r.ed?'ed':''}" ${r.ed?`data-k="${esc(r.k)}"`:''} style="left:${x(r.s)};width:calc(${x(addD(r.f,1))} - ${x(r.s)})" title="${esc(tip)}${r.ed?'\n拖動＝改開始日；拖右緣＝改歷時；點一下＝輸入':''}">${r.ed?'<span class="gh"></span>':''}</div></div></div>`;
+    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.tag)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''} ${r.ed?'ed':''}" ${r.ed?`data-k="${esc(r.k)}"`:''} style="left:${x(r.s)};width:calc(${x(addD(r.f,1))} - ${x(r.s)})" title="${esc(tip)}${r.ed?'\n拖動＝改開始日；拖右緣＝改歷時；點一下＝輸入':''}">${ZOOMV>0?(()=>{const lb=`${r.wbs} ${r.name}`, wpx=(addD(r.f,1)-r.s)/864e5*pd; return `<span class="bl ${!r.sum&&wpx>lb.length*11+12?'bin':'bout'}">${esc(lb)}</span>`})():''}${r.ed?'<span class="gh"></span>':''}</div></div></div>`;
   }
   g.innerHTML=h; GAX={s0,span,pd,today};
   sc0.scrollLeft=Math.max(0,ZCUR?ZCUR.day*pd-ZCUR.px:keepDay*pd-(sc0.clientWidth-gn)/2); ZANCHOR=null; ZCUR=null;
