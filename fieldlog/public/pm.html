@@ -76,7 +76,7 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 .p-wait{background:var(--chrome2);color:var(--mute)}.p-warn{background:var(--warn-soft);color:var(--warn)}.p-bad{background:var(--bad-soft);color:var(--bad)}
 /* 甘特圖 */
 .g-row{display:grid;grid-template-columns:300px 1fr;align-items:center;border-bottom:1px solid var(--line2);min-height:22px}
-.g-row.sum{background:var(--sum);font-weight:700}
+.g-row.sum{font-weight:700}
 .g-name{padding:1px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid var(--line)}
 .g-track{position:relative;height:20px}
 .g-bar{position:absolute;top:5px;height:10px;border-radius:2px;background:var(--bar)}
@@ -85,9 +85,19 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 .g-forced{position:absolute;top:2px;width:2px;height:16px;background:var(--bad)}
 .g-today{position:absolute;top:0;bottom:0;width:1px;background:var(--accent);opacity:.7}
 .g-head{display:grid;grid-template-columns:300px 1fr;position:sticky;top:0;background:var(--chrome);z-index:2;border-bottom:1px solid var(--line)}
-.g-scale{position:relative;height:22px;font-size:11px;color:var(--mute)}
-.g-scale span{position:absolute;top:3px;white-space:nowrap;border-left:1px solid var(--line);padding-left:3px}
-.gin{min-width:1200px}
+.g-scale{position:relative;height:36px;font-size:11px;color:var(--mute)}
+.g-scale span{position:absolute;top:18px;white-space:nowrap;border-left:1px solid var(--line);padding-left:3px}
+.gin{min-width:1200px;--gn:300px}
+/* 年份灰底（隔年交替）＋月份淡虛線：畫在一層背景，橫跨所有列 */
+#g{position:relative}
+.g-grid{position:absolute;top:0;bottom:0;left:var(--gn);right:0;pointer-events:none;z-index:0}
+.g-yband{position:absolute;top:0;bottom:0;background:rgba(0,0,0,.05)}
+.g-mline{position:absolute;top:0;bottom:0;border-left:1px dashed rgba(0,0,0,.10)}
+:root[data-theme="dark"] .g-yband{background:rgba(255,255,255,.05)}
+:root[data-theme="dark"] .g-mline{border-left-color:rgba(255,255,255,.10)}
+.g-scale .ylab{position:absolute;top:0;bottom:0;background:rgba(0,0,0,.05);border-left:0;padding:0}
+.g-scale .ytxt{position:absolute;top:1px;border-left:0;padding-left:4px;font-weight:700;color:var(--ink)}
+:root[data-theme="dark"] .g-scale .ylab{background:rgba(255,255,255,.05)}
 .g-cmp{position:absolute;top:14px;height:4px;border-radius:2px;background:#9a9a9a}
 .g-cmp.mark{width:3px;height:8px;top:12px}
 .g-row.has-cmp .g-bar{top:3px}
@@ -120,7 +130,7 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 .login-box{background:var(--bg);border:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:10px;width:260px}
 .login-box input{padding:6px;border:1px solid var(--line);background:var(--bg)}
 .login-box button{padding:6px;border:0;background:var(--accent);color:#fff;cursor:pointer}
-@media (max-width:640px){.g-row,.g-head{grid-template-columns:150px 1fr}.grid td.name{min-width:200px}#proj{min-width:0;max-width:60vw}}
+@media (max-width:640px){.gin{--gn:150px}.g-row,.g-head{grid-template-columns:150px 1fr}.grid td.name{min-width:200px}#proj{min-width:0;max-width:60vw}}
 </style>
 </head>
 <body>
@@ -374,9 +384,12 @@ function renderGantt(today){
   const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1));const span=(max-s0)/864e5+31;
   const x=d=>((d-s0)/864e5/span*100).toFixed(3)+'%';
   let sc='';for(let d=new Date(s0);d<=max;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){
-    const m=d.getUTCMonth()+1;sc+=`<span style="left:${x(d)}">${m===1?'<b>'+d.getUTCFullYear()+'</b>':m}</span>`}
-  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale">${sc}</div></div>`;
-  const tl=`<div class="g-today" style="left:${x(today)}"></div>`;
+    const m=d.getUTCMonth()+1;sc+=`<span style="left:${x(d)}">${m}</span>`}
+  const end=addD(s0,span); const bands=[], lines=[];
+  for(let y=s0.getUTCFullYear();;y++){const a=new Date(Math.max(s0,Date.UTC(y,0,1))), b=new Date(Math.min(end,Date.UTC(y+1,0,1)));if(a>=end)break;bands.push([a,b]);}
+  for(let d=new Date(Date.UTC(s0.getUTCFullYear(),s0.getUTCMonth()+1,1));d<end;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1)))if(d.getUTCMonth()!==0)lines.push(d);
+  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5<45?'':a.getUTCFullYear())}${sc}</div></div>${gridLayer(x,bands,lines)}`;
+  const tl=(today>=s0&&today<=end)?`<div class="g-today" style="left:${x(today)}"></div>`:'';
   for(const r of rows){
     const sum=r.t===PH||r.t==='sum';
     const cls=sum?'sumb':(mode==='fc'?(r.state==='done'?'done':'fc'):'');
@@ -387,6 +400,12 @@ function renderGantt(today){
   document.getElementById('g').innerHTML=h;
 }
 
+// 背景格線：bands＝[[起,迄],…] 交替灰底；lines＝月份虛線位置（皆為 x() 可吃的值）
+function gridLayer(x,bands,lines){
+  return `<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
+}
+const scaleBands=(x,bands,label)=>bands.map(([a,b],i)=>(i%2?'':`<span class="ylab" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></span>`)+(label(i,a,b)?`<span class="ytxt" style="left:${x(a)}">${label(i,a,b)}</span>`:'')).join('');
+
 // 比較模式：橫軸為「第 N 天」，本案從開始日起算、比較對象從其 Excel 最早開始日起算
 function renderGanttCompare(){
   const rows=D.filter(r=>!hidden(r)); const t0=ownStart();
@@ -394,7 +413,11 @@ function renderGanttCompare(){
   for(const r of D){ if(r.f)maxDay=Math.max(maxDay,dayOf(r.f,t0)); const c=cmpRow(r); if(c)maxDay=Math.max(maxDay,c.f,c.s||0); }
   const span=maxDay+30; const x=d=>(d/span*100).toFixed(3)+'%';
   let sc='';for(let m=0;m*30.44<=maxDay;m++){sc+=`<span style="left:${x(m*30.44)}">${m%6===0?'<b>'+m+'月</b>':m}</span>`}
-  let h=`<div class="g-head"><div class="g-name">名稱（橫軸：開始後第 N 個月）</div><div class="g-scale">${sc}</div></div>`;
+  const bands=[], lines=[];
+  for(let y=0;y*365.25<span;y++)bands.push([y*365.25,Math.min(span,(y+1)*365.25)]);
+  for(let m=1;m*30.44<span;m++)if(m%12)lines.push(m*30.44);
+  sc='';for(let m=0;m*30.44<=maxDay;m++){sc+=`<span style="left:${x(m*30.44)}">${m}</span>`}
+  let h=`<div class="g-head"><div class="g-name">名稱（橫軸：開始後第 N 個月）</div><div class="g-scale">${scaleBands(x,bands,i=>'第 '+(i+1)+' 年')}${sc}</div></div>${gridLayer(x,bands,lines)}`;
   for(const r of rows){
     const sum=r.t===PH||r.t==='sum'; const s=dayOf(r.s,t0), f=dayOf(r.f,t0)+1; const c=cmpRow(r);
     let cb='';
