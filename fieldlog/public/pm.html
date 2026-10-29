@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PM 工具</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f6f2;--card:#ffffff;--ink:#1f2328;--mute:#5d6570;--line:#e2dfd6;
+  --accent:#1f5f8b;--accent-soft:#e3eef6;--done:#2f7d4f;--done-soft:#e2f2e8;
+  --warn:#a5560f;--warn-soft:#fbeedd;--bad:#b3261e;--bad-soft:#fbe4e2;
+  --phase:#efece4;--bar:#4a7fa8;--bar-done:#3f8f5f;--bar-fc:#c98a3a;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#16181b;--card:#1f2226;--ink:#e6e6e3;--mute:#9aa1a9;--line:#33373d;
+  --accent:#7db4dc;--accent-soft:#1d3142;--done:#7cc79a;--done-soft:#1c3326;
+  --warn:#e3a35c;--warn-soft:#3a2a17;--bad:#f08a82;--bad-soft:#3d1f1d;
+  --phase:#2a2d31;--bar:#5d93bd;--bar-done:#5aa877;--bar-fc:#d49a4f;}}
+:root[data-theme="dark"]{
+  --bg:#16181b;--card:#1f2226;--ink:#e6e6e3;--mute:#9aa1a9;--line:#33373d;
+  --accent:#7db4dc;--accent-soft:#1d3142;--done:#7cc79a;--done-soft:#1c3326;
+  --warn:#e3a35c;--warn-soft:#3a2a17;--bad:#f08a82;--bad-soft:#3d1f1d;
+  --phase:#2a2d31;--bar:#5d93bd;--bar-done:#5aa877;--bar-fc:#d49a4f;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 "Noto Sans TC",system-ui,sans-serif}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:17px;margin:28px 0 10px;border-left:4px solid var(--accent);padding-left:8px}
+.sub{color:var(--mute);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.kpi .l{color:var(--mute);font-size:12px}.kpi .v{font-size:18px;font-weight:700}
+.kpi .d{font-size:12px}
+.ctrl{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.ctrl label{font-size:13px;color:var(--mute)}
+input[type=date],select{font:inherit;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;border:0;background:var(--card);color:var(--ink);padding:6px 12px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff}
+.tabs{display:flex;gap:6px;margin-top:16px;flex-wrap:wrap}
+.tabs button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 14px;border-radius:8px;cursor:pointer}
+.tabs button.on{border-color:var(--accent);color:var(--accent);font-weight:700}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--card);font-weight:700;font-size:12px;color:var(--mute);z-index:1}
+td.wrapc{white-space:normal;min-width:220px;max-width:340px}
+tr.ph td{background:var(--phase);font-weight:700}
+tr.sum td{font-weight:500}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:0 7px;border-radius:999px;font-size:12px;line-height:20px}
+.p-done{background:var(--done-soft);color:var(--done)}
+.p-run{background:var(--accent-soft);color:var(--accent)}
+.p-wait{background:var(--phase);color:var(--mute)}
+.p-warn{background:var(--warn-soft);color:var(--warn)}
+.p-bad{background:var(--bad-soft);color:var(--bad)}
+code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--accent-soft);color:var(--accent);padding:0 5px;border-radius:4px}
+.note{font-size:12px;color:var(--mute)}
+.g-row{display:grid;grid-template-columns:260px 1fr;align-items:center;border-bottom:1px solid var(--line);min-height:24px}
+.g-row.ph{background:var(--phase);font-weight:700}
+.g-name{padding:2px 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-track{position:relative;height:22px}
+.g-bar{position:absolute;top:5px;height:12px;border-radius:3px;background:var(--bar)}
+.g-bar.done{background:var(--bar-done)}.g-bar.fc{background:var(--bar-fc)}
+.g-bar.sum{height:6px;top:8px;background:var(--ink);opacity:.55}
+.g-forced{position:absolute;top:2px;width:2px;height:18px;background:var(--bad)}
+.g-today{position:absolute;top:0;bottom:0;width:1px;background:var(--accent);opacity:.7}
+.g-head{display:grid;grid-template-columns:260px 1fr;position:sticky;top:0;background:var(--card);z-index:2;border-bottom:1px solid var(--line)}
+.g-scale{position:relative;height:22px;font-size:11px;color:var(--mute)}
+.g-scale span{position:absolute;top:3px;border-left:1px solid var(--line);padding-left:3px}
+.gw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.gin{min-width:1100px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mute);margin:8px 0}
+.legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+ul{margin:6px 0 6px 20px;padding:0}
+header.top{background:var(--accent);color:#fff;position:sticky;top:0;z-index:10;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;gap:10px}
+header.top h1{font-size:17px;margin:0;color:#fff}
+header.top a{color:#fff;text-decoration:none;font-size:13px;background:rgba(255,255,255,.15);border-radius:8px;padding:5px 10px}
+.login-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50}
+.login-overlay.open{display:flex}
+.login-box{background:var(--card);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:10px;width:260px}
+.login-box input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.login-box button{font:inherit;padding:8px;border:0;border-radius:6px;background:var(--accent);color:#fff;cursor:pointer}
+@media (max-width:640px){.g-row,.g-head{grid-template-columns:140px 1fr}}
+</style>
+</head>
+<body>
+<header class="top"><h1>📅 PM 工具｜前置任務與合理時程</h1><span style="flex:1"></span><a href="index.html">‹ 回首頁</a></header>
+<div class="wrap">
+<div class="sub" id="src">資料來源：MyWiki「PM工具」資料夾（標題以「PM資料｜」開頭的記事）。工天＝週一至週五，未扣國定假日。</div>
+
+<div class="card ctrl">
+  <label>專案 <select id="proj"></select></label>
+  <span class="note" id="status"></span>
+  <span class="seg" id="mode">
+    <button data-m="tpl" class="on">合理時程（套版）</button>
+    <button data-m="fc">現況預測</button>
+  </span>
+  <label>專案開始日 <input type="date" id="start"></label>
+  <label>今天 <input type="date" id="today"></label>
+  <span class="note" id="modeNote"></span>
+</div>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="tabs" id="tabs">
+  <button data-t="tbl" class="on">任務表</button>
+  <button data-t="gantt">甘特圖</button>
+  <button data-t="rule">依據與規則</button>
+</div>
+
+<section id="tbl">
+<h2>任務、前置任務與合理工天</h2>
+<div class="tw"><table id="t"></table></div>
+<p class="note">「前置(PLM)」為 MS Project／鼎新 PLM 列號寫法（含階段摘要列，專案摘要為第 0 列）；「前置(項次)」為 Excel 項次對照。帶 * 者為推論，需確認。</p>
+</section>
+
+<section id="gantt" hidden>
+<h2>甘特圖</h2>
+<div class="legend"><span><i style="background:var(--bar-done)"></i>已完成（實際）</span><span><i style="background:var(--bar)"></i>合理時程</span><span><i style="background:var(--bar-fc)"></i>預測（未完成）</span><span><i style="background:var(--bad);width:3px"></i>Excel 壓縮後完成日</span><span><i style="background:var(--accent);width:2px"></i>今天</span></div>
+<div class="gw"><div class="gin" id="g"></div></div>
+</section>
+
+<section id="rule" hidden>
+<h2>本專案的工天與前置任務依據</h2>
+<div class="card"><ul id="notes"><li class="note">（載入資料後顯示）</li></ul></div>
+<h2>PLM 前置任務寫法 ↔ 鼎新 XML 欄位</h2>
+<div class="tw"><table>
+<tr><th>寫法</th><th>意義</th><th>XML &lt;Type&gt;</th><th>XML &lt;LinkLag&gt;</th></tr>
+<tr><td><code>12FS</code></td><td>第 12 列完成後才開始</td><td>1</td><td>0</td></tr>
+<tr><td><code>27SS+30d</code></td><td>第 27 列開始後 30 工天開始</td><td>3</td><td>144000（30×8×60×10）</td></tr>
+<tr><td><code>5FF</code></td><td>同時完成</td><td>0</td><td>0</td></tr>
+<tr><td><code>5SF</code></td><td>開始後才能完成（少用）</td><td>2</td><td>0</td></tr>
+</table></div>
+<p class="note">LinkLag 單位為 0.1 分鐘、LagFormat=7（天）；1 工天＝480 分＝4800。*PLM 畫面上的顯示寫法未實際確認。</p>
+<h2>現況預測的規則</h2>
+<div class="card"><ul>
+<li>有實際完成日 → 用實際日期。</li>
+<li>有實際開始、未完成 → 從實際開始起算建議工天；若已超過今天，完成日至少為今天。</li>
+<li>未開始 → 依前置任務推算，且不早於今天的下一個工作日。</li>
+<li>資料中標記 <code>noK</code> 的任務，實際開始日只是先期作業，預測時不採用；標記 <code>fcStart</code> 的任務視為從該日已開始。</li>
+</ul></div>
+</section>
+</div>
+
+<div class="login-overlay" id="login-overlay"><div class="login-box">
+<strong>需要 PIN 才能使用</strong>
+<input id="login-pin" type="password" placeholder="PIN" autocomplete="off">
+<button id="login-submit" type="button">確定</button></div></div>
+<script>
+// ===== 資料：不放在程式裡（repo 是公開的），一律從 MyWiki「PM工具」資料夾讀取 =====
+// 資料記事：標題以「PM資料｜」開頭，內文是 JSON {meta, tasks}；需 PIN 才讀得到。
+const PH='phase';
+let D=[], byK={}, META={};
+// ===== 工作日工具 =====
+const pd=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
+const fd=d=>d?d.toISOString().slice(0,10):'';
+const isWd=d=>{const w=d.getUTCDay();return w!==0&&w!==6};
+const addD=(d,n)=>new Date(d.getTime()+n*864e5);
+const nextWd=d=>{while(!isWd(d))d=addD(d,1);return d};
+const addWd=(d,n)=>{ // n>=0: 往後數 n 個工作日（d 本身需為工作日）
+  d=nextWd(d); let c=0; while(c<n){d=addD(d,1); if(isWd(d))c++;} return d};
+const finishOf=(s,dur)=>addWd(s,Math.max(dur,1)-1);
+const wdBetween=(a,b)=>{let n=0,d=a;while(d<=b){if(isWd(d))n++;d=addD(d,1)}return n};
+const cdBetween=(a,b)=>Math.round((b-a)/864e5)+1;
+
+// PLM 列號（專案摘要=0）
+function setData(json){
+  META=json.meta||{}; D=json.tasks||[];
+  D.forEach((r,i)=>r.id=i+1);
+  byK=Object.fromEntries(D.map(r=>[r.k,r]));
+  document.getElementById('start').value=META.default_start||document.getElementById('start').value||new Date().toISOString().slice(0,10);
+  document.getElementById('src').textContent=`資料：${META.name||''}｜${META.source||''}｜${META.version||''}（${META.updated||''}）`;
+  document.getElementById('notes').innerHTML=(META.notes||[]).map(n=>`<li>${n}</li>`).join('')||'<li class="note">（資料未附說明）</li>';
+  render();
+}
+const plmPred=r=>(r.pred||[]).map(([k,t,l])=>byK[k].id+t+(l?(l>0?'+':'')+l+'d':'')).join(', ');
+const noPred=r=>(r.pred||[]).map(([k,t,l])=>byK[k].no+t+(l?(l>0?'+':'')+l+'d':'')).join(', ');
+
+let mode='tpl';
+function schedule(){
+  const start=nextWd(pd(document.getElementById('start').value));
+  const today=pd(document.getElementById('today').value);
+  const tAfter=nextWd(addD(today,1));
+  const done={};
+  const leaf=D.filter(r=>r.t!==PH&&r.t!=='sum');
+  let guard=0;
+  while(Object.keys(done).length<leaf.length&&guard++<500){
+    for(const r of leaf){
+      if(done[r.k])continue;
+      if(!(r.pred||[]).every(([k])=>done[k]))continue;
+      let es=start;
+      for(const [k,t,l] of r.pred||[]){
+        const p=byK[k];
+        let cand = t==='SS' ? addWd(p.s,l) : addWd(p.f,1+l);
+        if(cand>es)es=cand;
+      }
+      r.state='plan';
+      if(mode==='fc'){
+        if(r.K&&r.L){r.s=pd(r.K);r.f=pd(r.L);r.state='done'}
+        else if((r.K&&!r.noK)||r.fcStart){
+          r.s=nextWd(pd(r.K&&!r.noK?r.K:r.fcStart));
+          let f=finishOf(r.s,r.dur); if(f<today)f=nextWd(today); r.f=f; r.state='run';
+        } else {
+          if(es<tAfter)es=tAfter; r.s=es; r.f=finishOf(es,r.dur); r.state='fc';
+        }
+      } else { r.s=es; r.f=finishOf(es,r.dur); }
+      done[r.k]=1;
+    }
+  }
+  // 摘要
+  const rollup=(rows,r)=>{if(!rows.length)return;r.s=new Date(Math.min(...rows.map(x=>x.s)));r.f=new Date(Math.max(...rows.map(x=>x.f)));};
+  rollup(leaf.filter(x=>x.par==='13'),byK['13']);
+  D.filter(r=>r.t===PH).forEach(p=>rollup(leaf.filter(x=>x.ph===p.k),p));
+  return {today};
+}
+
+function pill(r){
+  if(mode!=='fc')return '';
+  const m={done:['p-done','已完成'],run:['p-run','進行中'],fc:['p-wait','未開始']}[r.state]||['',''];
+  return `<span class="pill ${m[0]}">${m[1]}</span>`;
+}
+function diffCell(r){
+  if(!r.I||!r.f||r.t===PH)return '';
+  const forced=pd(r.I); if(r.state==='done')return '';
+  const d=Math.round((r.f-forced)/864e5);
+  if(d<=0)return `<span class="pill p-done">${d===0?'±0':d+' 天'}</span>`;
+  return `<span class="pill ${d>60?'p-bad':'p-warn'}">+${d} 天</span>`;
+}
+function render(){
+  if(!D.length)return;
+  const {today}=schedule();
+  const t=document.getElementById('t');
+  let h=`<tr><th>PLM列</th><th>項次</th><th>工作項目</th><th>研發人員</th><th>協力單位</th><th>前置(PLM)</th><th>前置(項次)</th><th>建議工天</th><th>依據</th><th>鼎新原排<br>工天</th><th>Excel原排<br>曆天/工天</th><th>Excel實際<br>工天</th><th>計算開始</th><th>計算完成</th><th>Excel壓縮<br>完成日</th><th>差異<br>(計算−壓縮)</th><th>說明</th></tr>`;
+  for(const r of D){
+    if(r.t===PH){h+=`<tr class="ph"><td>${r.id}</td><td colspan="11">${r.name}</td><td>${fd(r.s)}</td><td>${fd(r.f)}</td><td colspan="3"></td></tr>`;continue}
+    const ori=r.F&&r.G?`${cdBetween(pd(r.F),pd(r.G))} / ${wdBetween(pd(r.F),pd(r.G))}`:'';
+    const act=r.K&&r.L?wdBetween(pd(r.K),pd(r.L)):'';
+    const sum=r.t==='sum';
+    h+=`<tr class="${sum?'sum':''}"><td class="num">${r.id}</td><td>${r.no}</td><td>${r.par?'　└ ':''}${r.name}${r.cls?` <span class="pill p-wait">${r.cls} *</span>`:''}</td><td>${r.rd||''}</td><td>${r.co||''}</td>
+    <td>${sum?'':`<code>${plmPred(r)||'—'}</code>`}</td><td>${sum?'':noPred(r)||'—'}</td>
+    <td class="num"><b>${sum?'':r.dur}</b></td><td>${sum?'子項彙總':r.basis||''}</td>
+    <td class="num">${r.xwd??''}${r.xml?`<div class="note">UID ${r.xml}</div>`:''}</td><td class="num">${ori}</td><td class="num">${act}</td>
+    <td>${fd(r.s)}</td><td>${fd(r.f)} ${pill(r)}</td><td>${r.I||''}</td><td>${sum?'':diffCell(r)}</td>
+    <td class="wrapc">${r.flag==='warn'?'<span class="pill p-warn">注意</span> ':''}${r.note||''}</td></tr>`;
+  }
+  t.innerHTML=h;
+  renderKpi(); renderGantt(today);
+}
+function renderKpi(){
+  const k=(key,label)=>{const r=byK[key];const forced=r.I?pd(r.I):null;const d=forced?Math.round((r.f-forced)/864e5):null;
+    return `<div class="kpi"><div class="l">${label}</div><div class="v">${fd(r.f)}</div><div class="d ${d>0?'':'note'}" style="color:${d>60?'var(--bad)':d>0?'var(--warn)':'var(--mute)'}">Excel 壓縮：${r.I||'—'}${d!=null?`（${d>0?'+':''}${d} 天）`:''}</div></div>`};
+  document.getElementById('kpis').innerHTML=k('24','C2 審查完成')+k('37','C3 審查完成')+k('38','DHF 完成')+k('39','TW-QMS 取證');
+}
+function renderGantt(today){
+  const rows=D;
+  const min=new Date(Math.min(...rows.map(r=>r.s)));const max=new Date(Math.max(...rows.map(r=>r.f),...rows.filter(r=>r.I).map(r=>pd(r.I))));
+  const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1));const span=(max-s0)/864e5+31;
+  const x=d=>((d-s0)/864e5/span*100).toFixed(3)+'%';
+  let sc='';for(let d=new Date(s0);d<=max;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){
+    const m=d.getUTCMonth()+1;sc+=`<span style="left:${x(d)}">${m===1?"'"+String(d.getUTCFullYear()).slice(2)+'/1':m}</span>`}
+  let h=`<div class="g-head"><div class="g-name">工作項目</div><div class="g-scale">${sc}</div></div>`;
+  const tl=`<div class="g-today" style="left:${x(today)}"></div>`;
+  for(const r of rows){
+    const ph=r.t===PH, sum=ph||r.t==='sum';
+    const cls=sum?'sum':(mode==='fc'?(r.state==='done'?'done':r.state==='fc'||r.state==='run'?'fc':''):'');
+    const w=`calc(${x(addD(r.f,1))} - ${x(r.s)})`;
+    const forced=(!sum&&r.I)?`<div class="g-forced" style="left:${x(pd(r.I))}" title="Excel 壓縮完成 ${r.I}"></div>`:'';
+    h+=`<div class="g-row ${ph?'ph':''}"><div class="g-name" title="${r.name}">${ph?'':r.no+' '}${r.par?'└ ':''}${r.name}</div><div class="g-track">${tl}<div class="g-bar ${cls}" style="left:${x(r.s)};width:${w}" title="${fd(r.s)} → ${fd(r.f)}"></div>${forced}</div></div>`;
+  }
+  document.getElementById('g').innerHTML=h;
+}
+document.getElementById('mode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;mode=b.dataset.m;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  document.getElementById('modeNote').textContent=mode==='fc'?'已完成用實際日期，未完成依建議工天往後推（規則見「依據與規則」）':'全部依合理工天與前置任務從開始日推算，可作新專案套版';
+  render()});
+document.getElementById('tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  ['tbl','gantt','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t)});
+['start','today'].forEach(id=>document.getElementById(id).addEventListener('change',render));
+document.getElementById('modeNote').textContent='全部依合理工天與前置任務從開始日推算，可作新專案套版';
+document.getElementById('today').value=new Date().toISOString().slice(0,10);
+
+// ---------- PIN／API（跟 app.js 共用 localStorage key，主 App 登入過這裡不用再登一次）----------
+function pin(){return localStorage.getItem('fieldlog_pin')||''}
+function showLogin(){document.getElementById('login-overlay').classList.add('open')}
+document.getElementById('login-submit').onclick=()=>{
+  localStorage.setItem('fieldlog_pin',document.getElementById('login-pin').value.trim());
+  document.getElementById('login-overlay').classList.remove('open'); loadProjects();
+};
+async function api(path){
+  const res=await fetch('/api'+path,{headers:{'x-pin':pin()}});
+  if(res.status===401){showLogin();throw new Error('PIN 錯誤')}
+  if(!res.ok){const b=await res.json().catch(()=>({}));throw new Error(b.error||`HTTP ${res.status}`)}
+  return res.json();
+}
+const PM_FOLDER='PM工具', PM_PREFIX='PM資料｜';
+function parseBody(text){
+  const t=String(text||'').trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
+  return JSON.parse(t.slice(t.indexOf('{'),t.lastIndexOf('}')+1));
+}
+async function loadProjects(){
+  const st=document.getElementById('status');
+  try{
+    st.textContent='讀取 MyWiki…';
+    const folders=await api('/folders');
+    const f=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER));
+    if(!f){st.textContent=`找不到「${PM_FOLDER}」資料夾`;return}
+    const entries=(await api('/entries?folder_id='+f.id)).filter(e=>String(e.title||'').startsWith(PM_PREFIX));
+    const sel=document.getElementById('proj');
+    sel.innerHTML=entries.map(e=>`<option value="${e.id}">${e.title.slice(PM_PREFIX.length)}</option>`).join('');
+    if(!entries.length){st.textContent=`「${PM_FOLDER}」裡沒有標題以「${PM_PREFIX}」開頭的資料記事`;return}
+    await loadEntry(entries[0].id);
+  }catch(e){st.textContent='讀取失敗：'+e.message}
+}
+async function loadEntry(id){
+  const st=document.getElementById('status');
+  try{
+    st.textContent='讀取資料…';
+    const e=await api('/entries/'+id);
+    setData(parseBody(e.body));
+    st.textContent='';
+  }catch(err){st.textContent='資料格式錯誤或讀取失敗：'+err.message}
+}
+document.getElementById('proj').addEventListener('change',e=>loadEntry(e.target.value));
+if(!pin())showLogin(); else loadProjects();
+</script>
+</body>
+</html>

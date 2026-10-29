@@ -23,7 +23,7 @@
     "run_worker_first": [
       "/wiki/*", "/", "/index.html", "/app.js", "/style.css",
       "/pdf-editor.js", "/home.css", "/sw.js", "/manifest.json", "/help.html",
-      "/wiki.html", "/patrol.html"
+      "/wiki.html", "/patrol.html", "/pm.html"
     ]
   },
   // 公開網頁轉 PDF；PDF 網址本身則直接下載，不會消耗 Browser Run 時數。
