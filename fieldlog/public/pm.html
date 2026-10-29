@@ -151,6 +151,17 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .grid td.cond{white-space:nowrap}
 .grid td.cond select{margin-right:3px}
 .g-bar.ed{cursor:grab;touch-action:none}
+.g-hol{position:absolute;top:0;bottom:0;background:rgba(110,110,110,.16)}
+:root[data-theme="dark"] .g-hol{background:rgba(255,255,255,.10)}
+.g-grid.days{background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.07) 0 1px,transparent 1px var(--pd))}
+:root[data-theme="dark"] .g-grid.days{background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.08) 0 1px,transparent 1px var(--pd))}
+.g-scale.dz{height:52px}
+.g-scale .dlab{position:absolute;top:36px;border-left:0;padding:0;text-align:center;font-size:10px}
+.g-scale .dlab.h{color:var(--bad)}
+.g-scale .hb{position:absolute;top:34px;bottom:0;background:rgba(110,110,110,.16);border-left:0;padding:0}
+.zoom{display:inline-flex;align-items:center;gap:6px}
+.zoom input[type=range]{width:140px}
+.zoom button{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:1px 8px;cursor:pointer}
 .g-bar.ed:hover{outline:2px solid var(--accent);outline-offset:1px}
 .g-bar .gh{position:absolute;right:-3px;top:-3px;bottom:-3px;width:8px;cursor:ew-resize}
 .pop [hidden]{display:none!important}
@@ -210,6 +221,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <li>拖動「前置任務」型的任務時，改的是決定它開始日的那個前置任務的延遲天數，連動保留；「指定日期」型的任務改日期。設為前置任務的後續任務會跟著重算。</li>
 <li>「轉為連動」：把指定日期的任務改成接前置任務，延遲天數自動算到日期不變；壓縮重疊處會是負延遲。</li>
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
+<li>縮放：圖例列的「縮放」滑桿往右放大，最大到每天一格（顯示日期，假日＝週末＋國定假日以灰底與紅字標示）；也可按住 Ctrl 用滾輪縮放；「全覽」＝整張放進畫面，「跳到今天」＝放大並捲到今天。放大後橫向捲動，拖曳以「天」為單位對齊。</li>
 </ul>
 <h2>前置任務寫法（比照 PLM：填前置任務的 WBS 號）</h2>
 <table>
@@ -448,7 +460,7 @@ document.getElementById('btnSave').onclick=async()=>{
 window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
 
 // ===== 多案總覽：PM工具裡所有勾選的案件，畫在同一條實際日期軸 =====
-let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null;
+let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null; const ZMAX=28;
 const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
 function gridLayer(x,bands,lines){
   return `<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
@@ -476,7 +488,8 @@ async function renderMulti(today){
   if(seq!==MSEQ)return;
   lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button></span>
     <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span>${esc(c.title)}</label>`).join('')}</span>
-    <span>* 為回推開始日</span><span><i style="background:var(--accent);width:2px"></i>今天</span>`;
+    <span class="zoom">縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday">跳到今天</button></span>
+    <span>* 為回推開始日</span><span><i style="background:var(--accent);width:2px"></i>今天</span><span><i style="background:rgba(110,110,110,.3)"></i>假日（週末＋國定）</span>`;
   const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color)).filter(c=>c.rows.length);
   if(!sel.length){g.innerHTML='<p class="note" style="padding:12px">請至少勾選一個案件。</p>';return}
   let rows;
@@ -488,21 +501,47 @@ async function renderMulti(today){
   const min=new Date(Math.min(...all.map(r=>r.s))), max=new Date(Math.max(...all.map(r=>r.f)));
   const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1)); const span=(max-s0)/864e5+31; const end=addD(s0,span);
   const x=d=>((d-s0)/864e5/span*100).toFixed(3)+'%';
+  // 縮放：ZOOMV 0＝符合寬度；>0 時每天固定像素，可橫向捲動
+  const sc0=g.parentElement, gn=parseFloat(getComputedStyle(g).getPropertyValue('--gn'))||300;
+  const fit=Math.max(1200,sc0.clientWidth)-gn, fitPd=fit/span;
+  const pd=ZOOMV>0?fitPd*Math.pow(Math.max(1,ZMAX/fitPd),ZOOMV/100):fitPd;
+  const keepDay=ZANCHOR!=null?ZANCHOR:(sc0.scrollLeft+ (sc0.clientWidth-gn)/2)/(GAX?GAX.pd:pd);
+  g.style.width=ZOOMV>0?Math.round(gn+span*pd)+'px':''; g.style.setProperty('--pd',pd+'px');
+  const dz=pd>=14, hz=pd>=3;
   const bands=[], lines=[];
   for(let y=s0.getUTCFullYear();;y++){const a=new Date(Math.max(s0,Date.UTC(y,0,1))), b=new Date(Math.min(end,Date.UTC(y+1,0,1)));if(a>=end)break;bands.push([a,b]);}
   let sc='';
-  for(let d=new Date(s0);d<end;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){sc+=`<span style="left:${x(d)}">${d.getUTCMonth()+1}</span>`; if(d>s0&&d.getUTCMonth()!==0)lines.push(d);}
+  for(let d=new Date(s0);d<end;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){sc+=`<span style="left:${x(d)}">${dz?d.getUTCFullYear()+'年':''}${d.getUTCMonth()+1}${pd>=3?'月':''}</span>`; if(d>s0&&d.getUTCMonth()!==0)lines.push(d);}
   const tl=(today>=s0&&today<=end)?`<div class="g-today" style="left:${x(today)}"></div>`:'';
-  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5<45?'':a.getUTCFullYear())}${sc}</div></div>${gridLayer(x,bands,lines)}`;
+  // 假日（週末＋國定假日）連續區段
+  let hol='', hhd='', dl='';
+  if(hz){let a=null;for(let d=new Date(s0);d<=end;d=addD(d,1)){const off=!isWd(d)&&d<end;if(off&&!a)a=d;if(!off&&a){hol+=`<div class="g-hol" style="left:${x(a)};width:calc(${x(d)} - ${x(a)})"></div>`;if(dz)hhd+=`<span class="hb" style="left:${x(a)};width:calc(${x(d)} - ${x(a)})"></span>`;a=null}}}
+  if(dz)for(let d=new Date(s0);d<end;d=addD(d,1))dl+=`<span class="dlab ${isWd(d)?'':'h'}" style="left:${x(d)};width:${pd}px">${d.getUTCDate()}</span>`;
+  const grid=gridLayer(x,bands,lines).replace('<div class="g-grid">',`<div class="g-grid ${dz?'days':''}">${hol}`);
+  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale ${dz?'dz':''}">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5*pd<40?'':a.getUTCFullYear())}${sc}${hhd}${dl}</div></div>${grid}`;
   for(const r of rows){
     if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip ${r.c}">${esc(r.tag)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
     const ind=MLAYOUT==='lane'?8+(r.lvl-1)*14:8;
     const tip=`${r.tag} ${r.wbs} ${r.name}：${fd(r.s)}${r.back?'*':''} → ${fd(r.f)}`;
     h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.tag)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''} ${r.ed?'ed':''}" ${r.ed?`data-k="${esc(r.k)}"`:''} style="left:${x(r.s)};width:calc(${x(addD(r.f,1))} - ${x(r.s)})" title="${esc(tip)}${r.ed?'\n拖動＝改開始日；拖右緣＝改歷時；點一下＝輸入':''}">${r.ed?'<span class="gh"></span>':''}</div></div></div>`;
   }
-  g.innerHTML=h; GAX={s0,span};
+  g.innerHTML=h; GAX={s0,span,pd,today};
+  sc0.scrollLeft=Math.max(0,ZCUR?ZCUR.day*pd-ZCUR.px:keepDay*pd-(sc0.clientWidth-gn)/2); ZANCHOR=null; ZCUR=null;
+  const zl=document.getElementById('zlab'); if(zl)zl.textContent=dz?'日':pd>=3?'週':'月';
 }
-document.getElementById('mLegend').addEventListener('click',e=>{const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
+document.getElementById('mLegend').addEventListener('click',e=>{
+  if(e.target.id==='zfit'){ZOOMV=0;ZANCHOR=null;render();return}
+  if(e.target.id==='ztoday'){if(!GAX)return;ZANCHOR=(GAX.today-GAX.s0)/864e5;if(ZOOMV<60)ZOOMV=60;render();return}
+  const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
+document.getElementById('mLegend').addEventListener('input',e=>{if(e.target.id!=='zoom')return;ZOOMV=+e.target.value;renderMultiOnly()});
+function renderMultiOnly(){renderMulti(GAX&&GAX.today||new Date())}
+document.getElementById('mg').parentElement.addEventListener('wheel',e=>{
+  if(!(e.ctrlKey||e.metaKey)||!GAX)return; e.preventDefault();
+  const sc0=e.currentTarget, gn=parseFloat(getComputedStyle(document.getElementById('mg')).getPropertyValue('--gn'))||300;
+  const px=e.clientX-sc0.getBoundingClientRect().left-gn; const day=(sc0.scrollLeft+px)/GAX.pd;
+  ZOOMV=Math.max(0,Math.min(100,ZOOMV+(e.deltaY<0?6:-6)));
+  ZCUR={day,px}; renderMultiOnly();
+},{passive:false});
 document.getElementById('mLegend').addEventListener('change',e=>{const c=e.target.closest('input[data-case]');if(!c)return;c.checked?MOFF.delete(c.dataset.case):MOFF.add(c.dataset.case);render()});
 
 // ===== 甘特圖直接編輯（只限目前案件）=====
@@ -527,7 +566,7 @@ document.getElementById('mg').addEventListener('pointerdown',e=>{
 });
 document.getElementById('mg').addEventListener('pointermove',e=>{
   if(!DRAG)return; const dx=e.clientX-DRAG.x0; if(Math.abs(dx)>3)DRAG.moved=true; if(!DRAG.moved)return;
-  if(DRAG.mode==='move')DRAG.bar.style.transform=`translateX(${dx}px)`; else DRAG.bar.style.width=Math.max(4,DRAG.w0+dx)+'px';
+  const sx=Math.round(dx/DRAG.pxPerDay)*DRAG.pxPerDay; if(DRAG.mode==='move')DRAG.bar.style.transform=`translateX(${sx}px)`; else DRAG.bar.style.width=Math.max(4,DRAG.w0+sx)+'px';
   const days=Math.round(dx/DRAG.pxPerDay);
   document.getElementById('msg').textContent=DRAG.mode==='move'?`開始日 ${fd(nextWd(addD(DRAG.r.s,days)))}`:`完成日 ${fd(prevWd(addD(DRAG.r.f,days)))}`;
 });
