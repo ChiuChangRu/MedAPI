@@ -86,8 +86,15 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 .g-today{position:absolute;top:0;bottom:0;width:1px;background:var(--accent);opacity:.7}
 .g-head{display:grid;grid-template-columns:300px 1fr;position:sticky;top:0;background:var(--chrome);z-index:2;border-bottom:1px solid var(--line)}
 .g-scale{position:relative;height:22px;font-size:11px;color:var(--mute)}
-.g-scale span{position:absolute;top:3px;border-left:1px solid var(--line);padding-left:3px}
+.g-scale span{position:absolute;top:3px;white-space:nowrap;border-left:1px solid var(--line);padding-left:3px}
 .gin{min-width:1200px}
+/* 甘特圖：圖例固定在上，捲動區內凍結「名稱」欄（左）與時間標題（上） */
+section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
+.gscroll{flex:1;min-height:0;overflow:auto}
+.g-name{position:sticky;left:0;z-index:1;background:var(--bg)}
+.g-row.sum .g-name{background:var(--sum)}
+.g-head .g-name{background:var(--chrome);z-index:3}
+.g-head{z-index:4}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mute);padding:6px 10px}
 .legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
 /* 依據 */
@@ -131,7 +138,7 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 <section id="tbl"><table class="grid" id="t"></table></section>
 <section id="gantt" hidden>
   <div class="legend"><span><i style="background:var(--bar-done)"></i>已完成（實際）</span><span><i style="background:var(--bar)"></i>合理時程</span><span><i style="background:var(--bar-fc)"></i>預測（未完成）</span><span><i style="background:var(--bad);width:3px"></i>Excel 壓縮後完成日</span><span><i style="background:var(--accent);width:2px"></i>今天</span></div>
-  <div class="gin" id="g"></div>
+  <div class="gscroll"><div class="gin" id="g"></div></div>
 </section>
 <section id="rule" hidden><div class="doc">
 <h2>本案件的工天與前置任務依據</h2>
@@ -299,7 +306,7 @@ function renderGantt(today){
   const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1));const span=(max-s0)/864e5+31;
   const x=d=>((d-s0)/864e5/span*100).toFixed(3)+'%';
   let sc='';for(let d=new Date(s0);d<=max;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){
-    const m=d.getUTCMonth()+1;sc+=`<span style="left:${x(d)}">${m===1?"'"+String(d.getUTCFullYear()).slice(2)+'/1':m}</span>`}
+    const m=d.getUTCMonth()+1;sc+=`<span style="left:${x(d)}">${m===1?'<b>'+d.getUTCFullYear()+'</b>':m}</span>`}
   let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale">${sc}</div></div>`;
   const tl=`<div class="g-today" style="left:${x(today)}"></div>`;
   for(const r of rows){
