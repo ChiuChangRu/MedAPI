@@ -88,6 +88,12 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 .g-scale{position:relative;height:22px;font-size:11px;color:var(--mute)}
 .g-scale span{position:absolute;top:3px;white-space:nowrap;border-left:1px solid var(--line);padding-left:3px}
 .gin{min-width:1200px}
+.g-cmp{position:absolute;top:14px;height:4px;border-radius:2px;background:#9a9a9a}
+.g-cmp.mark{width:3px;height:8px;top:12px}
+.g-row.has-cmp .g-bar{top:3px}
+.legend .cmpi{background:#9a9a9a}
+.kpis .cmp{color:var(--mute)}
+#ct td.num{text-align:right}
 /* 甘特圖：圖例固定在上，捲動區內凍結「名稱」欄（左）與時間標題（上） */
 section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 .gscroll{flex:1;min-height:0;overflow:auto}
@@ -121,6 +127,7 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 <div class="bar">
   <span class="title">📅 PM 工具</span>
   <label>案件 <select id="proj"><option>（讀取中…）</option></select></label>
+  <label>比較對象 <select id="cmp"><option value="">（不比較）</option></select></label>
   <label>開始日 <input type="date" id="start"></label>
   <label>今天 <input type="date" id="today"></label>
   <button class="home" id="theme" type="button" title="切換白色／深色模式"></button>
@@ -129,6 +136,7 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 <div class="bar2">
   <button class="tab on" data-t="tbl" type="button">任務</button>
   <button class="tab" data-t="gantt" type="button">甘特圖</button>
+  <button class="tab" data-t="cmpt" type="button">比較</button>
   <button class="tab" data-t="rule" type="button">依據與規則</button>
   <span class="seg" id="mode"><button data-m="tpl" class="on" type="button">合理時程（套版）</button><button data-m="fc" type="button">現況預測</button></span>
   <span class="kpis" id="kpis"></span>
@@ -137,9 +145,12 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 <main>
 <section id="tbl"><table class="grid" id="t"></table></section>
 <section id="gantt" hidden>
-  <div class="legend"><span><i style="background:var(--bar-done)"></i>已完成（實際）</span><span><i style="background:var(--bar)"></i>合理時程</span><span><i style="background:var(--bar-fc)"></i>預測（未完成）</span><span><i style="background:var(--bad);width:3px"></i>Excel 壓縮後完成日</span><span><i style="background:var(--accent);width:2px"></i>今天</span></div>
+  <div class="legend"><span><i style="background:var(--bar-done)"></i>已完成（實際）</span><span><i style="background:var(--bar)"></i>合理時程</span><span><i style="background:var(--bar-fc)"></i>預測（未完成）</span><span><i style="background:var(--bad);width:3px"></i>Excel 壓縮後完成日</span><span><i style="background:var(--accent);width:2px"></i>今天</span><span id="cmpLegend" hidden><i class="cmpi"></i>比較對象：Excel 壓縮排程（灰條；只有完成日者為灰點）</span></div>
   <div class="gscroll"><div class="gin" id="g"></div></div>
 </section>
+<section id="cmpt" hidden><div class="doc" style="max-width:none">
+<p class="note" id="cmpNote">請在上方「比較對象」選一個案件。</p>
+<table class="grid" id="ct"></table></div></section>
 <section id="rule" hidden><div class="doc">
 <h2>本案件的工天與前置任務依據</h2>
 <ul id="notes"><li class="note">（載入資料後顯示）</li></ul>
@@ -155,6 +166,12 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 <ul>
 <li>「計劃工期」＝工作天（週一至週五，未扣國定假日）；摘要列的「計劃工作量」＝子任務工期加總 × 8 小時（與 PLM 摘要列算法一致）。</li>
 <li>灰底「分析欄位」為本工具附加，PLM 沒有：建議依據、鼎新原排、Excel 原排／實際／壓縮後完成日、差異、說明。</li>
+</ul>
+<h2>比較的規則</h2>
+<ul>
+<li>上方「比較對象」選另一個案件後，甘特圖橫軸改為「開始後第 N 個月」：本案藍條從本案開始日起算；比較對象灰條用它的 Excel 壓縮排程（原排開始～壓縮後完成），從它的 Excel 原排最早開始日起算。</li>
+<li>比較對象若原排開始晚於壓縮完成（Excel 未填修改後開始日），只畫壓縮完成的灰點。</li>
+<li>兩案以任務代碼對應；本案有、比較對象沒有的任務標「新增」。</li>
 </ul>
 <h2>現況預測的規則</h2>
 <ul>
@@ -178,6 +195,8 @@ section#gantt:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 // 資料記事：標題以「PM資料｜」開頭，內文是 JSON {meta, tasks}；需 PIN 才讀得到。
 const PH='phase';
 let D=[], byK={}, META={}, mode='tpl', SEL=null;
+let CMP=null; // {meta, byK, t0}：比較對象（Excel 壓縮排程）
+const CASES={}; let ENTRIES=[];
 const COLLAPSED=new Set();
 
 // ===== 工作日工具 =====
@@ -290,7 +309,48 @@ function render(){
       <td class="ana wrapc">${r.flag==='warn'?'<span class="pill p-warn">注意</span> ':''}${esc(r.note||'')}</td></tr>`;
   }
   t.innerHTML=h+'</tbody>';
-  renderKpi(); renderGantt(today);
+  renderKpi(); renderGantt(today); renderCompareTable();
+}
+// ===== 比較：對方的 Excel 壓縮排程（F＝原排開始、I＝壓縮後完成），以對方最早的 F 為第 0 天 =====
+function setCompare(json){
+  if(!json){CMP=null;return}
+  const tasks=json.tasks||[];
+  const by=Object.fromEntries(tasks.map(r=>[r.k,r]));
+  const fs=tasks.filter(r=>r.F).map(r=>pd(r.F));
+  const t0=fs.length?new Date(Math.min(...fs)):null;
+  // 摘要／階段：子項 F 最小～I 最大
+  for(const r of tasks){
+    if(r.t==='phase'||r.t==='sum'){
+      const ch=tasks.filter(x=>x.t!=='phase'&&x.t!=='sum'&&(r.t==='sum'?x.par===r.k:x.ph===r.k));
+      const F=ch.filter(x=>x.F).map(x=>pd(x.F)), I=ch.filter(x=>x.I).map(x=>pd(x.I));
+      r._s=F.length?new Date(Math.min(...F)):null; r._f=I.length?new Date(Math.max(...I)):null;
+    } else { r._s=r.F?pd(r.F):null; r._f=r.I?pd(r.I):null; }
+  }
+  CMP={meta:json.meta||{},byK:by,t0};
+}
+const dayOf=(d,t0)=>d&&t0?Math.round((d-t0)/864e5):null;   // 第 N 天（曆天，第 0 天＝開始日）
+function cmpRow(r){ if(!CMP)return null; const c=CMP.byK[r.k]; if(!c||!c._f)return null;
+  const s=dayOf(c._s,CMP.t0), f=dayOf(c._f,CMP.t0); return {s,f,valid:s!=null&&s<=f,I:c.I,F:c.F}; }
+function ownStart(){return nextWd(pd(document.getElementById('start').value))}
+function renderCompareTable(){
+  const ct=document.getElementById('ct'), note=document.getElementById('cmpNote');
+  if(!CMP){ct.innerHTML='';note.textContent='請在上方「比較對象」選一個案件。';return}
+  const t0=ownStart();
+  note.innerHTML=`本案「${esc(META.name||'')}」第 0 天＝開始日 ${fd(t0)}；比較對象「${esc(CMP.meta.name||'')}」用 Excel 壓縮排程，第 0 天＝其 Excel 原排最早開始日 ${fd(CMP.t0)}。天數皆為曆天。差異＝本案完成天數 − 比較對象完成天數。`;
+  let h=`<thead><tr class="cols"><th class="name">名稱</th><th>WBS號</th><th>本案工期<br>(工天)</th><th>本案開始</th><th>本案完成</th><th>本案完成<br>第N天</th><th>比較：Excel原排開始</th><th>比較：壓縮完成</th><th>比較完成<br>第N天</th><th>差異(天)</th><th>說明</th></tr></thead><tbody>`;
+  for(const r of D){
+    if(hidden(r))continue;
+    const sum=r.t===PH||r.t==='sum'; const c=cmpRow(r); const own=dayOf(r.f,t0);
+    const diff=c?own-c.f:null;
+    const dcls=diff==null?'':diff>60?'p-bad':diff>0?'p-warn':'p-done';
+    const cc=CMP.byK[r.k];
+    h+=`<tr class="${sum?'sum':''}"><td class="name"><span class="tw" style="padding-left:${(r.lvl-1)*18}px">${sum?ICON_SUM:ICON_TASK}${esc(r.name)}</span></td><td>${r.wbs}</td>
+    <td class="num">${sum?wdBetween(r.s,r.f):r.dur}</td><td>${fd(r.s)}</td><td>${fd(r.f)}</td><td class="num">${own}</td>
+    <td>${cc&&cc._s?fd(cc._s):''}</td><td>${cc&&cc._f?fd(cc._f):''}</td><td class="num">${c?c.f:''}</td>
+    <td class="num">${diff==null?'':`<span class="pill ${dcls}">${diff>0?'+':''}${diff}</span>`}</td>
+    <td class="wrapc">${cc?(c&&!c.valid?'比較對象原排開始晚於壓縮完成（Excel 未填修改後開始日）':''):'<span class="pill p-run">本案新增</span>'}</td></tr>`;
+  }
+  ct.innerHTML=h+'</tbody>';
 }
 function renderKpi(){
   const k=(key,label)=>{const r=byK[key];if(!r||!r.f)return '';const d=r.I?Math.round((r.f-pd(r.I))/864e5):null;
@@ -298,9 +358,17 @@ function renderKpi(){
   // 里程碑取各審查階段／認證階段的最後一個任務
   const last=ph=>{const xs=D.filter(r=>r.ph===ph&&r.t!==PH);return xs.length?xs[xs.length-1].k:null};
   const ms=D.filter(r=>r.t===PH&&/^(C\d|認證)/.test(r.k)).map(p=>[last(p.k),p.name]);
+  if(CMP){
+    const t0=ownStart();
+    document.getElementById('kpis').innerHTML=ms.filter(([kk])=>kk).map(([kk,n])=>{const r=byK[kk];const c=cmpRow(r);const own=dayOf(r.f,t0);
+      return `<span>${n.split(' ')[0]} <b>${fd(r.f)}</b>（第 ${own} 天）${c?` <span class="cmp">比較 第 ${c.f} 天，</span><span class="${own-c.f>0?'late':''}">${own-c.f>0?'+':''}${own-c.f} 天</span>`:''}</span>`}).join('');
+    return;
+  }
   document.getElementById('kpis').innerHTML=ms.filter(([kk])=>kk).map(([kk,n])=>k(kk,n.split(' ')[0])).join('');
 }
 function renderGantt(today){
+  document.getElementById('cmpLegend').hidden=!CMP;
+  if(CMP)return renderGanttCompare();
   const rows=D.filter(r=>!hidden(r));
   const min=new Date(Math.min(...D.map(r=>r.s)));const max=new Date(Math.max(...D.map(r=>r.f),...D.filter(r=>r.I).map(r=>pd(r.I))));
   const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1));const span=(max-s0)/864e5+31;
@@ -319,6 +387,24 @@ function renderGantt(today){
   document.getElementById('g').innerHTML=h;
 }
 
+// 比較模式：橫軸為「第 N 天」，本案從開始日起算、比較對象從其 Excel 最早開始日起算
+function renderGanttCompare(){
+  const rows=D.filter(r=>!hidden(r)); const t0=ownStart();
+  let maxDay=0;
+  for(const r of D){ if(r.f)maxDay=Math.max(maxDay,dayOf(r.f,t0)); const c=cmpRow(r); if(c)maxDay=Math.max(maxDay,c.f,c.s||0); }
+  const span=maxDay+30; const x=d=>(d/span*100).toFixed(3)+'%';
+  let sc='';for(let m=0;m*30.44<=maxDay;m++){sc+=`<span style="left:${x(m*30.44)}">${m%6===0?'<b>'+m+'月</b>':m}</span>`}
+  let h=`<div class="g-head"><div class="g-name">名稱（橫軸：開始後第 N 個月）</div><div class="g-scale">${sc}</div></div>`;
+  for(const r of rows){
+    const sum=r.t===PH||r.t==='sum'; const s=dayOf(r.s,t0), f=dayOf(r.f,t0)+1; const c=cmpRow(r);
+    let cb='';
+    if(c){ cb=c.valid?`<div class="g-cmp" style="left:${x(c.s)};width:calc(${x(c.f+1)} - ${x(c.s)})" title="比較：${c.F} → ${c.I}（第 ${c.s}～${c.f} 天）"></div>`
+                    :`<div class="g-cmp mark" style="left:${x(c.f)}" title="比較：壓縮完成 ${c.I}（第 ${c.f} 天）"></div>`; }
+    h+=`<div class="g-row ${sum?'sum':''} ${c?'has-cmp':''}"><div class="g-name" style="padding-left:${8+(r.lvl-1)*14}px" title="${esc(r.name)}">${r.wbs} ${esc(r.name)}${CMP.byK[r.k]?'':' <span class="pill p-run">新增</span>'}</div><div class="g-track"><div class="g-bar ${sum?'sumb':''}" style="left:${x(s)};width:calc(${x(f)} - ${x(s)})" title="${fd(r.s)} → ${fd(r.f)}（第 ${s}～${f-1} 天）"></div>${cb}</div></div>`;
+  }
+  document.getElementById('g').innerHTML=h;
+}
+
 // ===== 互動 =====
 document.getElementById('t').addEventListener('click',e=>{
   const tg=e.target.closest('[data-tog]');
@@ -331,7 +417,7 @@ document.getElementById('mode').addEventListener('click',e=>{const b=e.target.cl
   render()});
 document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
-  ['tbl','gantt','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t)});
+  ['tbl','gantt','cmpt','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t)});
 ['start','today'].forEach(id=>document.getElementById(id).addEventListener('change',render));
 document.getElementById('today').value=new Date().toISOString().slice(0,10);
 function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('theme').textContent=dark?'☀ 白色模式':'☾ 深色模式'}
@@ -371,18 +457,34 @@ async function loadProjects(){
     if(!f){sel.innerHTML='<option>（無案件）</option>';st.textContent=`找不到「${PM_FOLDER}」資料夾`;return}
     const entries=(await api('/entries?folder_id='+f.id)).filter(e=>String(e.title||'').startsWith(PM_PREFIX));
     if(!entries.length){sel.innerHTML='<option>（無案件）</option>';st.textContent=`「${PM_FOLDER}」裡沒有標題以「${PM_PREFIX}」開頭的資料記事`;return}
+    ENTRIES=entries;
     sel.innerHTML=entries.map(e=>`<option value="${e.id}">${esc(e.title.slice(PM_PREFIX.length))}</option>`).join('');
     const last=localStorage.getItem('pm_last_entry');
     const pick=entries.some(e=>String(e.id)===last)?last:String(entries[0].id);
     sel.value=pick; await loadEntry(pick);
   }catch(e){st.textContent='讀取失敗：'+e.message}
 }
+async function fetchCase(id){ if(!CASES[id]){const e=await api('/entries/'+id); CASES[id]=parseBody(e.body);} return CASES[id]; }
+function fillCmpOptions(curId){
+  const c=document.getElementById('cmp');
+  c.innerHTML='<option value="">（不比較）</option>'+ENTRIES.filter(e=>String(e.id)!==String(curId)).map(e=>`<option value="${e.id}">${esc(e.title.slice(PM_PREFIX.length))}</option>`).join('');
+}
+async function loadCompare(id){
+  const st=document.getElementById('msg');
+  try{ setCompare(id?await fetchCase(id):null); render(); }catch(err){st.textContent='比較對象讀取失敗：'+err.message}
+}
+document.getElementById('cmp').addEventListener('change',e=>loadCompare(e.target.value));
 async function loadEntry(id){
   const st=document.getElementById('msg');
   try{
     st.textContent='讀取案件資料…';
-    const e=await api('/entries/'+id);
-    setData(parseBody(e.body));
+    const data=await fetchCase(id);
+    fillCmpOptions(id);
+    // 案件資料可指定預設比較對象（meta.compare_default＝對方案件名稱開頭）
+    const def=data.meta&&data.meta.compare_default;
+    const hit=def?ENTRIES.find(x=>String(x.id)!==String(id)&&x.title.slice(PM_PREFIX.length).startsWith(def)):null;
+    CMP=null; if(hit){document.getElementById('cmp').value=String(hit.id); setCompare(await fetchCase(hit.id));}
+    setData(data);
     try{localStorage.setItem('pm_last_entry',String(id))}catch{}
     st.textContent=mode==='fc'?'現況預測：已完成用實際日期，未完成依計劃工期往後推':'合理時程：全部依計劃工期與前置任務從開始日推算（套版用）';
   }catch(err){st.textContent='案件資料格式錯誤或讀取失敗：'+err.message}
