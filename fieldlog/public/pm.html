@@ -888,9 +888,12 @@ function sheetSafe(n){return String(n||'工作表').replace(/[\[\]:*?\/\\]/g,'_'
 async function loadTemplate(){
   const folders=await api('/folders'); const f=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER));
   const entries=await api('/entries?folder_id='+f.id+'&include=attachments');
-  const e=entries.find(x=>String(x.title||'').startsWith(TPL_PREFIX));
-  const att=e&&(e.attachments||[]).find(a=>/\.xlsx$/i.test(a.filename||''));
-  if(!att)throw new Error(`「${PM_FOLDER}」裡找不到標題以「${TPL_PREFIX}」開頭、附有 .xlsx 的範本記事`);
+  // 標題以「PM範本」開頭（｜、_、空白皆可），且附有 .xlsx 的記事；有多筆時取最新（編號最大）的一筆
+  let att=null;
+  for(const x of entries.filter(x=>String(x.title||'').startsWith('PM範本')).sort((p,q)=>q.id-p.id)){
+    att=(x.attachments||[]).find(a=>/\.xlsx$/i.test(a.filename||'')); if(att)break;
+  }
+  if(!att)throw new Error(`「${PM_FOLDER}」裡找不到標題以「PM範本」開頭、附有 .xlsx 的範本記事`);
   const raw=await api('/attachments/'+att.id+'/raw?mode=inline');
   const bin=atob(raw.data); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
   return u8;
