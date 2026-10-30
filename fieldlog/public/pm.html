@@ -308,7 +308,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 <li>工作天跳過週六日與政府行政機關辦公日曆的國定假日、補假（2026、2027 年）；有補班日時算工作天。2028 年以後辦公日曆尚未公布，只跳過週六日。</li>
 <li>指定日期落在假日時，順延到下一個工作天。</li>
 <li>階段列與摘要列不能編輯：開始＝子項最早開始、完成＝子項最晚完成。</li>
-<li>半自動初次載入時，完全依 Excel 壓縮版：每個任務設為「指定日期」＝壓縮版開始日，歷時＝壓縮版開始到「修改後預計完成」之間的工作天。原排開始晚於修改後完成的任務（Excel 未填修改後開始日），開始日＝修改後完成 − 原排工期，標 *。壓縮完成日落在假日時，計劃完成會是前一個工作天。</li>
+<li>半自動初次載入時，完全依 Excel 壓縮版：每個任務設為「指定日期」＝壓縮版開始日，歷時＝壓縮版開始到「修改後預計完成」之間的工作天。原排開始晚於修改後完成的任務（Excel 未填修改後開始日），開始日＝修改後完成 − Excel「工作天數」(J 欄，曆天)，標 *。日期落在週末時依固定規則移動：週六→前一個週五、週日→後一個週一（開始日、完成日皆同）；國定假日（僅「政府行事曆」）則開始日往後、完成日往前找最近的工作日。</li>
 </ul>
 <h2>甘特圖直接編輯</h2>
 <ul>
@@ -382,6 +382,8 @@ const addWd=(d,n)=>{ // 從工作日 d 起算第 n 個工作日；n 可為負（
 const wdDiff=(a,b)=>b>=a?wdBetween(a,b)-1:-(wdBetween(b,a)-1); // addWd(a,n)=b 的 n（a、b 皆為工作日）
 const predBase=(p,t)=>t==='SS'?p.s:addWd(p.f,1); // 延遲 0 時的開始日
 const finishOf=(s,dur)=>addWd(s,Math.max(dur,1)-1);
+// 日期落在週末的調整規則：週六→前一個週五、週日→後一個週一；國定假日等其他非工作日：開始日往後、完成日往前找工作日
+const wkAdj=(d,dir)=>{const w=d.getUTCDay();if(w===6)d=addD(d,-1);else if(w===0)d=addD(d,1);return isWd(d)?d:(dir>0?nextWd(d):prevWd(d))};
 const wdBetween=(a,b)=>{let n=0,d=a;while(d<=b){if(isWd(d))n++;d=addD(d,1)}return n};
 const cdBetween=(a,b)=>Math.round((b-a)/864e5)+1;
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -395,9 +397,10 @@ function migrate(tasks){
   for(const r of tasks){
     if(r.t===PH||r.t==='sum'||r.sm)continue;
     if(r.I){
-      let s=r.F?pd(r.F):pd(r.I); const f=pd(r.I); r.back=false;
-      if(s>f){const dur=r.G?Math.round((pd(r.G)-pd(r.F))/864e5):0; s=addD(f,-dur); r.back=true;}
-      s=nextWd(s); r.sm='fix'; r.fix=fd(s); r.dur=Math.max(1,wdBetween(s,f));
+      let s=r.F?pd(r.F):pd(r.I), f=pd(r.I); r.back=false;
+      if(s>f){const dur=r.J!=null?Math.max(0,r.J-1):(r.G?Math.round((pd(r.G)-pd(r.F))/864e5):0);/* 工期＝Excel 工作天數 J（含頭尾曆天）；無 J 才用 原本完成−原排開始 */ s=addD(f,-dur); r.back=true;}
+      s=wkAdj(s,1); f=wkAdj(f,-1); if(f<s)f=s; // 週六→週五、週日→週一；其他假日：開始往後、完成往前
+      r.sm='fix'; r.fix=fd(s); r.dur=Math.max(1,wdBetween(s,f));
     } else { r.sm='pred'; }
     r.pred=r.pred||[];
   }
