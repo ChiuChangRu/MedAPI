@@ -283,6 +283,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
 <li>⇆ 比較（多案總覽）：勾選的案件疊在同一張圖。「對齊開始日」＝各案從自己的開始日算起（M1＝第 1 個月），比較同類工作在第幾個月、花多久；「實際日期」＝放在真實日曆上。上方「整體進程」每案一列、依階段排開並標總月數；下方「同類工作疊圖」把名稱含相同關鍵字的任務歸成一類（試模、模具、驗證、審查…），每案一條細線（中間斷開＝這類工作中間有空檔），右側標跨幾個月、幾項。*分類是依任務名稱關鍵字自動判斷，可能歸錯，滑鼠移到右側文字可看包含哪些任務。</li>
 <li>匯入 PLM：讀入鼎新 PLM 匯出的 XML，建立成新案件（存到 MyWiki 的 PM工具 資料夾）；第 1 層摘要＝階段、第 2 層摘要＝摘要、其餘＝任務；前置任務、工期、執行人、實際開始／完成都帶入。匯入的案件行事曆預設「只排週末（同PLM）」，日期與 PLM 一致；上方「行事曆」可改成「週末＋國定假日」。</li>
+<li>開始日：沒有前置任務、而且從專案開始日起跑的任務，會跟著「開始日」移動，後面接前置任務的工作一起連動。改開始日時若還有「指定日期」的任務，會詢問要不要一起平移。</li>
 <li>右鍵：在目前案件的條塊上按右鍵＝設為／取消里程碑（完成日立一支紅色旗子，標題列也會標出 ⚑）；在空白處或時間標題按右鍵＝在那一天加註記（紅色虛線，例如送件日、客戶審查）；在標題列的註記上按右鍵＝修改或刪除。里程碑與註記存在這個案件的資料裡，*目前不會寫進公司 Excel 與 PLM 檔。</li>
 <li>點條塊開小視窗後，前置任務用下拉選單選子任務，關係選「完成→」（FS）或「同開始」（SS），延遲填工作天（負值＝重疊）；可加多個。</li>
 <li>放大後上下捲動時，畫面會跟著左右移：以畫面上方約 40% 的任務為準，它們最早的開始日不在畫面左半部時，平滑移到左邊附近（圖例列「自動跟隨」可關）。</li>
@@ -367,6 +368,10 @@ function migrate(tasks){
   }
   return tasks;
 }
+// 沒有前置任務、指定日期剛好是專案開始日的任務 → 視為「從專案開始」，改開始日時會跟著走
+function anchorStart(tasks,startStr){ if(!startStr)return 0; const st=fd(nextWd(pd(startStr))); let n=0;
+  for(const r of tasks){ if(r.t===PH||r.t==='sum'||r.sm!=='fix'||(r.pred||[]).length||!r.fix)continue;
+    if(fd(nextWd(pd(r.fix)))===st){r.sm='pred';r.pred=[];delete r.fix;n++} } return n }
 // ===== 計算：每個任務的開始／完成；階段、摘要彙總 =====
 function compute(tasks,startStr){
   const by=Object.fromEntries(tasks.map(r=>[r.k,r])); const start=nextWd(pd(startStr));
@@ -394,7 +399,7 @@ function compute(tasks,startStr){
 
 // ===== 目前案件 =====
 function setData(json){
-  META=json.meta||{}; syncCal(); D=migrate(json.tasks||[]);
+  META=json.meta||{}; syncCal(); D=migrate(json.tasks||[]); anchorStart(D,META.default_start);
   byK=Object.fromEntries(D.map(r=>[r.k,r])); COLLAPSED.clear(); SEL=null; setDirty(false);
   document.getElementById('start').value=META.default_start||fd(new Date());
   document.getElementById('src').textContent=`資料：${META.name||''}｜${META.source||''}｜${META.version||''}（${META.updated||''}）`;
@@ -479,7 +484,16 @@ document.getElementById('t').addEventListener('click',e=>{
   const tr=e.target.closest('tr[data-k]'); if(tr){SEL=tr.dataset.k;document.querySelectorAll('#t tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel')}
 });
 document.getElementById('t').addEventListener('focusin',e=>{const tr=e.target.closest('tr[data-k]');if(tr&&SEL!==tr.dataset.k){SEL=tr.dataset.k;document.querySelectorAll('#t tr.sel').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel')}});
-['start'].forEach(id=>document.getElementById(id).addEventListener('change',e=>{pushUndo();META.default_start=e.target.value;setDirty(true);render()}));
+document.getElementById('start').addEventListener('change',e=>{
+  const nv=e.target.value; if(!nv)return; const ov=META.default_start; if(nv===ov)return; pushUndo();
+  const fixed=D.filter(r=>r.t!==PH&&r.t!=='sum'&&r.sm==='fix'&&r.fix);
+  let msg='';
+  if(ov&&fixed.length){const dd=Math.round((pd(nv)-pd(ov))/864e5);
+    if(dd&&confirm(`開始日 ${ov} → ${nv}（${dd>0?'延後':'提前'} ${Math.abs(dd)} 天）。\n\n還有 ${fixed.length} 個「指定日期」的任務（不接前置任務，日期是固定的）。\n要一起平移 ${Math.abs(dd)} 天嗎？\n\n確定＝一起平移（落在假日就順延到下一個工作日）\n取消＝只改開始日，指定日期維持不變`)){
+      for(const r of fixed)r.fix=fd(nextWd(addD(pd(r.fix),dd))); msg=`已連同 ${fixed.length} 個指定日期任務一起平移`; }
+    else msg=`只改開始日；${fixed.length} 個指定日期任務維持原日期`; }
+  META.default_start=nv; setDirty(true); render(); if(msg)document.getElementById('msg').textContent=msg;
+});
 document.getElementById('today').addEventListener('change',render);
 // 新增／刪除／基準
 document.getElementById('btnAdd').onclick=()=>{
@@ -540,7 +554,7 @@ const scaleBands=(x,bands,label)=>bands.map(([a,b],i)=>(i%2?'':`<span class="yla
 function caseRows(id,json,color){
   const isCur=String(id)===CUR_ID; const meta=isCur?META:(json.meta||{}); const tag=tagOf(meta);
   let tasks;
-  if(isCur)tasks=D; else {tasks=migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])}))); withCal(meta,()=>compute(tasks,meta.default_start||fd(new Date())));}
+  if(isCur)tasks=D; else {tasks=migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])}))); anchorStart(tasks,meta.default_start); withCal(meta,()=>compute(tasks,meta.default_start||fd(new Date())));}
   const wm=wbsMap(tasks);
   const rows=tasks.filter(r=>r.s&&r.f).map(r=>({k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms}));
   return {tag,name:meta.name||'',color,rows,marks:(meta.marks||[]).map(m=>({...m,cur:isCur,tag}))};
@@ -994,7 +1008,7 @@ function parsePlmXml(text){
   }
   for(const r of tasks){ if(!r._links)continue;
     const pr=r._links.filter(([u])=>uid2k[u]).map(([u,ty,lag])=>{if(ty!=='1'&&ty!=='3')warn.push(`「${r.name}」的前置關係類型 ${ty} 不支援，已當成完成→開始`);return [uid2k[u],ty==='3'?'SS':'FS',Math.round(lag/4800)]});
-    if(pr.length){r.sm='pred';r.pred=pr}else{r.sm='fix';r.fix=r._start;r.pred=[]}
+    if(pr.length){r.sm='pred';r.pred=pr}else if(r._start===meta.default_start){r.sm='pred';r.pred=[]}else{r.sm='fix';r.fix=r._start;r.pred=[]}
     delete r._links; delete r._start; }
   return {meta,tasks,warn,xmlDates};
 }
