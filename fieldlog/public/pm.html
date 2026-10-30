@@ -980,7 +980,7 @@ async function doXlsx(){
     const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     download(blob,`${name}_進度管制表_${fd(new Date())}.xlsx`);
     st.textContent='已匯出 Excel';
-  }catch(e){st.textContent='匯出 Excel 失敗：'+e.message}
+  }catch(e){st.textContent='匯出 Excel 失敗：'+e.message; alert('匯出 Excel 失敗：\n'+e.message)}
 };
 function download(blob,fn){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 
@@ -1029,7 +1029,7 @@ function doPlm(){
 <Assignments>${asg.join('')}</Assignments></Project>`;
     download(new Blob([xml],{type:'application/xml'}),`${sheetSafe(META.name)}_PLM_${fd(new Date())}.xml`);
     st.textContent=hasOv?'已匯出 PLM XML':'已匯出 PLM XML（已補開發總覽）';
-  }catch(e){st.textContent='匯出 PLM 失敗：'+e.message}
+  }catch(e){st.textContent='匯出 PLM 失敗：'+e.message; alert('匯出 PLM 失敗：\n'+e.message)}
 };
 
 // ===== 匯入 PLM XML：建立新案件（存成 PM工具 裡的一筆資料記事）=====
