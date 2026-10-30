@@ -784,10 +784,11 @@ document.getElementById('mg').addEventListener('pointerup',e=>{
   if(d.mode==='move')warn=setStart(d.r,nextWd(addD(d.r.s,days)));
   else{const nf=prevWd(addD(d.r.f,days)); d.r.dur=Math.max(1,wdBetween(d.r.s,nf<d.r.s?d.r.s:nf));}
   setDirty(true); render(); document.getElementById('msg').textContent=warn||'已調整，後續連動任務已重算';
+  refreshPop();
 });
 // 小視窗
 function openPop(r,cx,cy){
-  closePop(); const wm=W(); const box=document.createElement('div'); box.className='pop'; box.id='pop';
+  closePop(); const wm=W(); const box=document.createElement('div'); box.className='pop'; box.id='pop'; box.dataset.k=r.k;
   box.innerHTML=`<b class="pp-h" title="按住標題可拖曳移動視窗">⠿ ${esc(wm[r.k][0])} ${esc(r.name)}</b>
     <label>起始條件 <select data-p="sm"><option value="pred" ${r.sm!=='fix'?'selected':''}>前置任務</option><option value="fix" ${r.sm==='fix'?'selected':''}>指定日期</option></select></label>
     <div class="pp-pred"><div style="color:var(--mute)">前置任務（任務／關係／延遲工天，負值＝重疊）</div><div class="pp-preds"></div><button type="button" class="pp-add" data-a="add">＋ 加前置任務</button></div>
@@ -819,6 +820,9 @@ function openPop(r,cx,cy){
 document.addEventListener('pointerdown',e=>{const h=e.target.closest('.pop .pp-h');if(!h)return;const b=h.closest('.pop'),r0=b.getBoundingClientRect(),dx=e.clientX-r0.left,dy=e.clientY-r0.top;e.preventDefault();
   const mv=ev=>{b.style.left=Math.max(0,Math.min(innerWidth-60,ev.clientX-dx))+'px';b.style.top=Math.max(0,Math.min(innerHeight-30,ev.clientY-dy))+'px'};
   const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)});
+// 條塊改完後，若小視窗開著，就用最新的值重開（同一個位置），避免按「確定」把舊值寫回去
+function refreshPop(){const pb=document.getElementById('pop'); if(!pb)return; const r=byK[pb.dataset.k]; const l=pb.style.left,tp=pb.style.top; if(!r||!r.s){closePop();return}
+  openPop(r,0,0); const nb=document.getElementById('pop'); if(nb){nb.style.left=l;nb.style.top=tp}}
 function closePop(){const p=document.getElementById('pop');if(p)p.remove()}
 // 右鍵選單：條塊＝里程碑；空白處＝在那一天加註記；標題上的註記＝修改／刪除
 function closeCtx(){const c=document.getElementById('ctx');if(c)c.remove()}
