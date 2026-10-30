@@ -243,7 +243,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 .g-bar .gh{position:absolute;right:-3px;top:-3px;bottom:-3px;width:8px;cursor:ew-resize}
 .pop [hidden]{display:none!important}
 .pop{position:fixed;z-index:60;background:var(--bg);border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.18);padding:10px 12px;display:flex;flex-direction:column;gap:6px;width:280px;font-size:13px}
-.pop label{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--mute)}
+.pop .pp-h{cursor:move;user-select:none;touch-action:none;padding:2px 0;border-bottom:1px solid var(--line2)}.pop label{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--mute)}
 .pop input,.pop select{font:inherit;padding:2px 4px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:150px}
 .pop .pp-act{display:flex;justify-content:flex-end;gap:6px;margin-top:4px}
 </style>
@@ -776,14 +776,15 @@ document.getElementById('mg').addEventListener('pointerup',e=>{
 // 小視窗
 function openPop(r,cx,cy){
   closePop(); const wm=W(); const box=document.createElement('div'); box.className='pop'; box.id='pop';
-  box.innerHTML=`<b>${esc(wm[r.k][0])} ${esc(r.name)}</b>
+  box.innerHTML=`<b class="pp-h" title="按住標題可拖曳移動視窗">⠿ ${esc(wm[r.k][0])} ${esc(r.name)}</b>
     <label>起始條件 <select data-p="sm"><option value="pred" ${r.sm!=='fix'?'selected':''}>前置任務</option><option value="fix" ${r.sm==='fix'?'selected':''}>指定日期</option></select></label>
     <div class="pp-pred"><div style="color:var(--mute)">前置任務（任務／關係／延遲工天，負值＝重疊）</div><div class="pp-preds"></div><button type="button" class="pp-add" data-a="add">＋ 加前置任務</button></div>
     <label class="pp-fix">開始日期 <input type="date" data-p="fix" value="${esc(r.fix||fd(r.s))}"></label>
     <label>歷時（工天） <input type="number" min="1" data-p="dur" value="${r.dur||1}"></label>
     <div class="pp-act"><button class="act" data-a="cancel" type="button">取消</button><button class="act primary" data-a="ok" type="button">確定</button></div>`;
   box.classList.add('wide'); document.body.appendChild(box);
-  const opts=D.filter(q=>q.k!==r.k&&q.t!==PH).map(q=>[q.k,`${wm[q.k][0]} ${q.name}${q.t==='sum'?'（摘要）':''}`]);
+  const ci=D.findIndex(q=>q.k===r.k), cur=new Set((r.pred||[]).map(p=>p[0])); // 前置任務只能選排在前面的任務（已設定的舊關係照常保留顯示）
+  const opts=D.filter((q,i)=>q.k!==r.k&&q.t!==PH&&(i<ci||cur.has(q.k))).map(q=>[q.k,`${wm[q.k][0]} ${q.name}${q.t==='sum'?'（摘要）':''}`]);
   const list=box.querySelector('.pp-preds');
   const addRow=(k,t,l)=>{const d=document.createElement('div');d.className='pr';
     d.innerHTML=`<select data-q="k"><option value="">— 選子任務 —</option>${opts.map(([v,n])=>`<option value="${esc(v)}" ${v===k?'selected':''}>${esc(n)}</option>`).join('')}</select>
@@ -803,6 +804,9 @@ function openPop(r,cx,cy){
     r.dur=Math.max(1,parseInt(box.querySelector('[data-p=dur]').value,10)||1);
     closePop(); setDirty(true); render();};
 }
+document.addEventListener('pointerdown',e=>{const h=e.target.closest('.pop .pp-h');if(!h)return;const b=h.closest('.pop'),r0=b.getBoundingClientRect(),dx=e.clientX-r0.left,dy=e.clientY-r0.top;e.preventDefault();
+  const mv=ev=>{b.style.left=Math.max(0,Math.min(innerWidth-60,ev.clientX-dx))+'px';b.style.top=Math.max(0,Math.min(innerHeight-30,ev.clientY-dy))+'px'};
+  const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};addEventListener('pointermove',mv);addEventListener('pointerup',up)});
 function closePop(){const p=document.getElementById('pop');if(p)p.remove()}
 // 右鍵選單：條塊＝里程碑；空白處＝在那一天加註記；標題上的註記＝修改／刪除
 function closeCtx(){const c=document.getElementById('ctx');if(c)c.remove()}
