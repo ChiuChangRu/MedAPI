@@ -277,7 +277,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 <main>
 <section id="cases"><div class="pg">
   <h2>① 案件宣告與載入</h2>
-  <p class="note">這裡列出 MyWiki「PM工具」資料夾裡所有案件。<b>載入</b>＝讀進來，才會出現在「② 甘特圖」可勾選比較；<b>編輯中</b>＝「③ 任務」與「④ 下載」操作的那一個案件。</p>
+  <p class="note">這裡列出 MyWiki「PM工具」資料夾裡所有案件。<b>開啟檔案</b>（單選）＝「③ 任務」與「④ 下載」操作的那一個案件，也是「② 甘特圖」可拖曳修改的案件；<b>加入比較</b>（可多選）＝讀進來疊在「② 甘特圖」一起比較。</p>
   <div class="pgbar cset"><b id="curName">（尚未載入案件）</b><label>開始日 <input type="date" id="start"></label>
   <label title="工作天怎麼算：鼎新 PLM 預設只排除週末">行事曆 <select id="cal"><option value="tw">週末＋國定假日</option><option value="weekend">只排週末（同PLM）</option></select></label><span class="note">（設定的是「編輯中」的案件）</span></div>
   <div class="pgbar"><button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">＋ 匯入鼎新 PLM（XML）→ 新案件…</button><button class="act" id="btnReload" type="button">↻ 重新整理清單</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden></div>
@@ -1189,11 +1189,11 @@ function caseInfo(id){
 function renderCases(){
   const t=document.getElementById('caseTbl');
   if(!ENTRIES.length){t.innerHTML='<tr><td class="note">（尚無案件。可按上方「匯入鼎新 PLM」建立第一個案件）</td></tr>';return}
-  t.innerHTML=`<thead><tr><th>載入</th><th>編輯中</th><th>案件</th><th>類型</th><th>任務數</th><th>開始</th><th>完成</th><th>歷時</th><th>行事曆</th><th>更新</th></tr></thead><tbody>`+ENTRIES.map(e=>{
+  t.innerHTML=`<thead><tr><th title="同一時間只能開啟一個案件，「③ 任務」「④ 下載」都針對它">開啟檔案</th><th title="可多選；開啟中的案件一定在比較裡">加入比較</th><th>案件</th><th>類型</th><th>任務數</th><th>開始</th><th>完成</th><th>歷時</th><th>行事曆</th><th>更新</th></tr></thead><tbody>`+ENTRIES.map(e=>{
     const id=String(e.id), ld=LOADED.has(id), cur=id===CUR_ID, ci=ld?caseInfo(id):null, m=ci?ci.meta:{};
     const mon=ci&&ci.s?((ci.f-ci.s)/864e5/30.4375).toFixed(1)+' 月':'—';
-    return `<tr class="${cur?'cur':''}"><td><input type="checkbox" data-ld="${id}" ${ld?'checked':''} ${cur?'disabled title="編輯中的案件不能取消載入"':''}></td>
-      <td><input type="radio" name="curc" data-cur="${id}" ${cur?'checked':''}></td>
+    return `<tr class="${cur?'cur':''}"><td><input type="radio" name="curc" data-cur="${id}" ${cur?'checked':''}></td>
+      <td><input type="checkbox" data-ld="${id}" ${ld?'checked':''} ${cur?'disabled title="開啟中的案件一定在比較裡"':''}></td>
       <td class="nm">${esc(e.title.slice(PM_PREFIX.length))}</td>
       <td>${ci?`<span class="chip ${tagOf(m)==='半'?'pb':'pa'}">${esc(tagOf(m))}</span>`:'—'}</td>
       <td>${ci?ci.n:'—'}</td><td>${ci&&ci.s?fd(ci.s):'—'}</td><td>${ci&&ci.f?fd(ci.f):'—'}</td><td>${mon}</td>
