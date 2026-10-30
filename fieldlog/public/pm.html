@@ -256,7 +256,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
 <li>右鍵：在目前案件的條塊上按右鍵＝設為／取消里程碑（完成日顯示 ◆，標題列也會標出）；在空白處或時間標題按右鍵＝在那一天加註記（紅色虛線，例如送件日、客戶審查）；在標題列的註記上按右鍵＝修改或刪除。里程碑與註記存在這個案件的資料裡，*目前不會寫進公司 Excel 與 PLM 檔。</li>
 <li>點條塊開小視窗後，前置任務用下拉選單選子任務，關係選「完成→」（FS）或「同開始」（SS），延遲填工作天（負值＝重疊）；可加多個。</li>
-<li>放大後上下捲動時，若畫面中那幾列的條塊都在可視範圍外，會自動左右移過去（圖例列「自動跟隨」可關）。</li>
+<li>放大後上下捲動時，畫面會跟著左右移：以畫面上方約 40% 的任務為準，它們最早的開始日不在畫面左半部時，平滑移到左邊附近（圖例列「自動跟隨」可關）。</li>
 <li>縮放：圖例列的「縮放」滑桿往右放大，最大到每天一格（顯示日期，假日＝週末＋國定假日以灰底與紅字標示）；也可按住 Ctrl 用滾輪縮放；放大到週以上時標題顯示週次 W1、W2…（ISO 8601：週一為一週開始，含 1 月 4 日的那週為 W1；有些年份會有 W53）；放大時任務名稱直接寫在條塊上（太短就寫在右邊），條塊左邊標開始日、右邊標完成日（26/10/16＝2026 年 10 月 16 日）；「全覽」＝整張放進畫面，「跳到今天」＝放大並捲到今天。放大後橫向捲動，拖曳以「天」為單位對齊。</li>
 </ul>
 <h2>前置任務寫法（比照 PLM：填前置任務的 WBS 號）</h2>
@@ -682,17 +682,26 @@ document.getElementById('mg').addEventListener('contextmenu',e=>{
   items.push({hd:`${ds}（${isWd(d)?'工作日':'假日'}，W${isoW(d)}）`},{t:'在這一天加註記…',f:()=>markEdit(ds,null)});
   ctxMenu(e.clientX,e.clientY,items);
 });
-// 上下捲動時自動左右跟隨：畫面中那幾列的條塊若都不在可視範圍，就橫移過去
-(()=>{const sc=document.getElementById('mg').parentElement; let lastTop=sc.scrollTop, tmr=null;
-  sc.addEventListener('scroll',()=>{if(sc.scrollTop===lastTop)return; lastTop=sc.scrollTop; clearTimeout(tmr); tmr=setTimeout(follow,120)});
-  function follow(){ if(!GAX||ZOOMV<=0||DRAG||!AUTOF)return;
-    const box=sc.getBoundingClientRect(), gn=parseFloat(getComputedStyle(document.getElementById('mg')).getPropertyValue('--gn'))||300;
-    const L=box.left+gn, R=box.right; let mn=Infinity, mx=-Infinity, any=false;
-    for(const b of document.querySelectorAll('#mg .g-bar')){const r=b.getBoundingClientRect(); if(r.bottom<box.top+60||r.top>box.bottom)continue;
-      if(r.right>L+8&&r.left<R-8){any=true;break} mn=Math.min(mn,r.left); mx=Math.max(mx,r.right)}
-    if(any||mn===Infinity)return;
-    sc.scrollTo({left:sc.scrollLeft+(mn-L)-40,behavior:'smooth'});
-  }})();
+// 上下捲動時自動左右跟隨：以畫面上方約 40% 的列為準，它們最早的開始日一離開畫面左半部，就平滑橫移過去
+(()=>{const sc=document.getElementById('mg').parentElement; let lastTop=sc.scrollTop, target=null, raf=0;
+  sc.addEventListener('scroll',()=>{if(sc.scrollTop===lastTop)return; lastTop=sc.scrollTop; aim()},{passive:true});
+  function aim(){ if(!GAX||ZOOMV<=0||DRAG||!AUTOF)return;
+    const g=document.getElementById('mg'), gn=parseFloat(getComputedStyle(g).getPropertyValue('--gn'))||300;
+    const head=g.querySelector('.g-head'), hh=head?head.offsetHeight:40;
+    const y0=sc.scrollTop+hh, y1=y0+(sc.clientHeight-hh)*0.4;
+    let mn=Infinity, mnSum=Infinity;
+    for(const row of g.querySelectorAll('.g-row')){const c=row.offsetTop+row.offsetHeight/2; if(c<y0)continue; if(c>y1)break;
+      const b=row.querySelector('.g-bar'); if(!b)continue; if(b.classList.contains('sumb'))mnSum=Math.min(mnSum,b.offsetLeft); else mn=Math.min(mn,b.offsetLeft)}
+    if(mn===Infinity)mn=mnSum; if(mn===Infinity)return;
+    const vw=sc.clientWidth-gn, left=sc.scrollLeft;
+    if(mn>=left+30&&mn<=left+vw*0.5)return;           // 已在左半部，不動
+    target=Math.max(0,Math.min(mn-60,sc.scrollWidth-sc.clientWidth));
+    if(!raf)raf=requestAnimationFrame(step)}
+  function step(){raf=0; if(target==null)return; const d=target-sc.scrollLeft;
+    if(Math.abs(d)<1){sc.scrollLeft=target;target=null;return}
+    sc.scrollLeft+=d*0.25; raf=requestAnimationFrame(step)}
+  sc.addEventListener('pointerdown',()=>{target=null});   // 使用者自己操作時停止
+})();
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePop();closeCtx()} if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
 document.getElementById('btnUndo').onclick=undo;
 // 轉為連動：指定日期 → 前置任務，每個前置的延遲都算到「日期不變」（壓縮處會出現負延遲）
