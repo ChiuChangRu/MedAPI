@@ -213,6 +213,29 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .legend .info{cursor:help;border:1px solid var(--line);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:var(--mute)}
 .zoom input[type=range]{width:100px!important}
 @media (max-width:1100px){.bar,.bar2{flex-wrap:wrap}}
+.pg{padding:12px 16px;max-width:1100px}
+.pg h2{font-size:14px;margin:4px 0 8px;padding-left:8px;border-left:3px solid var(--accent)}
+.pgbar{display:flex;gap:8px;margin:8px 0 10px}
+table.lst{border-collapse:collapse;font-size:13px;width:100%}
+table.lst th,table.lst td{border-bottom:1px solid var(--line2);padding:6px 8px;text-align:left;white-space:nowrap}
+table.lst th{background:var(--chrome);font-weight:400;color:var(--mute);border-bottom:1px solid var(--line)}
+table.lst tr.cur td{background:var(--sel)}
+table.lst td.nm{white-space:normal;font-weight:700}
+.bar .cur{max-width:260px;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.dlc{border:1px solid var(--line);border-radius:3px;padding:12px 14px;margin:0 0 12px;background:var(--bg)}
+.dlc h3{margin:0 0 4px;font-size:14px}
+.dlc p{margin:2px 0 8px;color:var(--mute)}
+.dlc .act{padding:5px 14px}
+.org-unit{border:1px solid var(--line);border-radius:3px;margin:6px 0 6px 0;background:var(--bg)}
+.org-unit>.uh{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--chrome);font-weight:700}
+.org-unit>.uh .sp{flex:1}
+.org-unit .kids{margin-left:22px;border-left:2px solid var(--line);padding-left:8px}
+.org-unit .ppl{display:flex;flex-wrap:wrap;gap:6px;padding:8px}
+.pchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:12px;padding:2px 4px 2px 10px;background:var(--bg)}
+.pchip small{color:var(--mute)}
+.pchip button{border:0;background:none;color:var(--mute);cursor:pointer;padding:0 4px}
+.pchip select{font:inherit;font-size:11px;border:0;background:none;color:var(--mute);max-width:80px}
+.org-root{font-weight:700;padding:6px 10px;border:2px solid var(--accent);border-radius:3px;display:inline-block;margin-bottom:6px}
 .zoom{display:inline-flex;align-items:center;gap:6px}
 .zoom input[type=range]{width:140px}
 .zoom button{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:1px 8px;cursor:pointer}
@@ -229,25 +252,21 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <div class="bar">
   <a class="home ic" href="index.html" title="回首頁">‹</a>
   <span class="title">📅 PM 工具</span>
-  <label>案件 <select id="proj"><option>（讀取中…）</option></select></label>
+  <button class="act cur" id="curCase" type="button" title="目前編輯中的案件；點一下回到「案件」分頁切換">（尚未載入案件）</button>
   <label>開始日 <input type="date" id="start"></label>
   <label title="工作天怎麼算：鼎新 PLM 預設只排除週末">行事曆 <select id="cal"><option value="tw">週末＋國定假日</option><option value="weekend">只排週末（同PLM）</option></select></label>
   <label>今天 <input type="date" id="today"></label>
   <button class="act primary" id="btnSave" type="button" disabled>💾 存檔</button>
-  <span class="menu"><button class="act" id="btnFile" type="button" title="匯出 Excel／PLM、匯入 PLM">檔案 ▾</button>
-    <div class="menu-pop" id="fileMenu" hidden>
-      <button type="button" id="btnXlsx">匯出公司 Excel（進度管制表）</button>
-      <button type="button" id="btnPlm">匯出鼎新 PLM（XML）</button>
-      <div class="sep"></div>
-      <button type="button" id="btnImp" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">匯入鼎新 PLM（XML）→ 新案件…</button>
-    </div></span><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden>
   <button class="home ic" id="theme" type="button" title="切換白色／深色模式"></button>
 </div>
 <div class="bar2">
-  <button class="tab on" data-t="tbl" type="button">任務</button>
-  <button class="tab" data-t="multi" type="button">多案總覽</button>
+  <button class="tab on" data-t="cases" type="button" title="① 宣告／載入案件">① 案件</button>
+  <button class="tab" data-t="multi" type="button" title="② 甘特圖：勾選已載入的案件做比較">② 甘特圖</button>
+  <button class="tab" data-t="tbl" type="button" title="③ 編輯任務">③ 任務</button>
+  <button class="tab" data-t="dl" type="button" title="④ 下載 PLM／Excel">④ 下載</button>
+  <button class="tab" data-t="org" type="button" title="組織圖：單位與人員">組織圖</button>
   <button class="tab" data-t="rule" type="button">依據與規則</button>
-  <span class="edit-tools" id="editTools">
+  <span class="edit-tools" id="editTools" style="visibility:hidden">
     <button class="act" id="btnAdd" type="button" title="在選取列之後新增任務">＋ 新增</button>
     <button class="act" id="btnDel" type="button" title="刪除選取的任務">刪除</button>
     <button class="act" id="btnBase" type="button" title="把目前計劃開始／完成存成「預計開始日／原本預計完成」">設基準</button>
@@ -259,12 +278,28 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 </div>
 
 <main>
-<section id="tbl"><table class="grid" id="t"></table></section>
+<section id="cases"><div class="pg">
+  <h2>① 案件宣告與載入</h2>
+  <p class="note">這裡列出 MyWiki「PM工具」資料夾裡所有案件。<b>載入</b>＝讀進來，才會出現在「② 甘特圖」可勾選比較；<b>編輯中</b>＝「③ 任務」與「④ 下載」操作的那一個案件。</p>
+  <div class="pgbar"><button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">＋ 匯入鼎新 PLM（XML）→ 新案件…</button><button class="act" id="btnReload" type="button">↻ 重新整理清單</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden></div>
+  <table class="lst" id="caseTbl"></table>
+</div></section>
+<section id="tbl" hidden><table class="grid" id="t"></table></section>
+<section id="dl" hidden><div class="pg" id="dlBody"></div></section>
+<section id="org" hidden><div class="pg" id="orgBody"></div></section>
 <section id="multi" hidden>
   <div class="legend" id="mLegend"></div>
   <div class="gscroll"><div class="gin" id="mg"></div></div>
 </section>
 <section id="rule" hidden><div class="doc">
+<h2>使用流程</h2>
+<ul>
+<li><b>① 案件</b>：列出 MyWiki「PM工具」裡所有案件。勾「載入」讀進來（才能在甘特圖比較）；選「編輯中」決定要改哪一個；也可在這裡匯入鼎新 PLM 的 XML 建立新案件。</li>
+<li><b>② 甘特圖</b>：已載入的案件疊在一起，上方勾選要比較哪幾個；可縮放、拖曳、右鍵標註；「⇆ 比較」看各案同類工作花多久。</li>
+<li><b>③ 任務</b>：編輯中案件的任務表（起始條件、前置任務、歷時…）。</li>
+<li><b>④ 下載</b>：公司 Excel（進度管制表）或鼎新 PLM XML。</li>
+<li><b>組織圖</b>：自己建立單位與人員；未歸屬欄會列出任務裡出現的執行人，可指定到單位。</li>
+</ul>
 <h2>本案件的依據說明</h2>
 <ul id="notes"><li class="note">（載入資料後顯示）</li></ul>
 <h2>時程怎麼算</h2>
@@ -277,11 +312,11 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 </ul>
 <h2>甘特圖直接編輯</h2>
 <ul>
-<li>在「多案總覽」，目前選的案件的條狀可以拖動：拖整條＝改開始日；拖右緣＝改歷時；點一下＝跳出小視窗輸入起始條件與歷時。其他案件只能看。</li>
+<li>在「② 甘特圖」，編輯中的案件的條狀可以拖動：拖整條＝改開始日；拖右緣＝改歷時；點一下＝跳出小視窗輸入起始條件與歷時。其他案件只能看。</li>
 <li>拖動「前置任務」型的任務時，改的是決定它開始日的那個前置任務的延遲天數，連動保留；「指定日期」型的任務改日期。設為前置任務的後續任務會跟著重算。</li>
 <li>「轉為連動」：把指定日期的任務改成接前置任務，延遲天數自動算到日期不變；壓縮重疊處會是負延遲。</li>
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
-<li>⇆ 比較（多案總覽）：勾選的案件疊在同一張圖。「對齊開始日」＝各案從自己的開始日算起（M1＝第 1 個月），比較同類工作在第幾個月、花多久；「實際日期」＝放在真實日曆上。上方「整體進程」每案一列、依階段排開並標總月數；下方「同類工作疊圖」把名稱含相同關鍵字的任務歸成一類（試模、模具、驗證、審查…），每案一條細線（中間斷開＝這類工作中間有空檔），右側標跨幾個月、幾項。*分類是依任務名稱關鍵字自動判斷，可能歸錯，滑鼠移到右側文字可看包含哪些任務。</li>
+<li>⇆ 比較（② 甘特圖）：勾選的案件疊在同一張圖。「對齊開始日」＝各案從自己的開始日算起（M1＝第 1 個月），比較同類工作在第幾個月、花多久；「實際日期」＝放在真實日曆上。上方「整體進程」每案一列、依階段排開並標總月數；下方「同類工作疊圖」把名稱含相同關鍵字的任務歸成一類（試模、模具、驗證、審查…），每案一條細線（中間斷開＝這類工作中間有空檔），右側標跨幾個月、幾項。*分類是依任務名稱關鍵字自動判斷，可能歸錯，滑鼠移到右側文字可看包含哪些任務。</li>
 <li>匯入 PLM：讀入鼎新 PLM 匯出的 XML，建立成新案件（存到 MyWiki 的 PM工具 資料夾）；第 1 層摘要＝階段、第 2 層摘要＝摘要、其餘＝任務；前置任務、工期、執行人、實際開始／完成都帶入。匯入的案件行事曆預設「只排週末（同PLM）」，日期與 PLM 一致；上方「行事曆」可改成「週末＋國定假日」。</li>
 <li>開始日：沒有前置任務、而且從專案開始日起跑的任務，會跟著「開始日」移動，後面接前置任務的工作一起連動。改開始日時若還有「指定日期」的任務，會詢問要不要一起平移。</li>
 <li>右鍵：在目前案件的條塊上按右鍵＝設為／取消里程碑（完成日立一支紅色旗子，標題列也會標出 ⚑）；在空白處或時間標題按右鍵＝在那一天加註記（紅色虛線，例如送件日、客戶審查）；在標題列的註記上按右鍵＝修改或刪除。里程碑與註記存在這個案件的資料裡，*目前不會寫進公司 Excel 與 PLM 檔。</li>
@@ -402,6 +437,7 @@ function setData(json){
   META=json.meta||{}; syncCal(); D=migrate(json.tasks||[]); anchorStart(D,META.default_start);
   byK=Object.fromEntries(D.map(r=>[r.k,r])); COLLAPSED.clear(); SEL=null; setDirty(false);
   document.getElementById('start').value=META.default_start||fd(new Date());
+  const cc=document.getElementById('curCase'); cc.textContent='📁 '+(META.name||'案件'); cc.title='目前編輯中：'+(META.name||'')+'（點一下回到「案件」分頁切換）';
   document.getElementById('src').textContent=`資料：${META.name||''}｜${META.source||''}｜${META.version||''}（${META.updated||''}）`;
   document.getElementById('notes').innerHTML=(META.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('')||'<li class="note">（資料未附說明）</li>';
   render();
@@ -565,7 +601,7 @@ async function renderMulti(today){
   const lg=document.getElementById('mLegend'), g=document.getElementById('mg');
   if(!ENTRIES.length){lg.innerHTML='';g.innerHTML='';return}
   const pal=['pa','pc','pd']; let pi=0; const cases=[];
-  for(const e of ENTRIES){
+  for(const e of ENTRIES.filter(e=>LOADED.has(String(e.id)))){
     let json; try{json=String(e.id)===CUR_ID?{meta:META,tasks:D}:await fetchCase(e.id)}catch{continue}
     const tag=tagOf(json.meta); const color=tag==='半'?'pb':pal[(pi++)%pal.length];
     cases.push({id:String(e.id),json,color,title:e.title.slice(PM_PREFIX.length)});
@@ -802,9 +838,6 @@ document.getElementById('mg').addEventListener('contextmenu',e=>{
 })();
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePop();closeCtx()} if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
 document.getElementById('btnUndo').onclick=undo;
-document.getElementById('btnFile').onclick=e=>{e.stopPropagation();const m=document.getElementById('fileMenu');m.hidden=!m.hidden};
-document.getElementById('fileMenu').addEventListener('click',()=>{document.getElementById('fileMenu').hidden=true});
-document.addEventListener('click',e=>{if(!e.target.closest('.menu'))document.getElementById('fileMenu').hidden=true});
 document.getElementById('cal').onchange=e=>{pushUndo(); if(e.target.value==='weekend')META.calendar='weekend'; else delete META.calendar; syncCal(); setDirty(true); render();
   document.getElementById('msg').textContent=USE_HOL?'改用週末＋國定假日重算':'改成只排除週末（與鼎新 PLM 相同）重算'};
 // 轉為連動：指定日期 → 前置任務，每個前置的延遲都算到「日期不變」（壓縮處會出現負延遲）
@@ -832,7 +865,7 @@ async function loadTemplate(){
   const bin=atob(raw.data); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
   return u8;
 }
-document.getElementById('btnXlsx').onclick=async()=>{
+async function doXlsx(){
   const st=document.getElementById('msg');
   try{
     if(!window.JSZip)throw new Error('JSZip 未載入');
@@ -926,7 +959,7 @@ document.getElementById('btnXlsx').onclick=async()=>{
 function download(blob,fn){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 
 // ===== 匯出 PLM（鼎新 MSPDI XML），最前面自動補「開發總覽」=====
-document.getElementById('btnPlm').onclick=()=>{
+function doPlm(){
   const st=document.getElementById('msg');
   try{
     const start=nextWd(pd(document.getElementById('start').value));
@@ -1038,10 +1071,17 @@ document.getElementById('impFile').onchange=async e=>{
 };
 
 // ===== 分頁、主題 =====
-document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;
-  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
-  ['tbl','multi','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t);
-  document.getElementById('editTools').style.visibility=b.dataset.t==='rule'?'hidden':'visible'});
+const TABS=['cases','multi','tbl','dl','org','rule'];
+function showTab(t){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.dataset.t===t));
+  TABS.forEach(id=>document.getElementById(id).hidden=id!==t);
+  document.getElementById('editTools').style.visibility=(t==='multi'||t==='tbl')?'visible':'hidden';
+  if(t==='cases')renderCases(); if(t==='dl')renderDl(); if(t==='org')renderOrg();
+  if(t==='multi')renderMulti(pd(document.getElementById('today').value));
+  try{sessionStorage.setItem('pm_tab',t)}catch{}
+}
+document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;showTab(b.dataset.t)});
+document.getElementById('curCase').onclick=()=>showTab('cases');
 document.getElementById('today').value=fd(new Date());
 function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';const t=document.getElementById('theme');t.textContent=dark?'☀':'☾';t.title=dark?'切換成白色模式':'切換成深色模式'}
 document.getElementById('theme').addEventListener('click',()=>{
@@ -1070,20 +1110,28 @@ function parseBody(text){
   return JSON.parse(t.slice(t.indexOf('{'),t.lastIndexOf('}')+1));
 }
 async function fetchCase(id){ if(!CASES[id]){const e=await api('/entries/'+id); CASES[id]=parseBody(e.body);} return CASES[id]; }
-async function loadProjects(){
-  const st=document.getElementById('msg'), sel=document.getElementById('proj');
+const ORG_PREFIX='PM組織｜'; let ORG_ENTRY=null;
+const LOADED=new Set(); try{JSON.parse(localStorage.getItem('pm_loaded')||'[]').forEach(x=>LOADED.add(String(x)))}catch{}
+const saveLoaded=()=>{try{localStorage.setItem('pm_loaded',JSON.stringify([...LOADED]))}catch{}};
+async function loadProjects(keepTab){
+  const st=document.getElementById('msg');
   try{
     st.textContent='讀取 MyWiki…';
     const folders=await api('/folders');
     const f=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER));
-    if(!f){sel.innerHTML='<option>（無案件）</option>';st.textContent=`找不到「${PM_FOLDER}」資料夾`;return}
-    const entries=(await api('/entries?folder_id='+f.id)).filter(e=>String(e.title||'').startsWith(PM_PREFIX));
-    if(!entries.length){sel.innerHTML='<option>（無案件）</option>';st.textContent=`「${PM_FOLDER}」裡沒有標題以「${PM_PREFIX}」開頭的資料記事`;return}
+    if(!f){st.textContent=`找不到「${PM_FOLDER}」資料夾`;return}
+    const all=await api('/entries?folder_id='+f.id);
+    ORG_ENTRY=all.find(e=>String(e.title||'').startsWith(ORG_PREFIX))||null;
+    const entries=all.filter(e=>String(e.title||'').startsWith(PM_PREFIX));
     ENTRIES=entries;
-    sel.innerHTML=entries.map(e=>`<option value="${e.id}">${esc(e.title.slice(PM_PREFIX.length))}</option>`).join('');
+    if(!entries.length){st.textContent=`「${PM_FOLDER}」裡沒有標題以「${PM_PREFIX}」開頭的資料記事`;renderCases();return}
+    for(const id of [...LOADED])if(!entries.some(e=>String(e.id)===id))LOADED.delete(id);   // 已不存在的案件
     const last=localStorage.getItem('pm_last_entry');
     const pick=entries.some(e=>String(e.id)===last)?last:String(entries[0].id);
-    sel.value=pick; await loadEntry(pick);
+    LOADED.add(pick); saveLoaded();
+    await Promise.all([...LOADED].map(id=>fetchCase(id).catch(()=>null)));
+    await loadEntry(pick); st.textContent='';
+    if(!keepTab)showTab('cases'); else renderCases();
   }catch(e){st.textContent='讀取失敗：'+e.message}
 }
 async function loadEntry(id){
@@ -1091,15 +1139,109 @@ async function loadEntry(id){
   try{
     st.textContent='讀取案件資料…';
     const data=await fetchCase(id);
-    CUR_ID=String(id);
+    CUR_ID=String(id); LOADED.add(CUR_ID); saveLoaded();
     setData(JSON.parse(JSON.stringify(data)));
     try{localStorage.setItem('pm_last_entry',String(id))}catch{}
     st.textContent='';
   }catch(err){st.textContent='案件資料格式錯誤或讀取失敗：'+err.message}
 }
-document.getElementById('proj').addEventListener('change',async e=>{
-  if(DIRTY&&!confirm('目前案件尚未存檔，切換會放棄修改。確定？')){e.target.value=CUR_ID;return}
-  await loadEntry(e.target.value)});
+// ===== ① 案件分頁 =====
+function caseInfo(id){
+  const j=CASES[id]; if(!j)return null;
+  const isCur=String(id)===CUR_ID; const m=isCur?META:(j.meta||{});
+  let rows=[]; try{rows=caseRows(id,isCur?{meta:META,tasks:D}:j,'pa').rows}catch{}
+  const leaf=rows.filter(r=>!r.sum);
+  return {meta:m,n:leaf.length,s:rows.length?new Date(Math.min(...rows.map(r=>r.s))):null,f:rows.length?new Date(Math.max(...rows.map(r=>r.f))):null};
+}
+function renderCases(){
+  const t=document.getElementById('caseTbl');
+  if(!ENTRIES.length){t.innerHTML='<tr><td class="note">（尚無案件。可按上方「匯入鼎新 PLM」建立第一個案件）</td></tr>';return}
+  t.innerHTML=`<thead><tr><th>載入</th><th>編輯中</th><th>案件</th><th>類型</th><th>任務數</th><th>開始</th><th>完成</th><th>歷時</th><th>行事曆</th><th>更新</th></tr></thead><tbody>`+ENTRIES.map(e=>{
+    const id=String(e.id), ld=LOADED.has(id), cur=id===CUR_ID, ci=ld?caseInfo(id):null, m=ci?ci.meta:{};
+    const mon=ci&&ci.s?((ci.f-ci.s)/864e5/30.4375).toFixed(1)+' 月':'—';
+    return `<tr class="${cur?'cur':''}"><td><input type="checkbox" data-ld="${id}" ${ld?'checked':''} ${cur?'disabled title="編輯中的案件不能取消載入"':''}></td>
+      <td><input type="radio" name="curc" data-cur="${id}" ${cur?'checked':''}></td>
+      <td class="nm">${esc(e.title.slice(PM_PREFIX.length))}</td>
+      <td>${ci?`<span class="chip ${tagOf(m)==='半'?'pb':'pa'}">${esc(tagOf(m))}</span>`:'—'}</td>
+      <td>${ci?ci.n:'—'}</td><td>${ci&&ci.s?fd(ci.s):'—'}</td><td>${ci&&ci.f?fd(ci.f):'—'}</td><td>${mon}</td>
+      <td>${ci?(m.calendar==='weekend'?'只排週末':'週末＋國定'):'—'}</td><td>${ci?esc(m.updated||''):'—'}</td></tr>`}).join('')+'</tbody>';
+}
+document.getElementById('caseTbl').addEventListener('change',async e=>{
+  const st=document.getElementById('msg');
+  const ld=e.target.closest('input[data-ld]'), cu=e.target.closest('input[data-cur]');
+  try{
+    if(ld){const id=ld.dataset.ld; if(ld.checked){st.textContent='載入中…';await fetchCase(id);LOADED.add(id)} else LOADED.delete(id); saveLoaded(); st.textContent=''; renderCases()}
+    if(cu){const id=cu.dataset.cur; if(id===CUR_ID)return;
+      if(DIRTY&&!confirm('目前案件尚未存檔，切換會放棄修改。確定？')){renderCases();return}
+      await loadEntry(id); renderCases()}
+  }catch(err){st.textContent='載入失敗：'+err.message; renderCases()}
+});
+document.getElementById('btnReload').onclick=async()=>{ if(DIRTY&&!confirm('目前案件尚未存檔，重新整理會放棄修改。確定？'))return; for(const k of Object.keys(CASES))delete CASES[k]; await loadProjects(true)};
+document.getElementById('btnImp').onclick=()=>document.getElementById('impFile').click();
+// ===== ④ 下載分頁 =====
+function renderDl(){
+  const b=document.getElementById('dlBody'); const nm=esc(META.name||'（尚未載入案件）');
+  const warn=DIRTY?'<p style="color:var(--bad)">● 目前有尚未存檔的修改；下載的是畫面上的版本（不是 MyWiki 已存檔的版本）。</p>':'';
+  b.innerHTML=`<h2>④ 下載</h2><p class="note">目前編輯中的案件：<b>${nm}</b>（${D.filter(r=>r.t!==PH&&r.t!=='sum').length} 個任務，開始日 ${esc(document.getElementById('start').value)}，行事曆：${USE_HOL?'週末＋國定假日':'只排週末（同 PLM）'}）。要換案件請到「① 案件」。</p>${warn}
+  <div class="dlc"><h3>公司制式 Excel（進度管制表）</h3><p>用公司範本，格式、欄寬、字型、圖表都不動，只填內容；一個案件一張工作表，圖表保留。</p><button class="act primary" data-dl="xlsx" type="button">⬇ 下載 Excel</button></div>
+  <div class="dlc"><h3>鼎新 PLM（MS Project XML）</h3><p>欄位與順序比照鼎新匯出的樣本；沒有「開發總覽」時自動補上。${USE_HOL?'<b>注意：</b>本案件行事曆含國定假日，PLM 只排除週末，匯入後 PLM 重算的日期可能提早幾天*。':'行事曆與 PLM 相同（只排週末），日期應與 PLM 一致。'}</p><button class="act primary" data-dl="plm" type="button">⬇ 下載 PLM XML</button></div>`;
+}
+document.getElementById('dlBody').addEventListener('click',e=>{const b=e.target.closest('[data-dl]');if(!b)return; if(!D.length){document.getElementById('msg').textContent='尚未載入案件';return} b.dataset.dl==='xlsx'?doXlsx():doPlm()});
+// ===== 組織圖：單位與人員（存成 MyWiki 的一筆 PM組織｜ 記事）=====
+let ORG={units:[],roles:{}}, ORG_DIRTY=false, ORG_LOADED=false;
+async function loadOrg(){ if(ORG_LOADED)return; ORG_LOADED=true;
+  if(!ORG_ENTRY)return; try{const e=await api('/entries/'+ORG_ENTRY.id); const o=parseBody(e.body); ORG={units:o.units||[],roles:o.roles||{}}}catch(err){document.getElementById('msg').textContent='組織圖讀取失敗：'+err.message}}
+const splitP=s=>String(s||'').split(/[、,，\s]+/).filter(Boolean);
+function orgStats(){ // 人員在「已載入案件」的任務數與工天（主辦＝rd、協辦＝co）
+  const st={}; const add=(n,k,wd)=>{(st[n]=st[n]||{rd:0,co:0,wd:0})[k]++; st[n].wd+=wd};
+  for(const id of LOADED){const j=CASES[id]; if(!j)continue; const tasks=String(id)===CUR_ID?D:(j.tasks||[]);
+    for(const r of tasks){if(r.t===PH||r.t==='sum')continue; const wd=r.dur||0; splitP(r.rd).forEach(n=>add(n,'rd',wd)); splitP(r.co).forEach(n=>add(n,'co',0))}}
+  return st}
+async function renderOrg(){
+  const b=document.getElementById('orgBody'); await loadOrg();
+  const stats=orgStats(); const assigned=new Set(ORG.units.flatMap(u=>(u.people||[]).map(p=>p.n)));
+  const pool=Object.keys(stats).filter(n=>!assigned.has(n)).sort();
+  const unitNames=ORG.units.map(u=>u.name);
+  const chip=(p,ui)=>{const s=stats[p.n]; return `<span class="pchip" title="${s?`主辦 ${s.rd} 項、協辦 ${s.co} 項、主辦工天合計 ${s.wd}（已載入案件）`:'已載入案件中沒有任務'}">${esc(p.n)}${p.r?` <small>${esc(p.r)}</small>`:''}${s?` <small>${s.rd}項</small>`:''}
+    <select data-mv="${ui}|${esc(p.n)}" title="移到其他單位"><option value="">移…</option>${unitNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}<option value="__pool">（移出單位）</option></select><button data-rl="${ui}|${esc(p.n)}" title="設定職稱">✎</button></span>`};
+  const tree=(up)=>ORG.units.map((u,i)=>({u,i})).filter(x=>(x.u.up||'')===up).map(({u,i})=>`<div class="org-unit"><div class="uh">🏢 ${esc(u.name)}<span class="sp"></span>
+      <select data-up="${i}" title="上層單位"><option value="">（最上層）</option>${unitNames.filter(n=>n!==u.name).map(n=>`<option value="${esc(n)}" ${u.up===n?'selected':''}>隸屬：${esc(n)}</option>`).join('')}</select>
+      <button class="act" data-ren="${i}" type="button">改名</button><button class="act" data-del="${i}" type="button">刪除</button></div>
+      <div class="ppl">${(u.people||[]).map(p=>chip(p,i)).join('')||'<span class="note">（尚無人員）</span>'}</div>
+      ${ORG.units.some(x=>x.up===u.name)?`<div class="kids">${tree(u.name)}</div>`:''}</div>`).join('');
+  b.innerHTML=`<h2>組織圖（單位與人員）</h2><p class="note">單位與人員由你自己建立；下方「未歸屬」是已載入案件的任務裡出現的執行人／協辦人，可指定到單位。人員旁的「N項」＝主辦任務數（滑鼠移上去看工天）。*這份組織圖目前只用來檢視，之後可接「人力負荷」。</p>
+    <div class="pgbar"><button class="act" data-org="add" type="button">＋ 新增單位</button><button class="act primary" data-org="save" type="button" ${ORG_DIRTY?'':'disabled'}>💾 存組織圖</button><span class="dirty">${ORG_DIRTY?'● 尚未存檔':''}</span></div>
+    <div class="org-root">邦特（公司）</div>${tree('')||'<p class="note">（尚未建立單位，請按「＋ 新增單位」）</p>'}
+    <div class="org-unit"><div class="uh">❔ 未歸屬<span class="sp"></span><small class="note">${pool.length} 人</small></div><div class="ppl">${pool.map(n=>`<span class="pchip">${esc(n)} <small>${(stats[n]||{}).rd||0}項</small><select data-pool="${esc(n)}"><option value="">指定到…</option>${unitNames.map(u=>`<option value="${esc(u)}">${esc(u)}</option>`).join('')}</select></span>`).join('')||'<span class="note">（全部都已歸屬）</span>'}</div></div>`;
+}
+document.getElementById('orgBody').addEventListener('click',async e=>{
+  const dirty=()=>{ORG_DIRTY=true;renderOrg()};
+  const t=e.target.closest('[data-org],[data-ren],[data-del],[data-rl]'); if(!t)return;
+  if(t.dataset.org==='add'){const n=(prompt('單位名稱（例：研發一部）')||'').trim(); if(!n)return; if(ORG.units.some(u=>u.name===n)){alert('已有同名單位');return} ORG.units.push({name:n,people:[]}); dirty()}
+  else if(t.dataset.ren!=null){const u=ORG.units[+t.dataset.ren]; const n=(prompt('新的單位名稱',u.name)||'').trim(); if(!n||n===u.name)return; if(ORG.units.some(x=>x.name===n)){alert('已有同名單位');return}
+    ORG.units.forEach(x=>{if(x.up===u.name)x.up=n}); u.name=n; dirty()}
+  else if(t.dataset.del!=null){const u=ORG.units[+t.dataset.del]; if(!confirm(`刪除單位「${u.name}」？底下人員會回到「未歸屬」，下層單位提到最上層。`))return; ORG.units.forEach(x=>{if(x.up===u.name)delete x.up}); ORG.units.splice(+t.dataset.del,1); dirty()}
+  else if(t.dataset.rl!=null){const [ui,n]=t.dataset.rl.split('|'); const p=ORG.units[+ui].people.find(x=>x.n===n); const r=prompt(`${n} 的職稱（留空＝清除）`,p.r||''); if(r==null)return; p.r=r.trim(); if(!p.r)delete p.r; dirty()}
+  else if(t.dataset.org==='save'){await saveOrg()}
+});
+document.getElementById('orgBody').addEventListener('change',e=>{
+  const mv=e.target.closest('[data-mv]'), pl=e.target.closest('[data-pool]'), up=e.target.closest('[data-up]'); const v=e.target.value;
+  if(up){const u=ORG.units[+up.dataset.up]; if(v)u.up=v; else delete u.up; ORG_DIRTY=true; renderOrg(); return}
+  if(pl&&v){const u=ORG.units.find(x=>x.name===v); if(u){(u.people=u.people||[]).push({n:pl.dataset.pool}); ORG_DIRTY=true; renderOrg()} return}
+  if(mv&&v){const [ui,n]=mv.dataset.mv.split('|'); const from=ORG.units[+ui]; const p=from.people.find(x=>x.n===n); from.people=from.people.filter(x=>x!==p);
+    if(v!=='__pool'){const to=ORG.units.find(x=>x.name===v); (to.people=to.people||[]).push(p)} ORG_DIRTY=true; renderOrg()}
+});
+async function saveOrg(){
+  const st=document.getElementById('msg');
+  try{ st.textContent='存組織圖…'; const body=JSON.stringify({units:ORG.units,roles:ORG.roles||{},updated:fd(new Date())},null,1);
+    const H={'content-type':'application/json','x-pin':pin()};
+    if(ORG_ENTRY){const r=await fetch('/api/entries/'+ORG_ENTRY.id,{method:'PUT',headers:H,body:JSON.stringify({body})}); if(r.status===401){showLogin();throw new Error('PIN 錯誤')} if(!r.ok)throw new Error('HTTP '+r.status)}
+    else{const folders=await api('/folders'); const f=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER)); if(!f)throw new Error('找不到資料夾');
+      const r=await fetch('/api/entries',{method:'POST',headers:H,body:JSON.stringify({folder_id:f.id,title:ORG_PREFIX+'邦特',body,body_format:'text'})}); if(r.status===401){showLogin();throw new Error('PIN 錯誤')} if(!r.ok)throw new Error('HTTP '+r.status);
+      const j=await r.json(); ORG_ENTRY={id:j.id,title:ORG_PREFIX+'邦特'}}
+    ORG_DIRTY=false; st.textContent='已存組織圖（'+new Date().toLocaleTimeString()+'）'; renderOrg();
+  }catch(e){st.textContent='存組織圖失敗：'+e.message}
+}
 if(!pin())showLogin(); else loadProjects();
 </script>
 </body>
