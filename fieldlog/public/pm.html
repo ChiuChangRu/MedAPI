@@ -168,6 +168,25 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .g-bar .bl.bin{position:sticky;left:calc(var(--gn) + 2px);display:inline-block;padding:0 4px;color:#fff;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:top}
 .g-bar .bl.bout{position:absolute;left:calc(100% + 4px);top:0;color:var(--ink)}
 .g-bar.sumb .bl.bout{top:-6px;font-weight:700}
+.g-ms{position:absolute;top:4px;width:11px;height:11px;margin-left:-6px;background:var(--bad);transform:rotate(45deg);z-index:2;pointer-events:none}
+.gz .g-ms{top:5px;width:12px;height:12px}
+.g-msl{position:absolute;left:9px;top:-2px;white-space:nowrap;font-size:11px;font-weight:700;color:var(--bad);transform:rotate(-45deg);transform-origin:0 0}
+.g-mark{position:absolute;top:0;bottom:0;border-left:2px dashed var(--bad);opacity:.75}
+.g-scale .mk{position:absolute;top:0;border-left:2px solid var(--bad);padding:0 4px;font-size:11px;font-weight:700;color:#fff;background:var(--bad);border-radius:0 2px 2px 0;z-index:2;cursor:context-menu}
+.g-scale .mk.t{background:transparent;color:var(--bad);border-left-style:dashed}
+.ctx{position:fixed;z-index:70;background:var(--bg);border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.18);min-width:200px;padding:4px 0;font-size:13px}
+.ctx button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);padding:5px 12px;cursor:pointer}
+.ctx button:hover{background:var(--accent-soft)}
+.ctx .sep{border-top:1px solid var(--line);margin:4px 0}
+.ctx .hd{padding:3px 12px;color:var(--mute);font-size:12px}
+.pop.wide{width:440px}
+.pp-preds{display:flex;flex-direction:column;gap:4px}
+.pp-preds .pr{display:flex;gap:4px;align-items:center}
+.pp-preds .pr select[data-q=k]{flex:1;width:auto;min-width:0}
+.pp-preds .pr select[data-q=t]{width:76px}
+.pp-preds .pr input[data-q=l]{width:56px}
+.pp-preds .pr button{border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;padding:0 6px}
+.pp-add{align-self:flex-start;border:1px dashed var(--line);background:var(--bg);color:var(--accent);cursor:pointer;padding:1px 8px}
 .zoom{display:inline-flex;align-items:center;gap:6px}
 .zoom input[type=range]{width:140px}
 .zoom button{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:1px 8px;cursor:pointer}
@@ -230,6 +249,9 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <li>拖動「前置任務」型的任務時，改的是決定它開始日的那個前置任務的延遲天數，連動保留；「指定日期」型的任務改日期。設為前置任務的後續任務會跟著重算。</li>
 <li>「轉為連動」：把指定日期的任務改成接前置任務，延遲天數自動算到日期不變；壓縮重疊處會是負延遲。</li>
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
+<li>右鍵：在目前案件的條塊上按右鍵＝設為／取消里程碑（完成日顯示 ◆，標題列也會標出）；在空白處或時間標題按右鍵＝在那一天加註記（紅色虛線，例如送件日、客戶審查）；在標題列的註記上按右鍵＝修改或刪除。里程碑與註記存在這個案件的資料裡，*目前不會寫進公司 Excel 與 PLM 檔。</li>
+<li>點條塊開小視窗後，前置任務用下拉選單選子任務，關係選「完成→」（FS）或「同開始」（SS），延遲填工作天（負值＝重疊）；可加多個。</li>
+<li>放大後上下捲動時，若畫面中那幾列的條塊都在可視範圍外，會自動左右移過去（圖例列「自動跟隨」可關）。</li>
 <li>縮放：圖例列的「縮放」滑桿往右放大，最大到每天一格（顯示日期，假日＝週末＋國定假日以灰底與紅字標示）；也可按住 Ctrl 用滾輪縮放；放大到週以上時標題顯示週次 W1、W2…（ISO 8601：週一為一週開始，含 1 月 4 日的那週為 W1；有些年份會有 W53）；放大時任務名稱直接寫在條塊上（太短就寫在右邊）；「全覽」＝整張放進畫面，「跳到今天」＝放大並捲到今天。放大後橫向捲動，拖曳以「天」為單位對齊。</li>
 </ul>
 <h2>前置任務寫法（比照 PLM：填前置任務的 WBS 號）</h2>
@@ -469,8 +491,9 @@ document.getElementById('btnSave').onclick=async()=>{
 window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
 
 // ===== 多案總覽：PM工具裡所有勾選的案件，畫在同一條實際日期軸 =====
+const pd0=s=>new Date(s+'T00:00:00Z');
 const isoW=d=>{const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));t.setUTCDate(t.getUTCDate()+4-(t.getUTCDay()||7));return Math.ceil(((t-Date.UTC(t.getUTCFullYear(),0,1))/864e5+1)/7)};
-let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null; const ZMAX=28;
+let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null, AUTOF=true; const ZMAX=28;
 const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
 function gridLayer(x,bands,lines){
   return `<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
@@ -481,8 +504,8 @@ function caseRows(id,json,color){
   let tasks;
   if(isCur)tasks=D; else {tasks=migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])}))); compute(tasks,meta.default_start||fd(new Date()));}
   const wm=wbsMap(tasks);
-  const rows=tasks.filter(r=>r.s&&r.f).map(r=>({k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back}));
-  return {tag,name:meta.name||'',color,rows};
+  const rows=tasks.filter(r=>r.s&&r.f).map(r=>({k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms}));
+  return {tag,name:meta.name||'',color,rows,marks:(meta.marks||[]).map(m=>({...m,cur:isCur,tag}))};
 }
 let MSEQ=0;
 async function renderMulti(today){
@@ -498,7 +521,7 @@ async function renderMulti(today){
   if(seq!==MSEQ)return;
   lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button></span>
     <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span>${esc(c.title)}</label>`).join('')}</span>
-    <span class="zoom">縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday">跳到今天</button></span>
+    <span class="zoom">縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday">跳到今天</button><label title="上下捲動時，自動左右移到畫面中任務的條塊"><input type="checkbox" id="zfollow" ${AUTOF?'checked':''}>自動跟隨</label></span>
     <span>* 為回推開始日</span><span><i style="background:var(--accent);width:2px"></i>今天</span><span><i style="background:rgba(110,110,110,.3)"></i>假日（週末＋國定）</span>`;
   const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color)).filter(c=>c.rows.length);
   if(!sel.length){g.innerHTML='<p class="note" style="padding:12px">請至少勾選一個案件。</p>';return}
@@ -529,13 +552,19 @@ async function renderMulti(today){
   // 週次（ISO 8601：週一開始，含 1/4 的那週為 W1）
   if(hz)for(let d=addD(s0,(8-(s0.getUTCDay()||7))%7);d<end;d=addD(d,7))dl+=`<span class="wlab" style="left:${x(d)};width:${7*pd}px" title="${d.getUTCFullYear()} 第 ${isoW(d)} 週（${fd(d)} 起）">${7*pd>=28?'W':''}${isoW(d)}</span>`;
   if(dz)for(let d=new Date(s0);d<end;d=addD(d,1))dl+=`<span class="dlab ${isWd(d)?'':'h'}" style="left:${x(d)};width:${pd}px">${d.getUTCDate()}</span>`;
-  const grid=gridLayer(x,bands,lines).replace('<div class="g-grid">',`<div class="g-grid ${dz?'days':''}">${hol}`);
-  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale ${dz?'dz':hz?'wz':''}">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5*pd<40?'':a.getUTCFullYear())}${sc}${hhd}${dl}</div></div>${grid}`;
+  // 日期註記（每案 meta.marks）＋ 里程碑（任務 ms）
+  const marks=sel.flatMap(c=>c.marks).filter(m=>{const d=pd0(m.d);return d>=s0&&d<=end});
+  const msr=sel.flatMap(c=>c.rows).filter(r=>r.ms&&r.f>=s0);
+  const mkLine=marks.map(m=>`<div class="g-mark" style="left:${x(pd0(m.d))}"></div>`).join('');
+  const mkHead=marks.map(m=>`<span class="mk" data-mark="${esc(m.d)}" data-cur="${m.cur?1:0}" style="left:${x(pd0(m.d))}" title="${esc(m.tag+' '+m.d+' '+(m.label||''))}${m.cur?'\n右鍵＝修改／刪除':''}">${esc(m.label||'註記')}</span>`).join('')
+    +msr.map(r=>`<span class="mk t" style="left:${x(addD(r.f,1))}" title="${esc(r.tag+' 里程碑 '+r.wbs+' '+r.name+' 完成 '+fd(r.f))}">◆${esc(r.wbs)}</span>`).join('');
+  const grid=gridLayer(x,bands,lines).replace('<div class="g-grid">',`<div class="g-grid ${dz?'days':''}">${hol}${mkLine}`);
+  let h=`<div class="g-head"><div class="g-name">名稱</div><div class="g-scale ${dz?'dz':hz?'wz':''}">${scaleBands(x,bands,(i,a,b)=>(b-a)/864e5*pd<40?'':a.getUTCFullYear())}${sc}${hhd}${dl}${mkHead}</div></div>${grid}`;
   for(const r of rows){
     if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip ${r.c}">${esc(r.tag)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
     const ind=MLAYOUT==='lane'?8+(r.lvl-1)*14:8;
     const tip=`${r.tag} ${r.wbs} ${r.name}：${fd(r.s)}${r.back?'*':''} → ${fd(r.f)}`;
-    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.tag)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''} ${r.ed?'ed':''}" ${r.ed?`data-k="${esc(r.k)}"`:''} style="left:${x(r.s)};width:calc(${x(addD(r.f,1))} - ${x(r.s)})" title="${esc(tip)}${r.ed?'\n拖動＝改開始日；拖右緣＝改歷時；點一下＝輸入':''}">${ZOOMV>0?(()=>{const lb=`${r.wbs} ${r.name}`, wpx=(addD(r.f,1)-r.s)/864e5*pd; return `<span class="bl ${!r.sum&&wpx>lb.length*11+12?'bin':'bout'}">${esc(lb)}</span>`})():''}${r.ed?'<span class="gh"></span>':''}</div></div></div>`;
+    h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.tag)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''} ${r.ed?'ed':''}" ${r.ed?`data-k="${esc(r.k)}"`:''} style="left:${x(r.s)};width:calc(${x(addD(r.f,1))} - ${x(r.s)})" title="${esc(tip)}${r.ed?'\n拖動＝改開始日；拖右緣＝改歷時；點一下＝輸入':''}">${ZOOMV>0?(()=>{const lb=`${r.wbs} ${r.name}`, wpx=(addD(r.f,1)-r.s)/864e5*pd; return `<span class="bl ${!r.sum&&wpx>lb.length*11+12?'bin':'bout'}">${esc(lb)}</span>`})():''}${r.ed?'<span class="gh"></span>':''}</div>${r.ms?`<div class="g-ms" style="left:${x(addD(r.f,1))}" title="里程碑"></div>`:''}</div></div>`;
   }
   g.innerHTML=h; GAX={s0,span,pd,today};
   sc0.scrollLeft=Math.max(0,ZCUR?ZCUR.day*pd-ZCUR.px:keepDay*pd-(sc0.clientWidth-gn)/2); ZANCHOR=null; ZCUR=null;
@@ -545,6 +574,7 @@ document.getElementById('mLegend').addEventListener('click',e=>{
   if(e.target.id==='zfit'){ZOOMV=0;ZANCHOR=null;render();return}
   if(e.target.id==='ztoday'){if(!GAX)return;ZANCHOR=(GAX.today-GAX.s0)/864e5;if(ZOOMV<60)ZOOMV=60;render();return}
   const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
+document.getElementById('mLegend').addEventListener('change',e=>{if(e.target.id==='zfollow')AUTOF=e.target.checked});
 document.getElementById('mLegend').addEventListener('input',e=>{if(e.target.id!=='zoom')return;ZOOMV=+e.target.value;renderMultiOnly()});
 function renderMultiOnly(){renderMulti(GAX&&GAX.today||new Date())}
 document.getElementById('mg').parentElement.addEventListener('wheel',e=>{
@@ -570,7 +600,7 @@ function setStart(r,ns){
 }
 let DRAG=null;
 document.getElementById('mg').addEventListener('pointerdown',e=>{
-  const bar=e.target.closest('.g-bar.ed'); if(!bar||!GAX)return;
+  if(e.button!==0)return; const bar=e.target.closest('.g-bar.ed'); if(!bar||!GAX)return;
   const r=byK[bar.dataset.k]; if(!r||!r.s)return;
   const track=bar.parentElement.getBoundingClientRect();
   DRAG={bar,r,x0:e.clientX,mode:e.target.classList.contains('gh')?'resize':'move',pxPerDay:track.width/GAX.span,left0:bar.offsetLeft,w0:bar.offsetWidth,moved:false};
@@ -596,24 +626,66 @@ function openPop(r,cx,cy){
   closePop(); const wm=W(); const box=document.createElement('div'); box.className='pop'; box.id='pop';
   box.innerHTML=`<b>${esc(wm[r.k][0])} ${esc(r.name)}</b>
     <label>起始條件 <select data-p="sm"><option value="pred" ${r.sm!=='fix'?'selected':''}>前置任務</option><option value="fix" ${r.sm==='fix'?'selected':''}>指定日期</option></select></label>
-    <label class="pp-pred">前置任務 <input data-p="pred" value="${esc(predText(r,wm))}" placeholder="例 4.1, 7.3SS+30d"></label>
+    <div class="pp-pred"><div style="color:var(--mute)">前置任務（任務／關係／延遲工天，負值＝重疊）</div><div class="pp-preds"></div><button type="button" class="pp-add" data-a="add">＋ 加前置任務</button></div>
     <label class="pp-fix">開始日期 <input type="date" data-p="fix" value="${esc(r.fix||fd(r.s))}"></label>
     <label>歷時（工天） <input type="number" min="1" data-p="dur" value="${r.dur||1}"></label>
     <div class="pp-act"><button class="act" data-a="cancel" type="button">取消</button><button class="act primary" data-a="ok" type="button">確定</button></div>`;
-  document.body.appendChild(box);
-  const sync=()=>{const fix=box.querySelector('[data-p=sm]').value==='fix';box.querySelector('.pp-pred').hidden=fix;box.querySelector('.pp-fix').hidden=!fix};
+  box.classList.add('wide'); document.body.appendChild(box);
+  const opts=D.filter(q=>q.k!==r.k&&q.t!==PH).map(q=>[q.k,`${wm[q.k][0]} ${q.name}${q.t==='sum'?'（摘要）':''}`]);
+  const list=box.querySelector('.pp-preds');
+  const addRow=(k,t,l)=>{const d=document.createElement('div');d.className='pr';
+    d.innerHTML=`<select data-q="k"><option value="">— 選子任務 —</option>${opts.map(([v,n])=>`<option value="${esc(v)}" ${v===k?'selected':''}>${esc(n)}</option>`).join('')}</select>
+      <select data-q="t" title="FS＝前一項完成後開始；SS＝與前一項同時開始"><option value="FS" ${t!=='SS'?'selected':''}>完成→</option><option value="SS" ${t==='SS'?'selected':''}>同開始</option></select>
+      <input type="number" data-q="l" value="${l||0}" title="延遲工作天；負值＝提前重疊"><button type="button" data-a="del" title="移除">✕</button>`;list.appendChild(d)};
+  (r.pred||[]).forEach(([k,t,l])=>addRow(k,t,l)); if(!(r.pred||[]).length)addRow('','FS',0);
+  const sync=()=>{const fix=box.querySelector('[data-p=sm]').value==='fix';box.querySelector('.pp-pred').hidden=fix;box.querySelector('.pp-fix').hidden=!fix; const tp=parseFloat(box.style.top)||0; if(tp+box.offsetHeight>innerHeight-8)box.style.top=Math.max(4,innerHeight-box.offsetHeight-8)+'px'};
   sync(); box.querySelector('[data-p=sm]').onchange=sync;
-  box.style.left=Math.min(cx,innerWidth-300)+'px'; box.style.top=Math.min(cy+8,innerHeight-230)+'px';
+  box.style.left=Math.max(4,Math.min(cx,innerWidth-450))+'px'; box.style.top=Math.max(4,Math.min(cy+8,innerHeight-box.offsetHeight-8))+'px';
   box.onclick=ev=>{const a=ev.target.dataset.a;if(!a)return;if(a==='cancel'){closePop();return}
+    if(a==='add'){addRow('','FS',0);return} if(a==='del'){ev.target.closest('.pr').remove();return}
     const sm=box.querySelector('[data-p=sm]').value; pushUndo();
     if(sm==='fix'){r.sm='fix';r.fix=box.querySelector('[data-p=fix]').value||fd(r.s)}
-    else{const {out,bad}=parsePred(box.querySelector('[data-p=pred]').value,W()); if(out.some(([k])=>k===r.k)){alert('不能把自己設為前置任務');UNDO.pop();return}
-      if(bad.length){alert('看不懂或找不到的前置任務：'+bad.join('、'));UNDO.pop();return} r.sm='pred';r.pred=out}
+    else{const out=[...list.querySelectorAll('.pr')].map(d=>[d.querySelector('[data-q=k]').value,d.querySelector('[data-q=t]').value,parseInt(d.querySelector('[data-q=l]').value,10)||0]).filter(([k])=>k);
+      if(!out.length){alert('請至少選一個前置任務，或改成「指定日期」');UNDO.pop();return}
+      r.sm='pred';r.pred=out}
     r.dur=Math.max(1,parseInt(box.querySelector('[data-p=dur]').value,10)||1);
     closePop(); setDirty(true); render();};
 }
 function closePop(){const p=document.getElementById('pop');if(p)p.remove()}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closePop(); if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
+// 右鍵選單：條塊＝里程碑；空白處＝在那一天加註記；標題上的註記＝修改／刪除
+function closeCtx(){const c=document.getElementById('ctx');if(c)c.remove()}
+function ctxMenu(cx,cy,items){closeCtx();const m=document.createElement('div');m.className='ctx';m.id='ctx';
+  m.innerHTML=items.map((it,i)=>it==='-'?'<div class="sep"></div>':it.hd?`<div class="hd">${esc(it.hd)}</div>`:`<button type="button" data-i="${i}">${esc(it.t)}</button>`).join('');
+  document.body.appendChild(m); m.style.left=Math.min(cx,innerWidth-m.offsetWidth-4)+'px'; m.style.top=Math.min(cy,innerHeight-m.offsetHeight-4)+'px';
+  m.onclick=e=>{const b=e.target.closest('button');if(!b)return;closeCtx();items[+b.dataset.i].f()}}
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('#ctx'))closeCtx()});
+const markEdit=(d,old)=>{const lb=prompt(`註記 ${d} 的文字（例：送件、客戶審查、展覽）`,old?old.label:'');if(lb==null)return;
+  pushUndo(); META.marks=(META.marks||[]).filter(m=>m!==old); META.marks.push({d,label:lb.trim()||'註記'}); META.marks.sort((a,b)=>a.d<b.d?-1:1); setDirty(true); render()};
+document.getElementById('mg').addEventListener('contextmenu',e=>{
+  if(!GAX)return; const mk=e.target.closest('.mk[data-mark]'), bar=e.target.closest('.g-bar.ed'), track=e.target.closest('.g-track,.g-scale');
+  if(mk){e.preventDefault(); if(mk.dataset.cur!=='1'){ctxMenu(e.clientX,e.clientY,[{hd:'其他案件的註記只能在該案件修改'}]);return}
+    const old=(META.marks||[]).find(m=>m.d===mk.dataset.mark&&(m.label||'註記')===mk.textContent);
+    ctxMenu(e.clientX,e.clientY,[{hd:`註記 ${mk.dataset.mark}`},{t:'修改文字…',f:()=>markEdit(mk.dataset.mark,old)},{t:'刪除這個註記',f:()=>{pushUndo();META.marks=(META.marks||[]).filter(m=>m!==old);setDirty(true);render()}}]);return}
+  if(!track)return; e.preventDefault();
+  const tr=(track.classList.contains('g-scale')?track:track).getBoundingClientRect(); const d=addD(GAX.s0,Math.floor((e.clientX-tr.left)/(tr.width/GAX.span))); const ds=fd(d);
+  const items=[];
+  if(bar){const r=byK[bar.dataset.k]; const wm=W();
+    items.push({hd:`${wm[r.k][0]} ${r.name}（完成 ${fd(r.f)}）`},{t:r.ms?'取消里程碑':'◆ 設為里程碑（完成日）',f:()=>{pushUndo();if(r.ms)delete r.ms;else r.ms=1;setDirty(true);render()}},{t:'編輯…',f:()=>openPop(r,e.clientX,e.clientY)},'-');}
+  items.push({hd:`${ds}（${isWd(d)?'工作日':'假日'}，W${isoW(d)}）`},{t:'在這一天加註記…',f:()=>markEdit(ds,null)});
+  ctxMenu(e.clientX,e.clientY,items);
+});
+// 上下捲動時自動左右跟隨：畫面中那幾列的條塊若都不在可視範圍，就橫移過去
+(()=>{const sc=document.getElementById('mg').parentElement; let lastTop=sc.scrollTop, tmr=null;
+  sc.addEventListener('scroll',()=>{if(sc.scrollTop===lastTop)return; lastTop=sc.scrollTop; clearTimeout(tmr); tmr=setTimeout(follow,120)});
+  function follow(){ if(!GAX||ZOOMV<=0||DRAG||!AUTOF)return;
+    const box=sc.getBoundingClientRect(), gn=parseFloat(getComputedStyle(document.getElementById('mg')).getPropertyValue('--gn'))||300;
+    const L=box.left+gn, R=box.right; let mn=Infinity, mx=-Infinity, any=false;
+    for(const b of document.querySelectorAll('#mg .g-bar')){const r=b.getBoundingClientRect(); if(r.bottom<box.top+60||r.top>box.bottom)continue;
+      if(r.right>L+8&&r.left<R-8){any=true;break} mn=Math.min(mn,r.left); mx=Math.max(mx,r.right)}
+    if(any||mn===Infinity)return;
+    sc.scrollTo({left:sc.scrollLeft+(mn-L)-40,behavior:'smooth'});
+  }})();
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePop();closeCtx()} if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
 document.getElementById('btnUndo').onclick=undo;
 // 轉為連動：指定日期 → 前置任務，每個前置的延遲都算到「日期不變」（壓縮處會出現負延遲）
 document.getElementById('btnLink').onclick=()=>{
