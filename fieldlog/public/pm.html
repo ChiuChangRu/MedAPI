@@ -31,7 +31,7 @@ button,select,input{font:inherit;color:inherit}
 .bar .title{font-weight:700;font-size:14px;margin-right:6px}
 .bar label{color:var(--mute);display:flex;align-items:center;gap:4px}
 .bar select,.bar input[type=date]{padding:3px 6px;border:1px solid var(--line);border-radius:2px;background:var(--bg)}
-#proj{min-width:240px;font-weight:700;color:var(--ink)}
+#proj{min-width:220px;max-width:280px;font-weight:700;color:var(--ink)}
 .bar .home{cursor:pointer;font-size:13px;margin-left:auto;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--bg);padding:3px 10px;border-radius:2px}
 .bar2{display:flex;align-items:center;flex-wrap:wrap;gap:0;padding:0 10px;background:var(--chrome);border-bottom:1px solid var(--line)}
 .tab{white-space:nowrap;border:1px solid transparent;border-bottom:0;background:transparent;padding:5px 14px;cursor:pointer;margin-bottom:-1px}
@@ -192,6 +192,16 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .g-bar .bd.be{left:calc(100% + 4px)}
 .g-bar.hasms .bd.be,.g-bar.hasms .bl.bout{left:calc(100% + 12px)}
 .g-bar .bout .bdt{font-size:10px;color:var(--mute);margin-right:6px;font-weight:400}
+.cmp-sec{font-weight:700;background:var(--chrome2)}
+.cmp-sec .g-name{background:var(--chrome2);color:var(--ink)}
+.cmp .g-track{height:auto;min-height:20px}
+.cmp .g-row.cat .g-track{padding:3px 0}
+.cmp .seg{position:absolute;height:14px;border-radius:2px;font-size:10px;line-height:14px;color:#fff;white-space:nowrap;overflow:hidden;padding:0 3px;box-sizing:border-box;border-right:1px solid var(--bg)}
+.cmp .seg.alt{opacity:.7}
+.cmp .cl{position:absolute;font-size:10px;line-height:12px;white-space:nowrap;color:var(--mute);pointer-events:none}
+.cmp .cl b{color:var(--ink);font-weight:700}
+.cmp .ln{position:absolute;height:8px;border-radius:2px}
+.seg.pa,.ln.pa{background:var(--bar)}.seg.pb,.ln.pb{background:var(--projb)}.seg.pc,.ln.pc{background:#3f8f5f}.seg.pd,.ln.pd{background:#7a5cb8}
 .zoom{display:inline-flex;align-items:center;gap:6px}
 .zoom input[type=range]{width:140px}
 .zoom button{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:1px 8px;cursor:pointer}
@@ -209,10 +219,12 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
   <span class="title">📅 PM 工具</span>
   <label>案件 <select id="proj"><option>（讀取中…）</option></select></label>
   <label>專案開始日 <input type="date" id="start"></label>
+  <label title="工作天怎麼算：鼎新 PLM 預設只排除週末">行事曆 <select id="cal"><option value="tw">週末＋國定假日</option><option value="weekend">只排週末（同PLM）</option></select></label>
   <label>今天 <input type="date" id="today"></label>
   <button class="act primary" id="btnSave" type="button" disabled>💾 存檔</button>
   <button class="act" id="btnXlsx" type="button">匯出 Excel</button>
   <button class="act" id="btnPlm" type="button">匯出 PLM</button>
+  <button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">匯入 PLM</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden>
   <button class="home" id="theme" type="button" title="切換白色／深色模式"></button>
   <a class="home" href="index.html" style="margin-left:0">‹ 回首頁</a>
 </div>
@@ -254,6 +266,8 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 <li>拖動「前置任務」型的任務時，改的是決定它開始日的那個前置任務的延遲天數，連動保留；「指定日期」型的任務改日期。設為前置任務的後續任務會跟著重算。</li>
 <li>「轉為連動」：把指定日期的任務改成接前置任務，延遲天數自動算到日期不變；壓縮重疊處會是負延遲。</li>
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
+<li>⇆ 比較（多案總覽）：勾選的案件疊在同一張圖。「對齊開始日」＝各案從自己的開始日算起（M1＝第 1 個月），比較同類工作在第幾個月、花多久；「實際日期」＝放在真實日曆上。上方「整體進程」每案一列、依階段排開並標總月數；下方「同類工作疊圖」把名稱含相同關鍵字的任務歸成一類（試模、模具、驗證、審查…），每案一條細線（中間斷開＝這類工作中間有空檔），右側標跨幾個月、幾項。*分類是依任務名稱關鍵字自動判斷，可能歸錯，滑鼠移到右側文字可看包含哪些任務。</li>
+<li>匯入 PLM：讀入鼎新 PLM 匯出的 XML，建立成新案件（存到 MyWiki 的 PM工具 資料夾）；第 1 層摘要＝階段、第 2 層摘要＝摘要、其餘＝任務；前置任務、工期、執行人、實際開始／完成都帶入。匯入的案件行事曆預設「只排週末（同PLM）」，日期與 PLM 一致；上方「行事曆」可改成「週末＋國定假日」。</li>
 <li>右鍵：在目前案件的條塊上按右鍵＝設為／取消里程碑（完成日顯示 ◆，標題列也會標出）；在空白處或時間標題按右鍵＝在那一天加註記（紅色虛線，例如送件日、客戶審查）；在標題列的註記上按右鍵＝修改或刪除。里程碑與註記存在這個案件的資料裡，*目前不會寫進公司 Excel 與 PLM 檔。</li>
 <li>點條塊開小視窗後，前置任務用下拉選單選子任務，關係選「完成→」（FS）或「同開始」（SS），延遲填工作天（負值＝重疊）；可加多個。</li>
 <li>放大後上下捲動時，畫面會跟著左右移：以畫面上方約 40% 的任務為準，它們最早的開始日不在畫面左半部時，平滑移到左邊附近（圖例列「自動跟隨」可關）。</li>
@@ -305,7 +319,10 @@ const MAKEUP=new Set([]); // 補班日（週末上班）；2026、2027 年無
 const pd=s=>{const [y,m,d]=String(s).split('-').map(Number);return new Date(Date.UTC(y,m-1,d))};
 const fd=d=>d?d.toISOString().slice(0,10):'';
 const addD=(d,n)=>new Date(d.getTime()+n*864e5);
-const isWd=d=>{const k=fd(d);if(MAKEUP.has(k))return true;const w=d.getUTCDay();return w!==0&&w!==6&&!HOLIDAYS.has(k)};
+let USE_HOL=true; // 案件行事曆：true＝週末＋國定假日；false＝只排除週末（同鼎新 PLM 預設）
+const isWd=d=>{const k=fd(d);if(USE_HOL&&MAKEUP.has(k))return true;const w=d.getUTCDay();return w!==0&&w!==6&&!(USE_HOL&&HOLIDAYS.has(k))};
+const withCal=(meta,fn)=>{const o=USE_HOL;USE_HOL=!meta||meta.calendar!=='weekend';try{return fn()}finally{USE_HOL=o}};
+function syncCal(){USE_HOL=META.calendar!=='weekend';const c=document.getElementById('cal');if(c)c.value=USE_HOL?'tw':'weekend'}
 const nextWd=d=>{while(!isWd(d))d=addD(d,1);return d};
 const prevWd=d=>{while(!isWd(d))d=addD(d,-1);return d};
 const addWd=(d,n)=>{ // 從工作日 d 起算第 n 個工作日；n 可為負（往前數）
@@ -362,7 +379,7 @@ function compute(tasks,startStr){
 
 // ===== 目前案件 =====
 function setData(json){
-  META=json.meta||{}; D=migrate(json.tasks||[]);
+  META=json.meta||{}; syncCal(); D=migrate(json.tasks||[]);
   byK=Object.fromEntries(D.map(r=>[r.k,r])); COLLAPSED.clear(); SEL=null; setDirty(false);
   document.getElementById('start').value=META.default_start||fd(new Date());
   document.getElementById('src').textContent=`資料：${META.name||''}｜${META.source||''}｜${META.version||''}（${META.updated||''}）`;
@@ -371,7 +388,7 @@ function setData(json){
 }
 const UNDO=[];
 function pushUndo(){UNDO.push(JSON.stringify({D,META}));if(UNDO.length>40)UNDO.shift();document.getElementById('btnUndo').disabled=false}
-function undo(){const x=UNDO.pop();if(!x)return;const o=JSON.parse(x);D=o.D;META=o.META;byK=Object.fromEntries(D.map(r=>[r.k,r]));
+function undo(){const x=UNDO.pop();if(!x)return;const o=JSON.parse(x);D=o.D;META=o.META;syncCal();byK=Object.fromEntries(D.map(r=>[r.k,r]));
   document.getElementById('start').value=META.default_start||document.getElementById('start').value;
   document.getElementById('btnUndo').disabled=!UNDO.length;setDirty(true);render()}
 function setDirty(v){DIRTY=v;document.getElementById('btnSave').disabled=!v;document.getElementById('dirty').textContent=v?'● 尚未存檔':''}
@@ -499,7 +516,7 @@ window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.return
 const sd=d=>`${String(d.getUTCFullYear()).slice(2)}/${d.getUTCMonth()+1}/${d.getUTCDate()}`;
 const pd0=s=>new Date(s+'T00:00:00Z');
 const isoW=d=>{const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));t.setUTCDate(t.getUTCDate()+4-(t.getUTCDay()||7));return Math.ceil(((t-Date.UTC(t.getUTCFullYear(),0,1))/864e5+1)/7)};
-let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null, AUTOF=true; const ZMAX=28;
+let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null, AUTOF=true, CMPALIGN='start'; const ZMAX=28;
 const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
 function gridLayer(x,bands,lines){
   return `<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
@@ -508,7 +525,7 @@ const scaleBands=(x,bands,label)=>bands.map(([a,b],i)=>(i%2?'':`<span class="yla
 function caseRows(id,json,color){
   const isCur=String(id)===CUR_ID; const meta=isCur?META:(json.meta||{}); const tag=tagOf(meta);
   let tasks;
-  if(isCur)tasks=D; else {tasks=migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])}))); compute(tasks,meta.default_start||fd(new Date()));}
+  if(isCur)tasks=D; else {tasks=migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])}))); withCal(meta,()=>compute(tasks,meta.default_start||fd(new Date())));}
   const wm=wbsMap(tasks);
   const rows=tasks.filter(r=>r.s&&r.f).map(r=>({k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms}));
   return {tag,name:meta.name||'',color,rows,marks:(meta.marks||[]).map(m=>({...m,cur:isCur,tag}))};
@@ -525,12 +542,14 @@ async function renderMulti(today){
     cases.push({id:String(e.id),json,color,title:e.title.slice(PM_PREFIX.length)});
   }
   if(seq!==MSEQ)return;
-  lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button></span>
+  lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button><button data-l="cmp" class="${MLAYOUT==='cmp'?'on':''}" type="button" title="多案疊圖：各案從各自開始日對齊，比較同類工作花多久">⇆ 比較</button></span>
+    ${MLAYOUT==='cmp'?`<span class="mseg" id="malign"><button data-a="start" class="${CMPALIGN==='start'?'on':''}" type="button">對齊開始日</button><button data-a="date" class="${CMPALIGN==='date'?'on':''}" type="button">實際日期</button></span>`:''}
     <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span>${esc(c.title)}</label>`).join('')}</span>
-    <span class="zoom">縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday">跳到今天</button><label title="上下捲動時，自動左右移到畫面中任務的條塊"><input type="checkbox" id="zfollow" ${AUTOF?'checked':''}>自動跟隨</label></span>
+    <span class="zoom" ${MLAYOUT==='cmp'?'style="display:none"':''}>縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday">跳到今天</button><label title="上下捲動時，自動左右移到畫面中任務的條塊"><input type="checkbox" id="zfollow" ${AUTOF?'checked':''}>自動跟隨</label></span>
     <span>* 為回推開始日</span><span><i style="background:var(--accent);width:2px"></i>今天</span><span><i style="background:rgba(110,110,110,.3)"></i>假日（週末＋國定）</span>`;
   const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color)).filter(c=>c.rows.length);
   if(!sel.length){g.innerHTML='<p class="note" style="padding:12px">請至少勾選一個案件。</p>';return}
+  if(MLAYOUT==='cmp'){renderCmp(sel,g);return} g.classList.remove('cmp');
   let rows;
   if(MLAYOUT==='lane'){
     sel.sort((a,b)=>Math.min(...a.rows.map(r=>r.s))-Math.min(...b.rows.map(r=>r.s)));
@@ -581,7 +600,57 @@ async function renderMulti(today){
 document.getElementById('mLegend').addEventListener('click',e=>{
   if(e.target.id==='zfit'){ZOOMV=0;ZANCHOR=null;render();return}
   if(e.target.id==='ztoday'){if(!GAX)return;ZANCHOR=(GAX.today-GAX.s0)/864e5;if(ZOOMV<60)ZOOMV=60;render();return}
+  const al=e.target.closest('#malign button'); if(al){CMPALIGN=al.dataset.a;render();return}
   const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
+// ===== 疊圖比較：各案對齊（開始日或實際日期），同類工作疊在同一列 =====
+const CMP_CATS=[['試模／修模',/試模|修模|T\d|模具改善|模具修改|模具到廠|試模連絡/],['模具設計／製作',/模具|開模/],['試量產／量產',/試量產|量產|入庫|產前/],
+  ['驗證／測試',/驗證|測試|確效|相容|老化|運輸/],['法規／認證',/認證|取證|TFDA|QMS|510|註冊|查驗/],['採購／合約',/採購|請購|簽呈|報價|合約|議價|比價|購買|發包/],
+  ['審查／會議',/審查|審核|會議/],['設計',/設計|繪製|圖|規劃|可行性|評估|專利|3D|方案|零件/],['文件／品號',/品號|SOP|DHF|文件|報告|FMEA|流程|工程表|資料|計畫|計劃/],['其他',/[\s\S]/]];
+const catOf=n=>CMP_CATS.find(([,re])=>re.test(n))[0];
+const mon=d=>(d/30.4375).toFixed(1);
+function renderCmp(sel,g){
+  g.style.width=''; g.classList.remove('gz'); g.classList.add('cmp');
+  const starts=sel.map(c=>new Date(Math.min(...c.rows.map(r=>r.s))));
+  const g0=new Date(Math.min(...starts));
+  const off=sel.map((c,i)=>CMPALIGN==='start'?(starts[i]-g0)/864e5:0);       // 每案往前平移的天數
+  const day=(c,i,d)=>(d-g0)/864e5-off[i];
+  const spanD=Math.max(...sel.map((c,i)=>Math.max(...c.rows.map(r=>day(c,i,addD(r.f,1))))))*1.14+20;
+  const x=v=>(v/spanD*100).toFixed(3)+'%';
+  // 刻度
+  let sc='', lines=[], bands=[];
+  if(CMPALIGN==='start'){
+    for(let m=0;m*30.4375<spanD;m++){const v=m*30.4375; sc+=`<span style="left:${x(v)}">M${m+1}</span>`; if(m)lines.push(v);}
+    for(let y=0;y*365.25<spanD;y++)bands.push([y*365.25,Math.min(spanD,(y+1)*365.25)]);
+  } else {
+    for(let d=new Date(Date.UTC(g0.getUTCFullYear(),g0.getUTCMonth(),1));(d-g0)/864e5<spanD;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){const v=(d-g0)/864e5; if(v>=0){sc+=`<span style="left:${x(v)}">${d.getUTCMonth()+1}</span>`; if(d.getUTCMonth())lines.push(v);}}
+    for(let y=g0.getUTCFullYear();;y++){const a=Math.max(0,(Date.UTC(y,0,1)-g0)/864e5), b=Math.min(spanD,(Date.UTC(y+1,0,1)-g0)/864e5); if(a>=spanD)break; bands.push([a,b,y]);}
+  }
+  const yl=bands.map(([a,b,y],i)=>(i%2?'':`<span class="ylab" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></span>`)+((b-a)>45?`<span class="ytxt" style="left:${x(a)}">${CMPALIGN==='start'?`第 ${i+1} 年`:y}</span>`:'')).join('');
+  const grid=`<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
+  let h=`<div class="g-head"><div class="g-name">${CMPALIGN==='start'?'自開始日起（月）':'實際日期'}</div><div class="g-scale">${yl}${sc}</div></div>${grid}`;
+  // 一、整體：每案一列，階段依序排開
+  h+=`<div class="g-row cmp-sec"><div class="g-name">整體進程（階段）</div><div class="g-track"></div></div>`;
+  sel.forEach((c,i)=>{
+    const phs=c.rows.filter(r=>r.sum&&r.lvl===1);
+    const tot=day(c,i,addD(new Date(Math.max(...c.rows.map(r=>r.f))),1))-day(c,i,starts[i]);
+    const segs=phs.map((r,j)=>{const a=day(c,i,r.s), b=day(c,i,addD(r.f,1)); return `<div class="seg ${c.color} ${j%2?'alt':''}" style="top:3px;left:${x(a)};width:calc(${x(b)} - ${x(a)})" title="${esc(`${c.tag} ${r.wbs} ${r.name}：${fd(r.s)} → ${fd(r.f)}（${mon(b-a)} 月）`)}">${esc(r.name)}</div>`}).join('');
+    const endV=day(c,i,addD(new Date(Math.max(...c.rows.map(r=>r.f))),1));
+    h+=`<div class="g-row"><div class="g-name"><span class="chip ${c.color}">${esc(c.tag)}</span>${esc(c.name)}</div><div class="g-track">${segs}<span class="cl" style="top:4px;left:calc(${x(endV)} + 4px)"><b>${mon(tot)} 月</b>｜${fd(starts[i])} 起</span></div></div>`;
+  });
+  // 二、同類工作疊圖
+  h+=`<div class="g-row cmp-sec"><div class="g-name" title="依任務名稱關鍵字自動歸類（*推論，可能有誤）">同類工作疊圖 *</div><div class="g-track"></div></div>`;
+  for(const [cat] of CMP_CATS){
+    const per=sel.map((c,i)=>{const ts=c.rows.filter(r=>!r.sum&&catOf(r.name)===cat).sort((a,b)=>a.s-b.s); if(!ts.length)return null;
+      const iv=[]; for(const r of ts){const a=day(c,i,r.s), b=day(c,i,addD(r.f,1)); const L=iv[iv.length-1]; if(L&&a<=L[1])L[1]=Math.max(L[1],b); else iv.push([a,b]);}
+      return {c,i,ts,iv,a:iv[0][0],b:Math.max(...iv.map(v=>v[1]))}}).filter(Boolean);
+    if(!per.length)continue;
+    let body=''; per.forEach((p,j)=>{const top=3+j*13;
+      body+=p.iv.map(([a,b])=>`<div class="ln ${p.c.color}" style="top:${top+2}px;left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('');
+      body+=`<span class="cl" style="top:${top}px;left:calc(${x(p.b)} + 4px)" title="${esc(p.ts.map(r=>`${r.wbs} ${r.name}（${fd(r.s)}→${fd(r.f)}）`).join('\n'))}"><b>${esc(p.c.tag)}</b> ${mon(p.b-p.a)} 月・${p.ts.length} 項（${CMPALIGN==='start'?`M${Math.floor(p.a/30.4375)+1}–M${Math.floor((p.b-1)/30.4375)+1}`:(()=>{const ym=v=>{const d=addD(g0,Math.floor(v));return `${String(d.getUTCFullYear()).slice(2)}/${d.getUTCMonth()+1}`};return `${ym(p.a)}–${ym(p.b-1)}`})()}）</span>`;});
+    h+=`<div class="g-row cat"><div class="g-name" title="${esc(per.map(p=>p.c.tag+'：'+p.ts.map(r=>r.name).join('、')).join('\n'))}">${esc(cat)}</div><div class="g-track" style="height:${per.length*13+6}px">${body}</div></div>`;
+  }
+  g.innerHTML=h; GAX=null;
+}
 document.getElementById('mLegend').addEventListener('change',e=>{if(e.target.id==='zfollow')AUTOF=e.target.checked});
 document.getElementById('mLegend').addEventListener('input',e=>{if(e.target.id!=='zoom')return;ZOOMV=+e.target.value;renderMultiOnly()});
 function renderMultiOnly(){renderMulti(GAX&&GAX.today||new Date())}
@@ -704,6 +773,8 @@ document.getElementById('mg').addEventListener('contextmenu',e=>{
 })();
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePop();closeCtx()} if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
 document.getElementById('btnUndo').onclick=undo;
+document.getElementById('cal').onchange=e=>{pushUndo(); if(e.target.value==='weekend')META.calendar='weekend'; else delete META.calendar; syncCal(); setDirty(true); render();
+  document.getElementById('msg').textContent=USE_HOL?'改用週末＋國定假日重算':'改成只排除週末（與鼎新 PLM 相同）重算'};
 // 轉為連動：指定日期 → 前置任務，每個前置的延遲都算到「日期不變」（壓縮處會出現負延遲）
 document.getElementById('btnLink').onclick=()=>{
   const cand=D.filter(r=>r.t!==PH&&r.t!=='sum'&&r.sm==='fix'&&r.s&&(r.pred||[]).some(([k])=>byK[k]&&byK[k].t!==PH&&byK[k].s));
@@ -827,39 +898,111 @@ document.getElementById('btnPlm').onclick=()=>{
   const st=document.getElementById('msg');
   try{
     const start=nextWd(pd(document.getElementById('start').value));
+    // 開發總覽：資料裡已經有就不再補
+    const hasOv=D.some(r=>r.t===PH&&/開發總覽/.test(r.name||''));
     const ov={k:'__OV',t:PH,name:'開發總覽'};
-    const ovKids=['設計開發總覽表','客戶開發委任單','開發工作細分查核表'].map((n,i)=>{const s=start,f=finishOf(start,21);return {k:'__OV'+i,ph:'__OV',name:n,dur:21,s,f,pred:[],rd:''}});
-    ov.s=start; ov.f=ovKids[0].f;
-    const all=[ov,...ovKids,...D];
+    const ovKids=hasOv?[]:['設計開發總覽表','客戶開發委任單','開發工作細分查核表'].map((n,i)=>{const s=start,f=finishOf(start,21);return {k:'__OV'+i,ph:'__OV',name:n,dur:21,s,f,pred:[],rd:''}});
+    if(!hasOv){ov.s=start; ov.f=ovKids[0].f;}
+    const all=hasOv?[...D]:[ov,...ovKids,...D];
     const wm=wbsMap(all); const uid={}; all.forEach((r,i)=>uid[r.k]=i+1);
-    const iso=(d,end)=>fd(d)+(end?'T08:00:00':'T00:00:00');
+    const iso=(d,end)=>fd(d)+(end?'T08:00:00':'T00:00:00');   // 與鼎新樣本相同：開始 00:00、完成 08:00（完成日當天）
     const hrs=wd=>`PT${wd*8}H0M0S`;
-    // 資源：執行人拆開
     const people=[]; const split=s=>String(s||'').split(/[、,，\s]+/).filter(Boolean);
     all.forEach(r=>split(r.rd).forEach(p=>{if(!people.includes(p))people.push(p)}));
-    const tasks=[`<Task><UID>0</UID><ID>0</ID><Name>${xmlEsc(META.name||'')}</Name><Type>0</Type><IsNull>0</IsNull><WBS>0</WBS><OutlineNumber>0</OutlineNumber><OutlineLevel>0</OutlineLevel><Priority>500</Priority><Summary>1</Summary><Active>1</Active><Manual>0</Manual></Task>`];
+    const now=new Date(); const nowIso=fd(now)+'T'+now.toTimeString().slice(0,5)+':00';
+    const FLAGS='<ResumeValid>0</ResumeValid><EffortDriven>0</EffortDriven><Recurring>0</Recurring><OverAllocated>0</OverAllocated><Estimated>0</Estimated>';
+    const SUB='<IsSubproject>0</IsSubproject><IsSubprojectReadOnly>0</IsSubprojectReadOnly><ExternalTask>0</ExternalTask><FixedCostAccrual>3</FixedCostAccrual>';
+    const TAIL=lv=>`<LevelAssignments>${lv}</LevelAssignments><LevelingCanSplit>${lv}</LevelingCanSplit><IgnoreResourceCalendar>0</IgnoreResourceCalendar><HideBar>0</HideBar><Rollup>0</Rollup><EarnedValueMethod>0</EarnedValueMethod>`;
+    const tasks=[`<Task><UID>0</UID><ID>0</ID><Name>${xmlEsc(META.name||'')}</Name><Type>0</Type><IsNull>0</IsNull><WBS>0</WBS><OutlineNumber>0</OutlineNumber><OutlineLevel>0</OutlineLevel><Priority>500</Priority>${FLAGS}<Milestone>0</Milestone><Summary>1</Summary><Critical>1</Critical>${SUB}<ConstraintType>0</ConstraintType><CalendarUID>1</CalendarUID>${TAIL(0)}<Active>1</Active><Manual>0</Manual></Task>`];
     const asg=[]; let aid=1;
     for(const r of all){
       if(!r.s)continue;
       const sum=r.t===PH||r.t==='sum'; const wd=wdBetween(r.s,r.f); const [wbs,lvl]=wm[r.k];
       const pct=r.L?100:0;
-      const links=(r.sm==='fix'?[]:(r.pred||[])).filter(([k])=>uid[k]).map(([k,t,l])=>`<PredecessorLink><PredecessorUID>${uid[k]}</PredecessorUID><Type>${t==='SS'?3:1}</Type>${l?`<LinkLag>${l*4800}</LinkLag><LagFormat>7</LagFormat>`:''}</PredecessorLink>`).join('');
-      const cons=r.sm==='fix'?`<ConstraintType>4</ConstraintType><ConstraintDate>${iso(r.s)}</ConstraintDate>`:'<ConstraintType>0</ConstraintType>';
-      tasks.push(`<Task><UID>${uid[r.k]}</UID><ID>${uid[r.k]}</ID><Name>${xmlEsc(r.name)}</Name><Type>0</Type><IsNull>0</IsNull><WBS>${wbs}</WBS><OutlineNumber>${wbs}</OutlineNumber><OutlineLevel>${lvl}</OutlineLevel><Priority>500</Priority><Start>${iso(r.s)}</Start><Finish>${iso(r.f,1)}</Finish><Duration>${hrs(wd)}</Duration><DurationFormat>7</DurationFormat><Work>${hrs(wd)}</Work><Milestone>0</Milestone><Summary>${sum?1:0}</Summary><PercentComplete>${pct}</PercentComplete>${r.K?`<ActualStart>${iso(pd(r.K))}</ActualStart>`:''}${r.L?`<ActualFinish>${iso(pd(r.L),1)}</ActualFinish>`:''}${cons}<CalendarUID>1</CalendarUID>${links}<Active>1</Active><Manual>0</Manual></Task>`);
-      if(!sum) for(const p of split(r.rd)) asg.push(`<Assignment><UID>${aid++}</UID><TaskUID>${uid[r.k]}</TaskUID><ResourceUID>${people.indexOf(p)+1}</ResourceUID><Start>${iso(r.s)}</Start><Finish>${iso(r.f,1)}</Finish><Units>1</Units><Work>${hrs(wd)}</Work></Assignment>`);
+      const links=(r.sm==='fix'||sum?[]:(r.pred||[])).filter(([k])=>uid[k]).map(([k,t,l])=>`<PredecessorLink><PredecessorUID>${uid[k]}</PredecessorUID><Type>${t==='SS'?3:1}</Type>${l?`<LinkLag>${l*4800}</LinkLag><LagFormat>7</LagFormat>`:''}</PredecessorLink>`).join('');
+      // 鼎新樣本：所有任務 ConstraintType=4、不帶日期；我們「指定日期」的任務另外帶 ConstraintDate
+      const cdate=(!sum&&r.sm==='fix')?`<ConstraintDate>${iso(r.s)}</ConstraintDate>`:'';
+      const act=(r.K?`<ActualStart>${iso(pd(r.K))}</ActualStart>`:'')+(r.L?`<ActualFinish>${iso(pd(r.L),1)}</ActualFinish>`:'');
+      const base=`<Baseline><Number>1</Number><Start>${iso(r.s)}</Start><Finish>${iso(r.f)}</Finish><Duration>${hrs(wd)}</Duration><DurationFormat>7</DurationFormat></Baseline>`;
+      tasks.push(`<Task><UID>${uid[r.k]}</UID><ID>${uid[r.k]}</ID><Name>${xmlEsc(r.name)}</Name><Type>0</Type><IsNull>0</IsNull><WBS>${wbs}</WBS><OutlineNumber>${wbs}</OutlineNumber><OutlineLevel>${lvl}</OutlineLevel><Priority>500</Priority><Start>${iso(r.s)}</Start><Finish>${iso(r.f,1)}</Finish><Duration>${hrs(wd)}</Duration><DurationFormat>7</DurationFormat><Work>${hrs(wd)}</Work>${FLAGS}<Milestone>0</Milestone><Summary>${sum?1:0}</Summary><Critical>1</Critical>${SUB}<PercentComplete>${pct}</PercentComplete><PercentWorkComplete>${pct}</PercentWorkComplete>${act}<RemainingDuration>${hrs(pct?0:wd)}</RemainingDuration><RemainingWork>${hrs(pct?0:wd)}</RemainingWork><ConstraintType>4</ConstraintType><CalendarUID>1</CalendarUID>${cdate}${TAIL(1)}${links}${base}<Active>1</Active><Manual>0</Manual></Task>`);
+      if(!sum) for(const p of split(r.rd)) asg.push(`<Assignment><UID>${aid++}</UID><TaskUID>${uid[r.k]}</TaskUID><ResourceUID>${people.indexOf(p)+1}</ResourceUID><PercentWorkComplete>${pct}</PercentWorkComplete><Finish>${iso(r.f,1)}</Finish><HasFixedRateUnits>1</HasFixedRateUnits><FixedMaterial>0</FixedMaterial><RemainingWork>${hrs(pct?0:wd)}</RemainingWork><Start>${iso(r.s)}</Start><Units>1</Units><Work>${hrs(wd)}</Work><CreationDate>${nowIso}</CreationDate></Assignment>`);
     }
-    const res=people.map((p,i)=>`<Resource><UID>${i+1}</UID><ID>${i+1}</ID><Name>${xmlEsc(p)}</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>1</MaxUnits><CalendarUID>1</CalendarUID></Resource>`).join('');
+    const res=people.map((p,i)=>`<Resource><UID>${i+1}</UID><ID>${i+1}</ID><Name>${xmlEsc(p)}</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>1</MaxUnits><PeakUnits>1</PeakUnits><OverAllocated>0</OverAllocated><CanLevel>1</CanLevel><AccrueAt>3</AccrueAt><StandardRateFormat>3</StandardRateFormat><OvertimeRateFormat>3</OvertimeRateFormat><CalendarUID>1</CalendarUID><IsGeneric>0</IsGeneric><IsInactive>0</IsInactive><IsEnterprise>0</IsEnterprise><IsBudget>0</IsBudget><AvailabilityPeriods/></Resource>`).join('');
     const wk=[1,2,3,4,5,6,7].map(d=>d===1||d===7?`<WeekDay><DayType>${d}</DayType><DayWorking>0</DayWorking></WeekDay>`:`<WeekDay><DayType>${d}</DayType><DayWorking>1</DayWorking><WorkingTimes><WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime><WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime></WorkingTimes></WeekDay>`).join('');
     const fin=new Date(Math.max(...all.filter(r=>r.f).map(r=>r.f)));
     const xml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Project xmlns="http://schemas.microsoft.com/project"><SaveVersion>9</SaveVersion><Title>${xmlEsc(META.name||'')}</Title><ScheduleFromStart>1</ScheduleFromStart><StartDate>${iso(start)}</StartDate><FinishDate>${iso(fin,1)}</FinishDate><CalendarUID>1</CalendarUID><DefaultStartTime>08:00:00</DefaultStartTime><MinutesPerDay>480</MinutesPerDay><MinutesPerWeek>2400</MinutesPerWeek><DaysPerMonth>20</DaysPerMonth><DurationFormat>7</DurationFormat><WorkFormat>2</WorkFormat><WeekStartDay>1</WeekStartDay><CurrentDate>${fd(new Date())}T08:00:00</CurrentDate>
+<Project xmlns="http://schemas.microsoft.com/project"><SaveVersion>9</SaveVersion><Title>${xmlEsc(META.name||'')}</Title><ScheduleFromStart>1</ScheduleFromStart><StartDate>${iso(start)}</StartDate><FinishDate>${iso(fin,1)}</FinishDate><FYStartDate>1</FYStartDate><CriticalSlackLimit>0</CriticalSlackLimit><CurrencyDigits>2</CurrencyDigits><CurrencySymbol>$</CurrencySymbol><CurrencySymbolPosition>0</CurrencySymbolPosition><CalendarUID>1</CalendarUID><DefaultStartTime>08:00:00</DefaultStartTime><MinutesPerDay>480</MinutesPerDay><MinutesPerWeek>2400</MinutesPerWeek><DaysPerMonth>20</DaysPerMonth><DefaultTaskType>0</DefaultTaskType><DefaultFixedCostAccrual>2</DefaultFixedCostAccrual><DefaultStandardRate>10</DefaultStandardRate><DefaultOvertimeRate>15</DefaultOvertimeRate><DurationFormat>7</DurationFormat><WorkFormat>2</WorkFormat><EditableActualCosts>0</EditableActualCosts><HonorConstraints>0</HonorConstraints><EarnedValueMethod>0</EarnedValueMethod><InsertedProjectsLikeSummary>0</InsertedProjectsLikeSummary><MultipleCriticalPaths>0</MultipleCriticalPaths><NewTasksEffortDriven>0</NewTasksEffortDriven><NewTasksEstimated>1</NewTasksEstimated><SplitsInProgressTasks>0</SplitsInProgressTasks><SpreadActualCost>0</SpreadActualCost><SpreadPercentComplete>0</SpreadPercentComplete><TaskUpdatesResource>1</TaskUpdatesResource><FiscalYearStart>0</FiscalYearStart><WeekStartDay>1</WeekStartDay><MoveCompletedEndsBack>0</MoveCompletedEndsBack><MoveRemainingStartsBack>0</MoveRemainingStartsBack><MoveRemainingStartsForward>0</MoveRemainingStartsForward><MoveCompletedEndsForward>0</MoveCompletedEndsForward><BaselineForEarnedValue>0</BaselineForEarnedValue><AutoAddNewResourcesAndTasks>1</AutoAddNewResourcesAndTasks><CurrentDate>${nowIso}</CurrentDate><MicrosoftProjectServerURL>1</MicrosoftProjectServerURL><Autolink>1</Autolink><NewTaskStartDate>0</NewTaskStartDate><DefaultTaskEVMethod>0</DefaultTaskEVMethod><ProjectExternallyEdited>0</ProjectExternallyEdited><ActualsInSync>0</ActualsInSync><RemoveFileProperties>0</RemoveFileProperties><AdminProject>0</AdminProject><ExtendedAttributes/>
 <Calendars><Calendar><UID>1</UID><Name>標準</Name><IsBaseCalendar>1</IsBaseCalendar><WeekDays>${wk}</WeekDays></Calendar></Calendars>
 <Tasks>${tasks.join('\n')}</Tasks>
 <Resources>${res}</Resources>
 <Assignments>${asg.join('')}</Assignments></Project>`;
     download(new Blob([xml],{type:'application/xml'}),`${sheetSafe(META.name)}_PLM_${fd(new Date())}.xml`);
-    st.textContent='已匯出 PLM XML（已補開發總覽）';
+    st.textContent=hasOv?'已匯出 PLM XML':'已匯出 PLM XML（已補開發總覽）';
   }catch(e){st.textContent='匯出 PLM 失敗：'+e.message}
+};
+
+// ===== 匯入 PLM XML：建立新案件（存成 PM工具 裡的一筆資料記事）=====
+function parsePlmXml(text){
+  const doc=new DOMParser().parseFromString(text,'application/xml');
+  if(doc.querySelector('parsererror'))throw new Error('不是有效的 XML');
+  const P=doc.documentElement; if(P.localName!=='Project')throw new Error('不是 MS Project／鼎新 PLM 的 XML（根元素不是 Project）');
+  const kid=(el,n)=>{for(const c of el.children)if(c.localName===n)return c;return null};
+  const txt=(el,n)=>{const c=kid(el,n);return c?c.textContent.trim():''};
+  const all=(el,n)=>[...el.children].filter(c=>c.localName===n);
+  const date=v=>v?v.slice(0,10):'';
+  const hoursOf=v=>{const m=/PT(\d+)H(\d+)M/.exec(v||'');return m?(+m[1]+ +m[2]/60):0};
+  const resN={}; const R=kid(P,'Resources'); if(R)for(const r of all(R,'Resource'))resN[txt(r,'UID')]=txt(r,'Name');
+  const asg={}; const A=kid(P,'Assignments'); if(A)for(const a of all(A,'Assignment')){const n=resN[txt(a,'ResourceUID')];if(n)(asg[txt(a,'TaskUID')]=asg[txt(a,'TaskUID')]||[]).push(n)}
+  const T=all(kid(P,'Tasks')||P,'Task');
+  const t0=T.find(t=>txt(t,'OutlineLevel')==='0');
+  const meta={name:(t0&&txt(t0,'Name'))||txt(P,'Title')||'匯入案件',default_start:date(txt(P,'StartDate')),source:'鼎新 PLM XML 匯入',version:'v1',notes:[]};
+  const tasks=[]; const uid2k={}; let ph=null, sum2=null; const warn=[]; const xmlDates={};
+  for(const t of T){
+    const lv=+txt(t,'OutlineLevel'); if(!lv)continue; const u=txt(t,'UID'); const k='x'+u; uid2k[u]=k;
+    const isSum=txt(t,'Summary')==='1', name=txt(t,'Name');
+    if(lv===1&&isSum){ph=k;sum2=null;tasks.push({k,t:PH,name});continue}
+    if(lv===1){sum2=null; if(!ph||!String(ph).startsWith('xnp')){ph='xnp'+u;tasks.push({k:ph,t:PH,name:'（未分階段）'})}}
+    if(!ph){ph='xnp0';tasks.push({k:ph,t:PH,name:'（未分階段）'})}
+    else if(lv===2&&isSum){sum2=k;tasks.push({k,t:'sum',ph,name});continue}
+    else if(lv>=3&&isSum){warn.push(`「${name}」為第 ${lv} 層摘要，已攤平`);continue}
+    if(lv===2&&!isSum)sum2=null;
+    const r={k,ph,name,dur:Math.max(1,Math.round(hoursOf(txt(t,'Duration'))/8)),rd:(asg[u]||[]).join('、')};
+    if(lv>=3&&sum2)r.par=sum2; if(lv>3)warn.push(`「${name}」為第 ${lv} 層，已併到第 3 層`);
+    if(txt(t,'Milestone')==='1')r.ms=1;
+    const as=date(txt(t,'ActualStart')), af=date(txt(t,'ActualFinish')); if(as)r.K=as; if(af)r.L=af;
+    r._links=all(t,'PredecessorLink').map(l=>[txt(l,'PredecessorUID'),txt(l,'Type'),+txt(l,'LinkLag')||0]);
+    r._start=date(txt(t,'Start')); xmlDates[k]=[date(txt(t,'Start')),date(txt(t,'Finish'))];
+    tasks.push(r);
+  }
+  for(const r of tasks){ if(!r._links)continue;
+    const pr=r._links.filter(([u])=>uid2k[u]).map(([u,ty,lag])=>{if(ty!=='1'&&ty!=='3')warn.push(`「${r.name}」的前置關係類型 ${ty} 不支援，已當成完成→開始`);return [uid2k[u],ty==='3'?'SS':'FS',Math.round(lag/4800)]});
+    if(pr.length){r.sm='pred';r.pred=pr}else{r.sm='fix';r.fix=r._start;r.pred=[]}
+    delete r._links; delete r._start; }
+  return {meta,tasks,warn,xmlDates};
+}
+document.getElementById('btnImp').onclick=()=>document.getElementById('impFile').click();
+document.getElementById('impFile').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f)return; const st=document.getElementById('msg');
+  if(DIRTY&&!confirm('目前案件尚未存檔；匯入後會切換到新案件，未存的修改會放棄。確定？'))return;
+  try{
+    const {meta,tasks,warn,xmlDates}=parsePlmXml(await f.text());
+    // 用本工具的行事曆（含國定假日）重算，與 PLM 原日期比對
+    const cmpTo=cal=>{const tmp=JSON.parse(JSON.stringify(tasks)); withCal({calendar:cal},()=>compute(tmp,meta.default_start)); return tmp.filter(r=>xmlDates[r.k]&&r.s&&(fd(r.s)!==xmlDates[r.k][0]||fd(r.f)!==xmlDates[r.k][1]))};
+    const diffW=cmpTo('weekend'), diffT=cmpTo('tw'); meta.calendar='weekend';
+    const name=prompt(`匯入 ${tasks.filter(r=>r.t!==PH&&r.t!=='sum').length} 個任務。\n案件名稱：`,meta.name); if(name==null)return;
+    meta.name=name.trim()||meta.name;
+    meta.notes=[`${fd(new Date())} 由鼎新 PLM XML 匯入（檔名：${f.name}）。`,
+      `行事曆設為「只排除週末」（與 PLM 相同），重算後與 PLM 日期不同的任務 ${diffW.length} 個；若改成「週末＋國定假日」會有 ${diffT.length} 個不同。`,...warn];
+    if(!confirm(`行事曆：只排除週末（與鼎新 PLM 相同）→ 重算後與 PLM 原日期不同的任務：${diffW.length} 個。\n（若改用「週末＋國定假日」，會有 ${diffT.length} 個任務日期變動；之後可在上方「行事曆」切換。）\n\n${warn.length?warn.slice(0,5).join('\n')+'\n\n':''}建立新案件「${meta.name}」並存到 MyWiki？`))return;
+    const folders=await api('/folders'); const fo=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER));
+    if(!fo)throw new Error(`找不到「${PM_FOLDER}」資料夾`);
+    const body='{"meta":'+JSON.stringify({...meta,updated:fd(new Date())})+',\n"tasks":[\n'+tasks.map(x=>JSON.stringify(x)).join(',\n')+'\n]}';
+    const res=await fetch('/api/entries',{method:'POST',headers:{'content-type':'application/json','x-pin':pin()},body:JSON.stringify({folder_id:fo.id,title:PM_PREFIX+meta.name,body,body_format:'text'})});
+    if(res.status===401){showLogin();throw new Error('PIN 錯誤')}
+    if(!res.ok){const b=await res.json().catch(()=>({}));throw new Error(b.error||`HTTP ${res.status}`)}
+    const {id}=await res.json(); try{localStorage.setItem('pm_last_entry',String(id))}catch{}
+    setDirty(false); await loadProjects(); st.textContent=`已匯入「${meta.name}」：${diffW.length} 個任務日期與 PLM 不同`;
+  }catch(err){st.textContent='匯入失敗：'+err.message}
 };
 
 // ===== 分頁、主題 =====
