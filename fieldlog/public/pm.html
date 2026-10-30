@@ -600,7 +600,7 @@ function caseRows(id,json,color){
   let tasks;
   if(isCur)tasks=D; else {tasks=withCal(meta,()=>migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])})))); anchorStart(tasks,meta.default_start); withCal(meta,()=>compute(tasks,meta.default_start||fd(new Date())));}
   const wm=wbsMap(tasks);
-  const rows=tasks.filter(r=>r.s&&r.f).map(r=>({k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms}));
+  const rows=tasks.map((r,ord)=>({r,ord})).filter(({r})=>r.s&&r.f).map(({r,ord})=>({ord,k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms}));
   return {tag,name:meta.name||'',color,rows,marks:(meta.marks||[]).map(m=>({...m,cur:isCur,tag}))};
 }
 let MSEQ=0;
@@ -627,7 +627,7 @@ async function renderMulti(today){
   if(MLAYOUT==='lane'){
     sel.sort((a,b)=>Math.min(...a.rows.map(r=>r.s))-Math.min(...b.rows.map(r=>r.s)));
     rows=sel.flatMap(c=>[{lane:1,c:c.color,tag:c.tag,name:c.name},...c.rows]);
-  } else rows=sel.flatMap(c=>c.rows).filter(r=>!r.sum).sort((x,y)=>x.s-y.s||x.f-y.f);
+  } else rows=sel.flatMap(c=>c.rows).filter(r=>!r.sum).sort((x,y)=>x.s-y.s||x.ord-y.ord); // 同一天開始：照序號（原排順序），不因較早結束而往前排
   const all=sel.flatMap(c=>c.rows);
   const min=new Date(Math.min(...all.map(r=>r.s))), max=new Date(Math.max(...all.map(r=>r.f)));
   const s0=new Date(Date.UTC(min.getUTCFullYear(),min.getUTCMonth(),1)); const span=(max-s0)/864e5+31; const end=addD(s0,span);
