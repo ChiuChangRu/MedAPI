@@ -104,7 +104,7 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 .chip{display:inline-block;min-width:18px;text-align:center;font-size:11px;line-height:16px;border-radius:2px;color:#fff;margin-right:4px;padding:0 3px}
 .chip.pa{background:var(--bar)}.chip.pb{background:var(--projb)}.chip.pc{background:#3f8f5f}.chip.pd{background:#7a5cb8}
 .g-bar.pc{background:#3f8f5f}.g-bar.pd{background:#7a5cb8}.g-bar.pc.sumb,.g-bar.pd.sumb{opacity:.6}
-.mcases{display:inline-flex;gap:8px;flex-wrap:nowrap;margin-right:4px}.mcases .cn{max-width:11em;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle}.mcases label{display:inline-flex;align-items:center;gap:4px;color:var(--ink);cursor:pointer}
+.mcases{display:inline-flex;gap:8px;flex-wrap:nowrap;margin-right:4px}.mcases .cn{max-width:11em;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle}.ebtn{border:1px solid var(--line,#ccc);background:transparent;color:var(--ink);border-radius:4px;padding:0 5px;cursor:pointer;margin-left:-4px}.ebtn.on{background:var(--accent);color:#fff;border-color:transparent;cursor:default}.cset{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.mcases label{display:inline-flex;align-items:center;gap:4px;color:var(--ink);cursor:pointer}
 .g-row.lane td,.g-row.lane{font-weight:700}
 .g-row.lane .g-name{background:var(--chrome2)}
 .mseg{display:inline-flex;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-right:12px}
@@ -252,10 +252,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 <div class="bar">
   <a class="home ic" href="index.html" title="回首頁">‹</a>
   <span class="title">📅 PM 工具</span>
-  <button class="act cur" id="curCase" type="button" title="目前編輯中的案件；點一下回到「案件」分頁切換">（尚未載入案件）</button>
-  <label>開始日 <input type="date" id="start"></label>
-  <label title="工作天怎麼算：鼎新 PLM 預設只排除週末">行事曆 <select id="cal"><option value="tw">週末＋國定假日</option><option value="weekend">只排週末（同PLM）</option></select></label>
-  <label>今天 <input type="date" id="today"></label>
+  <button id="curCase" hidden type="button"></button><input type="date" id="today" hidden>
   <button class="act primary" id="btnSave" type="button" disabled>💾 存檔</button>
   <button class="home ic" id="theme" type="button" title="切換白色／深色模式"></button>
 </div>
@@ -281,6 +278,8 @@ table.lst td.nm{white-space:normal;font-weight:700}
 <section id="cases"><div class="pg">
   <h2>① 案件宣告與載入</h2>
   <p class="note">這裡列出 MyWiki「PM工具」資料夾裡所有案件。<b>載入</b>＝讀進來，才會出現在「② 甘特圖」可勾選比較；<b>編輯中</b>＝「③ 任務」與「④ 下載」操作的那一個案件。</p>
+  <div class="pgbar cset"><b id="curName">（尚未載入案件）</b><label>開始日 <input type="date" id="start"></label>
+  <label title="工作天怎麼算：鼎新 PLM 預設只排除週末">行事曆 <select id="cal"><option value="tw">週末＋國定假日</option><option value="weekend">只排週末（同PLM）</option></select></label><span class="note">（設定的是「編輯中」的案件）</span></div>
   <div class="pgbar"><button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">＋ 匯入鼎新 PLM（XML）→ 新案件…</button><button class="act" id="btnReload" type="button">↻ 重新整理清單</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden></div>
   <table class="lst" id="caseTbl"></table>
 </div></section>
@@ -440,7 +439,7 @@ function setData(json){
   META=json.meta||{}; syncCal(); D=migrate(json.tasks||[]); anchorStart(D,META.default_start);
   byK=Object.fromEntries(D.map(r=>[r.k,r])); COLLAPSED.clear(); SEL=null; setDirty(false);
   document.getElementById('start').value=META.default_start||fd(new Date());
-  const cc=document.getElementById('curCase'); cc.textContent='📁 '+(META.name||'案件'); cc.title='目前編輯中：'+(META.name||'')+'（點一下回到「案件」分頁切換）';
+  const cc=document.getElementById('curCase'); cc.textContent='📁 '+(META.name||'案件'); cc.title='目前編輯中：'+(META.name||''); const cn=document.getElementById('curName'); if(cn)cn.textContent='編輯中：📁 '+(META.name||'案件');
   document.getElementById('src').textContent=`資料：${META.name||''}｜${META.source||''}｜${META.version||''}（${META.updated||''}）`;
   document.getElementById('notes').innerHTML=(META.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('')||'<li class="note">（資料未附說明）</li>';
   render();
@@ -612,7 +611,7 @@ async function renderMulti(today){
   if(seq!==MSEQ)return;
   lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button><button data-l="cmp" class="${MLAYOUT==='cmp'?'on':''}" type="button" title="多案疊圖：各案從各自開始日對齊，比較同類工作花多久">⇆ 比較</button></span>
     ${MLAYOUT==='cmp'?`<span class="mseg" id="malign"><button data-a="start" class="${CMPALIGN==='start'?'on':''}" type="button">對齊開始日</button><button data-a="date" class="${CMPALIGN==='date'?'on':''}" type="button">實際日期</button></span>`:''}
-    <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span><span class="cn" title="${esc(c.title)}">${esc(c.title)}</span></label>`).join('')}</span>
+    <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span><span class="cn" title="${esc(c.title)}">${esc(c.title)}</span></label><button type="button" class="ebtn ${c.id===CUR_ID?'on':''}" data-edit="${c.id}" title="${c.id===CUR_ID?'編輯中：可拖曳、右鍵改這個案件':'改成編輯這個案件'}">✎</button>`).join('')}</span>
     <span class="zoom" ${MLAYOUT==='cmp'?'style="display:none"':''}>縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday" title="放大並捲到今天">今天</button><label title="上下捲動時，自動左右移到畫面中任務的條塊"><input type="checkbox" id="zfollow" ${AUTOF?'checked':''}>跟隨</label></span>
     <span class="info" title="圖例：&#10;藍色直線＝今天&#10;灰底＝假日（依案件行事曆）&#10;名稱後 *＝回推開始日&#10;⚑ 旗子＝里程碑；紅色虛線＝註記&#10;右鍵：條塊設里程碑、空白處加註記">i</span>`;
   const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color)).filter(c=>c.rows.length);
@@ -665,7 +664,10 @@ async function renderMulti(today){
   sc0.scrollLeft=Math.max(0,ZCUR?ZCUR.day*pd-ZCUR.px:keepDay*pd-(sc0.clientWidth-gn)/2); ZANCHOR=null; ZCUR=null;
   const zl=document.getElementById('zlab'); if(zl)zl.textContent=dz?'日':pd>=3?'週':'月';
 }
-document.getElementById('mLegend').addEventListener('click',e=>{
+document.getElementById('mLegend').addEventListener('click',async e=>{
+  const eb=e.target.closest('button[data-edit]'); if(eb){const id=eb.dataset.edit; if(id===CUR_ID)return;
+    if(DIRTY&&!confirm('目前案件尚未存檔，切換編輯案件會放棄修改。確定？'))return;
+    try{await loadEntry(id); renderCases(); render()}catch(err){document.getElementById('msg').textContent='載入失敗：'+err.message} return}
   if(e.target.id==='zfit'){ZOOMV=0;ZANCHOR=null;render();return}
   if(e.target.id==='ztoday'){if(!GAX)return;ZANCHOR=(GAX.today-GAX.s0)/864e5;if(ZOOMV<60)ZOOMV=60;render();return}
   const al=e.target.closest('#malign button'); if(al){CMPALIGN=al.dataset.a;render();return}
