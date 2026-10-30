@@ -243,7 +243,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 .g-bar .gh{position:absolute;right:-3px;top:-3px;bottom:-3px;width:8px;cursor:ew-resize}
 .pop [hidden]{display:none!important}
 .pop{position:fixed;z-index:60;background:var(--bg);border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.18);padding:10px 12px;display:flex;flex-direction:column;gap:6px;width:280px;font-size:13px}
-.pop .pp-h{cursor:move;user-select:none;touch-action:none;padding:2px 0;border-bottom:1px solid var(--line2)}.pop label{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--mute)}
+.dragtip,#dragTip{position:fixed;z-index:70;pointer-events:none;background:var(--ink);color:var(--bg);padding:5px 9px;border-radius:4px;font-size:12px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.3)}#dragTip span{opacity:.75}.pop .pp-h{cursor:move;user-select:none;touch-action:none;padding:2px 0;border-bottom:1px solid var(--line2)}.pop label{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--mute)}
 .pop input,.pop select{font:inherit;padding:2px 4px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:150px}
 .pop .pp-act{display:flex;justify-content:flex-end;gap:6px;margin-top:4px}
 </style>
@@ -425,10 +425,11 @@ function compute(tasks,startStr){
       if(done[r.k])continue;
       const preds=(r.pred||[]).filter(([k])=>by[k]&&by[k].t!==PH);
       if(r.sm!=='fix'&&!preds.every(([k])=>done[k]||by[k].t==='sum'))continue;
-      let es=r.sm==='fix'&&r.fix?nextWd(pd(r.fix)):start;
+      let es=r.sm==='fix'&&r.fix?nextWd(pd(r.fix)):null;
       if(r.sm!=='fix'){
-        for(const [k,t,l] of preds){const p=by[k];if(!p.s)continue;const c=addWd(predBase(p,t),l||0);if(c>es)es=c;}
+        for(const [k,t,l] of preds){const p=by[k];if(!p.s)continue;const c=addWd(predBase(p,t),l||0);if(!es||c>es)es=c;}
       }
+      if(!es)es=start; // 專案開始日只當「沒有前置任務」的起點；有前置任務的可以比它早（例如前置任務被提早、或負延遲）
       r.s=es; r.f=finishOf(es,r.dur||1); done[r.k]=1; progressed=true;
     }
     if(!progressed){for(const r of leaf)if(!done[r.k]){r.err='前置任務循環或找不到';r.s=start;r.f=finishOf(start,r.dur||1);done[r.k]=1;}}
@@ -752,7 +753,9 @@ function setStart(r,ns){
 }
 let DRAG=null;
 document.getElementById('mg').addEventListener('pointerdown',e=>{
-  if(e.button!==0)return; const bar=e.target.closest('.g-bar.ed'); if(!bar||!GAX)return;
+  if(e.button!==0)return; const bar=e.target.closest('.g-bar.ed');
+  if(!bar){const ob=e.target.closest('.g-bar:not(.sumb)'); if(ob)document.getElementById('msg').textContent='這個任務所屬的案件不是「編輯中」，不能拖曳。請按上方案件名稱旁的 ✎ 切換成編輯這個案件。'; return}
+  if(!GAX)return;
   const r=byK[bar.dataset.k]; if(!r||!r.s)return;
   const track=bar.parentElement.getBoundingClientRect();
   DRAG={bar,r,x0:e.clientX,mode:e.target.classList.contains('gh')?'resize':'move',pxPerDay:track.width/GAX.span,left0:bar.offsetLeft,w0:bar.offsetWidth,moved:false};
@@ -762,10 +765,19 @@ document.getElementById('mg').addEventListener('pointermove',e=>{
   if(!DRAG)return; const dx=e.clientX-DRAG.x0; if(Math.abs(dx)>3)DRAG.moved=true; if(!DRAG.moved)return;
   const sx=Math.round(dx/DRAG.pxPerDay)*DRAG.pxPerDay; if(DRAG.mode==='move')DRAG.bar.style.transform=`translateX(${sx}px)`; else DRAG.bar.style.width=Math.max(4,DRAG.w0+sx)+'px';
   const days=Math.round(dx/DRAG.pxPerDay);
-  document.getElementById('msg').textContent=DRAG.mode==='move'?`開始日 ${fd(nextWd(addD(DRAG.r.s,days)))}`:`完成日 ${fd(prevWd(addD(DRAG.r.f,days)))}`;
+  const r=DRAG.r, wdn=wdBetween(r.s,r.f), WK='日一二三四五六';
+  let ns=r.s, nf=r.f;
+  if(DRAG.mode==='move'){ns=nextWd(addD(r.s,days)); nf=addWd(ns,Math.max(1,wdn)-1)} else {nf=prevWd(addD(r.f,days)); if(nf<r.s)nf=r.s}
+  const lab=d=>`${fd(d)}（${WK[d.getUTCDay()]}）`;
+  document.getElementById('msg').textContent=`開始 ${lab(ns)} → 完成 ${lab(nf)}`;
+  let tip=document.getElementById('dragTip'); if(!tip){tip=document.createElement('div');tip.id='dragTip';document.body.appendChild(tip)}
+  tip.innerHTML=`<b>開始</b> ${lab(ns)}<br><b>完成</b> ${lab(nf)}<br><span>${wdBetween(ns,nf)} 工天</span>`;
+  tip.style.left=Math.min(innerWidth-190,e.clientX+14)+'px'; tip.style.top=Math.max(4,e.clientY-62)+'px';
+  const bs=DRAG.bar.querySelector('.bd.bs'), be=DRAG.bar.querySelector('.bd.be'), bdt=DRAG.bar.querySelector('.bdt');
+  if(bs)bs.textContent=sd(ns); if(be)be.textContent=sd(nf); if(bdt)bdt.textContent=sd(nf);
 });
 document.getElementById('mg').addEventListener('pointerup',e=>{
-  if(!DRAG)return; const d=DRAG; DRAG=null; d.bar.style.transform='';
+  if(!DRAG)return; const d=DRAG; DRAG=null; d.bar.style.transform=''; const dt=document.getElementById('dragTip'); if(dt)dt.remove();
   if(!d.moved){openPop(d.r,e.clientX,e.clientY);return}
   const days=Math.round((e.clientX-d.x0)/d.pxPerDay); if(!days){render();return}
   pushUndo(); let warn='';
