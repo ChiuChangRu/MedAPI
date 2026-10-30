@@ -27,19 +27,19 @@ html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 "Microsoft JhengHei","PingFang TC","Noto Sans TC",system-ui,sans-serif;display:flex;flex-direction:column}
 button,select,input{font:inherit;color:inherit}
 /* 上方工具列 */
-.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 10px;background:var(--chrome);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;padding:6px 10px;background:var(--chrome);border-bottom:1px solid var(--line)}
 .bar .title{font-weight:700;font-size:14px;margin-right:6px}
 .bar label{color:var(--mute);display:flex;align-items:center;gap:4px}
 .bar select,.bar input[type=date]{padding:3px 6px;border:1px solid var(--line);border-radius:2px;background:var(--bg)}
 #proj{min-width:220px;max-width:280px;font-weight:700;color:var(--ink)}
-.bar .home{cursor:pointer;font-size:13px;margin-left:auto;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--bg);padding:3px 10px;border-radius:2px}
-.bar2{display:flex;align-items:center;flex-wrap:wrap;gap:0;padding:0 10px;background:var(--chrome);border-bottom:1px solid var(--line)}
+.bar .home{cursor:pointer;font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--bg);padding:3px 10px;border-radius:2px}
+.bar2{display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;gap:0;padding:0 10px;background:var(--chrome);border-bottom:1px solid var(--line)}
 .tab{white-space:nowrap;border:1px solid transparent;border-bottom:0;background:transparent;padding:5px 14px;cursor:pointer;margin-bottom:-1px}
 .tab.on{background:var(--bg);border-color:var(--line);font-weight:700}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-left:12px}
 .seg button{white-space:nowrap;border:0;background:var(--bg);padding:3px 10px;cursor:pointer}
 .seg button.on{background:var(--accent);color:#fff}
-.kpis{display:flex;gap:4px 18px;margin-left:auto;padding:4px 0;font-size:12px;color:var(--mute);flex-wrap:wrap}
+.kpis{display:flex;gap:4px 12px;margin-left:auto;padding:4px 0 4px 10px;font-size:12px;color:var(--mute);flex-wrap:nowrap;overflow:hidden;min-width:0}
 .kpis b{color:var(--ink)}
 .kpis>span{white-space:nowrap}
 .grid td.pred{white-space:normal;min-width:90px;max-width:220px}
@@ -104,7 +104,7 @@ code{font-family:Consolas,ui-monospace,monospace;font-size:12px}
 .chip{display:inline-block;min-width:18px;text-align:center;font-size:11px;line-height:16px;border-radius:2px;color:#fff;margin-right:4px;padding:0 3px}
 .chip.pa{background:var(--bar)}.chip.pb{background:var(--projb)}.chip.pc{background:#3f8f5f}.chip.pd{background:#7a5cb8}
 .g-bar.pc{background:#3f8f5f}.g-bar.pd{background:#7a5cb8}.g-bar.pc.sumb,.g-bar.pd.sumb{opacity:.6}
-.mcases{display:inline-flex;gap:10px;flex-wrap:wrap;margin-right:12px}.mcases label{display:inline-flex;align-items:center;gap:4px;color:var(--ink);cursor:pointer}
+.mcases{display:inline-flex;gap:8px;flex-wrap:nowrap;margin-right:4px}.mcases .cn{max-width:11em;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle}.mcases label{display:inline-flex;align-items:center;gap:4px;color:var(--ink);cursor:pointer}
 .g-row.lane td,.g-row.lane{font-weight:700}
 .g-row.lane .g-name{background:var(--chrome2)}
 .mseg{display:inline-flex;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-right:12px}
@@ -118,7 +118,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .g-row.sum .g-name{background:var(--sum)}
 .g-head .g-name{background:var(--chrome);z-index:3}
 .g-head{z-index:4}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mute);padding:6px 10px}
+.legend{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;font-size:12px;color:var(--mute);padding:4px 10px;scrollbar-width:thin}
 .legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
 /* 依據 */
 .doc{padding:12px 16px;max-width:1000px}
@@ -202,6 +202,17 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .cmp .cl b{color:var(--ink);font-weight:700}
 .cmp .ln{position:absolute;height:8px;border-radius:2px}
 .seg.pa,.ln.pa{background:var(--bar)}.seg.pb,.ln.pb{background:var(--projb)}.seg.pc,.ln.pc{background:#3f8f5f}.seg.pd,.ln.pd{background:#7a5cb8}
+.bar .ic{font-size:15px;line-height:1;padding:3px 8px}
+#theme{margin-left:auto}
+.menu{position:relative}
+.menu-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:80;background:var(--bg);border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.18);min-width:240px;padding:4px 0}
+.menu-pop button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);padding:6px 12px;cursor:pointer;font:inherit}
+.menu-pop button:hover{background:var(--accent-soft)}
+.menu-pop .sep{border-top:1px solid var(--line);margin:4px 0}
+.legend .mseg{margin-right:0}
+.legend .info{cursor:help;border:1px solid var(--line);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:var(--mute)}
+.zoom input[type=range]{width:100px!important}
+@media (max-width:1100px){.bar,.bar2{flex-wrap:wrap}}
 .zoom{display:inline-flex;align-items:center;gap:6px}
 .zoom input[type=range]{width:140px}
 .zoom button{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:1px 8px;cursor:pointer}
@@ -216,28 +227,32 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 </head>
 <body>
 <div class="bar">
+  <a class="home ic" href="index.html" title="回首頁">‹</a>
   <span class="title">📅 PM 工具</span>
   <label>案件 <select id="proj"><option>（讀取中…）</option></select></label>
-  <label>專案開始日 <input type="date" id="start"></label>
+  <label>開始日 <input type="date" id="start"></label>
   <label title="工作天怎麼算：鼎新 PLM 預設只排除週末">行事曆 <select id="cal"><option value="tw">週末＋國定假日</option><option value="weekend">只排週末（同PLM）</option></select></label>
   <label>今天 <input type="date" id="today"></label>
   <button class="act primary" id="btnSave" type="button" disabled>💾 存檔</button>
-  <button class="act" id="btnXlsx" type="button">匯出 Excel</button>
-  <button class="act" id="btnPlm" type="button">匯出 PLM</button>
-  <button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">匯入 PLM</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden>
-  <button class="home" id="theme" type="button" title="切換白色／深色模式"></button>
-  <a class="home" href="index.html" style="margin-left:0">‹ 回首頁</a>
+  <span class="menu"><button class="act" id="btnFile" type="button" title="匯出 Excel／PLM、匯入 PLM">檔案 ▾</button>
+    <div class="menu-pop" id="fileMenu" hidden>
+      <button type="button" id="btnXlsx">匯出公司 Excel（進度管制表）</button>
+      <button type="button" id="btnPlm">匯出鼎新 PLM（XML）</button>
+      <div class="sep"></div>
+      <button type="button" id="btnImp" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">匯入鼎新 PLM（XML）→ 新案件…</button>
+    </div></span><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden>
+  <button class="home ic" id="theme" type="button" title="切換白色／深色模式"></button>
 </div>
 <div class="bar2">
   <button class="tab on" data-t="tbl" type="button">任務</button>
   <button class="tab" data-t="multi" type="button">多案總覽</button>
   <button class="tab" data-t="rule" type="button">依據與規則</button>
   <span class="edit-tools" id="editTools">
-    <button class="act" id="btnAdd" type="button" title="在選取列之後新增任務">＋ 新增任務</button>
-    <button class="act" id="btnDel" type="button" title="刪除選取的任務">刪除任務</button>
-    <button class="act" id="btnBase" type="button" title="把目前計劃開始／完成存成「預計開始日／原本預計完成」">設為基準</button>
-    <button class="act" id="btnLink" type="button" title="把「指定日期」的任務改成接前置任務，延遲天數自動算到日期不變">轉為連動</button>
-    <button class="act" id="btnUndo" type="button" title="復原上一步" disabled>↶ 復原</button>
+    <button class="act" id="btnAdd" type="button" title="在選取列之後新增任務">＋ 新增</button>
+    <button class="act" id="btnDel" type="button" title="刪除選取的任務">刪除</button>
+    <button class="act" id="btnBase" type="button" title="把目前計劃開始／完成存成「預計開始日／原本預計完成」">設基準</button>
+    <button class="act" id="btnLink" type="button" title="把「指定日期」的任務改成接前置任務，延遲天數自動算到日期不變">轉連動</button>
+    <button class="act" id="btnUndo" type="button" title="復原上一步" disabled>↶</button>
     <span class="dirty" id="dirty"></span>
   </span>
   <span class="kpis" id="kpis"></span>
@@ -544,9 +559,9 @@ async function renderMulti(today){
   if(seq!==MSEQ)return;
   lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button><button data-l="cmp" class="${MLAYOUT==='cmp'?'on':''}" type="button" title="多案疊圖：各案從各自開始日對齊，比較同類工作花多久">⇆ 比較</button></span>
     ${MLAYOUT==='cmp'?`<span class="mseg" id="malign"><button data-a="start" class="${CMPALIGN==='start'?'on':''}" type="button">對齊開始日</button><button data-a="date" class="${CMPALIGN==='date'?'on':''}" type="button">實際日期</button></span>`:''}
-    <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span>${esc(c.title)}</label>`).join('')}</span>
-    <span class="zoom" ${MLAYOUT==='cmp'?'style="display:none"':''}>縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday">跳到今天</button><label title="上下捲動時，自動左右移到畫面中任務的條塊"><input type="checkbox" id="zfollow" ${AUTOF?'checked':''}>自動跟隨</label></span>
-    <span>* 為回推開始日</span><span><i style="background:var(--accent);width:2px"></i>今天</span><span><i style="background:rgba(110,110,110,.3)"></i>假日（週末＋國定）</span>`;
+    <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span><span class="cn" title="${esc(c.title)}">${esc(c.title)}</span></label>`).join('')}</span>
+    <span class="zoom" ${MLAYOUT==='cmp'?'style="display:none"':''}>縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday" title="放大並捲到今天">今天</button><label title="上下捲動時，自動左右移到畫面中任務的條塊"><input type="checkbox" id="zfollow" ${AUTOF?'checked':''}>跟隨</label></span>
+    <span class="info" title="圖例：&#10;藍色直線＝今天&#10;灰底＝假日（依案件行事曆）&#10;名稱後 *＝回推開始日&#10;◆＝里程碑；紅色虛線＝註記&#10;右鍵：條塊設里程碑、空白處加註記">i</span>`;
   const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color)).filter(c=>c.rows.length);
   if(!sel.length){g.innerHTML='<p class="note" style="padding:12px">請至少勾選一個案件。</p>';return}
   if(MLAYOUT==='cmp'){renderCmp(sel,g);return} g.classList.remove('cmp');
@@ -773,6 +788,9 @@ document.getElementById('mg').addEventListener('contextmenu',e=>{
 })();
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePop();closeCtx()} if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
 document.getElementById('btnUndo').onclick=undo;
+document.getElementById('btnFile').onclick=e=>{e.stopPropagation();const m=document.getElementById('fileMenu');m.hidden=!m.hidden};
+document.getElementById('fileMenu').addEventListener('click',()=>{document.getElementById('fileMenu').hidden=true});
+document.addEventListener('click',e=>{if(!e.target.closest('.menu'))document.getElementById('fileMenu').hidden=true});
 document.getElementById('cal').onchange=e=>{pushUndo(); if(e.target.value==='weekend')META.calendar='weekend'; else delete META.calendar; syncCal(); setDirty(true); render();
   document.getElementById('msg').textContent=USE_HOL?'改用週末＋國定假日重算':'改成只排除週末（與鼎新 PLM 相同）重算'};
 // 轉為連動：指定日期 → 前置任務，每個前置的延遲都算到「日期不變」（壓縮處會出現負延遲）
@@ -1011,7 +1029,7 @@ document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.cl
   ['tbl','multi','rule'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.t);
   document.getElementById('editTools').style.visibility=b.dataset.t==='rule'?'hidden':'visible'});
 document.getElementById('today').value=fd(new Date());
-function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';document.getElementById('theme').textContent=dark?'☀ 白色模式':'☾ 深色模式'}
+function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';const t=document.getElementById('theme');t.textContent=dark?'☀':'☾';t.title=dark?'切換成白色模式':'切換成深色模式'}
 document.getElementById('theme').addEventListener('click',()=>{
   const dark=document.documentElement.getAttribute('data-theme')!=='dark';
   if(dark)document.documentElement.setAttribute('data-theme','dark');else document.documentElement.removeAttribute('data-theme');
