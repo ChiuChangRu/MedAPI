@@ -307,7 +307,8 @@ table.lst td.nm{white-space:normal;font-weight:700}
 <li>工作天跳過週六日與政府行政機關辦公日曆的國定假日、補假（2026、2027 年）；有補班日時算工作天。2028 年以後辦公日曆尚未公布，只跳過週六日。</li>
 <li>指定日期落在假日時，順延到下一個工作天。</li>
 <li>階段列與摘要列不能編輯：開始＝子項最早開始、完成＝子項最晚完成。</li>
-<li>半自動初次載入時，完全依 Excel 壓縮版：每個任務設為「指定日期」＝壓縮版開始日，歷時＝壓縮版開始到「修改後預計完成」之間的工作天。原排開始晚於修改後完成的任務（Excel 未填修改後開始日），開始日＝修改後完成 − Excel「工作天數」(J 欄，曆天)，標 *。日期落在週末時依固定規則移動：週六→前一個週五、週日→後一個週一（開始日、完成日皆同）；國定假日（僅「政府行事曆」）則開始日往後、完成日往前找最近的工作日。</li>
+<li>半自動（上級簽核版 Excel）初次載入時「完全照 Excel」：開始日＝Excel「預計開始日」F；歷時＝Excel「工作天數」J（曆天，含頭尾），也就是 Excel 自己圖表畫的長度。Excel 的「修改後預計完成」I 只作對照，不用來排程。日期落在週六→前一個週五、週日→後一個週一；這一版不處理國定假日（行事曆＝只排週末）。沒有 J 的案件（例如匯入的 PLM）才用原本的規則。</li>
+
 </ul>
 <h2>甘特圖直接編輯</h2>
 <ul>
@@ -371,8 +372,9 @@ const fd=d=>d?d.toISOString().slice(0,10):'';
 const addD=(d,n)=>new Date(d.getTime()+n*864e5);
 let USE_HOL=true; // 案件行事曆：true＝週末＋國定假日；false＝只排除週末（同鼎新 PLM 預設）
 const isWd=d=>{const k=fd(d);if(USE_HOL&&MAKEUP.has(k))return true;const w=d.getUTCDay();return w!==0&&w!==6&&!(USE_HOL&&HOLIDAYS.has(k))};
-const withCal=(meta,fn)=>{const o=USE_HOL;USE_HOL=!meta||meta.calendar!=='weekend';try{return fn()}finally{USE_HOL=o}};
-function syncCal(){USE_HOL=META.calendar!=='weekend';const c=document.getElementById('cal');if(c)c.value=USE_HOL?'tw':'weekend'}
+const calWk=m=>!!m&&(m.calendar==='weekend'||/^Mon-Fri/.test(m.calendar||'')); // 「Mon-Fri…」＝只排週末
+const withCal=(meta,fn)=>{const o=USE_HOL;USE_HOL=!calWk(meta);try{return fn()}finally{USE_HOL=o}};
+function syncCal(){USE_HOL=!calWk(META);const c=document.getElementById('cal');if(c)c.value=USE_HOL?'tw':'weekend'}
 const nextWd=d=>{while(!isWd(d))d=addD(d,1);return d};
 const prevWd=d=>{while(!isWd(d))d=addD(d,-1);return d};
 const addWd=(d,n)=>{ // 從工作日 d 起算第 n 個工作日；n 可為負（往前數）
@@ -395,10 +397,13 @@ function wbsMap(tasks){const by=Object.fromEntries(tasks.map(r=>[r.k,r]));let p=
 function migrate(tasks){
   for(const r of tasks){
     if(r.t===PH||r.t==='sum'||r.sm)continue;
-    if(r.I){
+    if(r.F&&r.J!=null){ // Excel 原樣（上級簽核版）：開始＝預計開始日 F；歷時＝工作天數 J（曆天，含頭尾）＝Excel 圖表畫的長度；週六→週五、週日→週一
+      let s=wkAdj(pd(r.F),1), f=wkAdj(addD(pd(r.F),Math.max(1,r.J)-1),-1); if(f<s)f=s; r.back=false;
+      r.sm='fix'; r.fix=fd(s); r.dur=Math.max(1,wdBetween(s,f));
+    } else if(r.I){
       let s=r.F?pd(r.F):pd(r.I), f=pd(r.I); r.back=false;
-      if(s>f){const dur=r.J!=null?Math.max(0,r.J-1):(r.G?Math.round((pd(r.G)-pd(r.F))/864e5):0);/* 工期＝Excel 工作天數 J（含頭尾曆天）；無 J 才用 原本完成−原排開始 */ s=addD(f,-dur); r.back=true;}
-      s=wkAdj(s,1); f=wkAdj(f,-1); if(f<s)f=s; // 週六→週五、週日→週一；其他假日：開始往後、完成往前
+      if(s>f){const dur=r.G?Math.round((pd(r.G)-pd(r.F))/864e5):0; s=addD(f,-dur); r.back=true;}
+      s=wkAdj(s,1); f=wkAdj(f,-1); if(f<s)f=s;
       r.sm='fix'; r.fix=fd(s); r.dur=Math.max(1,wdBetween(s,f));
     } else { r.sm='pred'; }
     r.pred=r.pred||[];
@@ -592,7 +597,7 @@ const scaleBands=(x,bands,label)=>bands.map(([a,b],i)=>(i%2?'':`<span class="yla
 function caseRows(id,json,color){
   const isCur=String(id)===CUR_ID; const meta=isCur?META:(json.meta||{}); const tag=tagOf(meta);
   let tasks;
-  if(isCur)tasks=D; else {tasks=migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])}))); anchorStart(tasks,meta.default_start); withCal(meta,()=>compute(tasks,meta.default_start||fd(new Date())));}
+  if(isCur)tasks=D; else {tasks=withCal(meta,()=>migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])})))); anchorStart(tasks,meta.default_start); withCal(meta,()=>compute(tasks,meta.default_start||fd(new Date())));}
   const wm=wbsMap(tasks);
   const rows=tasks.filter(r=>r.s&&r.f).map(r=>({k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms}));
   return {tag,name:meta.name||'',color,rows,marks:(meta.marks||[]).map(m=>({...m,cur:isCur,tag}))};
@@ -1169,7 +1174,7 @@ function renderCases(){
       <td class="nm">${esc(e.title.slice(PM_PREFIX.length))}</td>
       <td>${ci?`<span class="chip ${tagOf(m)==='半'?'pb':'pa'}">${esc(tagOf(m))}</span>`:'—'}</td>
       <td>${ci?ci.n:'—'}</td><td>${ci&&ci.s?fd(ci.s):'—'}</td><td>${ci&&ci.f?fd(ci.f):'—'}</td><td>${mon}</td>
-      <td>${ci?(m.calendar==='weekend'?'只排週末':'週末＋國定'):'—'}</td><td>${ci?esc(m.updated||''):'—'}</td></tr>`}).join('')+'</tbody>';
+      <td>${ci?(calWk(m)?'只排週末':'週末＋國定'):'—'}</td><td>${ci?esc(m.updated||''):'—'}</td></tr>`}).join('')+'</tbody>';
 }
 document.getElementById('caseTbl').addEventListener('change',async e=>{
   const st=document.getElementById('msg');
