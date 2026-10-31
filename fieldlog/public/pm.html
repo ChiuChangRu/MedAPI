@@ -279,7 +279,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
   <h2>① 案件宣告與載入</h2>
   <p class="note">這裡列出 MyWiki「PM工具」資料夾裡所有案件。<b>開啟檔案</b>（單選）＝「③ 任務」與「④ 下載」操作的那一個案件，也是「② 甘特圖」可拖曳修改的案件；<b>加入比較</b>（可多選）＝讀進來疊在「② 甘特圖」一起比較。</p>
   <div class="pgbar cset"><b id="curName">（尚未載入案件）</b><label>開始日 <input type="date" id="start"></label>
-  <label title="工作天怎麼算：鼎新 PLM 預設只排除週末">行事曆 <select id="cal"><option value="tw">週末＋國定假日</option><option value="weekend">只排週末（同PLM）</option></select></label><span class="note">（設定的是「編輯中」的案件）</span></div>
+  <label title="工作天怎麼算：鼎新 PLM 預設為週一至週五（國定假日照常）">行事曆 <select id="cal"><option value="tw">六日休＋國定假日休</option><option value="weekend">六日休（週一～五）．國定假日照常</option></select></label><span class="note">（設定的是「編輯中」的案件；「國定假日照常」＝不扣除國定假日，與上級簽核 Excel、鼎新 PLM 算法相同）</span></div>
   <div class="pgbar"><button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">＋ 匯入鼎新 PLM（XML）→ 新案件…</button><button class="act" id="btnReload" type="button">↻ 重新整理清單</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden><button class="act" id="btnImpX" type="button" title="讀入公司制式進度管制表 .xlsx，每個分頁建立成一個案件">＋ 匯入公司 Excel（多分頁）→ 新案件…</button><input type="file" id="impXlsx" accept=".xlsx" hidden></div>
   <table class="lst" id="caseTbl"></table>
 </div></section>
@@ -307,7 +307,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 <li>工作天跳過週六日與政府行政機關辦公日曆的國定假日、補假（2026、2027 年）；有補班日時算工作天。2028 年以後辦公日曆尚未公布，只跳過週六日。</li>
 <li>指定日期落在假日時，順延到下一個工作天。</li>
 <li>階段列與摘要列不能編輯：開始＝子項最早開始、完成＝子項最晚完成。</li>
-<li>半自動（上級簽核版 Excel）初次載入時「完全照 Excel」：開始日＝Excel「預計開始日」F；歷時＝Excel「工作天數」J（曆天，含頭尾），也就是 Excel 自己圖表畫的長度。Excel 的「修改後預計完成」I 只作對照，不用來排程。日期落在週六→前一個週五、週日→後一個週一；這一版不處理國定假日（行事曆＝只排週末）。沒有 J 的案件（例如匯入的 PLM）才用原本的規則。</li>
+<li>半自動（上級簽核版 Excel）初次載入時「完全照 Excel」：開始日＝Excel「預計開始日」F；歷時＝Excel「工作天數」J（曆天，含頭尾），也就是 Excel 自己圖表畫的長度。Excel 的「修改後預計完成」I 只作對照，不用來排程。日期落在週六→前一個週五、週日→後一個週一；這一版不處理國定假日（行事曆＝六日休、國定假日照常）。沒有 J 的案件（例如匯入的 PLM）才用原本的規則。</li>
 
 </ul>
 <h2>甘特圖直接編輯</h2>
@@ -317,7 +317,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 <li>「轉為連動」：把指定日期的任務改成接前置任務，延遲天數自動算到日期不變；壓縮重疊處會是負延遲。</li>
 <li>「↶ 復原」或 Ctrl+Z 退回上一步（最多 40 步）；離開前記得存檔。</li>
 <li>⇆ 比較（② 甘特圖）：勾選的案件疊在同一張圖。「對齊開始日」＝各案從自己的開始日算起（M1＝第 1 個月），比較同類工作在第幾個月、花多久；「實際日期」＝放在真實日曆上。上方「整體進程」每案一列、依階段排開並標總月數；下方「同類工作疊圖」把名稱含相同關鍵字的任務歸成一類（試模、模具、驗證、審查…），每案一條細線（中間斷開＝這類工作中間有空檔），右側標跨幾個月、幾項。*分類是依任務名稱關鍵字自動判斷，可能歸錯，滑鼠移到右側文字可看包含哪些任務。</li>
-<li>匯入 PLM：讀入鼎新 PLM 匯出的 XML，建立成新案件（存到 MyWiki 的 PM工具 資料夾）；第 1 層摘要＝階段、第 2 層摘要＝摘要、其餘＝任務；前置任務、工期、執行人、實際開始／完成都帶入。匯入的案件行事曆預設「只排週末（同PLM）」，日期與 PLM 一致；上方「行事曆」可改成「週末＋國定假日」。</li>
+<li>匯入 PLM：讀入鼎新 PLM 匯出的 XML，建立成新案件（存到 MyWiki 的 PM工具 資料夾）；第 1 層摘要＝階段、第 2 層摘要＝摘要、其餘＝任務；前置任務、工期、執行人、實際開始／完成都帶入。匯入的案件行事曆預設「六日休（週一～五）．國定假日照常」（同 PLM），日期與 PLM 一致；上方「行事曆」可改成「週末＋國定假日」。</li>
 <li>開始日：沒有前置任務、而且從專案開始日起跑的任務，會跟著「開始日」移動，後面接前置任務的工作一起連動。改開始日時若還有「指定日期」的任務，會詢問要不要一起平移。</li>
 <li>右鍵：在目前案件的條塊上按右鍵＝設為／取消里程碑（完成日立一支紅色旗子，標題列也會標出 ⚑）；在空白處或時間標題按右鍵＝在那一天加註記（紅色虛線，例如送件日、客戶審查）；在標題列的註記上按右鍵＝修改或刪除。里程碑與註記存在這個案件的資料裡，*目前不會寫進公司 Excel 與 PLM 檔。</li>
 <li>點條塊開小視窗後，前置任務用下拉選單選子任務，關係選「完成→」（FS）或「同開始」（SS），延遲填工作天（負值＝重疊）；可加多個。</li>
@@ -882,7 +882,7 @@ document.getElementById('mg').addEventListener('contextmenu',e=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePop();closeCtx()} if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
 document.getElementById('btnUndo').onclick=undo;
 document.getElementById('cal').onchange=e=>{pushUndo(); if(e.target.value==='weekend')META.calendar='weekend'; else delete META.calendar; syncCal(); setDirty(true); render();
-  document.getElementById('msg').textContent=USE_HOL?'改用週末＋國定假日重算':'改成只排除週末（與鼎新 PLM 相同）重算'};
+  document.getElementById('msg').textContent=USE_HOL?'改用「六日休＋國定假日休」重算':'改用「六日休（週一～五）．國定假日照常」重算（與鼎新 PLM 相同）'};
 // 轉為連動：指定日期 → 前置任務，每個前置的延遲都算到「日期不變」（壓縮處會出現負延遲）
 document.getElementById('btnLink').onclick=()=>{
   const cand=D.filter(r=>r.t!==PH&&r.t!=='sum'&&r.sm==='fix'&&r.s&&(r.pred||[]).some(([k])=>byK[k]&&byK[k].t!==PH&&byK[k].s));
@@ -1103,8 +1103,8 @@ document.getElementById('impFile').onchange=async e=>{
     const name=prompt(`匯入 ${tasks.filter(r=>r.t!==PH&&r.t!=='sum').length} 個任務。\n案件名稱：`,meta.name); if(name==null)return;
     meta.name=name.trim()||meta.name;
     meta.notes=[`${fd(new Date())} 由鼎新 PLM XML 匯入（檔名：${f.name}）。`,
-      `行事曆設為「只排除週末」（與 PLM 相同），重算後與 PLM 日期不同的任務 ${diffW.length} 個；若改成「週末＋國定假日」會有 ${diffT.length} 個不同。`,...warn];
-    if(!confirm(`行事曆：只排除週末（與鼎新 PLM 相同）→ 重算後與 PLM 原日期不同的任務：${diffW.length} 個。\n（若改用「週末＋國定假日」，會有 ${diffT.length} 個任務日期變動；之後可在上方「行事曆」切換。）\n\n${warn.length?warn.slice(0,5).join('\n')+'\n\n':''}建立新案件「${meta.name}」並存到 MyWiki？`))return;
+      `行事曆設為「六日休（週一～五）．國定假日照常」（與 PLM 相同），重算後與 PLM 日期不同的任務 ${diffW.length} 個；若改成「六日休＋國定假日休」會有 ${diffT.length} 個不同。`,...warn];
+    if(!confirm(`行事曆：六日休（週一～五）．國定假日照常（與鼎新 PLM 相同）→ 重算後與 PLM 原日期不同的任務：${diffW.length} 個。\n（若改用「六日休＋國定假日休」，會有 ${diffT.length} 個任務日期變動；之後可在上方「行事曆」切換。）\n\n${warn.length?warn.slice(0,5).join('\n')+'\n\n':''}建立新案件「${meta.name}」並存到 MyWiki？`))return;
     const folders=await api('/folders'); const fo=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER));
     if(!fo)throw new Error(`找不到「${PM_FOLDER}」資料夾`);
     const body='{"meta":'+JSON.stringify({...meta,updated:fd(new Date())})+',\n"tasks":[\n'+tasks.map(x=>JSON.stringify(x)).join(',\n')+'\n]}';
@@ -1180,7 +1180,7 @@ function sheetToCase(sh,fileName){
   const leaf=tasks.filter(x=>x.t!=='phase'&&x.t!=='sum'&&x.F); if(!leaf.length)return null;
   const A3=Object.values(g[3]||{}).map(v=>String(v)).find(v=>/專案負責人/.test(v))||'';
   const meta={name:sh.name.trim(),product:'',leader:A3.replace(/.*專案負責人[:：]?\s*/,'').trim(),source:`公司進度管制表 Excel（${fileName}）`,version:'v1',updated:fd(new Date()),calendar:'weekend',
-    default_start:leaf.map(x=>x.F).sort()[0],notes:[`${fd(new Date())} 由公司進度管制表 Excel 匯入（工作表「${sh.name.trim()}」）：開始日＝預計開始日、歷時＝工作天數（Excel 圖表畫法）；行事曆只排週末。`].concat(warn.length?[`以下項次沒有預計開始日，已接在前一項之後：${warn.join('、')}。`]:[])};
+    default_start:leaf.map(x=>x.F).sort()[0],notes:[`${fd(new Date())} 由公司進度管制表 Excel 匯入（工作表「${sh.name.trim()}」）：開始日＝預計開始日、歷時＝工作天數（Excel 圖表畫法）；行事曆：六日休、國定假日照常。`].concat(warn.length?[`以下項次沒有預計開始日，已接在前一項之後：${warn.join('、')}。`]:[])};
   return {meta,tasks,n:leaf.length};
 }
 document.getElementById('btnImpX').onclick=()=>document.getElementById('impXlsx').click();
@@ -1192,7 +1192,7 @@ document.getElementById('impXlsx').onchange=async e=>{
     const items=sheets.map(sh=>{let c=null; if(!sh.hidden){try{c=sheetToCase(sh,f.name)}catch(err){c=null}} const title=PM_PREFIX+sh.name.trim(); const dup=ENTRIES.some(x=>x.title===title); return {sh,c,title,dup}});
     const ok=items.filter(x=>x.c);
     const box=document.createElement('div'); box.className='xdlg';
-    box.innerHTML=`<div class="bx"><b>匯入公司 Excel：${esc(f.name)}</b><div class="sub" style="margin:4px 0 8px">每個勾選的分頁建立成一個新案件，存到 MyWiki「${esc(PM_FOLDER)}」。開始日＝預計開始日、歷時＝工作天數，行事曆只排週末。</div>
+    box.innerHTML=`<div class="bx"><b>匯入公司 Excel：${esc(f.name)}</b><div class="sub" style="margin:4px 0 8px">每個勾選的分頁建立成一個新案件，存到 MyWiki「${esc(PM_FOLDER)}」。開始日＝預計開始日、歷時＝工作天數，行事曆：六日休、國定假日照常。</div>
       ${items.map((x,i)=>`<label><input type="checkbox" data-i="${i}" ${x.c&&!x.dup?'checked':''} ${x.c?'':'disabled'}><span><b>${esc(x.sh.name.trim())}</b> ${x.c?`<span class="sub">${x.c.n} 個任務｜${esc(x.c.meta.default_start)} 起${x.c.meta.leader?'｜'+esc(x.c.meta.leader):''}${x.dup?'｜已有同名案件（勾選會再建一個）':''}</span>`:`<span class="sub">${x.sh.hidden?'隱藏分頁（舊格式），不匯入':'格式不符，不匯入'}</span>`}</span></label>`).join('')}
       <div style="text-align:right;margin-top:10px"><button class="act" data-x="cancel" type="button">取消</button><button class="act primary" data-x="go" type="button">匯入勾選的分頁</button></div></div>`;
     document.body.appendChild(box); st.textContent='';
@@ -1318,7 +1318,7 @@ function renderCases(){
       <td>${ci?`<span class="chip ${tagOf(m)==='半'?'pb':'pa'}">${esc(tagOf(m))}</span>`:'—'}</td>
       <td>${kindSel(id,m.kind||'',!ci)}</td>
       <td>${ci?ci.n:'—'}</td><td>${ci&&ci.s?fd(ci.s):'—'}</td><td>${ci&&ci.f?fd(ci.f):'—'}</td><td>${mon}</td>
-      <td>${ci?(calWk(m)?'只排週末':'週末＋國定'):'—'}</td><td>${ci?esc(m.updated||''):'—'}</td></tr>`}).join('')+'</tbody>';
+      <td>${ci?(calWk(m)?'六日休（週一～五）．國定假日照常':'六日休＋國定假日休'):'—'}</td><td>${ci?esc(m.updated||''):'—'}</td></tr>`}).join('')+'</tbody>';
 }
 document.getElementById('caseTbl').addEventListener('change',async e=>{
   const st=document.getElementById('msg');
@@ -1337,9 +1337,9 @@ document.getElementById('btnImp').onclick=()=>document.getElementById('impFile')
 function renderDl(){
   const b=document.getElementById('dlBody'); const nm=esc(META.name||'（尚未載入案件）');
   const warn=DIRTY?'<p style="color:var(--bad)">● 目前有尚未存檔的修改；下載的是畫面上的版本（不是 MyWiki 已存檔的版本）。</p>':'';
-  b.innerHTML=`<h2>④ 下載</h2><p class="note">目前編輯中的案件：<b>${nm}</b>（${D.filter(r=>r.t!==PH&&r.t!=='sum').length} 個任務，開始日 ${esc(document.getElementById('start').value)}，行事曆：${USE_HOL?'週末＋國定假日':'只排週末（同 PLM）'}）。要換案件請到「① 案件」。</p>${warn}
+  b.innerHTML=`<h2>④ 下載</h2><p class="note">目前編輯中的案件：<b>${nm}</b>（${D.filter(r=>r.t!==PH&&r.t!=='sum').length} 個任務，開始日 ${esc(document.getElementById('start').value)}，行事曆：${USE_HOL?'六日休＋國定假日休':'六日休（週一～五）．國定假日照常（同 PLM）'}）。要換案件請到「① 案件」。</p>${warn}
   <div class="dlc"><h3>公司制式 Excel（進度管制表）</h3><p>用公司範本，格式、欄寬、字型、圖表都不動，只填內容；一個案件一張工作表，圖表保留。</p><button class="act primary" data-dl="xlsx" type="button">⬇ 下載 Excel</button></div>
-  <div class="dlc"><h3>鼎新 PLM（MS Project XML）</h3><p>欄位與順序比照鼎新匯出的樣本；沒有「開發總覽」時自動補上。${USE_HOL?'<b>注意：</b>本案件行事曆含國定假日，PLM 只排除週末，匯入後 PLM 重算的日期可能提早幾天*。':'行事曆與 PLM 相同（只排週末），日期應與 PLM 一致。'}</p><button class="act primary" data-dl="plm" type="button">⬇ 下載 PLM XML</button></div>`;
+  <div class="dlc"><h3>鼎新 PLM（MS Project XML）</h3><p>欄位與順序比照鼎新匯出的樣本；沒有「開發總覽」時自動補上。${USE_HOL?'<b>注意：</b>本案件行事曆含國定假日，PLM 只扣六日、不扣國定假日，匯入後 PLM 重算的日期可能提早幾天*。':'行事曆與 PLM 相同（六日休（週一～五）．國定假日照常），日期應與 PLM 一致。'}</p><button class="act primary" data-dl="plm" type="button">⬇ 下載 PLM XML</button></div>`;
 }
 document.getElementById('dlBody').addEventListener('click',e=>{const b=e.target.closest('[data-dl]');if(!b)return; if(!D.length){document.getElementById('msg').textContent='尚未載入案件';return} b.dataset.dl==='xlsx'?doXlsx():doPlm()});
 // ===== 組織圖：單位與人員（存成 MyWiki 的一筆 PM組織｜ 記事）=====
