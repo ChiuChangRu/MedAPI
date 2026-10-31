@@ -190,6 +190,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .pp-preds .pr button{border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;padding:0 6px}
 .pp-add{align-self:flex-start;border:1px dashed var(--line);background:var(--bg);color:var(--accent);cursor:pointer;padding:1px 8px}
 .g-bar .bd{position:absolute;top:0;font-size:10px;line-height:16px;white-space:nowrap;color:var(--mute);pointer-events:none}
+.g-bar .bn{position:absolute;top:-3px;font-size:11px;line-height:16px;white-space:nowrap;color:var(--ink);pointer-events:none}.g-bar .bn.r{left:calc(100% + 4px)}.g-bar .bn.l{right:calc(100% + 4px)}.g-bar.hasms .bn.r{left:calc(100% + 17px)}.g-bar .bn2{font-size:10px;font-weight:400;color:var(--mute)}
 .g-bar .bd.bs{right:calc(100% + 4px)}
 .g-bar .bd.be{left:calc(100% + 4px)}
 .g-bar.hasms .bd.be,.g-bar.hasms .bl.bout{left:calc(100% + 17px)}
@@ -698,10 +699,10 @@ function drawGantt(sel,today,g){
   for(const r of rows){
     if(r.lane){h+=`<div class="g-row lane"><div class="g-name"><span class="chip ${r.c}">${esc(r.tag)}</span>${esc(r.name)}</div><div class="g-track">${tl}</div></div>`;continue}
     const ind=MLAYOUT==='lane'?8+(r.lvl-1)*14:8;
-    const tip=`${r.tag} ${r.wbs} ${r.name}：${fd(r.s)}${r.back?'*':''} → ${fd(r.f)}`;
+    const nd=Math.round((addD(r.f,1)-r.s)/864e5), tip=`${r.tag} ${r.wbs} ${r.name}：${fd(r.s)}${r.back?'*':''} → ${fd(r.f)}｜${nd} 天（曆天含頭尾）／${wdBetween(r.s,r.f)} 工天`;
     h+=`<div class="g-row ${r.sum?'sum':''}"><div class="g-name" style="padding-left:${ind}px" title="${esc(tip)}"><span class="chip ${r.c}">${esc(r.tag)}</span>${r.wbs} ${esc(r.name)}${r.back?' *':''}</div><div class="g-track">${tl}<div class="g-bar ${r.c} ${r.sum?'sumb':''} ${r.ed?'ed':''} ${r.ms?'hasms':''}" ${r.ed?`data-k="${esc(r.k)}"`:''} style="left:${x(r.s)};width:calc(${x(addD(r.f,1))} - ${x(r.s)})" title="${esc(tip)}${r.ed?'\n拖動＝改開始日；拖右緣＝改歷時；點一下＝輸入':''}">${ZOOMV>0?(()=>{const lb=`${r.wbs} ${r.name}`, wpx=(addD(r.f,1)-r.s)/864e5*pd, inn=!r.sum&&wpx>lb.length*11+12;
-      if(r.sum)return `<span class="bl bout">${esc(lb)}</span>`;
-      return `<span class="bd bs">${sd(r.s)}</span>`+(inn?`<span class="bl bin">${esc(lb)}</span><span class="bd be">${sd(r.f)}</span>`:`<span class="bl bout"><span class="bdt">${sd(r.f)}</span>${esc(lb)}</span>`)})():''}${r.ed?'<span class="gh"></span>':''}</div>${r.ms?`<svg class="g-ms" style="left:${x(addD(r.f,1))}" width="16" height="20" viewBox="0 0 16 20" aria-label="里程碑"><line x1="1" y1="0.5" x2="1" y2="20" stroke="currentColor" stroke-width="2"/><path d="M2 1 L15.5 5.5 L2 10 Z" fill="currentColor"/></svg>`:''}</div></div>`;
+      if(r.sum)return `<span class="bl bout">${esc(lb)}　<span class="bn2">${nd} 天</span></span>`;
+      return `<span class="bd bs">${sd(r.s)}</span>`+(inn?`<span class="bl bin">${esc(lb)}${wpx>(lb.length+7)*11+12?` <span style="opacity:.85">· ${nd} 天</span>`:''}</span><span class="bd be">${sd(r.f)} · ${nd} 天</span>`:`<span class="bl bout"><span class="bdt">${sd(r.f)} · ${nd} 天</span>${esc(lb)}</span>`)})():`<span class="bn ${((end-addD(r.f,1))/864e5*pd<56)?'l':'r'}">${nd} 天</span>`}${r.ed?'<span class="gh"></span>':''}</div>${r.ms?`<svg class="g-ms" style="left:${x(addD(r.f,1))}" width="16" height="20" viewBox="0 0 16 20" aria-label="里程碑"><line x1="1" y1="0.5" x2="1" y2="20" stroke="currentColor" stroke-width="2"/><path d="M2 1 L15.5 5.5 L2 10 Z" fill="currentColor"/></svg>`:''}</div></div>`;
   }
   g.innerHTML=h; GAX={s0,span,pd,today};
   sc0.scrollLeft=Math.max(0,ZCUR?ZCUR.day*pd-ZCUR.px:keepDay*pd-(sc0.clientWidth-gn)/2); ZANCHOR=null; ZCUR=null;
@@ -941,7 +942,7 @@ function setStart(r,ns){
   for(const p of r.pred){if(p===best.p)continue;const q=byK[p[0]];if(q&&q.s&&addWd(predBase(q,p[1]),p[2]||0)>ns)return '另一個前置任務仍限制開始日，請在任務表調整其延遲';}
   return '';
 }
-let DRAG=null;
+let DRAG=null; const ndd0=(a,b)=>Math.round((addD(b,1)-a)/864e5);
 document.getElementById('mg').addEventListener('pointerdown',e=>{
   if(e.button!==0)return; const bar=e.target.closest('.g-bar.ed');
   if(!bar){const ob=e.target.closest('.g-bar:not(.sumb)'); if(ob)document.getElementById('msg').textContent='這個任務所屬的案件不是「編輯中」，不能拖曳。請按上方案件名稱旁的 ✎ 切換成編輯這個案件。'; return}
@@ -961,10 +962,11 @@ document.getElementById('mg').addEventListener('pointermove',e=>{
   const lab=d=>`${fd(d)}（${WK[d.getUTCDay()]}）`;
   document.getElementById('msg').textContent=`開始 ${lab(ns)} → 完成 ${lab(nf)}`;
   let tip=document.getElementById('dragTip'); if(!tip){tip=document.createElement('div');tip.id='dragTip';document.body.appendChild(tip)}
-  tip.innerHTML=`<b>開始</b> ${lab(ns)}<br><b>完成</b> ${lab(nf)}<br><span>${wdBetween(ns,nf)} 工天</span>`;
+  tip.innerHTML=`<b>開始</b> ${lab(ns)}<br><b>完成</b> ${lab(nf)}<br><span>${ndd0(ns,nf)} 天（${wdBetween(ns,nf)} 工天）</span>`;
   tip.style.left=Math.min(innerWidth-190,e.clientX+14)+'px'; tip.style.top=Math.max(4,e.clientY-62)+'px';
   const bs=DRAG.bar.querySelector('.bd.bs'), be=DRAG.bar.querySelector('.bd.be'), bdt=DRAG.bar.querySelector('.bdt');
-  if(bs)bs.textContent=sd(ns); if(be)be.textContent=sd(nf); if(bdt)bdt.textContent=sd(nf);
+  const ndd=Math.round((addD(nf,1)-ns)/864e5), bn=DRAG.bar.querySelector('.bn');
+  if(bs)bs.textContent=sd(ns); if(be)be.textContent=sd(nf)+' · '+ndd+' 天'; if(bdt)bdt.textContent=sd(nf)+' · '+ndd+' 天'; if(bn)bn.textContent=ndd+' 天';
   if(DRAG.dl)DRAG.dl.textContent=sd(ns)+' → '+sd(nf);
 });
 // 子任務比較（階段展開）的條：拖動方式與甘特圖相同
