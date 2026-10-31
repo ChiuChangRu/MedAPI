@@ -204,6 +204,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .cv{padding:10px 14px 24px;font-size:13px;color:var(--ink)}.cv h3{margin:16px 0 4px;font-size:14px}.cv .note{margin:2px 0 8px}
 .cvs{overflow-x:auto}.cv table{border-collapse:collapse;font-size:13px}.cv th,.cv td{border:1px solid var(--line);padding:3px 8px;text-align:left;white-space:nowrap}.cv th{background:var(--chrome2)}
 .cv td.num{text-align:right}.cv td.na{color:var(--mute);text-align:center}.cv .up{color:var(--bad);font-weight:700}.cv .dn{color:#3f8f5f;font-weight:700}.cv .auto{color:var(--mute)}
+.dlwho{border:2px solid var(--accent);border-radius:6px;padding:10px 14px;margin:6px 0 12px;background:var(--chrome2)}.dlwho .lb{font-size:12px;color:var(--mute)}.dlwho .nm{font-size:20px;font-weight:700;margin:2px 0 4px}.dlwho .meta{font-size:13px}.dlwho .sub{font-size:12px;color:var(--mute);margin-top:4px}
 .cv .pdx{font-size:12px;color:var(--mute);max-width:160px;overflow:hidden;text-overflow:ellipsis}
 .cv .pr{cursor:pointer}.cv .pr:hover{background:var(--chrome2)}.cv .pr.open{background:var(--chrome2)}
 .cv .pdet{margin:0 0 10px 118px;border-left:3px solid var(--line);padding:4px 0 6px 10px}.cv .pdet .note{margin:0 0 4px}
@@ -1516,9 +1517,15 @@ document.getElementById('btnImp').onclick=()=>document.getElementById('impFile')
 function renderDl(){
   const b=document.getElementById('dlBody'); const nm=esc(META.name||'（尚未載入案件）');
   const warn=DIRTY?'<p style="color:var(--bad)">● 目前有尚未存檔的修改；下載的是畫面上的版本（不是 MyWiki 已存檔的版本）。</p>':'';
-  b.innerHTML=`<h2>④ 下載</h2><p class="note">目前編輯中的案件：<b>${nm}</b>（${D.filter(r=>r.t!==PH&&r.t!=='sum').length} 個任務，開始日 ${esc(document.getElementById('start').value)}，行事曆：${USE_HOL?'六日休＋國定假日休':'六日休（週一～五）．國定假日照常（同 PLM）'}）。要換案件請到「① 案件」。</p>${warn}
-  <div class="dlc"><h3>公司制式 Excel（進度管制表）</h3><p>用公司範本，格式、欄寬、字型、圖表都不動，只填內容；一個案件一張工作表，圖表保留。</p><button class="act primary" data-dl="xlsx" type="button">⬇ 下載 Excel</button></div>
-  <div class="dlc"><h3>鼎新 PLM（MS Project XML）</h3><p>欄位與順序比照鼎新匯出的樣本；沒有「開發總覽」時自動補上。${USE_HOL?'<b>注意：</b>本案件行事曆含國定假日，PLM 只扣六日、不扣國定假日，匯入後 PLM 重算的日期可能提早幾天*。':'行事曆與 PLM 相同（六日休（週一～五）．國定假日照常），日期應與 PLM 一致。'}</p><button class="act primary" data-dl="plm" type="button">⬇ 下載 PLM XML</button></div>`;
+  const leaf=D.filter(r=>r.t!==PH&&r.t!=='sum'&&r.s&&r.f), t0=leaf.length?new Date(Math.min(...leaf.map(r=>+r.s))):null, t1=leaf.length?new Date(Math.max(...leaf.map(r=>+r.f))):null;
+  const ent=ENTRIES.find(e=>String(e.id)===CUR_ID), kd=(KINDS.find(([k])=>k===META.kind)||[])[1]||'未設定';
+  const others=[...LOADED].filter(id=>id!==CUR_ID&&ENTRIES.some(e=>String(e.id)===id)).map(id=>ENTRIES.find(e=>String(e.id)===id).title.slice(PM_PREFIX.length));
+  b.innerHTML=`<h2>④ 下載</h2>
+  <div class="dlwho"><div class="lb">將下載這個案件</div><div class="nm"><span class="chip ${tagOf(META)==='半'?'pb':'pa'}">${esc(tagOf(META))}</span> ${nm}</div>
+    <div class="meta">檔案屬性：<b>${esc(kd)}</b>　｜　版本 ${esc(META.version||'—')}　更新 ${esc(META.updated||'—')}　｜　${D.filter(r=>r.t!==PH&&r.t!=='sum').length} 個任務　${t0?fd(t0)+' → '+fd(t1):''}　｜　行事曆：${USE_HOL?'六日休＋國定假日休':'六日休（週一～五）．國定假日照常'}${ent?'　｜　MyWiki 記事 #'+esc(ent.id):''}</div>
+    <div class="sub">${others.length?`其他已勾選「加入比較」的案件（${others.map(esc).join('、')}）<b>不會</b>包含在下載裡。`:'只有這一個案件。'}要換案件，請到「① 案件」改選「開啟檔案」。</div></div>${warn}
+  <div class="dlc"><h3>公司制式 Excel（進度管制表）</h3><p>用公司範本，格式、欄寬、字型、圖表都不動，只填內容；一個案件一張工作表，圖表保留。</p><button class="act primary" data-dl="xlsx" type="button">⬇ 下載「${nm}」的 Excel</button></div>
+  <div class="dlc"><h3>鼎新 PLM（MS Project XML）</h3><p>欄位與順序比照鼎新匯出的樣本；沒有「開發總覽」時自動補上。${USE_HOL?'<b>注意：</b>本案件行事曆含國定假日，PLM 只扣六日、不扣國定假日，匯入後 PLM 重算的日期可能提早幾天*。':'行事曆與 PLM 相同（六日休（週一～五）．國定假日照常），日期應與 PLM 一致。'}</p><button class="act primary" data-dl="plm" type="button">⬇ 下載「${nm}」的 PLM XML</button></div>`;
 }
 document.getElementById('dlBody').addEventListener('click',e=>{const b=e.target.closest('[data-dl]');if(!b)return; if(!D.length){document.getElementById('msg').textContent='尚未載入案件';return} b.dataset.dl==='xlsx'?doXlsx():doPlm()});
 // ===== 組織圖：單位與人員（存成 MyWiki 的一筆 PM組織｜ 記事）=====
