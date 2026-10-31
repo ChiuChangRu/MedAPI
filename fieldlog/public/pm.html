@@ -622,6 +622,17 @@ async function renderMulti(today){
     <span class="info" title="圖例：&#10;藍色直線＝今天&#10;灰底＝假日（依案件行事曆）&#10;名稱後 *＝回推開始日&#10;⚑ 旗子＝里程碑；紅色虛線＝註記&#10;右鍵：條塊設里程碑、空白處加註記">i</span>`;
   const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color)).filter(c=>c.rows.length);
   if(!sel.length){g.innerHTML='<p class="note" style="padding:12px">請至少勾選一個案件。</p>';return}
+  LASTSEL={sel,today}; drawGantt(sel,today,g);
+}
+// 只重畫甘特圖本體（縮放用）：不重抓、不重算日期、不動圖例與滑桿
+let LASTSEL=null, ZRAF=0;
+function zoomRender(){
+  if(!LASTSEL){renderMultiOnly();return}
+  if(ZRAF)return;   // 同一個畫面內的多次縮放只畫最後一次
+  ZRAF=requestAnimationFrame(()=>{ZRAF=0; drawGantt(LASTSEL.sel,LASTSEL.today,document.getElementById('mg'))});
+}
+function setZoomUI(){const zs=document.getElementById('zoom'); if(zs&&+zs.value!==ZOOMV)zs.value=ZOOMV}
+function drawGantt(sel,today,g){
   if(MLAYOUT==='cmp'){renderCmp(sel,g);return} g.classList.remove('cmp');
   let rows;
   if(MLAYOUT==='lane'){
@@ -674,8 +685,8 @@ document.getElementById('mLegend').addEventListener('click',async e=>{
   const eb=e.target.closest('button[data-edit]'); if(eb){const id=eb.dataset.edit; if(id===CUR_ID)return;
     if(DIRTY&&!confirm('目前案件尚未存檔，切換編輯案件會放棄修改。確定？'))return;
     try{await loadEntry(id); renderCases(); render()}catch(err){document.getElementById('msg').textContent='載入失敗：'+err.message} return}
-  if(e.target.id==='zfit'){ZOOMV=0;ZANCHOR=null;render();return}
-  if(e.target.id==='ztoday'){if(!GAX)return;ZANCHOR=(GAX.today-GAX.s0)/864e5;if(ZOOMV<60)ZOOMV=60;render();return}
+  if(e.target.id==='zfit'){ZOOMV=0;ZANCHOR=null;setZoomUI();zoomRender();return}
+  if(e.target.id==='ztoday'){if(!GAX)return;ZANCHOR=(GAX.today-GAX.s0)/864e5;if(ZOOMV<60)ZOOMV=60;setZoomUI();zoomRender();return}
   const al=e.target.closest('#malign button'); if(al){CMPALIGN=al.dataset.a;render();return}
   const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
 // ===== 疊圖比較：各案對齊（開始日或實際日期），同類工作疊在同一列 =====
@@ -728,14 +739,14 @@ function renderCmp(sel,g){
   g.innerHTML=h; GAX=null;
 }
 document.getElementById('mLegend').addEventListener('change',e=>{if(e.target.id==='zfollow')AUTOF=e.target.checked});
-document.getElementById('mLegend').addEventListener('input',e=>{if(e.target.id!=='zoom')return;ZOOMV=+e.target.value;renderMultiOnly()});
+document.getElementById('mLegend').addEventListener('input',e=>{if(e.target.id!=='zoom')return;ZOOMV=+e.target.value;zoomRender()});
 function renderMultiOnly(){renderMulti(GAX&&GAX.today||new Date())}
 document.getElementById('mg').parentElement.addEventListener('wheel',e=>{
   if(!(e.ctrlKey||e.metaKey)||!GAX)return; e.preventDefault();
   const sc0=e.currentTarget, gn=parseFloat(getComputedStyle(document.getElementById('mg')).getPropertyValue('--gn'))||300;
   const px=e.clientX-sc0.getBoundingClientRect().left-gn; const day=(sc0.scrollLeft+px)/GAX.pd;
   ZOOMV=Math.max(0,Math.min(100,ZOOMV+(e.deltaY<0?6:-6)));
-  ZCUR={day,px}; renderMultiOnly();
+  ZCUR={day,px}; setZoomUI(); zoomRender();
 },{passive:false});
 document.getElementById('mLegend').addEventListener('change',e=>{const c=e.target.closest('input[data-case]');if(!c)return;c.checked?MOFF.delete(c.dataset.case):MOFF.add(c.dataset.case);render()});
 
@@ -847,8 +858,8 @@ document.getElementById('mg').addEventListener('contextmenu',e=>{
   ctxMenu(e.clientX,e.clientY,items);
 });
 // 上下捲動時自動左右跟隨：以畫面上方約 40% 的列為準，它們最早的開始日一離開畫面左半部，就平滑橫移過去
-(()=>{const sc=document.getElementById('mg').parentElement; let lastTop=sc.scrollTop, target=null, raf=0;
-  sc.addEventListener('scroll',()=>{if(sc.scrollTop===lastTop)return; lastTop=sc.scrollTop; aim()},{passive:true});
+(()=>{const sc=document.getElementById('mg').parentElement; let lastTop=sc.scrollTop, target=null, raf=0, tm=0;
+  sc.addEventListener('scroll',()=>{if(sc.scrollTop===lastTop)return; lastTop=sc.scrollTop; clearTimeout(tm); tm=setTimeout(aim,150)},{passive:true});   // 捲動停下約 0.15 秒後才橫移，捲動中不拉扯
   function aim(){ if(!GAX||ZOOMV<=0||DRAG||!AUTOF)return;
     const g=document.getElementById('mg'), gn=parseFloat(getComputedStyle(g).getPropertyValue('--gn'))||300;
     const head=g.querySelector('.g-head'), hh=head?head.offsetHeight:40;
