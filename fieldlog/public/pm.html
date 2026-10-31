@@ -201,6 +201,13 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .cmp .cl{position:absolute;font-size:12px;line-height:16px;white-space:nowrap;color:var(--mute);pointer-events:none}
 .cmp .cl b{color:var(--ink);font-weight:700}
 .cmp .ln{position:absolute;height:14px;border-radius:3px}
+.cv{padding:10px 14px 24px;font-size:13px;color:var(--ink)}.cv h3{margin:16px 0 4px;font-size:14px}.cv .note{margin:2px 0 8px}
+.cvs{overflow-x:auto}.cv table{border-collapse:collapse;font-size:13px}.cv th,.cv td{border:1px solid var(--line);padding:3px 8px;text-align:left;white-space:nowrap}.cv th{background:var(--chrome2)}
+.cv td.num{text-align:right}.cv td.na{color:var(--mute);text-align:center}.cv .up{color:var(--bad);font-weight:700}.cv .dn{color:#3f8f5f;font-weight:700}.cv .auto{color:var(--mute)}
+.cv .pr{display:grid;grid-template-columns:110px 1fr;gap:8px;border-top:1px solid var(--line);padding:6px 0}.cv .pk{font-weight:700;padding-top:4px}
+.cv .pbar{position:relative;height:24px;margin:2px 0;margin-right:330px}.cv .pbar .ln{top:4px;height:16px;left:0}.cv .pbar .sp{opacity:.35}
+.cv .pbar .tx{position:absolute;top:3px;line-height:18px;font-size:12px;white-space:nowrap;color:var(--mute)}.cv .pbar .tx b{color:var(--ink)}
+.cv .pctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}.cv .ptab select{max-width:320px;font:inherit;font-size:12px}.cv .ptab td.nm{max-width:340px;overflow:hidden;text-overflow:ellipsis}
 .seg.pa,.ln.pa{background:var(--bar)}.seg.pb,.ln.pb{background:var(--projb)}.seg.pc,.ln.pc{background:#3f8f5f}.seg.pd,.ln.pd{background:#7a5cb8}
 .bar .ic{font-size:15px;line-height:1;padding:3px 8px}
 #theme{margin-left:auto}
@@ -590,7 +597,7 @@ window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.return
 const sd=d=>`${String(d.getUTCFullYear()).slice(2)}/${d.getUTCMonth()+1}/${d.getUTCDate()}`;
 const pd0=s=>new Date(s+'T00:00:00Z');
 const isoW=d=>{const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));t.setUTCDate(t.getUTCDate()+4-(t.getUTCDay()||7));return Math.ceil(((t-Date.UTC(t.getUTCFullYear(),0,1))/864e5+1)/7)};
-let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null, AUTOF=true, CMPALIGN='start'; const ZMAX=28;
+let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null, AUTOF=true, CMPALIGN='start', CMPVIEW='phase', CMPBASE=null, CMPOTHER=null, CMPSORT=false; const ZMAX=28;
 const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
 function gridLayer(x,bands,lines){
   return `<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
@@ -617,11 +624,11 @@ async function renderMulti(today){
   }
   if(seq!==MSEQ)return;
   lg.innerHTML=`<span class="mseg" id="mlay"><button data-l="lane" class="${MLAYOUT==='lane'?'on':''}" type="button">分區</button><button data-l="time" class="${MLAYOUT==='time'?'on':''}" type="button">依時間穿插</button><button data-l="cmp" class="${MLAYOUT==='cmp'?'on':''}" type="button" title="多案疊圖：各案從各自開始日對齊，比較同類工作花多久">⇆ 比較</button></span>
-    ${MLAYOUT==='cmp'?`<span class="mseg" id="malign"><button data-a="start" class="${CMPALIGN==='start'?'on':''}" type="button">對齊開始日</button><button data-a="date" class="${CMPALIGN==='date'?'on':''}" type="button">實際日期</button></span>`:''}
+    ${MLAYOUT==='cmp'?`<span class="mseg" id="mview"><button data-v="phase" class="${CMPVIEW==='phase'?'on':''}" type="button" title="各案階段（P0／C0／P1…）從 0 開始齊頭比長度，加上各階段在開案後第幾個月">階段齊頭</button><button data-v="pair" class="${CMPVIEW==='pair'?'on':''}" type="button" title="兩案的任務一對一配對，比較歷時差多少">任務對照</button><button data-v="cat" class="${CMPVIEW==='cat'?'on':''}" type="button" title="依任務名稱關鍵字歸類（舊版）">類別疊圖</button></span>`:''}${MLAYOUT==='cmp'&&CMPVIEW==='cat'?`<span class="mseg" id="malign"><button data-a="start" class="${CMPALIGN==='start'?'on':''}" type="button">對齊開始日</button><button data-a="date" class="${CMPALIGN==='date'?'on':''}" type="button">實際日期</button></span>`:''}
     <span class="mcases">${cases.map(c=>`<label><input type="checkbox" data-case="${c.id}" ${MOFF.has(c.id)?'':'checked'}><span class="chip ${c.color}">${esc(tagOf(c.json.meta))}</span><span class="cn" title="${esc(c.title)}">${esc(c.title)}</span></label><button type="button" class="ebtn ${c.id===CUR_ID?'on':''}" data-edit="${c.id}" title="${c.id===CUR_ID?'編輯中：可拖曳、右鍵改這個案件':'改成編輯這個案件'}">✎</button>`).join('')}</span>
     <span class="zoom" ${MLAYOUT==='cmp'?'style="display:none"':''}>縮放 <input type="range" id="zoom" min="0" max="100" step="1" value="${ZOOMV}" title="往右放大，最大到「天」；Ctrl＋滾輪也可縮放"> <b id="zlab"></b><button type="button" id="zfit" title="整張放進畫面">全覽</button><button type="button" id="ztoday" title="放大並捲到今天">今天</button><label title="上下捲動時，自動左右移到畫面中任務的條塊"><input type="checkbox" id="zfollow" ${AUTOF?'checked':''}>跟隨</label></span>
     <span class="info" title="圖例：&#10;藍色直線＝今天&#10;灰底＝假日（依案件行事曆）&#10;名稱後 *＝回推開始日&#10;⚑ 旗子＝里程碑；紅色虛線＝註記&#10;右鍵：條塊設里程碑、空白處加註記">i</span>`;
-  const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>caseRows(c.id,c.json,c.color)).filter(c=>c.rows.length);
+  const sel=cases.filter(c=>!MOFF.has(c.id)).map(c=>Object.assign(caseRows(c.id,c.json,c.color),{id:c.id})).filter(c=>c.rows.length);
   if(!sel.length){g.innerHTML='<p class="note" style="padding:12px">請至少勾選一個案件。</p>';return}
   LASTSEL={sel,today}; drawGantt(sel,today,g);
 }
@@ -689,6 +696,7 @@ document.getElementById('mLegend').addEventListener('click',async e=>{
   if(e.target.id==='zfit'){ZOOMV=0;ZANCHOR=null;setZoomUI();zoomRender();return}
   if(e.target.id==='ztoday'){if(!GAX)return;ZANCHOR=(GAX.today-GAX.s0)/864e5;if(ZOOMV<60)ZOOMV=60;setZoomUI();zoomRender();return}
   const al=e.target.closest('#malign button'); if(al){CMPALIGN=al.dataset.a;render();return}
+  const vw=e.target.closest('#mview button'); if(vw){CMPVIEW=vw.dataset.v;render();return}
   const b=e.target.closest('#mlay button');if(!b)return;MLAYOUT=b.dataset.l;render()});
 // ===== 疊圖比較：各案對齊（開始日或實際日期），同類工作疊在同一列 =====
 const CMP_CATS=[['試模／修模',/試模|修模|T\d|模具改善|模具修改|模具到廠|試模連絡/],['模具設計／製作',/模具|開模/],['試量產／量產',/試量產|量產|入庫|產前/],
@@ -696,7 +704,116 @@ const CMP_CATS=[['試模／修模',/試模|修模|T\d|模具改善|模具修改|
   ['審查／會議',/審查|審核|會議/],['設計',/設計|繪製|圖|規劃|可行性|評估|專利|3D|方案|零件/],['文件／品號',/品號|SOP|DHF|文件|報告|FMEA|流程|工程表|資料|計畫|計劃/],['其他',/[\s\S]/]];
 const catOf=n=>CMP_CATS.find(([,re])=>re.test(n))[0];
 const mon=d=>(d/30.4375).toFixed(1);
+// ===== 比較 B：階段齊頭 =====
+const PH_ORDER=['P0','C0','P1','C1','P2','C2','P3','C3','認證'];
+function phKey(n){n=String(n||'').trim(); const m=n.match(/^([PC])\s*(\d)/i); if(m)return m[1].toUpperCase()+m[2];
+  if(/認證|註冊|取證|QMS|上市/.test(n))return '認證'; return n.split(/\s+/)[0]||n}
+function unionDays(iv){iv=iv.slice().sort((x,y)=>x[0]-y[0]); let t=0,c=null; for(const [a,b] of iv){if(!c||a>c[1]){if(c)t+=c[1]-c[0];c=[a,b]}else c[1]=Math.max(c[1],b)} if(c)t+=c[1]-c[0]; return t/864e5}
+function phaseStats(c){
+  const s0=Math.min(...c.rows.map(r=>+r.s)); const map=new Map();
+  let phs=c.rows.filter(r=>r.sum&&r.lvl===1);
+  const leavesOf=p=>c.rows.filter(r=>!r.sum&&r.wbs.startsWith(p.wbs+'.'));
+  if(!phs.length)phs=[{name:'全案',wbs:'',s:new Date(s0),f:new Date(Math.max(...c.rows.map(r=>+r.f))),all:1}];
+  for(const p of phs){const k=p.all?'全案':phKey(p.name), lv=p.all?c.rows.filter(r=>!r.sum):leavesOf(p);
+    let o=map.get(k); if(!o){o={k,names:[],a:Infinity,b:-Infinity,iv:[],n:0};map.set(k,o)}
+    o.names.push(p.name); o.a=Math.min(o.a,+p.s); o.b=Math.max(o.b,+addD(p.f,1)); o.n+=lv.length; for(const r of lv)o.iv.push([+r.s,+addD(r.f,1)]);}
+  for(const o of map.values()){o.span=(o.b-o.a)/864e5; o.occ=o.iv.length?unionDays(o.iv):o.span; o.from=(o.a-s0)/864e5; o.to=(o.b-s0)/864e5}
+  return map;
+}
+const mM=d=>(d/30.4375).toFixed(1), mAt=d=>Math.floor(d/30.4375)+1;
+function renderPhaseCmp(sel,g){
+  g.style.width=''; g.classList.remove('gz'); g.classList.add('cmp'); GAX=null;
+  const st=sel.map(c=>({c,m:phaseStats(c)}));
+  const seen=[]; for(const {m} of st)for(const k of m.keys())if(!seen.includes(k))seen.push(k);
+  const keys=[...PH_ORDER.filter(k=>seen.includes(k)),...seen.filter(k=>!PH_ORDER.includes(k))];
+  const tot=st.map(({c})=>(Math.max(...c.rows.map(r=>+addD(r.f,1)))-Math.min(...c.rows.map(r=>+r.s)))/864e5);
+  const chip=c=>`<span class="chip ${c.color}">${esc(c.tag)}</span>`;
+  // 一、時間表：各階段落在開案後第幾個月
+  let h=`<div class="cv"><h3>一、各階段在開案後的時間（第幾個月）</h3><p class="note">M1＝該案最早任務的開始月。格內為「M起–M迄」；滑鼠移到格子上可看原始階段名稱。階段依名稱開頭「P／C＋數字」自動對應，「認證、註冊、QMS」歸為認證。</p>
+  <div class="cvs"><table><thead><tr><th>案件</th>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}<th>全案</th></tr></thead><tbody>`;
+  st.forEach(({c,m},i)=>{h+=`<tr><td class="nm">${chip(c)} ${esc(c.name)}</td>${keys.map(k=>{const o=m.get(k); return o?`<td title="${esc(o.names.join('、'))}">M${mAt(o.from)}–M${mAt(o.to-1)}</td>`:'<td class="na">—</td>'}).join('')}<td><b>${mM(tot[i])} 月</b></td></tr>`});
+  h+=`</tbody></table></div>`;
+  // 二、齊頭長度
+  const mx=Math.max(1,...st.flatMap(({m})=>[...m.values()].map(o=>o.span)));
+  h+=`<h3>二、各階段歷時（齊頭比較）</h3><p class="note">每條都從 0 開始，只比長短。淺色＝階段跨度（第一個任務開始到最後一個任務結束）；深色＝實際有任務在進行的天數（扣掉中間空檔）。「差」以第一個案件為基準。</p>`;
+  for(const k of keys){
+    h+=`<div class="pr"><div class="pk" title="${esc(st.map(({c,m})=>m.get(k)?c.tag+'：'+m.get(k).names.join('、'):'').filter(Boolean).join('\n'))}">${esc(k)}</div><div>`;
+    const base=st[0].m.get(k);
+    st.forEach(({c,m},i)=>{const o=m.get(k);
+      if(!o){h+=`<div class="pbar"><span class="tx" style="left:0">${chip(c)} 無此階段</span></div>`;return}
+      const w=o.span/mx*100, wo=Math.min(o.occ,o.span)/mx*100;
+      let df=i&&base?Math.round((o.span-base.span)/30.4375*10)/10:null; if(df===0)df=0;
+      h+=`<div class="pbar"><div class="ln ${c.color} sp" style="width:${w}%"></div><div class="ln ${c.color} oc" style="width:${wo}%"></div>
+        <span class="tx" style="left:calc(${w}% + 6px)">${chip(c)} <b>${mM(o.span)} 月</b>${o.occ<o.span*0.9?`（實際 ${mM(o.occ)}）`:''}・${o.n} 項${df!=null?`　<span class="${df>0?'up':df<0?'dn':''}">差 ${df>0?'+':''}${df.toFixed(1)} 月</span>`:''}</span></div>`});
+    h+=`</div></div>`;
+  }
+  g.innerHTML=h+`</div>`;
+}
+// ===== 比較 C：任務一對一對照 =====
+const nrmN=s=>String(s||'').replace(/[\s（）()【】\[\]、，,．.。：:／\/\-—_＿~～·＋+]/g,'').toLowerCase();
+function simN(a,b){a=nrmN(a);b=nrmN(b); if(!a||!b)return 0; if(a===b)return 1; if(a.length<2||b.length<2)return 0;
+  const bg=s=>{const m=new Map();for(let i=0;i<s.length-1;i++){const k=s.slice(i,i+2);m.set(k,(m.get(k)||0)+1)}return m};
+  const A=bg(a),B=bg(b); let n=0; for(const [k,v] of A)n+=Math.min(v,B.get(k)||0); return 2*n/(a.length+b.length-2)}
+const metaOf=id=>id===CUR_ID?META:((CASES[id]||{}).meta||{});
+function leafInfo(c){const ph={}; for(const r of c.rows)if(r.sum&&r.lvl===1)ph[r.wbs]=phKey(r.name);
+  return c.rows.filter(r=>!r.sum).map(r=>({k:r.k,wbs:r.wbs,name:r.name,ph:ph[r.wbs.split('.')[0]]||'',s:r.s,f:r.f,d:Math.round((addD(r.f,1)-r.s)/864e5)}))}
+function pairUp(B,O,saved){
+  const res=new Map(), used=new Set();
+  for(const b of B){if(!(b.k in saved))continue; const v=saved[b.k]; const o=v?O.find(x=>x.k===v):null; res.set(b.k,{o,ok:1}); if(o)used.add(o.k)}
+  const cand=[]; for(const b of B){if(res.has(b.k))continue; for(const o of O){if(used.has(o.k))continue; let sc=simN(b.name,o.name); if(b.ph&&b.ph===o.ph)sc+=0.08; if(sc>=0.5)cand.push([sc,b,o])}}
+  cand.sort((x,y)=>y[0]-x[0]);
+  for(const [sc,b,o] of cand){if(res.has(b.k)||used.has(o.k))continue; res.set(b.k,{o,ok:0,sc:Math.min(1,sc)}); used.add(o.k)}
+  return {res,used};
+}
+function renderPairCmp(sel,g){
+  g.style.width=''; g.classList.remove('gz'); g.classList.add('cmp'); GAX=null;
+  if(sel.length<2){g.innerHTML='<div class="cv"><p class="note">任務對照需要至少兩個案件：請在上方多勾選一個案件（或到「① 案件」勾「加入比較」）。</p></div>';return}
+  if(!sel.some(c=>c.id===CMPBASE))CMPBASE=sel[0].id;
+  if(!sel.some(c=>c.id===CMPOTHER)||CMPOTHER===CMPBASE)CMPOTHER=sel.find(c=>c.id!==CMPBASE).id;
+  const bc=sel.find(c=>c.id===CMPBASE), oc=sel.find(c=>c.id===CMPOTHER);
+  const B=leafInfo(bc), O=leafInfo(oc); const saved=((metaOf(CMPBASE).pairs||{})[CMPOTHER])||{};
+  const {res,used}=pairUp(B,O,saved);
+  const opt=c=>sel.map(x=>`<option value="${x.id}" ${x.id===c?'selected':''}>${esc(x.tag)}｜${esc(x.name)}</option>`).join('');
+  const chip=c=>`<span class="chip ${c.color}">${esc(c.tag)}</span>`;
+  let rows=B.map(b=>{const p=res.get(b.k)||{o:null,ok:0}; return {b,...p,df:p.o?p.o.d-b.d:null}});
+  const nOk=rows.filter(r=>r.ok&&r.o).length, nAuto=rows.filter(r=>!r.ok&&r.o).length, nNoB=rows.filter(r=>!r.o).length, freeO=O.filter(o=>!used.has(o.k));
+  if(CMPSORT)rows=rows.slice().sort((x,y)=>(y.df==null?-1:Math.abs(y.df))-(x.df==null?-1:Math.abs(x.df)));
+  let h=`<div class="cv"><div class="pctl">基準案 <select id="pbase">${opt(CMPBASE)}</select> ⇄ 對照案 <select id="pother">${opt(CMPOTHER)}</select>
+    <button type="button" class="act" id="psort">${CMPSORT?'依原順序':'依差距排序'}</button>
+    <button type="button" class="act" id="pokall" ${nAuto?'':'disabled'}>確認全部自動配對（${nAuto}）</button></div>
+    <p class="note">已配對 ${nOk+nAuto} 對（已確認 ${nOk}、<b>*自動建議 ${nAuto}</b>）；基準案沒有對應 ${nNoB} 項；對照案沒有對應 ${freeO.length} 項（列在最下面）。<br>
+    自動建議依任務名稱相似度（同階段加分）產生，<b>* 表示尚未確認，可能配錯</b>；在「對照任務」下拉選單改選或按「確認」才會存檔（存在基準案）。歷時＝曆天（含頭尾）。各任務常同時進行，「差」不能直接加總成全案差距。</p>
+    <table class="ptab"><thead><tr><th>階段</th><th>${chip(bc)} 基準任務</th><th>天</th><th>${chip(oc)} 對照任務</th><th>天</th><th>差（天）</th><th>狀態</th></tr></thead><tbody>`;
+  for(const r of rows){const b=r.b;
+    h+=`<tr><td>${esc(b.ph)}</td><td class="nm" title="${fd(b.s)} → ${fd(b.f)}">${esc(b.wbs)} ${esc(b.name)}</td><td class="num">${b.d}</td>
+      <td><select data-pair="${esc(b.k)}"><option value="">（無對應）</option>${O.map(o=>`<option value="${esc(o.k)}" ${r.o&&r.o.k===o.k?'selected':''}>${esc(o.wbs)} ${esc(o.name)}</option>`).join('')}</select></td>
+      <td class="num" ${r.o?`title="${fd(r.o.s)} → ${fd(r.o.f)}"`:''}>${r.o?r.o.d:'—'}</td>
+      <td class="num ${r.df>0?'up':r.df<0?'dn':''}">${r.df==null?'—':(r.df>0?'+':'')+r.df}</td>
+      <td>${r.ok?'已確認':r.o?`<span class="auto">*自動 ${Math.round(r.sc*100)}%</span> <button type="button" class="act" data-pok="${esc(b.k)}">確認</button>`:''}</td></tr>`}
+  h+=`</tbody></table>`;
+  if(freeO.length)h+=`<h3>${chip(oc)} 對照案沒有對應的任務（${freeO.length}）</h3><table class="ptab"><tbody>${freeO.map(o=>`<tr><td>${esc(o.ph)}</td><td class="nm">${esc(o.wbs)} ${esc(o.name)}</td><td class="num">${o.d} 天</td></tr>`).join('')}</tbody></table>`;
+  g.innerHTML=h+`</div>`;
+  g._pair={res,saved};
+}
+async function savePairs(upd){
+  const b=CMPBASE,o=CMPOTHER;
+  try{await saveMeta(b,m=>{m.pairs=m.pairs||{}; const p=m.pairs[o]=m.pairs[o]||{}; Object.assign(p,upd)},'已儲存任務對照'); render()}
+  catch(err){document.getElementById('msg').textContent='儲存失敗：'+err.message}
+}
+document.getElementById('mg').addEventListener('change',e=>{
+  if(e.target.id==='pbase'){CMPBASE=e.target.value; render(); return}
+  if(e.target.id==='pother'){CMPOTHER=e.target.value; render(); return}
+  const s=e.target.closest('select[data-pair]'); if(s)savePairs({[s.dataset.pair]:s.value});
+});
+document.getElementById('mg').addEventListener('click',e=>{
+  if(e.target.id==='psort'){CMPSORT=!CMPSORT; render(); return}
+  const g=document.getElementById('mg');
+  if(e.target.id==='pokall'&&g._pair){const u={}; for(const [k,v] of g._pair.res)if(!v.ok&&v.o)u[k]=v.o.k; savePairs(u); return}
+  const b=e.target.closest('button[data-pok]'); if(b&&g._pair){const v=g._pair.res.get(b.dataset.pok); if(v&&v.o)savePairs({[b.dataset.pok]:v.o.k})}
+});
 function renderCmp(sel,g){
+  if(CMPVIEW==='phase')return renderPhaseCmp(sel,g);
+  if(CMPVIEW==='pair')return renderPairCmp(sel,g);
   g.style.width=''; g.classList.remove('gz'); g.classList.add('cmp');
   const starts=sel.map(c=>new Date(Math.min(...c.rows.map(r=>r.s))));
   const g0=new Date(Math.min(...starts));
@@ -1295,16 +1412,17 @@ function caseInfo(id){
 }
 const KINDS=[['new_all','新案（全新）'],['new_gen','新案（新世代產品）'],['imp_major','舊品改善（重大變更）'],['imp_minor','舊品改善（輕微變更）']];
 const kindSel=(id,v,dis)=>`<select data-kind="${id}" ${dis?'disabled title="先勾選「加入比較」載入案件，才能設定"':''}><option value="">未設定</option>${KINDS.map(([k,t])=>`<option value="${k}" ${v===k?'selected':''}>${t}</option>`).join('')}</select>`;
-async function setKind(id,v){
+async function setKind(id,v){ await saveMeta(id,m=>{if(v)m.kind=v; else delete m.kind},'已儲存檔案屬性') }
+async function saveMeta(id,fn,okMsg){
   const st=document.getElementById('msg'), isCur=id===CUR_ID;
-  if(isCur){ if(v)META.kind=v; else delete META.kind;
-    if(DIRTY){st.textContent='已改檔案屬性；目前案件還有其他未存檔修改，請按「存檔」一併儲存'; return}
+  if(isCur){ fn(META);
+    if(DIRTY){st.textContent=okMsg+'；目前案件還有其他未存檔修改，請按「存檔」一併儲存'; return}
     await saveCur(); return }
-  const j=await fetchCase(id); j.meta=j.meta||{}; if(v)j.meta.kind=v; else delete j.meta.kind;
+  const j=await fetchCase(id); j.meta=j.meta||{}; fn(j.meta);
   const body='{"meta":'+JSON.stringify(j.meta)+',\n"tasks":[\n'+(j.tasks||[]).map(x=>JSON.stringify(x)).join(',\n')+'\n]}';
   const res=await fetch('/api/entries/'+id,{method:'PUT',headers:{'content-type':'application/json','x-pin':pin()},body:JSON.stringify({body})});
   if(res.status===401){showLogin();throw new Error('PIN 錯誤')} if(!res.ok)throw new Error('HTTP '+res.status);
-  st.textContent='已儲存檔案屬性（'+new Date().toLocaleTimeString()+'）';
+  st.textContent=okMsg+'（'+new Date().toLocaleTimeString()+'）';
 }
 function renderCases(){
   const t=document.getElementById('caseTbl');
