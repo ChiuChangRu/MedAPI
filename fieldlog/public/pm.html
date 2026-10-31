@@ -207,6 +207,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .cvs{overflow-x:auto}.cv table{border-collapse:collapse;font-size:13px}.cv th,.cv td{border:1px solid var(--line);padding:3px 8px;text-align:left;white-space:nowrap}.cv th{background:var(--chrome2)}
 .cv td.num{text-align:right}.cv td.na{color:var(--mute);text-align:center}.cv .up{color:var(--bad);font-weight:700}.cv .dn{color:#3f8f5f;font-weight:700}.cv .auto{color:var(--mute)}
 .dlwho{border:2px solid var(--accent);border-radius:6px;padding:10px 14px;margin:6px 0 12px;background:var(--chrome2)}.dlwho .lb{font-size:12px;color:var(--mute)}.dlwho .nm{font-size:20px;font-weight:700;margin:2px 0 4px}.dlwho .meta{font-size:13px}.dlwho .sub{font-size:12px;color:var(--mute);margin-top:4px}
+.cv input.pmemo{width:280px;font:inherit;font-size:12px;padding:2px 4px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}.cv .mm{font-size:12px;color:var(--ink);padding:0 0 4px;white-space:normal}
 .cv .pdx{font-size:12px;color:var(--mute);max-width:160px;overflow:hidden;text-overflow:ellipsis}
 .cv .pr{cursor:pointer}.cv .pr:hover{background:var(--chrome2)}.cv .pr.open{background:var(--chrome2)}
 .cv .pdet{margin:0 0 10px 118px;border-left:3px solid var(--line);padding:4px 0 6px 10px}.cv .pdet .note{margin:0 0 4px}
@@ -746,7 +747,8 @@ function phaseDetail(k,st){
     h+=line(B,t,'g1');
     others.forEach(({x,p},i)=>{const q=p.res.get(t.k), o=q&&q.o; if(o)shown[i].add(o.k);
       const df=o?o.d-t.d:null;
-      h+=line(x,o,'',o?`${q.ok?'':' <span class="na">*</span>'}${df?`　<span class="${df>0?'up':'dn'}">差 ${df>0?'+':''}${df} 天</span>`:'　差 0'}`:'')});
+      h+=line(x,o,'',o?`${q.ok?'':' <span class="na">*</span>'}${df?`　<span class="${df>0?'up':'dn'}">差 ${df>0?'+':''}${df} 天</span>`:'　差 0'}`:'');
+      const mm=(((metaOf(B.c.id).pairNotes||{})[x.c.id])||{})[t.k]; if(mm)h+=`<div class="tl"><div></div><div class="mm">💬 ${esc(mm)}</div></div>`});
   }
   others.forEach(({x},i)=>{const rest=x.lv.filter(t=>t.ph===k&&!shown[i].has(t.k)); if(!rest.length)return;
     h+=`<div class="tl g1"><div class="tn"><b>${chip(x.c)} 此階段沒有對應到 ${esc(B.c.tag)} 的任務（${rest.length}）</b></div><div></div></div>`+rest.map(t=>line(x,t,'')).join('')});
@@ -809,7 +811,7 @@ function renderPairCmp(sel,g){
   if(!sel.some(c=>c.id===CMPOTHER)||CMPOTHER===CMPBASE)CMPOTHER=sel.find(c=>c.id!==CMPBASE).id;
   const bc=sel.find(c=>c.id===CMPBASE), oc=sel.find(c=>c.id===CMPOTHER);
   const B=leafInfo(bc), O=leafInfo(oc); const saved=((metaOf(CMPBASE).pairs||{})[CMPOTHER])||{};
-  const {res,used}=pairUp(B,O,saved);
+  const {res,used}=pairUp(B,O,saved); const notes=((metaOf(CMPBASE).pairNotes||{})[CMPOTHER])||{};
   const opt=c=>sel.map(x=>`<option value="${x.id}" ${x.id===c?'selected':''}>${esc(x.tag)}｜${esc(x.name)}</option>`).join('');
   const chip=c=>`<span class="chip ${c.color}">${esc(c.tag)}</span>`;
   let rows=B.map(b=>{const p=res.get(b.k)||{o:null,ok:0}; return {b,...p,df:p.o?p.o.d-b.d:null}});
@@ -820,7 +822,7 @@ function renderPairCmp(sel,g){
     <button type="button" class="act" id="pokall" ${nAuto?'':'disabled'}>確認全部自動配對（${nAuto}）</button></div>
     <p class="note">已配對 ${nOk+nAuto} 對（已確認 ${nOk}、<b>*自動建議 ${nAuto}</b>）；基準案沒有對應 ${nNoB} 項；對照案沒有對應 ${freeO.length} 項（列在最下面）。<br>
     自動建議依任務名稱相似度（同階段加分）產生，<b>* 表示尚未確認，可能配錯</b>；在「對照任務」下拉選單改選或按「確認」才會存檔（存在基準案）。歷時＝曆天（含頭尾）。各任務常同時進行，「差」不能直接加總成全案差距。<br><b>「編輯中」案件的任務旁有 ✎：按下去可調整開始／歷時／前置，調整後甘特圖與這張表會一起連動，記得按「存檔」。</b></p>
-    <div class="cvs"><table class="ptab"><thead><tr><th>階段</th><th>${chip(bc)} 基準任務</th><th title="前置任務（WBS 編號、關係類型、延遲工作天）">前置</th><th title="開始時間：自該案最早任務起第幾個月">起</th><th>天</th><th>${chip(oc)} 對照任務</th><th>前置</th><th>起</th><th>天</th><th>差（天）</th><th title="把基準任務的前置，依目前配對換算成對照案的任務後，與對照任務實際的前置比較">前置比對</th><th>狀態</th></tr></thead><tbody>`;
+    <div class="cvs"><table class="ptab"><thead><tr><th>階段</th><th>${chip(bc)} 基準任務</th><th title="前置任務（WBS 編號、關係類型、延遲工作天）">前置</th><th title="開始時間：自該案最早任務起第幾個月">起</th><th>天</th><th>${chip(oc)} 對照任務</th><th>前置</th><th>起</th><th>天</th><th>差（天）</th><th title="把基準任務的前置，依目前配對換算成對照案的任務後，與對照任務實際的前置比較">前置比對</th><th>狀態</th><th title="為什麼對照案可以縮短／必須拉長？說明存在基準案，之後打開仍在">說明：為何縮短／拉長</th></tr></thead><tbody>`;
   const Bset=new Set(B.map(x=>x.k)), Oset=new Set(O.map(x=>x.k));
   const predCmp=(b,o)=>{ if(!o)return ''; const bk=b.pk.filter(k=>Bset.has(k)), ok=o.pk.filter(k=>Oset.has(k)); if(!bk.length&&!ok.length)return '<span class="na">—</span>';
     const bm=bk.map(k=>{const q=res.get(k); return q&&q.o?q.o.k:'?'+k}).sort().join('|'), om=ok.slice().sort().join('|');
@@ -830,7 +832,8 @@ function renderPairCmp(sel,g){
       <td>${r.o?edBtn(oc,r.o.k):''}<select data-pair="${esc(b.k)}"><option value="">（無對應）</option>${O.map(o=>`<option value="${esc(o.k)}" ${r.o&&r.o.k===o.k?'selected':''}>${esc(o.wbs)} ${esc(o.name)}</option>`).join('')}</select></td>
       <td class="pdx">${r.o?esc(predTxt(r.o)):''}</td><td>${r.o?mTxt(r.o):''}</td><td class="num" ${r.o?`title="${fd(r.o.s)} → ${fd(r.o.f)}"`:''}>${r.o?r.o.d:'—'}</td>
       <td class="num ${r.df>0?'up':r.df<0?'dn':''}">${r.df==null?'—':(r.df>0?'+':'')+r.df}</td><td>${predCmp(b,r.o)}</td>
-      <td>${r.ok?'已確認':r.o?`<span class="auto">*自動 ${Math.round(r.sc*100)}%</span> <button type="button" class="act" data-pok="${esc(b.k)}">確認</button>`:''}</td></tr>`}
+      <td>${r.ok?'已確認':r.o?`<span class="auto">*自動 ${Math.round(r.sc*100)}%</span> <button type="button" class="act" data-pok="${esc(b.k)}">確認</button>`:''}</td>
+      <td>${r.o?`<input class="pmemo" data-memo="${esc(b.k)}" value="${esc(notes[b.k]||'')}" placeholder="${r.df<0?'為何可以縮短？':r.df>0?'為何需要拉長？':'備註'}">`:''}</td></tr>`}
   h+=`</tbody></table></div>`;
   if(freeO.length)h+=`<h3>${chip(oc)} 對照案沒有對應的任務（${freeO.length}）</h3><table class="ptab"><tbody>${freeO.map(o=>`<tr><td>${esc(o.ph)}</td><td class="nm">${esc(o.wbs)} ${esc(o.name)}</td><td class="num">${o.d} 天</td></tr>`).join('')}</tbody></table>`;
   g.innerHTML=h+`</div>`;
@@ -842,6 +845,9 @@ async function savePairs(upd){
   catch(err){document.getElementById('msg').textContent='儲存失敗：'+err.message}
 }
 document.getElementById('mg').addEventListener('change',e=>{
+  const mi=e.target.closest('input[data-memo]');
+  if(mi){const k=mi.dataset.memo, v=mi.value.trim(), o=CMPOTHER;
+    saveMeta(CMPBASE,m=>{m.pairNotes=m.pairNotes||{}; const p=m.pairNotes[o]=m.pairNotes[o]||{}; if(v)p[k]=v; else delete p[k]},'已儲存說明').catch(err=>{document.getElementById('msg').textContent='儲存失敗：'+err.message}); return}
   if(e.target.id==='pbase'){CMPBASE=e.target.value; render(); return}
   if(e.target.id==='pother'){CMPOTHER=e.target.value; render(); return}
   const s=e.target.closest('select[data-pair]'); if(s)savePairs({[s.dataset.pair]:s.value});
