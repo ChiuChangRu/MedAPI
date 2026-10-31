@@ -33,6 +33,8 @@ button,select,input{font:inherit;color:inherit}
 .bar select,.bar input[type=date]{padding:3px 6px;border:1px solid var(--line);border-radius:2px;background:var(--bg)}
 #proj{min-width:220px;max-width:280px;font-weight:700;color:var(--ink)}
 .bar .home{cursor:pointer;font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--bg);padding:3px 10px;border-radius:2px}
+.bar .tabs{display:inline-flex;gap:2px;margin-left:6px}.bar .tab{margin-bottom:0;padding:3px 12px;border:1px solid transparent;border-radius:3px}.bar .tab.on{background:var(--bg);border-color:var(--line)}.bar .grow{flex:1}
+#mLegend{background:color-mix(in srgb,var(--accent) 13%,var(--bg));border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .bar2{display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;gap:0;padding:0 10px;background:var(--chrome);border-bottom:1px solid var(--line)}
 .tab{white-space:nowrap;border:1px solid transparent;border-bottom:0;background:transparent;padding:5px 14px;cursor:pointer;margin-bottom:-1px}
 .tab.on{background:var(--bg);border-color:var(--line);font-weight:700}
@@ -210,7 +212,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .cv .pdet{margin:0 0 10px 118px;border-left:3px solid var(--line);padding:4px 0 6px 10px}.cv .pdet .note{margin:0 0 4px}
 .cv .tl{display:grid;grid-template-columns:340px 1fr;gap:8px;align-items:center;min-height:22px}.cv .tl.g1{border-top:1px dashed var(--line);margin-top:4px;padding-top:4px}
 .cv .tn{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cv .na{color:var(--mute)}
-.cv .tb{position:relative;height:20px;margin-right:170px}.cv .tb .ln{top:4px;height:12px}.cv .tb .tx{position:absolute;top:1px;font-size:12px;line-height:18px;white-space:nowrap;color:var(--mute)}.cv .tb .tx b{color:var(--ink)}
+.cv .tb{position:relative;height:20px;margin-right:300px}.cv .tb .ln.ed{cursor:grab;touch-action:none}.cv .tb .ln .gh{position:absolute;right:-3px;top:-3px;bottom:-3px;width:8px;cursor:ew-resize}.cv .tb .dr{color:var(--ink);font-weight:600}.cv .tb .ln{top:4px;height:12px}.cv .tb .tx{position:absolute;top:1px;font-size:12px;line-height:18px;white-space:nowrap;color:var(--mute)}.cv .tb .tx b{color:var(--ink)}
 .cv .pr{display:grid;grid-template-columns:110px 1fr;gap:8px;border-top:1px solid var(--line);padding:6px 0}.cv .pk{font-weight:700;padding-top:4px}
 .cv .pbar{position:relative;height:24px;margin:2px 0;margin-right:330px}.cv .pbar .ln{top:4px;height:16px;left:0}.cv .pbar .sp{opacity:.35}
 .cv .pbar .tx{position:absolute;top:3px;line-height:18px;font-size:12px;white-space:nowrap;color:var(--mute)}.cv .pbar .tx b{color:var(--ink)}
@@ -267,16 +269,14 @@ table.lst td.nm{white-space:normal;font-weight:700}
   <a class="home ic" href="index.html" title="回首頁">‹</a>
   <span class="title">📅 PM 工具</span>
   <button id="curCase" hidden type="button"></button><input type="date" id="today" hidden>
-  <button class="act primary" id="btnSave" type="button" disabled>💾 存檔</button>
-  <button class="home ic" id="theme" type="button" title="切換白色／深色模式"></button>
-</div>
-<div class="bar2">
+  <span class="tabs">
   <button class="tab on" data-t="cases" type="button" title="① 宣告／載入案件">① 案件</button>
   <button class="tab" data-t="multi" type="button" title="② 甘特圖：勾選已載入的案件做比較">② 甘特圖</button>
   <button class="tab" data-t="tbl" type="button" title="③ 編輯任務">③ 任務</button>
   <button class="tab" data-t="dl" type="button" title="④ 下載 PLM／Excel">④ 下載</button>
   <button class="tab" data-t="org" type="button" title="組織圖：單位與人員">組織圖</button>
   <button class="tab" data-t="rule" type="button">依據與規則</button>
+  </span>
   <span class="edit-tools" id="editTools" style="visibility:hidden">
     <button class="act" id="btnAdd" type="button" title="在選取列之後新增任務">＋ 新增</button>
     <button class="act" id="btnDel" type="button" title="刪除選取的任務">刪除</button>
@@ -285,7 +285,9 @@ table.lst td.nm{white-space:normal;font-weight:700}
     <button class="act" id="btnUndo" type="button" title="復原上一步" disabled>↶</button>
     <span class="dirty" id="dirty"></span>
   </span>
-  <span class="kpis" id="kpis"></span>
+  <span class="grow"></span>
+  <button class="act primary" id="btnSave" type="button" disabled>💾 存檔</button>
+  <button class="home ic" id="theme" type="button" title="切換白色／深色模式"></button>
 </div>
 
 <main>
@@ -523,7 +525,6 @@ function render(){
 }
 function renderKpi(){
   const last=ph=>{const xs=D.filter(r=>r.ph===ph&&r.t!==PH&&r.f);return xs.length?xs[xs.length-1]:null};
-  document.getElementById('kpis').innerHTML=D.filter(r=>r.t===PH&&/^(C\d|認證)/.test(r.k)).map(p=>{const r=last(p.k);return r?`<span>${esc(p.name.split(' ')[0])} <b>${fd(r.f)}</b></span>`:''}).join('');
 }
 // 編輯：change 事件（離開欄位或按 Enter）才重算
 document.getElementById('t').addEventListener('change',e=>{
@@ -604,7 +605,7 @@ window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.return
 const sd=d=>`${String(d.getUTCFullYear()).slice(2)}/${d.getUTCMonth()+1}/${d.getUTCDate()}`;
 const pd0=s=>new Date(s+'T00:00:00Z');
 const isoW=d=>{const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));t.setUTCDate(t.getUTCDate()+4-(t.getUTCDay()||7));return Math.ceil(((t-Date.UTC(t.getUTCFullYear(),0,1))/864e5+1)/7)};
-let MLAYOUT='lane'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null, AUTOF=true, CMPALIGN='start', CMPVIEW='phase', CMPBASE=null, CMPOTHER=null, CMPSORT=false; const ZMAX=28;
+let MLAYOUT='time'; const MOFF=new Set(); let GAX=null; let ZOOMV=0, ZANCHOR=null, ZCUR=null, AUTOF=true, CMPALIGN='start', CMPVIEW='phase', CMPBASE=null, CMPOTHER=null, CMPSORT=false; const ZMAX=28;
 const tagOf=m=>{const n=String(m&&m.name||'');return /全自動/.test(n)?'全':/半自動/.test(n)?'半':n.slice(0,1)||'?'};
 function gridLayer(x,bands,lines){
   return `<div class="g-grid">${bands.map(([a,b],i)=>i%2?'':`<div class="g-yband" style="left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('')}${lines.map(v=>`<div class="g-mline" style="left:${x(v)}"></div>`).join('')}</div>`;
@@ -737,7 +738,7 @@ function phaseDetail(k,st){
   const line=(x,t,cls,extra)=>{ if(!t)return `<div class="tl ${cls}"><div class="tn">${chip(x.c)} <span class="na">（無對應）</span></div><div class="tb"></div></div>`;
     const a=x.o?Math.max(0,(+t.s-x.o.a)/864e5):0, l=Math.min(100,a/sp*100), w=Math.max(0.4,Math.min(100-l,t.d/sp*100));
     return `<div class="tl ${cls}"><div class="tn" title="${esc(t.wbs+' '+t.name+'：'+fd(t.s)+' → '+fd(t.f)+'\n前置：'+predTxt(t)+'；開始於 '+mTxt(t))}">${chip(x.c)} ${edBtn(x.c,t.k)}${esc(t.wbs)} ${esc(t.name)}${t.ph!==k?` <span class="na">（在 ${esc(t.ph)}）</span>`:''}</div>
-      <div class="tb"><div class="ln ${x.c.color}" style="left:${l}%;width:${w}%"></div><span class="tx" style="left:calc(${l+w}% + 6px)"><b>${t.d}</b> 天${extra||''}</span></div></div>`};
+      <div class="tb" data-sp="${sp}"><div class="ln ${x.c.color} ${String(x.c.id)===CUR_ID?'ed':''}" data-k="${esc(t.k)}" style="left:${l}%;width:${w}%" title="${String(x.c.id)===CUR_ID?'拖動＝改開始日；拖右緣＝改歷時；點一下＝輸入':'非「編輯中」案件，不能拖曳'}">${String(x.c.id)===CUR_ID?'<span class="gh"></span>':''}</div><span class="tx" style="left:calc(${l+w}% + 6px)"><span class="dr">${sd(t.s)} → ${sd(t.f)}</span>　<b>${t.d}</b> 天${extra||''}</span></div></div>`};
   const others=L.slice(1).map(x=>({x,p:pairUp(B.lv,x.lv,((metaOf(B.c.id).pairs||{})[x.c.id])||{})}));
   let h=`<div class="pdet"><p class="note">各案的條都從「該案 ${esc(k)} 開始日」起算；其他案的任務依「任務對照」配到 ${chip(B.c)} 的任務下面（* ＝自動建議、尚未確認）。差＝與 ${chip(B.c)} 相比的天數。</p>`;
   const shown=others.map(()=>new Set());
@@ -949,6 +950,15 @@ document.getElementById('mg').addEventListener('pointermove',e=>{
   tip.style.left=Math.min(innerWidth-190,e.clientX+14)+'px'; tip.style.top=Math.max(4,e.clientY-62)+'px';
   const bs=DRAG.bar.querySelector('.bd.bs'), be=DRAG.bar.querySelector('.bd.be'), bdt=DRAG.bar.querySelector('.bdt');
   if(bs)bs.textContent=sd(ns); if(be)be.textContent=sd(nf); if(bdt)bdt.textContent=sd(nf);
+  if(DRAG.dl)DRAG.dl.textContent=sd(ns)+' → '+sd(nf);
+});
+// 子任務比較（階段展開）的條：拖動方式與甘特圖相同
+document.getElementById('mg').addEventListener('pointerdown',e=>{
+  const bar=e.target.closest('.pdet .ln'); if(!bar||e.button!==0)return;
+  if(!bar.classList.contains('ed')){document.getElementById('msg').textContent='這個任務所屬的案件不是「編輯中」，不能拖曳。請到「① 案件」改選「開啟檔案」。';return}
+  const r=byK[bar.dataset.k]; if(!r||!r.s)return; const tb=bar.parentElement, sp=+tb.dataset.sp||1;
+  DRAG={bar,r,x0:e.clientX,mode:e.target.classList.contains('gh')?'resize':'move',pxPerDay:tb.clientWidth/sp,left0:bar.offsetLeft,w0:bar.offsetWidth,moved:false,dl:tb.querySelector('.dr')};
+  bar.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation();
 });
 document.getElementById('mg').addEventListener('pointerup',e=>{
   if(!DRAG)return; const d=DRAG; DRAG=null; d.bar.style.transform=''; const dt=document.getElementById('dragTip'); if(dt)dt.remove();
@@ -1399,7 +1409,7 @@ function showTab(t){
   if(t==='multi')renderMulti(pd(document.getElementById('today').value));
   try{sessionStorage.setItem('pm_tab',t)}catch{}
 }
-document.querySelector('.bar2').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;showTab(b.dataset.t)});
+document.querySelector('.bar').addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;showTab(b.dataset.t)});
 document.getElementById('curCase').onclick=()=>showTab('cases');
 document.getElementById('today').value=fd(new Date());
 function syncThemeBtn(){const dark=document.documentElement.getAttribute('data-theme')==='dark';const t=document.getElementById('theme');t.textContent=dark?'☀':'☾';t.title=dark?'切換成白色模式':'切換成深色模式'}
