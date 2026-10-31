@@ -735,7 +735,7 @@ function phaseDetail(k,st){
   const sp=Math.max(1,...L.filter(x=>x.o).map(x=>x.o.span));
   const line=(x,t,cls,extra)=>{ if(!t)return `<div class="tl ${cls}"><div class="tn">${chip(x.c)} <span class="na">（無對應）</span></div><div class="tb"></div></div>`;
     const a=x.o?Math.max(0,(+t.s-x.o.a)/864e5):0, l=Math.min(100,a/sp*100), w=Math.max(0.4,Math.min(100-l,t.d/sp*100));
-    return `<div class="tl ${cls}"><div class="tn" title="${esc(t.wbs+' '+t.name+'：'+fd(t.s)+' → '+fd(t.f)+'\n前置：'+predTxt(t)+'；開始於 '+mTxt(t))}">${chip(x.c)} ${esc(t.wbs)} ${esc(t.name)}${t.ph!==k?` <span class="na">（在 ${esc(t.ph)}）</span>`:''}</div>
+    return `<div class="tl ${cls}"><div class="tn" title="${esc(t.wbs+' '+t.name+'：'+fd(t.s)+' → '+fd(t.f)+'\n前置：'+predTxt(t)+'；開始於 '+mTxt(t))}">${chip(x.c)} ${edBtn(x.c,t.k)}${esc(t.wbs)} ${esc(t.name)}${t.ph!==k?` <span class="na">（在 ${esc(t.ph)}）</span>`:''}</div>
       <div class="tb"><div class="ln ${x.c.color}" style="left:${l}%;width:${w}%"></div><span class="tx" style="left:calc(${l+w}% + 6px)"><b>${t.d}</b> 天${extra||''}</span></div></div>`};
   const others=L.slice(1).map(x=>({x,p:pairUp(B.lv,x.lv,((metaOf(B.c.id).pairs||{})[x.c.id])||{})}));
   let h=`<div class="pdet"><p class="note">各案的條都從「該案 ${esc(k)} 開始日」起算；其他案的任務依「任務對照」配到 ${chip(B.c)} 的任務下面（* ＝自動建議、尚未確認）。差＝與 ${chip(B.c)} 相比的天數。</p>`;
@@ -765,7 +765,7 @@ function renderPhaseCmp(sel,g){
   h+=`</tbody></table></div>`;
   // 二、齊頭長度
   const mx=Math.max(1,...st.flatMap(({m})=>[...m.values()].map(o=>o.span)));
-  h+=`<h3>二、各階段歷時（齊頭比較） <button type="button" class="act" data-phall="1">全部展開</button> <button type="button" class="act" data-phall="0">全部收合</button></h3><p class="note"><b>點一下階段可展開小項目比較。</b>每條都從 0 開始，只比長短。淺色＝階段跨度（第一個任務開始到最後一個任務結束）；深色＝實際有任務在進行的天數（扣掉中間空檔）。「差」以第一個案件為基準。</p>`;
+  h+=`<h3>二、各階段歷時（齊頭比較） <button type="button" class="act" data-phall="1">全部展開</button> <button type="button" class="act" data-phall="0">全部收合</button></h3><p class="note"><b>點一下階段可展開小項目比較；「編輯中」案件的任務旁有 ✎，可直接調整時間與前置，甘特圖與這裡會一起連動。</b>每條都從 0 開始，只比長短。淺色＝階段跨度（第一個任務開始到最後一個任務結束）；深色＝實際有任務在進行的天數（扣掉中間空檔）。「差」以第一個案件為基準。</p>`;
   for(const k of keys){
     const open=PHOPEN.has(k);
     h+=`<div class="pr ${open?'open':''}" data-phk="${esc(k)}"><div class="pk" title="${esc(st.map(({c,m})=>m.get(k)?c.tag+'：'+m.get(k).names.join('、'):'').filter(Boolean).join('\n'))}">${open?'▾':'▸'} ${esc(k)}</div><div>`;
@@ -789,6 +789,7 @@ function simN(a,b){a=nrmN(a);b=nrmN(b); if(!a||!b)return 0; if(a===b)return 1; i
 const metaOf=id=>id===CUR_ID?META:((CASES[id]||{}).meta||{});
 function leafInfo(c){const s0=Math.min(...c.rows.map(r=>+r.s)); const ph={}; for(const r of c.rows)if(r.sum&&r.lvl===1)ph[r.wbs]=phKey(r.name);
   return c.rows.filter(r=>!r.sum).map(r=>({k:r.k,wbs:r.wbs,name:r.name,ph:ph[r.wbs.split('.')[0]]||'',s:r.s,f:r.f,d:Math.round((addD(r.f,1)-r.s)/864e5),m:(r.s-s0)/864e5,pk:r.pk||[],pw:r.pw||[],sm:r.sm}))}
+const edBtn=(c,k)=>String(c.id)===CUR_ID?`<button type="button" class="ebtn" data-edk="${esc(k)}" title="調整這個任務的開始／歷時／前置；甘特圖與比較表會一起連動">✎</button> `:'';
 const predTxt=t=>{const a=(t.pw||[]).map(([w,ty,l])=>`${w} ${ty}${l?(l>0?'+':'')+l:''}`); return a.length?(t.sm==='fix'?'指定日期；':'')+a.join('、'):(t.sm==='fix'?'指定日期':'—')};
 const mTxt=t=>'M'+(Math.floor(t.m/30.4375)+1);
 function pairUp(B,O,saved){
@@ -816,15 +817,15 @@ function renderPairCmp(sel,g){
     <button type="button" class="act" id="psort">${CMPSORT?'依原順序':'依差距排序'}</button>
     <button type="button" class="act" id="pokall" ${nAuto?'':'disabled'}>確認全部自動配對（${nAuto}）</button></div>
     <p class="note">已配對 ${nOk+nAuto} 對（已確認 ${nOk}、<b>*自動建議 ${nAuto}</b>）；基準案沒有對應 ${nNoB} 項；對照案沒有對應 ${freeO.length} 項（列在最下面）。<br>
-    自動建議依任務名稱相似度（同階段加分）產生，<b>* 表示尚未確認，可能配錯</b>；在「對照任務」下拉選單改選或按「確認」才會存檔（存在基準案）。歷時＝曆天（含頭尾）。各任務常同時進行，「差」不能直接加總成全案差距。</p>
+    自動建議依任務名稱相似度（同階段加分）產生，<b>* 表示尚未確認，可能配錯</b>；在「對照任務」下拉選單改選或按「確認」才會存檔（存在基準案）。歷時＝曆天（含頭尾）。各任務常同時進行，「差」不能直接加總成全案差距。<br><b>「編輯中」案件的任務旁有 ✎：按下去可調整開始／歷時／前置，調整後甘特圖與這張表會一起連動，記得按「存檔」。</b></p>
     <div class="cvs"><table class="ptab"><thead><tr><th>階段</th><th>${chip(bc)} 基準任務</th><th title="前置任務（WBS 編號、關係類型、延遲工作天）">前置</th><th title="開始時間：自該案最早任務起第幾個月">起</th><th>天</th><th>${chip(oc)} 對照任務</th><th>前置</th><th>起</th><th>天</th><th>差（天）</th><th title="把基準任務的前置，依目前配對換算成對照案的任務後，與對照任務實際的前置比較">前置比對</th><th>狀態</th></tr></thead><tbody>`;
   const Bset=new Set(B.map(x=>x.k)), Oset=new Set(O.map(x=>x.k));
   const predCmp=(b,o)=>{ if(!o)return ''; const bk=b.pk.filter(k=>Bset.has(k)), ok=o.pk.filter(k=>Oset.has(k)); if(!bk.length&&!ok.length)return '<span class="na">—</span>';
     const bm=bk.map(k=>{const q=res.get(k); return q&&q.o?q.o.k:'?'+k}).sort().join('|'), om=ok.slice().sort().join('|');
     return bm===om?'<span class="dn">相同</span>':'<span class="up">不同</span>'};
   for(const r of rows){const b=r.b;
-    h+=`<tr><td>${esc(b.ph)}</td><td class="nm" title="${fd(b.s)} → ${fd(b.f)}">${esc(b.wbs)} ${esc(b.name)}</td><td class="pdx">${esc(predTxt(b))}</td><td>${mTxt(b)}</td><td class="num">${b.d}</td>
-      <td><select data-pair="${esc(b.k)}"><option value="">（無對應）</option>${O.map(o=>`<option value="${esc(o.k)}" ${r.o&&r.o.k===o.k?'selected':''}>${esc(o.wbs)} ${esc(o.name)}</option>`).join('')}</select></td>
+    h+=`<tr><td>${esc(b.ph)}</td><td class="nm" title="${fd(b.s)} → ${fd(b.f)}">${edBtn(bc,b.k)}${esc(b.wbs)} ${esc(b.name)}</td><td class="pdx">${esc(predTxt(b))}</td><td>${mTxt(b)}</td><td class="num">${b.d}</td>
+      <td>${r.o?edBtn(oc,r.o.k):''}<select data-pair="${esc(b.k)}"><option value="">（無對應）</option>${O.map(o=>`<option value="${esc(o.k)}" ${r.o&&r.o.k===o.k?'selected':''}>${esc(o.wbs)} ${esc(o.name)}</option>`).join('')}</select></td>
       <td class="pdx">${r.o?esc(predTxt(r.o)):''}</td><td>${r.o?mTxt(r.o):''}</td><td class="num" ${r.o?`title="${fd(r.o.s)} → ${fd(r.o.f)}"`:''}>${r.o?r.o.d:'—'}</td>
       <td class="num ${r.df>0?'up':r.df<0?'dn':''}">${r.df==null?'—':(r.df>0?'+':'')+r.df}</td><td>${predCmp(b,r.o)}</td>
       <td>${r.ok?'已確認':r.o?`<span class="auto">*自動 ${Math.round(r.sc*100)}%</span> <button type="button" class="act" data-pok="${esc(b.k)}">確認</button>`:''}</td></tr>`}
@@ -844,6 +845,7 @@ document.getElementById('mg').addEventListener('change',e=>{
   const s=e.target.closest('select[data-pair]'); if(s)savePairs({[s.dataset.pair]:s.value});
 });
 document.getElementById('mg').addEventListener('click',e=>{
+  const eb=e.target.closest('button[data-edk]'); if(eb){e.stopPropagation(); const r=byK[eb.dataset.edk]; if(r)openPop(r,e.clientX,e.clientY); return}
   if(e.target.id==='psort'){CMPSORT=!CMPSORT; render(); return}
   const g=document.getElementById('mg');
   const redraw=()=>{if(LASTSEL)drawGantt(LASTSEL.sel,LASTSEL.today,g); else render()};
