@@ -243,7 +243,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 .g-bar .gh{position:absolute;right:-3px;top:-3px;bottom:-3px;width:8px;cursor:ew-resize}
 .pop [hidden]{display:none!important}
 .pop{position:fixed;z-index:60;background:var(--bg);border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.18);padding:10px 12px;display:flex;flex-direction:column;gap:6px;width:280px;font-size:13px}
-.dragtip,#dragTip{position:fixed;z-index:70;pointer-events:none;background:var(--ink);color:var(--bg);padding:5px 9px;border-radius:4px;font-size:12px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.3)}#dragTip span{opacity:.75}.pop .pp-h{cursor:move;user-select:none;touch-action:none;padding:2px 0;border-bottom:1px solid var(--line2)}.pop label{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--mute)}
+.xdlg{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}.xdlg .bx{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:14px 16px;max-width:620px;width:92vw;max-height:80vh;overflow:auto;box-shadow:0 8px 28px rgba(0,0,0,.3)}.xdlg label{display:flex;gap:8px;align-items:flex-start;padding:3px 0}.xdlg .sub{color:var(--mute);font-size:12px}.xdlg .act{margin-left:6px}.dragtip,#dragTip{position:fixed;z-index:70;pointer-events:none;background:var(--ink);color:var(--bg);padding:5px 9px;border-radius:4px;font-size:12px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.3)}#dragTip span{opacity:.75}.pop .pp-h{cursor:move;user-select:none;touch-action:none;padding:2px 0;border-bottom:1px solid var(--line2)}.pop label{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--mute)}
 .pop input,.pop select{font:inherit;padding:2px 4px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:150px}
 .pop .pp-act{display:flex;justify-content:flex-end;gap:6px;margin-top:4px}
 </style>
@@ -280,7 +280,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
   <p class="note">這裡列出 MyWiki「PM工具」資料夾裡所有案件。<b>開啟檔案</b>（單選）＝「③ 任務」與「④ 下載」操作的那一個案件，也是「② 甘特圖」可拖曳修改的案件；<b>加入比較</b>（可多選）＝讀進來疊在「② 甘特圖」一起比較。</p>
   <div class="pgbar cset"><b id="curName">（尚未載入案件）</b><label>開始日 <input type="date" id="start"></label>
   <label title="工作天怎麼算：鼎新 PLM 預設只排除週末">行事曆 <select id="cal"><option value="tw">週末＋國定假日</option><option value="weekend">只排週末（同PLM）</option></select></label><span class="note">（設定的是「編輯中」的案件）</span></div>
-  <div class="pgbar"><button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">＋ 匯入鼎新 PLM（XML）→ 新案件…</button><button class="act" id="btnReload" type="button">↻ 重新整理清單</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden></div>
+  <div class="pgbar"><button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">＋ 匯入鼎新 PLM（XML）→ 新案件…</button><button class="act" id="btnReload" type="button">↻ 重新整理清單</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden><button class="act" id="btnImpX" type="button" title="讀入公司制式進度管制表 .xlsx，每個分頁建立成一個案件">＋ 匯入公司 Excel（多分頁）→ 新案件…</button><input type="file" id="impXlsx" accept=".xlsx" hidden></div>
   <table class="lst" id="caseTbl"></table>
 </div></section>
 <section id="tbl" hidden><table class="grid" id="t"></table></section>
@@ -1101,6 +1101,100 @@ document.getElementById('impFile').onchange=async e=>{
     const {id}=await res.json(); try{localStorage.setItem('pm_last_entry',String(id))}catch{}
     setDirty(false); await loadProjects(); st.textContent=`已匯入「${meta.name}」：${diffW.length} 個任務日期與 PLM 不同`;
   }catch(err){st.textContent='匯入失敗：'+err.message}
+};
+
+
+// ===== 匯入公司制式進度管制表 .xlsx（多分頁）：每個分頁建成一個案件 =====
+async function readXlsxSheets(buf){
+  const zip=await JSZip.loadAsync(buf); const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const xml=async p=>{const f=zip.file(p);return f?new DOMParser().parseFromString(await f.async('string'),'application/xml'):null};
+  const ss=[]; const sdoc=await xml('xl/sharedStrings.xml');
+  if(sdoc)for(const si of sdoc.getElementsByTagNameNS(NS,'si'))ss.push([...si.getElementsByTagNameNS(NS,'t')].map(x=>x.textContent).join(''));
+  const wb=await xml('xl/workbook.xml'), rel=await xml('xl/_rels/workbook.xml.rels'); const rmap={};
+  for(const r of rel.getElementsByTagName('Relationship'))rmap[r.getAttribute('Id')]=r.getAttribute('Target');
+  const out=[];
+  for(const s of wb.getElementsByTagNameNS(NS,'sheet')){
+    const rid=s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id'); let path=rmap[rid]||''; path=path.replace(/^\//,''); if(!path.startsWith('xl/'))path='xl/'+path;
+    const doc=await xml(path); if(!doc)continue; const grid={};
+    const colN=s=>[...s].reduce((a,ch)=>a*26+ch.charCodeAt(0)-64,0), skip=new Set(); // 合併儲存格：只有左上角的值有效，其他格殘留的值要忽略
+    for(const mc of doc.getElementsByTagNameNS(NS,'mergeCell')){const mm=/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(mc.getAttribute('ref')||''); if(!mm)continue;
+      for(let r=+mm[2];r<=+mm[4];r++)for(let c=colN(mm[1]);c<=colN(mm[3]);c++)if(!(r===+mm[2]&&c===colN(mm[1])))skip.add(r+','+c)}
+    for(const c of doc.getElementsByTagNameNS(NS,'c')){
+      const ref=c.getAttribute('r'), m=/^([A-Z]+)(\d+)$/.exec(ref); if(!m)continue; const ty=c.getAttribute('t'); const v=c.getElementsByTagNameNS(NS,'v')[0]; let val=null;
+      if(ty==='inlineStr')val=[...c.getElementsByTagNameNS(NS,'t')].map(x=>x.textContent).join('');
+      else if(v){const tx=v.textContent; val=ty==='s'?ss[+tx]:(ty==='str'||ty==='e')?tx:(ty==='b')?tx==='1':(tx===''?null:Number(tx))}
+      if(val===null||val==='')continue; const col=colN(m[1]), row=+m[2]; if(skip.has(row+','+col))continue;
+      (grid[row]=grid[row]||{})[col]=val;
+    }
+    out.push({name:s.getAttribute('name'),hidden:s.getAttribute('state')&&s.getAttribute('state')!=='visible',grid});
+  }
+  return out;
+}
+function sheetToCase(sh,fileName){
+  const nz=v=>String(v==null?'':v).replace(/\s+/g,''); const g=sh.grid; const rows=Object.keys(g).map(Number).sort((a,b)=>a-b);
+  const hr=rows.find(r=>r<=12&&Object.values(g[r]).some(v=>nz(v)==='項次')&&Object.values(g[r]).some(v=>nz(v)==='工作項目')); if(!hr)return null;
+  const H={}; for(const [c,v] of Object.entries(g[hr])){const k=nz(v);
+    const map={階段:'ph',項次:'no',工作項目:'name',研發人員:'rd',協力單位:'co',協力單位人員:'co',預計開始日:'F',預計完成日:'G',原本預計完成:'G',修改後預計開始日:'H',修改後預計完成日:'I',工作天數:'J',實際開始:'K',實際完成:'L',進度說明與檢討:'note',工作類別:'cat',產出:'out'};
+    if(map[k]&&H[map[k]]==null)H[map[k]]=+c}
+  if(!H.name||!H.no||!H.F)return null;
+  const toD=(v,ref)=>{ if(v==null||v==='')return null;
+    if(typeof v==='number'){ if(v>30000&&v<80000)return fd(new Date(Date.UTC(1899,11,30)+Math.round(v)*864e5)); return null }
+    const s=String(v); let m=/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/.exec(s); if(m)return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+    m=/(\d{1,2})月(\d{1,2})日?/.exec(s); if(m&&ref){let y=+ref.slice(0,4); let d=`${y}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`; if(pd(d)<addD(pd(ref),-150))d=`${y+1}-${d.slice(5)}`; return d}
+    return null };
+  const txt=v=>v==null?'':String(v).replace(/\r/g,'').replace(/[ \t]+\n/g,'\n').trim();
+  const tasks=[]; let phN=0, curPh=null, prev=null; const byNo={}; const usedK=new Set(); const warn=[];
+  for(const r of rows){ if(r<=hr)continue; const row=g[r]; const nm=txt(row[H.name]).replace(/\s*\n\s*/g,''); if(!nm)continue;
+    const phTxt=H.ph?txt(row[H.ph]).replace(/\s*\n\s*/g,' '):''; if(phTxt||!curPh){phN++;curPh='P'+phN;tasks.push({k:curPh,t:'phase',name:phTxt||'（未分階段）'})}
+    const no=txt(row[H.no]); let k=no||('r'+r); if(usedK.has(k))k=k+'_'+r; usedK.add(k);
+    const F0=toD(row[H.F]), G=toD(row[H.G],F0), Hh=H.H?toD(row[H.H],F0):null, I=H.I?toD(row[H.I],F0):null, K=toD(row[H.K],F0), L=toD(row[H.L],F0,);
+    let F=F0; let J=H.J&&typeof row[H.J]==='number'?Math.round(row[H.J]):null;
+    const x={k,no,ph:curPh,name:nm,rd:txt(row[H.rd]).replace(/\s*\n\s*/g,' '),co:txt(row[H.co]).replace(/\s*\n\s*/g,' ')};
+    if(F)x.F=F; if(G)x.G=G; if(Hh)x.H=Hh; if(I)x.I=I; if(K)x.K=K; if(L)x.L=L;
+    if(!F&&K){x.F=K;F=K;x.note0='預計開始日空白，暫用實際開始日 *'}
+    // 各分頁「工作天數」算法不一（有的是曆天、有的是工作天），所以有預計完成日就以「預計開始～預計完成」的曆天數為準（與 Excel 圖表畫的一致）
+    if(F&&G&&pd(G)>=pd(F))J=Math.round((pd(G)-pd(F))/864e5)+1; else if(J==null&&F&&I)J=Math.round((pd(I)-pd(F))/864e5)+1;
+    if(J!=null&&J>0)x.J=J;
+    const note=[txt(row[H.note]),H.cat?txt(row[H.cat]):'',H.out?txt(row[H.out]):''].filter(Boolean); 
+    if(H.cat||H.out){const cp=[H.cat?txt(row[H.cat]):'',H.out?txt(row[H.out]):''].filter(Boolean).join('／'); if(cp)x.out=cp}
+    if(txt(row[H.note]))x.note=txt(row[H.note]); if(x.note0){x.note=(x.note?x.note+'｜':'')+x.note0;delete x.note0}
+    if(!x.F){x.sm='pred';x.pred=prev?[[prev,'FS',0]]:[];x.dur=Math.max(1,x.J||1);x.note=(x.note?x.note+'｜':'')+'沒有預計開始日，接在前一項後 *';warn.push(no||nm)}
+    else x.pred=[];
+    tasks.push(x); byNo[no]=x; prev=k;
+  }
+  // 項次 13-1 這種子項：父項（13）設為摘要
+  for(const x of tasks){ if(x.t==='phase')continue; const m=/^(\d+)-\d+$/.exec(x.no||''); const par=m&&byNo[m[1]]; if(par&&par!==x){x.par=par.k;par.t='sum'} }
+  const leaf=tasks.filter(x=>x.t!=='phase'&&x.t!=='sum'&&x.F); if(!leaf.length)return null;
+  const A3=Object.values(g[3]||{}).map(v=>String(v)).find(v=>/專案負責人/.test(v))||'';
+  const meta={name:sh.name.trim(),product:'',leader:A3.replace(/.*專案負責人[:：]?\s*/,'').trim(),source:`公司進度管制表 Excel（${fileName}）`,version:'v1',updated:fd(new Date()),calendar:'weekend',
+    default_start:leaf.map(x=>x.F).sort()[0],notes:[`${fd(new Date())} 由公司進度管制表 Excel 匯入（工作表「${sh.name.trim()}」）：開始日＝預計開始日、歷時＝工作天數（Excel 圖表畫法）；行事曆只排週末。`].concat(warn.length?[`以下項次沒有預計開始日，已接在前一項之後：${warn.join('、')}。`]:[])};
+  return {meta,tasks,n:leaf.length};
+}
+document.getElementById('btnImpX').onclick=()=>document.getElementById('impXlsx').click();
+document.getElementById('impXlsx').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f)return; const st=document.getElementById('msg');
+  try{
+    if(!window.JSZip)throw new Error('JSZip 未載入'); st.textContent='讀取 Excel…';
+    const sheets=await readXlsxSheets(await f.arrayBuffer());
+    const items=sheets.map(sh=>{let c=null; if(!sh.hidden){try{c=sheetToCase(sh,f.name)}catch(err){c=null}} const title=PM_PREFIX+sh.name.trim(); const dup=ENTRIES.some(x=>x.title===title); return {sh,c,title,dup}});
+    const ok=items.filter(x=>x.c);
+    const box=document.createElement('div'); box.className='xdlg';
+    box.innerHTML=`<div class="bx"><b>匯入公司 Excel：${esc(f.name)}</b><div class="sub" style="margin:4px 0 8px">每個勾選的分頁建立成一個新案件，存到 MyWiki「${esc(PM_FOLDER)}」。開始日＝預計開始日、歷時＝工作天數，行事曆只排週末。</div>
+      ${items.map((x,i)=>`<label><input type="checkbox" data-i="${i}" ${x.c&&!x.dup?'checked':''} ${x.c?'':'disabled'}><span><b>${esc(x.sh.name.trim())}</b> ${x.c?`<span class="sub">${x.c.n} 個任務｜${esc(x.c.meta.default_start)} 起${x.c.meta.leader?'｜'+esc(x.c.meta.leader):''}${x.dup?'｜已有同名案件（勾選會再建一個）':''}</span>`:`<span class="sub">${x.sh.hidden?'隱藏分頁（舊格式），不匯入':'格式不符，不匯入'}</span>`}</span></label>`).join('')}
+      <div style="text-align:right;margin-top:10px"><button class="act" data-x="cancel" type="button">取消</button><button class="act primary" data-x="go" type="button">匯入勾選的分頁</button></div></div>`;
+    document.body.appendChild(box); st.textContent='';
+    box.onclick=async ev=>{const a=ev.target.dataset.x; if(!a)return; if(a==='cancel'){box.remove();return}
+      const pick=[...box.querySelectorAll('input[data-i]:checked')].map(i=>items[+i.dataset.i]); if(!pick.length){alert('請至少勾選一個分頁');return}
+      box.remove(); if(DIRTY&&!confirm('目前案件尚未存檔；匯入後清單會重新整理。確定？'))return;
+      try{ const folders=await api('/folders'); const fo=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER)); if(!fo)throw new Error(`找不到「${PM_FOLDER}」資料夾`);
+        let n=0; for(const x of pick){ st.textContent=`建立案件 ${n+1}/${pick.length}：${x.sh.name.trim()}…`;
+          const body='{"meta":'+JSON.stringify(x.c.meta)+',\n"tasks":[\n'+x.c.tasks.map(t=>JSON.stringify(t)).join(',\n')+'\n]}';
+          const res=await fetch('/api/entries',{method:'POST',headers:{'content-type':'application/json','x-pin':pin()},body:JSON.stringify({folder_id:fo.id,title:x.title,body,body_format:'text'})});
+          if(res.status===401){showLogin();throw new Error('PIN 錯誤')} if(!res.ok){const b=await res.json().catch(()=>({}));throw new Error(`${x.sh.name.trim()}：${b.error||'HTTP '+res.status}`)} n++ }
+        await loadProjects(true); st.textContent=`已匯入 ${n} 個案件。到上方表格勾選「加入比較」或選「開啟檔案」即可使用`;
+      }catch(err){st.textContent='匯入失敗：'+err.message; alert('匯入失敗：\n'+err.message)}
+    };
+  }catch(err){st.textContent='讀取 Excel 失敗：'+err.message; alert('讀取 Excel 失敗：\n'+err.message)}
 };
 
 // ===== 分頁、主題 =====
