@@ -208,6 +208,13 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .cv td.num{text-align:right}.cv td.na{color:var(--mute);text-align:center}.cv .up{color:var(--bad);font-weight:700}.cv .dn{color:#3f8f5f;font-weight:700}.cv .auto{color:var(--mute)}
 .dlwho{border:2px solid var(--accent);border-radius:6px;padding:10px 14px;margin:6px 0 12px;background:var(--chrome2)}.dlwho .lb{font-size:12px;color:var(--mute)}.dlwho .nm{font-size:20px;font-weight:700;margin:2px 0 4px}.dlwho .meta{font-size:13px}.dlwho .sub{font-size:12px;color:var(--mute);margin-top:4px}
 .cv input.pmemo{width:280px;font:inherit;font-size:12px;padding:2px 4px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}.cv .mm{font-size:12px;color:var(--ink);padding:0 0 4px;white-space:normal}
+.hrctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}.hrctl input{width:58px;font:inherit;padding:2px 4px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.hrs{overflow:auto;max-height:68vh;border:1px solid var(--line)}.hrt{border-collapse:separate;border-spacing:0;font-size:11px}.hrt th,.hrt td{border-right:1px solid var(--line2,var(--line));border-bottom:1px solid var(--line2,var(--line));padding:0;text-align:center;white-space:nowrap}
+.hrt thead th{position:sticky;top:0;background:var(--chrome2);z-index:2;padding:2px 3px;font-weight:600}.hrt thead tr:nth-child(2) th{top:21px;font-size:10px;font-weight:400;min-width:34px}.hrt .hmo{text-align:left;font-size:11px}
+.hrt .hn{position:sticky;left:0;background:var(--bg);z-index:3;text-align:left;padding:2px 8px;min-width:76px}.hrt thead .hn{background:var(--chrome2);z-index:4}
+.hrt td.num{padding:2px 6px;font-size:12px}.hrt td.bad,.hrdet .bad{color:var(--bad);font-weight:700}.hrt td.hc{min-width:34px;height:24px;cursor:default;color:var(--ink)}.hrt td.hc[data-p]{cursor:pointer}.hrt td.hc.now,.hrt th.now{box-shadow:inset 2px 0 0 var(--accent)}.hrt td.hc.act{outline:2px solid var(--ink);outline-offset:-2px}
+.hrdet,.hrdetT{font-size:12px}.hrdet{margin:10px 0;padding:8px 10px;border:2px solid var(--accent);border-radius:5px;background:var(--chrome2)}.hrdet table,.hrdetT{border-collapse:collapse;margin-top:4px}.hrdet th,.hrdet td,.hrdetT th,.hrdetT td{border:1px solid var(--line);padding:2px 8px;text-align:left}.hrdet th,.hrdetT th{background:var(--chrome2)}
+.hrdet td.num,.hrdetT td.num{text-align:right}.hrdet tr.sk td,.hrdetT tr.sk td{color:var(--mute);text-decoration:line-through}.hrdetT .na{color:var(--mute)}.hrdetT .dn{color:#3f8f5f}
 .cv .pdx{font-size:12px;color:var(--mute);max-width:160px;overflow:hidden;text-overflow:ellipsis}
 .cv .pr{cursor:pointer}.cv .pr:hover{background:var(--chrome2)}.cv .pr.open{background:var(--chrome2)}
 .cv .pdet{margin:0 0 10px 118px;border-left:3px solid var(--line);padding:4px 0 6px 10px}.cv .pdet .note{margin:0 0 4px}
@@ -275,6 +282,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
   <button class="tab" data-t="multi" type="button" title="② 甘特圖：勾選已載入的案件做比較">② 甘特圖</button>
   <button class="tab" data-t="tbl" type="button" title="③ 編輯任務">③ 任務</button>
   <button class="tab" data-t="dl" type="button" title="④ 下載 PLM／Excel">④ 下載</button>
+  <button class="tab" data-t="hr" type="button" title="每個人每週的負荷：誰超載、誰有空檔；並檢查哪些任務可以提前而人力不超載">人力分析</button>
   <button class="tab" data-t="org" type="button" title="組織圖：單位與人員">組織圖</button>
   <button class="tab" data-t="rule" type="button">依據與規則</button>
   </span>
@@ -302,6 +310,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
 </div></section>
 <section id="tbl" hidden><table class="grid" id="t"></table></section>
 <section id="dl" hidden><div class="pg" id="dlBody"></div></section>
+<section id="hr" hidden><div class="pg" id="hrBody"></div></section>
 <section id="org" hidden><div class="pg" id="orgBody"></div></section>
 <section id="multi" hidden>
   <div class="legend" id="mLegend"></div>
@@ -617,7 +626,7 @@ function caseRows(id,json,color){
   let tasks;
   if(isCur)tasks=D; else {tasks=withCal(meta,()=>migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])})))); anchorStart(tasks,meta.default_start); withCal(meta,()=>compute(tasks,meta.default_start||fd(new Date())));}
   const wm=wbsMap(tasks);
-  const rows=tasks.map((r,ord)=>({r,ord})).filter(({r})=>r.s&&r.f).map(({r,ord})=>({ord,k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms,sm:r.sm,pk:(r.pred||[]).map(p=>p[0]),pw:(r.pred||[]).map(([k,t,l])=>[wm[k]?wm[k][0]:k,t||'FS',l||0])}));
+  const rows=tasks.map((r,ord)=>({r,ord})).filter(({r})=>r.s&&r.f).map(({r,ord})=>({ord,k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,rd:r.rd||'',s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms,sm:r.sm,pk:(r.pred||[]).map(p=>p[0]),pw:(r.pred||[]).map(([k,t,l])=>[wm[k]?wm[k][0]:k,t||'FS',l||0])}));
   return {tag,name:meta.name||'',color,rows,marks:(meta.marks||[]).map(m=>({...m,cur:isCur,tag}))};
 }
 let MSEQ=0;
@@ -1406,12 +1415,12 @@ document.getElementById('impXlsx').onchange=async e=>{
 };
 
 // ===== 分頁、主題 =====
-const TABS=['cases','multi','tbl','dl','org','rule'];
+const TABS=['cases','multi','tbl','dl','hr','org','rule'];
 function showTab(t){
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.dataset.t===t));
   TABS.forEach(id=>document.getElementById(id).hidden=id!==t);
   document.getElementById('editTools').style.visibility=(t==='multi'||t==='tbl')?'visible':'hidden';
-  if(t==='cases')renderCases(); if(t==='dl')renderDl(); if(t==='org')renderOrg();
+  if(t==='cases')renderCases(); if(t==='dl')renderDl(); if(t==='hr')renderHr(); if(t==='org')renderOrg();
   if(t==='multi')renderMulti(pd(document.getElementById('today').value));
   try{sessionStorage.setItem('pm_tab',t)}catch{}
 }
@@ -1544,6 +1553,116 @@ function renderDl(){
   <div class="dlc"><h3>鼎新 PLM（MS Project XML）</h3><p>欄位與順序比照鼎新匯出的樣本；沒有「開發總覽」時自動補上。${USE_HOL?'<b>注意：</b>本案件行事曆含國定假日，PLM 只扣六日、不扣國定假日，匯入後 PLM 重算的日期可能提早幾天*。':'行事曆與 PLM 相同（六日休（週一～五）．國定假日照常），日期應與 PLM 一致。'}</p><button class="act primary" data-dl="plm" type="button">⬇ 下載「${nm}」的 PLM XML</button></div>`;
 }
 document.getElementById('dlBody').addEventListener('click',e=>{const b=e.target.closest('[data-dl]');if(!b)return; if(!D.length){document.getElementById('msg').textContent='尚未載入案件';return} b.dataset.dl==='xlsx'?doXlsx():doPlm()});
+// ===== 人力分析（檢查用，不自動排人）=====
+// 規則：只計「研發人員」欄的人名；多人時第一位 75%、其餘平分 25%*；一個任務同時占人員 100%（簡化版）；以週（週一起）統計；
+//       職稱型（專案負責人、品保主管…）與支援單位（協辦欄）不列入。
+const HR={scope:'all',win:'w52',low:75,high:100,sort:'peak',sel:null};
+try{Object.assign(HR,JSON.parse(localStorage.getItem('pm_hr')||'{}'))}catch{}
+const hrSave=()=>{try{localStorage.setItem('pm_hr',JSON.stringify({scope:HR.scope,win:HR.win,low:HR.low,high:HR.high,sort:HR.sort}))}catch{}};
+const HR_ROLE=/主管|負責人|單位|課|部|組|外部|實驗室|雜項|研發|品保|生產|法規|採購|模具|製C|廠|供應商|顧問|PM|QA|QC|RA/i;
+const hrTok=s=>String(s||'').split(/[\/、,，\s]+/).map(x=>x.trim()).filter(Boolean);
+const hrIsP=n=>/^[一-龥]{2,4}$/.test(n)&&!HR_ROLE.test(n);
+function hrW(rd){const all=hrTok(rd), ps=all.filter(hrIsP), ex=all.filter(n=>!hrIsP(n)); const m={}; if(ps.length===1)m[ps[0]]=1; else if(ps.length>1){m[ps[0]]=.75; for(const n of ps.slice(1))m[n]=.25/(ps.length-1)} return {m,ex}}
+const monOf=d=>{const x=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())); x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7)); return x};
+function hrCases(){
+  const ids=HR.scope==='cur'?[CUR_ID]:[...LOADED]; const out=[];
+  for(const id of ids){const isCur=id===CUR_ID; const j=isCur?{meta:META,tasks:D}:CASES[id]; if(!j)continue;
+    let c; try{c=caseRows(id,j,'pa')}catch{continue} const meta=isCur?META:(j.meta||{});
+    out.push({id,tag:c.tag,name:c.name,rows:c.rows.filter(r=>!r.sum&&r.s&&r.f),skip:new Set(meta.hrSkip||[])})}
+  return out;
+}
+function hrCompute(){
+  const cs=hrCases(), load={}, items={}, excl=new Map(); let nTask=0,nNo=0;
+  for(const c of cs)for(const r of c.rows){
+    const {m,ex}=hrW(r.rd); ex.forEach(x=>excl.set(x,(excl.get(x)||0)+1)); const ps=Object.keys(m); if(!ps.length){nNo++;continue} nTask++;
+    const sk=c.skip.has(r.k), key=c.id+'|'+r.k;
+    for(let d=new Date(+r.s); d<=r.f; d=addD(d,1)){const wd=d.getUTCDay(); if(wd===0||wd===6)continue; const wk=fd(monOf(d));
+      for(const p of ps){const it=(items[p+'|'+wk]=items[p+'|'+wk]||{}); (it[key]=it[key]||{c,r,w:m[p],days:0,sk}).days++; if(!sk){const L=(load[p]=load[p]||{}); L[wk]=(L[wk]||0)+m[p]/5}}}
+  }
+  const people=[...new Set(Object.keys(items).map(k=>k.split('|')[0]))];
+  return {cs,load,items,excl,nTask,nNo,people};
+}
+function hrLoadAt(H,p,wk){return (H.load[p]||{})[wk]||0}
+function hrAccel(H,hi){
+  const rows=[]; const wm=W(); const cap=hi+1e-9;
+  const contrib=(r,m,shift)=>{const o={}; for(let d=addD(r.s,shift); d<=addD(r.f,shift); d=addD(d,1)){const wd=d.getUTCDay(); if(wd===0||wd===6)continue; const wk=fd(monOf(d)); for(const p in m){(o[p]=o[p]||{})[wk]=((o[p]||{})[wk]||0)+m[p]/5}} return o};
+  const skip=new Set(META.hrSkip||[]);
+  for(const r of D){ if(r.t===PH||r.t==='sum'||!r.s)continue;
+    const preds=(r.pred||[]).filter(([k])=>byK[k]&&byK[k].t!==PH&&byK[k].s); if(!preds.length)continue;
+    let es0=null; for(const [k,t] of preds){const c=addWd(predBase(byK[k],t),0); if(!es0||c>es0)es0=c}
+    const tw=monOf(pd(document.getElementById('today').value||fd(new Date()))); if(r.s<tw)continue;   // 已經開始（或過去）的任務不列入
+    const slack=r.s>es0?wdDiff(es0,r.s):0, preW=Math.min(Math.floor(slack/5),Math.floor((r.s-tw)/6048e5)); if(preW<1)continue;   // 提前後不能早於本週
+    const {m}=hrW(r.rd), ps=Object.keys(m); let capW=preW, block='';
+    if(ps.length&&!skip.has(r.k)){ const orig=contrib(r,m,0); capW=0;
+      for(let n=1;n<=Math.min(preW,26);n++){ const nc=contrib(r,m,-7*n); let bad=null;
+        for(const p of ps)for(const wk in nc[p]){const v=hrLoadAt(H,p,wk)-((orig[p]||{})[wk]||0)+nc[p][wk]; if(v>cap&&(!bad||v>bad.v))bad={p,wk,v}}
+        if(bad){block=`${bad.p} 於 ${bad.wk} 起那週會到 ${Math.round(bad.v*100)}%`;break} capW=n}
+      if(capW>=Math.min(preW,26)&&!block)block='' }
+    rows.push({r,wbs:wm[r.k][0],rd:r.rd,slack,preW,capW:ps.length?capW:preW,rec:Math.min(preW,ps.length?capW:preW),block,noP:!ps.length||skip.has(r.k)})}
+  return rows.sort((a,b)=>b.rec-a.rec||b.slack-a.slack);
+}
+function renderHr(){
+  const body=document.getElementById('hrBody'); if(!body)return;
+  const H=hrCompute(), lo=HR.low/100, hi=HR.high/100, today=pd(document.getElementById('today').value||fd(new Date()));
+  const wk0=fd(monOf(today));
+  // 週範圍
+  let all=Object.keys(H.items).map(k=>k.split('|')[1]).sort(); if(!all.length){body.innerHTML=`<h2>人力分析</h2><p class="note">已納入的案件裡沒有可辨識的研發人員（主辦欄要是人名；職稱或單位不列入）。請到「① 案件」勾選案件。</p>`;return}
+  let a=all[0], z=all[all.length-1];
+  if(HR.win!=='all'){a=fd(addD(monOf(today),-28)); const n={w26:26,w52:52,w104:104}[HR.win]||52; z=fd(addD(pd(a),7*(n-1)))}
+  const weeks=[]; for(let d=pd(a);d<=pd(z);d=addD(d,7))weeks.push(fd(d));
+  // 人員統計
+  const st=H.people.map(p=>{const wk=Object.keys(H.items).filter(k=>k.startsWith(p+'|')).map(k=>k.split('|')[1]).sort(); const sp=[wk[0],wk[wk.length-1]];
+    let peak=0,over=0,run=0,maxRun=0,idle=0,irun=0,maxIdle=0;
+    for(const w of weeks){const L=hrLoadAt(H,p,w); if(L>peak)peak=L; if(L>hi+1e-9){over++;run++;if(run>maxRun)maxRun=run}else run=0;
+      if(w>=sp[0]&&w<=sp[1]&&L<lo-1e-9){idle++;irun++;if(irun>maxIdle)maxIdle=irun}else irun=0}
+    return {p,peak,over,maxRun,idle,maxIdle,sp}});
+  st.sort(HR.sort==='name'?(x,y)=>x.p.localeCompare(y.p,'zh-Hant'):(x,y)=>y.peak-x.peak||y.over-x.over);
+  const cellBg=L=>{if(L<=0)return ''; if(L>hi+1e-9)return `background:rgba(214,60,60,${Math.min(.85,.4+(L-hi)*1.2).toFixed(2)})`; if(L>=lo-1e-9)return 'background:rgba(76,175,110,.42)'; return 'background:rgba(90,150,215,.30)'};
+  // 表頭：月份列＋週列
+  let mrow='',m0=null,cnt=0; const flush=()=>{if(m0!=null)mrow+=`<th colspan="${cnt}" class="hmo">${m0}</th>`};
+  for(const w of weeks){const d=pd(w), key=`${String(d.getUTCFullYear()).slice(2)}/${d.getUTCMonth()+1}`; if(key!==m0){flush();m0=key;cnt=0}cnt++} flush();
+  const wrow=weeks.map(w=>{const d=pd(w); return `<th class="hwk ${w===wk0?'now':''}" title="${w} 起那週">${d.getUTCMonth()+1}/${d.getUTCDate()}</th>`}).join('');
+  let h=`<h2>人力分析 <span class="note" style="font-weight:400">（檢查用：看誰在哪幾週超載或閒置，不會自動排人）</span></h2>
+  <div class="hrctl">範圍 <select id="hrWin"><option value="w26">本週起 26 週</option><option value="w52">本週起 1 年</option><option value="w104">本週起 2 年</option><option value="all">全部（含過去）</option></select>
+    納入 <select id="hrScope"><option value="all">所有已勾選「加入比較」的案件</option><option value="cur">只有編輯中案件</option></select>
+    閒置低於 <input type="number" id="hrLo" min="0" max="100" step="5" value="${HR.low}">% 超載高於 <input type="number" id="hrHi" min="50" max="300" step="5" value="${HR.high}">%
+    排序 <select id="hrSort"><option value="peak">尖峰負荷高→低</option><option value="name">姓名</option></select></div>
+  <p class="note">納入案件：${H.cs.map(c=>`<b>${esc(c.tag)}</b> ${esc(c.name)}`).join('、')||'—'}　｜　${H.people.length} 位人員、${H.nTask} 個任務納入計算；<b>${H.nNo}</b> 個任務因主辦欄不是人名（例如職稱、單位）而<b>未列入</b>${H.excl.size?`（未列入的稱呼：${[...H.excl.keys()].slice(0,14).map(esc).join('、')}${H.excl.size>14?'…':''}）`:''}。<br>
+  算法：每人每週負荷＝該週各任務占用工作日 ÷ 5 × 占比；一個任務同時占人員 100%；多人共同負責時第一位 75%、其餘平分 25%*（*兩人以上時的分法為推測，只有「兩人 75／25」是你指定的）。<span style="color:#3a78b8">藍＝閒置</span>、<span style="color:#2f9a58">綠＝正常</span>、<span style="color:#c43a3a">紅＝超載</span>、空白＝當週沒有任務。</p>
+  <div class="hrs"><table class="hrt"><thead><tr><th rowspan="2" class="hn">人員</th><th rowspan="2" title="範圍內最高的單週負荷">尖峰</th><th rowspan="2" title="超載的週數（最長連續）">超載週</th><th rowspan="2" title="在這個人有任務的期間內，低於閒置門檻的週數（最長連續）">空檔週</th>${mrow}</tr><tr>${wrow}</tr></thead><tbody>`;
+  for(const s of st){
+    h+=`<tr><th class="hn">${esc(s.p)}</th><td class="num ${s.peak>hi+1e-9?'bad':''}">${Math.round(s.peak*100)}%</td><td class="num ${s.over?'bad':''}">${s.over?`${s.over}（連${s.maxRun}）`:'—'}</td><td class="num">${s.idle?`${s.idle}（連${s.maxIdle}）`:'—'}</td>`;
+    for(const w of weeks){const L=hrLoadAt(H,s.p,w); const has=H.items[s.p+'|'+w]; const act=HR.sel&&HR.sel.p===s.p&&HR.sel.w===w;
+      h+=`<td class="hc ${act?'act':''} ${w===wk0?'now':''}" ${has?`data-p="${esc(s.p)}" data-w="${w}"`:''} style="${cellBg(L)}">${L>0?Math.round(L*100):''}</td>`}
+    h+='</tr>'}
+  h+=`</tbody></table></div>`;
+  // 明細
+  if(HR.sel){const its=Object.values(H.items[HR.sel.p+'|'+HR.sel.w]||{}); const tot=hrLoadAt(H,HR.sel.p,HR.sel.w);
+    h+=`<div class="hrdet"><b>${esc(HR.sel.p)}｜${HR.sel.w} 起那週：${Math.round(tot*100)}%</b>（${its.length} 個任務）<table><thead><tr><th>案件</th><th>任務</th><th>期間</th><th>本週天數</th><th>占比</th><th title="勾選＝這是等待型任務（例如老化、外部試驗），不占人力；會存回該案件">不占人力</th></tr></thead><tbody>`+
+      its.map(x=>`<tr class="${x.sk?'sk':''}"><td>${esc(x.c.tag)}</td><td class="nm">${esc(x.r.wbs)} ${esc(x.r.name)}</td><td>${fd(x.r.s)} → ${fd(x.r.f)}</td><td class="num">${x.days}</td><td class="num">${Math.round(x.w*100)}%</td><td><input type="checkbox" data-hrskip="${esc(x.c.id)}|${esc(x.r.k)}" ${x.sk?'checked':''}></td></tr>`).join('')+`</tbody></table></div>`}
+  // 長天期任務
+  const longs=H.cs.flatMap(c=>c.rows.filter(r=>wdBetween(r.s,r.f)>=60&&Object.keys(hrW(r.rd).m).length).map(r=>({c,r,wd:wdBetween(r.s,r.f)}))).sort((x,y)=>y.wd-x.wd);
+  if(longs.length)h+=`<h3>長天期任務（≥ 60 工天）：是否真的整天占用人力？</h3><p class="note">老化、滅菌、外部試驗這類等待型任務若算 100% 占用，會讓人看起來一直超載。勾選「不占人力」後會從負荷扣除，並存回該案件。</p><table class="hrdetT"><thead><tr><th>案件</th><th>任務</th><th>主辦</th><th>工天</th><th>不占人力</th></tr></thead><tbody>`+longs.slice(0,40).map(x=>`<tr class="${x.c.skip.has(x.r.k)?'sk':''}"><td>${esc(x.c.tag)}</td><td class="nm">${esc(x.r.wbs)} ${esc(x.r.name)}</td><td>${esc(x.r.rd)}</td><td class="num">${x.wd}</td><td><input type="checkbox" data-hrskip="${esc(x.c.id)}|${esc(x.r.k)}" ${x.c.skip.has(x.r.k)?'checked':''}></td></tr>`).join('')+`</tbody></table>`;
+  // 加快檢查（編輯中案件）
+  const ac=hrAccel(H,hi);
+  h+=`<h3>加快檢查：編輯中案件「${esc(META.name||'')}」哪些任務可以提前、且人力不超載？</h3><p class="note">只看<b>單一任務</b>往前挪整週：「前置限制」＝把延遲或指定日期壓到 0 時最多能提前幾個工作天（取前置任務最晚者）；「人力允許」＝提前後相關人員每週都不超過 ${HR.high}% 的最大週數（已扣掉任務自己原本占的週）。建議提前＝兩者較小值。不連動後續任務，也不會改動排程；要實際調整請到甘特圖拖動或 ✎。</p>`;
+  if(!ac.length)h+=`<p class="note">（沒有任務在前置任務之後還留有 ≥ 1 週的空隙，或編輯中案件沒有前置關係。）</p>`;
+  else h+=`<table class="hrdetT"><thead><tr><th>任務</th><th>主辦</th><th>目前開始</th><th>前置限制可提前</th><th>人力允許</th><th>建議提前</th><th>人力卡住的原因</th></tr></thead><tbody>`+ac.slice(0,60).map(x=>`<tr><td class="nm">${esc(x.wbs)} ${esc(x.r.name)}</td><td>${esc(x.rd)}</td><td>${fd(x.r.s)}</td><td class="num">${x.slack} 工天（${x.preW} 週）</td><td class="num">${x.noP?'<span class="na">無人名／不占人力</span>':x.capW+' 週'}</td><td class="num ${x.rec?'dn':''}"><b>${x.rec} 週</b></td><td>${x.block?esc(x.block):x.rec>=x.preW?'<span class="na">—</span>':''}</td></tr>`).join('')+`</tbody></table>${ac.length>60?`<p class="note">只列前 60 筆。</p>`:''}`;
+  body.innerHTML=h;
+  document.getElementById('hrWin').value=HR.win; document.getElementById('hrScope').value=HR.scope; document.getElementById('hrSort').value=HR.sort;
+}
+document.getElementById('hrBody').addEventListener('change',async e=>{
+  const t=e.target; let redo=true;
+  if(t.id==='hrWin')HR.win=t.value; else if(t.id==='hrScope')HR.scope=t.value; else if(t.id==='hrSort')HR.sort=t.value;
+  else if(t.id==='hrLo')HR.low=Math.max(0,+t.value||75); else if(t.id==='hrHi')HR.high=Math.max(50,+t.value||100);
+  else if(t.dataset.hrskip){redo=false; const [id,k]=t.dataset.hrskip.split('|'); const on=t.checked;
+    try{await saveMeta(id,m=>{const s=new Set(m.hrSkip||[]); on?s.add(k):s.delete(k); if(s.size)m.hrSkip=[...s]; else delete m.hrSkip},on?'已設為不占人力':'已恢復占用人力')}catch(err){document.getElementById('msg').textContent='儲存失敗：'+err.message}
+    renderHr(); return}
+  else return;
+  hrSave(); renderHr();
+});
+document.getElementById('hrBody').addEventListener('click',e=>{const c=e.target.closest('td.hc[data-p]'); if(!c)return; HR.sel=(HR.sel&&HR.sel.p===c.dataset.p&&HR.sel.w===c.dataset.w)?null:{p:c.dataset.p,w:c.dataset.w}; renderHr()});
+
 // ===== 組織圖：單位與人員（存成 MyWiki 的一筆 PM組織｜ 記事）=====
 let ORG={units:[],roles:{}}, ORG_DIRTY=false, ORG_LOADED=false;
 async function loadOrg(){ if(ORG_LOADED)return; ORG_LOADED=true;
