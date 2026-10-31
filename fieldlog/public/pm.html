@@ -572,7 +572,7 @@ function serialize(){
   const meta={...META,updated:fd(new Date())};
   return '{"meta":'+JSON.stringify(meta)+',\n"tasks":[\n'+tasks.map(x=>JSON.stringify(x)).join(',\n')+'\n]}';
 }
-document.getElementById('btnSave').onclick=async()=>{
+async function saveCur(){
   const st=document.getElementById('msg');
   try{
     st.textContent='存檔中…';
@@ -582,7 +582,8 @@ document.getElementById('btnSave').onclick=async()=>{
     if(!res.ok){const b=await res.json().catch(()=>({}));throw new Error(b.error||`HTTP ${res.status}`)}
     CASES[CUR_ID]=JSON.parse(body); setDirty(false); st.textContent='已存檔（'+new Date().toLocaleTimeString()+'）'; render();
   }catch(e){st.textContent='存檔失敗：'+e.message}
-};
+}
+document.getElementById('btnSave').onclick=saveCur;
 window.addEventListener('beforeunload',e=>{if(DIRTY){e.preventDefault();e.returnValue=''}});
 
 // ===== 多案總覽：PM工具裡所有勾選的案件，畫在同一條實際日期軸 =====
@@ -1291,23 +1292,38 @@ function caseInfo(id){
   const leaf=rows.filter(r=>!r.sum);
   return {meta:m,n:leaf.length,s:rows.length?new Date(Math.min(...rows.map(r=>r.s))):null,f:rows.length?new Date(Math.max(...rows.map(r=>r.f))):null};
 }
+const KINDS=[['new_all','新案（全新）'],['new_gen','新案（新世代產品）'],['imp_major','舊品改善（重大變更）'],['imp_minor','舊品改善（輕微變更）']];
+const kindSel=(id,v,dis)=>`<select data-kind="${id}" ${dis?'disabled title="先勾選「加入比較」載入案件，才能設定"':''}><option value="">未設定</option>${KINDS.map(([k,t])=>`<option value="${k}" ${v===k?'selected':''}>${t}</option>`).join('')}</select>`;
+async function setKind(id,v){
+  const st=document.getElementById('msg'), isCur=id===CUR_ID;
+  if(isCur){ if(v)META.kind=v; else delete META.kind;
+    if(DIRTY){st.textContent='已改檔案屬性；目前案件還有其他未存檔修改，請按「存檔」一併儲存'; return}
+    await saveCur(); return }
+  const j=await fetchCase(id); j.meta=j.meta||{}; if(v)j.meta.kind=v; else delete j.meta.kind;
+  const body='{"meta":'+JSON.stringify(j.meta)+',\n"tasks":[\n'+(j.tasks||[]).map(x=>JSON.stringify(x)).join(',\n')+'\n]}';
+  const res=await fetch('/api/entries/'+id,{method:'PUT',headers:{'content-type':'application/json','x-pin':pin()},body:JSON.stringify({body})});
+  if(res.status===401){showLogin();throw new Error('PIN 錯誤')} if(!res.ok)throw new Error('HTTP '+res.status);
+  st.textContent='已儲存檔案屬性（'+new Date().toLocaleTimeString()+'）';
+}
 function renderCases(){
   const t=document.getElementById('caseTbl');
   if(!ENTRIES.length){t.innerHTML='<tr><td class="note">（尚無案件。可按上方「匯入鼎新 PLM」建立第一個案件）</td></tr>';return}
-  t.innerHTML=`<thead><tr><th title="同一時間只能開啟一個案件，「③ 任務」「④ 下載」都針對它">開啟檔案</th><th title="可多選；開啟中的案件一定在比較裡">加入比較</th><th>案件</th><th>類型</th><th>任務數</th><th>開始</th><th>完成</th><th>歷時</th><th>行事曆</th><th>更新</th></tr></thead><tbody>`+ENTRIES.map(e=>{
+  t.innerHTML=`<thead><tr><th title="同一時間只能開啟一個案件，「③ 任務」「④ 下載」都針對它">開啟檔案</th><th title="可多選；開啟中的案件一定在比較裡">加入比較</th><th>案件</th><th>代號</th><th title="新案（全新／新世代產品）、舊品改善（重大／輕微變更）；直接在表內選，會立刻存回 MyWiki">檔案屬性</th><th>任務數</th><th>開始</th><th>完成</th><th>歷時</th><th>行事曆</th><th>更新</th></tr></thead><tbody>`+ENTRIES.map(e=>{
     const id=String(e.id), ld=LOADED.has(id), cur=id===CUR_ID, ci=ld?caseInfo(id):null, m=ci?ci.meta:{};
     const mon=ci&&ci.s?((ci.f-ci.s)/864e5/30.4375).toFixed(1)+' 月':'—';
     return `<tr class="${cur?'cur':''}"><td><input type="radio" name="curc" data-cur="${id}" ${cur?'checked':''}></td>
       <td><input type="checkbox" data-ld="${id}" ${ld?'checked':''} ${cur?'disabled title="開啟中的案件一定在比較裡"':''}></td>
       <td class="nm">${esc(e.title.slice(PM_PREFIX.length))}</td>
       <td>${ci?`<span class="chip ${tagOf(m)==='半'?'pb':'pa'}">${esc(tagOf(m))}</span>`:'—'}</td>
+      <td>${kindSel(id,m.kind||'',!ci)}</td>
       <td>${ci?ci.n:'—'}</td><td>${ci&&ci.s?fd(ci.s):'—'}</td><td>${ci&&ci.f?fd(ci.f):'—'}</td><td>${mon}</td>
       <td>${ci?(calWk(m)?'只排週末':'週末＋國定'):'—'}</td><td>${ci?esc(m.updated||''):'—'}</td></tr>`}).join('')+'</tbody>';
 }
 document.getElementById('caseTbl').addEventListener('change',async e=>{
   const st=document.getElementById('msg');
-  const ld=e.target.closest('input[data-ld]'), cu=e.target.closest('input[data-cur]');
+  const ld=e.target.closest('input[data-ld]'), cu=e.target.closest('input[data-cur]'), ks=e.target.closest('select[data-kind]');
   try{
+    if(ks){st.textContent='儲存中…'; await setKind(ks.dataset.kind,ks.value); renderCases(); return}
     if(ld){const id=ld.dataset.ld; if(ld.checked){st.textContent='載入中…';await fetchCase(id);LOADED.add(id)} else LOADED.delete(id); saveLoaded(); st.textContent=''; renderCases()}
     if(cu){const id=cu.dataset.cur; if(id===CUR_ID)return;
       if(DIRTY&&!confirm('目前案件尚未存檔，切換會放棄修改。確定？')){renderCases();return}
