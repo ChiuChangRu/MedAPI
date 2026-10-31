@@ -204,6 +204,7 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .cv{padding:10px 14px 24px;font-size:13px;color:var(--ink)}.cv h3{margin:16px 0 4px;font-size:14px}.cv .note{margin:2px 0 8px}
 .cvs{overflow-x:auto}.cv table{border-collapse:collapse;font-size:13px}.cv th,.cv td{border:1px solid var(--line);padding:3px 8px;text-align:left;white-space:nowrap}.cv th{background:var(--chrome2)}
 .cv td.num{text-align:right}.cv td.na{color:var(--mute);text-align:center}.cv .up{color:var(--bad);font-weight:700}.cv .dn{color:#3f8f5f;font-weight:700}.cv .auto{color:var(--mute)}
+.cv .pdx{font-size:12px;color:var(--mute);max-width:160px;overflow:hidden;text-overflow:ellipsis}
 .cv .pr{cursor:pointer}.cv .pr:hover{background:var(--chrome2)}.cv .pr.open{background:var(--chrome2)}
 .cv .pdet{margin:0 0 10px 118px;border-left:3px solid var(--line);padding:4px 0 6px 10px}.cv .pdet .note{margin:0 0 4px}
 .cv .tl{display:grid;grid-template-columns:340px 1fr;gap:8px;align-items:center;min-height:22px}.cv .tl.g1{border-top:1px dashed var(--line);margin-top:4px;padding-top:4px}
@@ -291,7 +292,7 @@ table.lst td.nm{white-space:normal;font-weight:700}
   <h2>① 案件宣告與載入</h2>
   <p class="note">這裡列出 MyWiki「PM工具」資料夾裡所有案件。<b>開啟檔案</b>（單選）＝「③ 任務」與「④ 下載」操作的那一個案件，也是「② 甘特圖」可拖曳修改的案件；<b>加入比較</b>（可多選）＝讀進來疊在「② 甘特圖」一起比較。</p>
   <div class="pgbar cset"><b id="curName">（尚未載入案件）</b><label>開始日 <input type="date" id="start"></label>
-  <label title="工作天怎麼算：鼎新 PLM 預設為週一至週五（國定假日照常）">行事曆 <select id="cal"><option value="tw">六日休＋國定假日休</option><option value="weekend">六日休（週一～五）．國定假日照常</option></select></label><span class="note">（設定的是「編輯中」的案件；「國定假日照常」＝不扣除國定假日，與上級簽核 Excel、鼎新 PLM 算法相同）</span></div>
+  <label title="已建立的案件，行事曆固定、不可更動；只有建立新案件（匯入 PLM／匯入 Excel）時才能選擇">行事曆 🔒 <select id="cal" disabled><option value="tw">六日休＋國定假日休</option><option value="weekend">六日休（週一～五）．國定假日照常</option></select></label><span class="note">（已建立的案件鎖定、不可更動；新建案件時才能選。「國定假日照常」＝不扣除國定假日，與上級簽核 Excel、鼎新 PLM 算法相同）</span></div>
   <div class="pgbar"><button class="act" id="btnImp" type="button" title="讀入鼎新 PLM 匯出的 XML，建立成新案件">＋ 匯入鼎新 PLM（XML）→ 新案件…</button><button class="act" id="btnReload" type="button">↻ 重新整理清單</button><input type="file" id="impFile" accept=".xml,application/xml,text/xml" hidden><button class="act" id="btnImpX" type="button" title="讀入公司制式進度管制表 .xlsx，每個分頁建立成一個案件">＋ 匯入公司 Excel（多分頁）→ 新案件…</button><input type="file" id="impXlsx" accept=".xlsx" hidden></div>
   <table class="lst" id="caseTbl"></table>
 </div></section>
@@ -613,7 +614,7 @@ function caseRows(id,json,color){
   let tasks;
   if(isCur)tasks=D; else {tasks=withCal(meta,()=>migrate((json.tasks||[]).map(r=>({...r,pred:(r.pred||[]).map(p=>[...p])})))); anchorStart(tasks,meta.default_start); withCal(meta,()=>compute(tasks,meta.default_start||fd(new Date())));}
   const wm=wbsMap(tasks);
-  const rows=tasks.map((r,ord)=>({r,ord})).filter(({r})=>r.s&&r.f).map(({r,ord})=>({ord,k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms}));
+  const rows=tasks.map((r,ord)=>({r,ord})).filter(({r})=>r.s&&r.f).map(({r,ord})=>({ord,k:r.k,ed:isCur&&r.t!==PH&&r.t!=='sum',c:color,tag,wbs:wm[r.k][0],lvl:wm[r.k][1],name:r.name,s:r.s,f:r.f,sum:r.t===PH||r.t==='sum',back:r.back,ms:!!r.ms,sm:r.sm,pk:(r.pred||[]).map(p=>p[0]),pw:(r.pred||[]).map(([k,t,l])=>[wm[k]?wm[k][0]:k,t||'FS',l||0])}));
   return {tag,name:meta.name||'',color,rows,marks:(meta.marks||[]).map(m=>({...m,cur:isCur,tag}))};
 }
 let MSEQ=0;
@@ -734,7 +735,7 @@ function phaseDetail(k,st){
   const sp=Math.max(1,...L.filter(x=>x.o).map(x=>x.o.span));
   const line=(x,t,cls,extra)=>{ if(!t)return `<div class="tl ${cls}"><div class="tn">${chip(x.c)} <span class="na">（無對應）</span></div><div class="tb"></div></div>`;
     const a=x.o?Math.max(0,(+t.s-x.o.a)/864e5):0, l=Math.min(100,a/sp*100), w=Math.max(0.4,Math.min(100-l,t.d/sp*100));
-    return `<div class="tl ${cls}"><div class="tn" title="${esc(t.wbs+' '+t.name+'：'+fd(t.s)+' → '+fd(t.f))}">${chip(x.c)} ${esc(t.wbs)} ${esc(t.name)}${t.ph!==k?` <span class="na">（在 ${esc(t.ph)}）</span>`:''}</div>
+    return `<div class="tl ${cls}"><div class="tn" title="${esc(t.wbs+' '+t.name+'：'+fd(t.s)+' → '+fd(t.f)+'\n前置：'+predTxt(t)+'；開始於 '+mTxt(t))}">${chip(x.c)} ${esc(t.wbs)} ${esc(t.name)}${t.ph!==k?` <span class="na">（在 ${esc(t.ph)}）</span>`:''}</div>
       <div class="tb"><div class="ln ${x.c.color}" style="left:${l}%;width:${w}%"></div><span class="tx" style="left:calc(${l+w}% + 6px)"><b>${t.d}</b> 天${extra||''}</span></div></div>`};
   const others=L.slice(1).map(x=>({x,p:pairUp(B.lv,x.lv,((metaOf(B.c.id).pairs||{})[x.c.id])||{})}));
   let h=`<div class="pdet"><p class="note">各案的條都從「該案 ${esc(k)} 開始日」起算；其他案的任務依「任務對照」配到 ${chip(B.c)} 的任務下面（* ＝自動建議、尚未確認）。差＝與 ${chip(B.c)} 相比的天數。</p>`;
@@ -786,8 +787,10 @@ function simN(a,b){a=nrmN(a);b=nrmN(b); if(!a||!b)return 0; if(a===b)return 1; i
   const bg=s=>{const m=new Map();for(let i=0;i<s.length-1;i++){const k=s.slice(i,i+2);m.set(k,(m.get(k)||0)+1)}return m};
   const A=bg(a),B=bg(b); let n=0; for(const [k,v] of A)n+=Math.min(v,B.get(k)||0); return 2*n/(a.length+b.length-2)}
 const metaOf=id=>id===CUR_ID?META:((CASES[id]||{}).meta||{});
-function leafInfo(c){const ph={}; for(const r of c.rows)if(r.sum&&r.lvl===1)ph[r.wbs]=phKey(r.name);
-  return c.rows.filter(r=>!r.sum).map(r=>({k:r.k,wbs:r.wbs,name:r.name,ph:ph[r.wbs.split('.')[0]]||'',s:r.s,f:r.f,d:Math.round((addD(r.f,1)-r.s)/864e5)}))}
+function leafInfo(c){const s0=Math.min(...c.rows.map(r=>+r.s)); const ph={}; for(const r of c.rows)if(r.sum&&r.lvl===1)ph[r.wbs]=phKey(r.name);
+  return c.rows.filter(r=>!r.sum).map(r=>({k:r.k,wbs:r.wbs,name:r.name,ph:ph[r.wbs.split('.')[0]]||'',s:r.s,f:r.f,d:Math.round((addD(r.f,1)-r.s)/864e5),m:(r.s-s0)/864e5,pk:r.pk||[],pw:r.pw||[],sm:r.sm}))}
+const predTxt=t=>{const a=(t.pw||[]).map(([w,ty,l])=>`${w} ${ty}${l?(l>0?'+':'')+l:''}`); return a.length?(t.sm==='fix'?'指定日期；':'')+a.join('、'):(t.sm==='fix'?'指定日期':'—')};
+const mTxt=t=>'M'+(Math.floor(t.m/30.4375)+1);
 function pairUp(B,O,saved){
   const res=new Map(), used=new Set();
   for(const b of B){if(!(b.k in saved))continue; const v=saved[b.k]; const o=v?O.find(x=>x.k===v):null; res.set(b.k,{o,ok:1}); if(o)used.add(o.k)}
@@ -814,14 +817,18 @@ function renderPairCmp(sel,g){
     <button type="button" class="act" id="pokall" ${nAuto?'':'disabled'}>確認全部自動配對（${nAuto}）</button></div>
     <p class="note">已配對 ${nOk+nAuto} 對（已確認 ${nOk}、<b>*自動建議 ${nAuto}</b>）；基準案沒有對應 ${nNoB} 項；對照案沒有對應 ${freeO.length} 項（列在最下面）。<br>
     自動建議依任務名稱相似度（同階段加分）產生，<b>* 表示尚未確認，可能配錯</b>；在「對照任務」下拉選單改選或按「確認」才會存檔（存在基準案）。歷時＝曆天（含頭尾）。各任務常同時進行，「差」不能直接加總成全案差距。</p>
-    <table class="ptab"><thead><tr><th>階段</th><th>${chip(bc)} 基準任務</th><th>天</th><th>${chip(oc)} 對照任務</th><th>天</th><th>差（天）</th><th>狀態</th></tr></thead><tbody>`;
+    <div class="cvs"><table class="ptab"><thead><tr><th>階段</th><th>${chip(bc)} 基準任務</th><th title="前置任務（WBS 編號、關係類型、延遲工作天）">前置</th><th title="開始時間：自該案最早任務起第幾個月">起</th><th>天</th><th>${chip(oc)} 對照任務</th><th>前置</th><th>起</th><th>天</th><th>差（天）</th><th title="把基準任務的前置，依目前配對換算成對照案的任務後，與對照任務實際的前置比較">前置比對</th><th>狀態</th></tr></thead><tbody>`;
+  const Bset=new Set(B.map(x=>x.k)), Oset=new Set(O.map(x=>x.k));
+  const predCmp=(b,o)=>{ if(!o)return ''; const bk=b.pk.filter(k=>Bset.has(k)), ok=o.pk.filter(k=>Oset.has(k)); if(!bk.length&&!ok.length)return '<span class="na">—</span>';
+    const bm=bk.map(k=>{const q=res.get(k); return q&&q.o?q.o.k:'?'+k}).sort().join('|'), om=ok.slice().sort().join('|');
+    return bm===om?'<span class="dn">相同</span>':'<span class="up">不同</span>'};
   for(const r of rows){const b=r.b;
-    h+=`<tr><td>${esc(b.ph)}</td><td class="nm" title="${fd(b.s)} → ${fd(b.f)}">${esc(b.wbs)} ${esc(b.name)}</td><td class="num">${b.d}</td>
+    h+=`<tr><td>${esc(b.ph)}</td><td class="nm" title="${fd(b.s)} → ${fd(b.f)}">${esc(b.wbs)} ${esc(b.name)}</td><td class="pdx">${esc(predTxt(b))}</td><td>${mTxt(b)}</td><td class="num">${b.d}</td>
       <td><select data-pair="${esc(b.k)}"><option value="">（無對應）</option>${O.map(o=>`<option value="${esc(o.k)}" ${r.o&&r.o.k===o.k?'selected':''}>${esc(o.wbs)} ${esc(o.name)}</option>`).join('')}</select></td>
-      <td class="num" ${r.o?`title="${fd(r.o.s)} → ${fd(r.o.f)}"`:''}>${r.o?r.o.d:'—'}</td>
-      <td class="num ${r.df>0?'up':r.df<0?'dn':''}">${r.df==null?'—':(r.df>0?'+':'')+r.df}</td>
+      <td class="pdx">${r.o?esc(predTxt(r.o)):''}</td><td>${r.o?mTxt(r.o):''}</td><td class="num" ${r.o?`title="${fd(r.o.s)} → ${fd(r.o.f)}"`:''}>${r.o?r.o.d:'—'}</td>
+      <td class="num ${r.df>0?'up':r.df<0?'dn':''}">${r.df==null?'—':(r.df>0?'+':'')+r.df}</td><td>${predCmp(b,r.o)}</td>
       <td>${r.ok?'已確認':r.o?`<span class="auto">*自動 ${Math.round(r.sc*100)}%</span> <button type="button" class="act" data-pok="${esc(b.k)}">確認</button>`:''}</td></tr>`}
-  h+=`</tbody></table>`;
+  h+=`</tbody></table></div>`;
   if(freeO.length)h+=`<h3>${chip(oc)} 對照案沒有對應的任務（${freeO.length}）</h3><table class="ptab"><tbody>${freeO.map(o=>`<tr><td>${esc(o.ph)}</td><td class="nm">${esc(o.wbs)} ${esc(o.name)}</td><td class="num">${o.d} 天</td></tr>`).join('')}</tbody></table>`;
   g.innerHTML=h+`</div>`;
   g._pair={res,saved};
@@ -1032,7 +1039,7 @@ document.getElementById('mg').addEventListener('contextmenu',e=>{
 })();
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePop();closeCtx()} if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.target.closest('input,select')){e.preventDefault();undo()}});
 document.getElementById('btnUndo').onclick=undo;
-document.getElementById('cal').onchange=e=>{pushUndo(); if(e.target.value==='weekend')META.calendar='weekend'; else delete META.calendar; syncCal(); setDirty(true); render();
+document.getElementById('cal').onchange=e=>{ if(true){syncCal();return}  /* 既有案件的行事曆已鎖定 */ pushUndo(); if(e.target.value==='weekend')META.calendar='weekend'; else delete META.calendar; syncCal(); setDirty(true); render();
   document.getElementById('msg').textContent=USE_HOL?'改用「六日休＋國定假日休」重算':'改用「六日休（週一～五）．國定假日照常」重算（與鼎新 PLM 相同）'};
 // 轉為連動：指定日期 → 前置任務，每個前置的延遲都算到「日期不變」（壓縮處會出現負延遲）
 document.getElementById('btnLink').onclick=()=>{
@@ -1243,6 +1250,18 @@ function parsePlmXml(text){
   return {meta,tasks,warn,xmlDates};
 }
 document.getElementById('btnImp').onclick=()=>document.getElementById('impFile').click();
+function askCalendar(intro,counts){
+  return new Promise(res=>{
+    const box=document.createElement('div'); box.className='xdlg';
+    const opt=(v,t,d,chk)=>`<label><input type="radio" name="calc" value="${v}" ${chk?'checked':''}><span><b>${t}</b><br><span class="sub">${d}</span></span></label>`;
+    box.innerHTML=`<div class="bx"><b>新案件的行事曆</b><div class="sub" style="margin:4px 0 8px">${intro}<br><b>建立後即鎖定，不能再更改。</b></div>
+      ${opt('weekend','六日休（週一～五）．國定假日照常','國定假日不扣除；與上級簽核 Excel、鼎新 PLM 算法相同'+(counts?`；與 PLM 原日期不同的任務：${counts.weekend} 個`:''),1)}
+      ${opt('tw','六日休＋國定假日休','國定假日也扣除，日期較貼近現實；與簽核版 Excel、PLM 日期可能不同'+(counts?`；與 PLM 原日期不同的任務：${counts.tw} 個`:''),0)}
+      <div style="text-align:right;margin-top:10px"><button class="act" data-c="x" type="button">取消</button><button class="act primary" data-c="ok" type="button">確定</button></div></div>`;
+    document.body.appendChild(box);
+    box.onclick=ev=>{const a=ev.target.dataset.c; if(!a)return; const v=box.querySelector('input[name=calc]:checked').value; box.remove(); res(a==='ok'?v:null)};
+  });
+}
 document.getElementById('impFile').onchange=async e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f)return; const st=document.getElementById('msg');
   if(DIRTY&&!confirm('目前案件尚未存檔；匯入後會切換到新案件，未存的修改會放棄。確定？'))return;
@@ -1255,7 +1274,10 @@ document.getElementById('impFile').onchange=async e=>{
     meta.name=name.trim()||meta.name;
     meta.notes=[`${fd(new Date())} 由鼎新 PLM XML 匯入（檔名：${f.name}）。`,
       `行事曆設為「六日休（週一～五）．國定假日照常」（與 PLM 相同），重算後與 PLM 日期不同的任務 ${diffW.length} 個；若改成「六日休＋國定假日休」會有 ${diffT.length} 個不同。`,...warn];
-    if(!confirm(`行事曆：六日休（週一～五）．國定假日照常（與鼎新 PLM 相同）→ 重算後與 PLM 原日期不同的任務：${diffW.length} 個。\n（若改用「六日休＋國定假日休」，會有 ${diffT.length} 個任務日期變動；之後可在上方「行事曆」切換。）\n\n${warn.length?warn.slice(0,5).join('\n')+'\n\n':''}建立新案件「${meta.name}」並存到 MyWiki？`))return;
+    const calPick=await askCalendar(`匯入鼎新 PLM：「${esc(meta.name)}」`,{weekend:diffW.length,tw:diffT.length}); if(!calPick)return;
+    if(calPick==='tw')delete meta.calendar; else meta.calendar='weekend';
+    meta.notes[1]=`行事曆設為「${calPick==='tw'?'六日休＋國定假日休':'六日休（週一～五）．國定假日照常'}」（建立時選定，之後鎖定）；與 PLM 原日期不同的任務：${(calPick==='tw'?diffT:diffW).length} 個。`;
+    if(!confirm(`${warn.length?warn.slice(0,5).join('\n')+'\n\n':''}建立新案件「${meta.name}」並存到 MyWiki？`))return;
     const folders=await api('/folders'); const fo=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER));
     if(!fo)throw new Error(`找不到「${PM_FOLDER}」資料夾`);
     const body='{"meta":'+JSON.stringify({...meta,updated:fd(new Date())})+',\n"tasks":[\n'+tasks.map(x=>JSON.stringify(x)).join(',\n')+'\n]}';
@@ -1343,12 +1365,15 @@ document.getElementById('impXlsx').onchange=async e=>{
     const items=sheets.map(sh=>{let c=null; if(!sh.hidden){try{c=sheetToCase(sh,f.name)}catch(err){c=null}} const title=PM_PREFIX+sh.name.trim(); const dup=ENTRIES.some(x=>x.title===title); return {sh,c,title,dup}});
     const ok=items.filter(x=>x.c);
     const box=document.createElement('div'); box.className='xdlg';
-    box.innerHTML=`<div class="bx"><b>匯入公司 Excel：${esc(f.name)}</b><div class="sub" style="margin:4px 0 8px">每個勾選的分頁建立成一個新案件，存到 MyWiki「${esc(PM_FOLDER)}」。開始日＝預計開始日、歷時＝工作天數，行事曆：六日休、國定假日照常。</div>
+    box.innerHTML=`<div class="bx"><b>匯入公司 Excel：${esc(f.name)}</b><div class="sub" style="margin:4px 0 8px">每個勾選的分頁建立成一個新案件，存到 MyWiki「${esc(PM_FOLDER)}」。開始日＝預計開始日、歷時＝工作天數。</div>
+      <div class="sub" style="margin:0 0 6px"><b>行事曆（建立後鎖定、不能再改）：</b></div><label><input type="radio" name="xcal" value="weekend" checked><span>六日休（週一～五）．國定假日照常（與上級簽核 Excel、鼎新 PLM 相同）</span></label><label><input type="radio" name="xcal" value="tw"><span>六日休＋國定假日休</span></label><hr style="border:0;border-top:1px solid var(--line);margin:8px 0">
       ${items.map((x,i)=>`<label><input type="checkbox" data-i="${i}" ${x.c&&!x.dup?'checked':''} ${x.c?'':'disabled'}><span><b>${esc(x.sh.name.trim())}</b> ${x.c?`<span class="sub">${x.c.n} 個任務｜${esc(x.c.meta.default_start)} 起${x.c.meta.leader?'｜'+esc(x.c.meta.leader):''}${x.dup?'｜已有同名案件（勾選會再建一個）':''}</span>`:`<span class="sub">${x.sh.hidden?'隱藏分頁（舊格式），不匯入':'格式不符，不匯入'}</span>`}</span></label>`).join('')}
       <div style="text-align:right;margin-top:10px"><button class="act" data-x="cancel" type="button">取消</button><button class="act primary" data-x="go" type="button">匯入勾選的分頁</button></div></div>`;
     document.body.appendChild(box); st.textContent='';
     box.onclick=async ev=>{const a=ev.target.dataset.x; if(!a)return; if(a==='cancel'){box.remove();return}
       const pick=[...box.querySelectorAll('input[data-i]:checked')].map(i=>items[+i.dataset.i]); if(!pick.length){alert('請至少勾選一個分頁');return}
+      const xcal=box.querySelector('input[name=xcal]:checked').value; const calTxt=xcal==='tw'?'六日休＋國定假日休':'六日休（週一～五）．國定假日照常';
+      for(const x of pick){ if(xcal==='tw')delete x.c.meta.calendar; else x.c.meta.calendar='weekend'; x.c.meta.notes=(x.c.meta.notes||[]).map(n=>String(n).replace(/行事曆：六日休、國定假日照常。?/,`行事曆：${calTxt}（建立時選定，之後鎖定）。`)) }
       box.remove(); if(DIRTY&&!confirm('目前案件尚未存檔；匯入後清單會重新整理。確定？'))return;
       try{ const folders=await api('/folders'); const fo=folders.find(x=>x.name===PM_FOLDER||String(x.name||'').endsWith(PM_FOLDER)); if(!fo)throw new Error(`找不到「${PM_FOLDER}」資料夾`);
         let n=0; for(const x of pick){ st.textContent=`建立案件 ${n+1}/${pick.length}：${x.sh.name.trim()}…`;
