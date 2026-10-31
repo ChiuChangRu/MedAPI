@@ -204,6 +204,11 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .cv{padding:10px 14px 24px;font-size:13px;color:var(--ink)}.cv h3{margin:16px 0 4px;font-size:14px}.cv .note{margin:2px 0 8px}
 .cvs{overflow-x:auto}.cv table{border-collapse:collapse;font-size:13px}.cv th,.cv td{border:1px solid var(--line);padding:3px 8px;text-align:left;white-space:nowrap}.cv th{background:var(--chrome2)}
 .cv td.num{text-align:right}.cv td.na{color:var(--mute);text-align:center}.cv .up{color:var(--bad);font-weight:700}.cv .dn{color:#3f8f5f;font-weight:700}.cv .auto{color:var(--mute)}
+.cv .pr{cursor:pointer}.cv .pr:hover{background:var(--chrome2)}.cv .pr.open{background:var(--chrome2)}
+.cv .pdet{margin:0 0 10px 118px;border-left:3px solid var(--line);padding:4px 0 6px 10px}.cv .pdet .note{margin:0 0 4px}
+.cv .tl{display:grid;grid-template-columns:340px 1fr;gap:8px;align-items:center;min-height:22px}.cv .tl.g1{border-top:1px dashed var(--line);margin-top:4px;padding-top:4px}
+.cv .tn{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cv .na{color:var(--mute)}
+.cv .tb{position:relative;height:20px;margin-right:170px}.cv .tb .ln{top:4px;height:12px}.cv .tb .tx{position:absolute;top:1px;font-size:12px;line-height:18px;white-space:nowrap;color:var(--mute)}.cv .tb .tx b{color:var(--ink)}
 .cv .pr{display:grid;grid-template-columns:110px 1fr;gap:8px;border-top:1px solid var(--line);padding:6px 0}.cv .pk{font-weight:700;padding-top:4px}
 .cv .pbar{position:relative;height:24px;margin:2px 0;margin-right:330px}.cv .pbar .ln{top:4px;height:16px;left:0}.cv .pbar .sp{opacity:.35}
 .cv .pbar .tx{position:absolute;top:3px;line-height:18px;font-size:12px;white-space:nowrap;color:var(--mute)}.cv .pbar .tx b{color:var(--ink)}
@@ -721,6 +726,30 @@ function phaseStats(c){
   return map;
 }
 const mM=d=>(d/30.4375).toFixed(1), mAt=d=>Math.floor(d/30.4375)+1;
+const PHOPEN=new Set();
+// 展開某階段：各案此階段的小項目，從「該案此階段開始日」齊頭排；其他案依任務對照配到第一個案件的任務下面
+function phaseDetail(k,st){
+  const chip=c=>`<span class="chip ${c.color}">${esc(c.tag)}</span>`;
+  const L=st.map(({c,m})=>({c,o:m.get(k),lv:leafInfo(c)})), B=L[0];
+  const sp=Math.max(1,...L.filter(x=>x.o).map(x=>x.o.span));
+  const line=(x,t,cls,extra)=>{ if(!t)return `<div class="tl ${cls}"><div class="tn">${chip(x.c)} <span class="na">（無對應）</span></div><div class="tb"></div></div>`;
+    const a=x.o?Math.max(0,(+t.s-x.o.a)/864e5):0, l=Math.min(100,a/sp*100), w=Math.max(0.4,Math.min(100-l,t.d/sp*100));
+    return `<div class="tl ${cls}"><div class="tn" title="${esc(t.wbs+' '+t.name+'：'+fd(t.s)+' → '+fd(t.f))}">${chip(x.c)} ${esc(t.wbs)} ${esc(t.name)}${t.ph!==k?` <span class="na">（在 ${esc(t.ph)}）</span>`:''}</div>
+      <div class="tb"><div class="ln ${x.c.color}" style="left:${l}%;width:${w}%"></div><span class="tx" style="left:calc(${l+w}% + 6px)"><b>${t.d}</b> 天${extra||''}</span></div></div>`};
+  const others=L.slice(1).map(x=>({x,p:pairUp(B.lv,x.lv,((metaOf(B.c.id).pairs||{})[x.c.id])||{})}));
+  let h=`<div class="pdet"><p class="note">各案的條都從「該案 ${esc(k)} 開始日」起算；其他案的任務依「任務對照」配到 ${chip(B.c)} 的任務下面（* ＝自動建議、尚未確認）。差＝與 ${chip(B.c)} 相比的天數。</p>`;
+  const shown=others.map(()=>new Set());
+  for(const t of B.lv.filter(t=>t.ph===k)){
+    h+=line(B,t,'g1');
+    others.forEach(({x,p},i)=>{const q=p.res.get(t.k), o=q&&q.o; if(o)shown[i].add(o.k);
+      const df=o?o.d-t.d:null;
+      h+=line(x,o,'',o?`${q.ok?'':' <span class="na">*</span>'}${df?`　<span class="${df>0?'up':'dn'}">差 ${df>0?'+':''}${df} 天</span>`:'　差 0'}`:'')});
+  }
+  others.forEach(({x},i)=>{const rest=x.lv.filter(t=>t.ph===k&&!shown[i].has(t.k)); if(!rest.length)return;
+    h+=`<div class="tl g1"><div class="tn"><b>${chip(x.c)} 此階段沒有對應到 ${esc(B.c.tag)} 的任務（${rest.length}）</b></div><div></div></div>`+rest.map(t=>line(x,t,'')).join('')});
+  if(!B.o&&!others.some(({x})=>x.o))h+='<p class="note">（沒有任務）</p>';
+  return h+'</div>';
+}
 function renderPhaseCmp(sel,g){
   g.style.width=''; g.classList.remove('gz'); g.classList.add('cmp'); GAX=null;
   const st=sel.map(c=>({c,m:phaseStats(c)}));
@@ -735,9 +764,10 @@ function renderPhaseCmp(sel,g){
   h+=`</tbody></table></div>`;
   // 二、齊頭長度
   const mx=Math.max(1,...st.flatMap(({m})=>[...m.values()].map(o=>o.span)));
-  h+=`<h3>二、各階段歷時（齊頭比較）</h3><p class="note">每條都從 0 開始，只比長短。淺色＝階段跨度（第一個任務開始到最後一個任務結束）；深色＝實際有任務在進行的天數（扣掉中間空檔）。「差」以第一個案件為基準。</p>`;
+  h+=`<h3>二、各階段歷時（齊頭比較） <button type="button" class="act" data-phall="1">全部展開</button> <button type="button" class="act" data-phall="0">全部收合</button></h3><p class="note"><b>點一下階段可展開小項目比較。</b>每條都從 0 開始，只比長短。淺色＝階段跨度（第一個任務開始到最後一個任務結束）；深色＝實際有任務在進行的天數（扣掉中間空檔）。「差」以第一個案件為基準。</p>`;
   for(const k of keys){
-    h+=`<div class="pr"><div class="pk" title="${esc(st.map(({c,m})=>m.get(k)?c.tag+'：'+m.get(k).names.join('、'):'').filter(Boolean).join('\n'))}">${esc(k)}</div><div>`;
+    const open=PHOPEN.has(k);
+    h+=`<div class="pr ${open?'open':''}" data-phk="${esc(k)}"><div class="pk" title="${esc(st.map(({c,m})=>m.get(k)?c.tag+'：'+m.get(k).names.join('、'):'').filter(Boolean).join('\n'))}">${open?'▾':'▸'} ${esc(k)}</div><div>`;
     const base=st[0].m.get(k);
     st.forEach(({c,m},i)=>{const o=m.get(k);
       if(!o){h+=`<div class="pbar"><span class="tx" style="left:0">${chip(c)} 無此階段</span></div>`;return}
@@ -746,8 +776,9 @@ function renderPhaseCmp(sel,g){
       h+=`<div class="pbar"><div class="ln ${c.color} sp" style="width:${w}%"></div><div class="ln ${c.color} oc" style="width:${wo}%"></div>
         <span class="tx" style="left:calc(${w}% + 6px)">${chip(c)} <b>${mM(o.span)} 月</b>${o.occ<o.span*0.9?`（實際 ${mM(o.occ)}）`:''}・${o.n} 項${df!=null?`　<span class="${df>0?'up':df<0?'dn':''}">差 ${df>0?'+':''}${df.toFixed(1)} 月</span>`:''}</span></div>`});
     h+=`</div></div>`;
+    if(open)h+=phaseDetail(k,st);
   }
-  g.innerHTML=h+`</div>`;
+  g.innerHTML=h+`</div>`; g._phkeys=keys;
 }
 // ===== 比較 C：任務一對一對照 =====
 const nrmN=s=>String(s||'').replace(/[\s（）()【】\[\]、，,．.。：:／\/\-—_＿~～·＋+]/g,'').toLowerCase();
@@ -808,6 +839,9 @@ document.getElementById('mg').addEventListener('change',e=>{
 document.getElementById('mg').addEventListener('click',e=>{
   if(e.target.id==='psort'){CMPSORT=!CMPSORT; render(); return}
   const g=document.getElementById('mg');
+  const redraw=()=>{if(LASTSEL)drawGantt(LASTSEL.sel,LASTSEL.today,g); else render()};
+  const pa=e.target.closest('button[data-phall]'); if(pa){PHOPEN.clear(); if(pa.dataset.phall==='1')(g._phkeys||[]).forEach(k=>PHOPEN.add(k)); redraw(); return}
+  const pr=e.target.closest('.cv .pr[data-phk]'); if(pr){const k=pr.dataset.phk; PHOPEN.has(k)?PHOPEN.delete(k):PHOPEN.add(k); redraw(); return}
   if(e.target.id==='pokall'&&g._pair){const u={}; for(const [k,v] of g._pair.res)if(!v.ok&&v.o)u[k]=v.o.k; savePairs(u); return}
   const b=e.target.closest('button[data-pok]'); if(b&&g._pair){const v=g._pair.res.get(b.dataset.pok); if(v&&v.o)savePairs({[b.dataset.pok]:v.o.k})}
 });
