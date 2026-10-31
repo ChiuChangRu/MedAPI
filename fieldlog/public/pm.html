@@ -194,13 +194,13 @@ section#gantt:not([hidden]),section#multi:not([hidden]){display:flex;flex-direct
 .g-bar .bout .bdt{font-size:10px;color:var(--mute);margin-right:6px;font-weight:400}
 .cmp-sec{font-weight:700;background:var(--chrome2)}
 .cmp-sec .g-name{background:var(--chrome2);color:var(--ink)}
-.cmp .g-track{height:auto;min-height:20px}
+.cmp .g-track{height:auto;min-height:28px}
 .cmp .g-row.cat .g-track{padding:3px 0}
-.cmp .seg{position:absolute;height:14px;border-radius:2px;font-size:10px;line-height:14px;color:#fff;white-space:nowrap;overflow:hidden;padding:0 3px;box-sizing:border-box;border-right:1px solid var(--bg)}
+.cmp .seg{position:absolute;height:22px;border-radius:3px;font-size:12px;line-height:22px;color:#fff;white-space:nowrap;overflow:hidden;padding:0 3px;box-sizing:border-box;border-right:1px solid var(--bg)}
 .cmp .seg.alt{opacity:.7}
-.cmp .cl{position:absolute;font-size:10px;line-height:12px;white-space:nowrap;color:var(--mute);pointer-events:none}
+.cmp .cl{position:absolute;font-size:12px;line-height:16px;white-space:nowrap;color:var(--mute);pointer-events:none}
 .cmp .cl b{color:var(--ink);font-weight:700}
-.cmp .ln{position:absolute;height:8px;border-radius:2px}
+.cmp .ln{position:absolute;height:14px;border-radius:3px}
 .seg.pa,.ln.pa{background:var(--bar)}.seg.pb,.ln.pb{background:var(--projb)}.seg.pc,.ln.pc{background:#3f8f5f}.seg.pd,.ln.pd{background:#7a5cb8}
 .bar .ic{font-size:15px;line-height:1;padding:3px 8px}
 #theme{margin-left:auto}
@@ -707,7 +707,8 @@ function renderCmp(sel,g){
   // 刻度
   let sc='', lines=[], bands=[];
   if(CMPALIGN==='start'){
-    for(let m=0;m*30.4375<spanD;m++){const v=m*30.4375; sc+=`<span style="left:${x(v)}">M${m+1}</span>`; if(m)lines.push(v);}
+    const mst=spanD/30.4375>90?6:spanD/30.4375>48?3:1;   // 太長時月標籤只標部分，避免擠在一起
+    for(let m=0;m*30.4375<spanD;m++){const v=m*30.4375; if(m%mst===0)sc+=`<span style="left:${x(v)}">M${m+1}</span>`; if(m)lines.push(v);}
     for(let y=0;y*365.25<spanD;y++)bands.push([y*365.25,Math.min(spanD,(y+1)*365.25)]);
   } else {
     for(let d=new Date(Date.UTC(g0.getUTCFullYear(),g0.getUTCMonth(),1));(d-g0)/864e5<spanD;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))){const v=(d-g0)/864e5; if(v>=0){sc+=`<span style="left:${x(v)}">${d.getUTCMonth()+1}</span>`; if(d.getUTCMonth())lines.push(v);}}
@@ -723,7 +724,7 @@ function renderCmp(sel,g){
     const tot=day(c,i,addD(new Date(Math.max(...c.rows.map(r=>r.f))),1))-day(c,i,starts[i]);
     const segs=phs.map((r,j)=>{const a=day(c,i,r.s), b=day(c,i,addD(r.f,1)); return `<div class="seg ${c.color} ${j%2?'alt':''}" style="top:3px;left:${x(a)};width:calc(${x(b)} - ${x(a)})" title="${esc(`${c.tag} ${r.wbs} ${r.name}：${fd(r.s)} → ${fd(r.f)}（${mon(b-a)} 月）`)}">${esc(r.name)}</div>`}).join('');
     const endV=day(c,i,addD(new Date(Math.max(...c.rows.map(r=>r.f))),1));
-    h+=`<div class="g-row"><div class="g-name"><span class="chip ${c.color}">${esc(c.tag)}</span>${esc(c.name)}</div><div class="g-track">${segs}<span class="cl" style="top:4px;left:calc(${x(endV)} + 4px)"><b>${mon(tot)} 月</b>｜${fd(starts[i])} 起</span></div></div>`;
+    h+=`<div class="g-row"><div class="g-name"><span class="chip ${c.color}">${esc(c.tag)}</span>${esc(c.name)}</div><div class="g-track">${segs}<span class="cl" style="top:6px;left:calc(${x(endV)} + 4px)"><b>${mon(tot)} 月</b>｜${fd(starts[i])} 起</span></div></div>`;
   });
   // 二、同類工作疊圖
   h+=`<div class="g-row cmp-sec"><div class="g-name" title="依任務名稱關鍵字自動歸類（*推論，可能有誤）">同類工作疊圖 *</div><div class="g-track"></div></div>`;
@@ -732,10 +733,10 @@ function renderCmp(sel,g){
       const iv=[]; for(const r of ts){const a=day(c,i,r.s), b=day(c,i,addD(r.f,1)); const L=iv[iv.length-1]; if(L&&a<=L[1])L[1]=Math.max(L[1],b); else iv.push([a,b]);}
       return {c,i,ts,iv,a:iv[0][0],b:Math.max(...iv.map(v=>v[1]))}}).filter(Boolean);
     if(!per.length)continue;
-    let body=''; per.forEach((p,j)=>{const top=3+j*13;
-      body+=p.iv.map(([a,b])=>`<div class="ln ${p.c.color}" style="top:${top+2}px;left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('');
-      body+=`<span class="cl" style="top:${top}px;left:calc(${x(p.b)} + 4px)" title="${esc(p.ts.map(r=>`${r.wbs} ${r.name}（${fd(r.s)}→${fd(r.f)}）`).join('\n'))}"><b>${esc(p.c.tag)}</b> ${mon(p.b-p.a)} 月・${p.ts.length} 項（${CMPALIGN==='start'?`M${Math.floor(p.a/30.4375)+1}–M${Math.floor((p.b-1)/30.4375)+1}`:(()=>{const ym=v=>{const d=addD(g0,Math.floor(v));return `${String(d.getUTCFullYear()).slice(2)}/${d.getUTCMonth()+1}`};return `${ym(p.a)}–${ym(p.b-1)}`})()}）</span>`;});
-    h+=`<div class="g-row cat"><div class="g-name" title="${esc(per.map(p=>p.c.tag+'：'+p.ts.map(r=>r.name).join('、')).join('\n'))}">${esc(cat)}</div><div class="g-track" style="height:${per.length*13+6}px">${body}</div></div>`;
+    let body=''; per.forEach((p,j)=>{const top=4+j*22;
+      body+=p.iv.map(([a,b])=>`<div class="ln ${p.c.color}" style="top:${top+3}px;left:${x(a)};width:calc(${x(b)} - ${x(a)})"></div>`).join('');
+      body+=`<span class="cl" style="top:${top+2}px;left:calc(${x(p.b)} + 4px)" title="${esc(p.ts.map(r=>`${r.wbs} ${r.name}（${fd(r.s)}→${fd(r.f)}）`).join('\n'))}"><b>${esc(p.c.tag)}</b> ${mon(p.b-p.a)} 月・${p.ts.length} 項（${CMPALIGN==='start'?`M${Math.floor(p.a/30.4375)+1}–M${Math.floor((p.b-1)/30.4375)+1}`:(()=>{const ym=v=>{const d=addD(g0,Math.floor(v));return `${String(d.getUTCFullYear()).slice(2)}/${d.getUTCMonth()+1}`};return `${ym(p.a)}–${ym(p.b-1)}`})()}）</span>`;});
+    h+=`<div class="g-row cat"><div class="g-name" title="${esc(per.map(p=>p.c.tag+'：'+p.ts.map(r=>r.name).join('、')).join('\n'))}">${esc(cat)}</div><div class="g-track" style="height:${per.length*22+8}px">${body}</div></div>`;
   }
   g.innerHTML=h; GAX=null;
 }
