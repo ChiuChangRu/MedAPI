@@ -2426,3 +2426,15 @@ body.reader-fullscreen .folder-preview {
 :is(body.audio-camera-open, body:has(.capture-overlay:not([style*="none"]))) .audio-badge .audio-minimize-btn { display: none !important; }
 :is(body.audio-camera-open, body:has(.capture-overlay:not([style*="none"]))) .audio-badge .audio-panel-heading strong { flex: none; font-size: 14px; }
 :is(body.audio-camera-open, body:has(.capture-overlay:not([style*="none"]))) .audio-badge .audio-panel-heading #audio-timer { font-size: 15px; }
+
+/* v230 左側欄「常用連結」 */
+@media (min-width: 720px) {
+  .desktop-links-section { margin: 6px 0 2px; }
+  .desktop-link-row { --tree-depth: 0; text-decoration: none; }
+  .desktop-link-mark {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 18px; height: 18px; border-radius: 4px; font-size: 11px; font-weight: 700;
+    background: color-mix(in srgb, var(--section-accent) 18%, white); color: var(--section-accent);
+  }
+  .desktop-links-section .desktop-tree-section-icon { display: inline-block; width: 10px; height: 10px; justify-self: center; border-radius: 2px; background: var(--section-accent); }
+}
