@@ -902,3 +902,12 @@ body.home-layout-editing .sketch-canvas { pointer-events: none; }
 .folder-suggestion-actions { display: flex; gap: 6px; flex: none; }
 .ai-folder-mode { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 10px; font-size: 12px; color: var(--text-muted); }
 .ai-folder-mode select { font-size: 12px; padding: 2px 6px; }
+
+/* v229 錄音轉文字專業詞彙 */
+.transcribe-glossary { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.transcribe-glossary > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.transcribe-glossary textarea { width: 100%; box-sizing: border-box; margin-top: 6px; font: 14px/1.6 inherit; font-family: inherit; padding: 8px; border: 1px solid var(--border); border-radius: 8px; resize: vertical; }
+.glossary-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.glossary-actions small { color: var(--text-muted); }
+.glossary-prompt { margin-top: 6px; font-size: 13px; }
+.glossary-prompt summary { cursor: pointer; color: var(--text-muted); }

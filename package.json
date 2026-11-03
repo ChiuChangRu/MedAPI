@@ -20,6 +20,7 @@
   "dependencies": {
     "@aiden0z/pptx-renderer": "1.2.4",
     "@cf-wasm/photon": "^0.4.0",
-    "docx-preview": "0.4.1"
+    "docx-preview": "0.4.1",
+    "opencc-js": "1.4.2"
   }
 }

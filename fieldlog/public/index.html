@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=228" />
-<link rel="stylesheet" href="home.css?v=228" />
+<link rel="stylesheet" href="style.css?v=229" />
+<link rel="stylesheet" href="home.css?v=229" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -77,7 +77,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=228">使用說明</a>
+        <a class="head-link" href="help.html?v=229">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -315,6 +315,17 @@
             <span class="toolbar-link-text"><strong>PM 工具</strong></span>
           </a>
         </div>
+              <!-- v229 錄音轉文字的專業詞彙：給 Whisper 的提示，讓專業詞比較不會被聽成同音字（只影響之後的新錄音） -->
+        <details class="transcribe-glossary" id="transcribe-glossary">
+          <summary>錄音轉文字專業詞彙</summary>
+          <p class="sub">一行一個詞。轉錄新錄音時會提示 AI 這些詞，減少聽成同音字（例如「逆止閥」被寫成「逆子法」）。只影響之後的新錄音，舊逐字稿不變。</p>
+          <textarea id="glossary-terms" rows="8" spellcheck="false"></textarea>
+          <div class="glossary-actions">
+            <button type="button" class="btn small primary" id="glossary-save">儲存詞彙</button>
+            <small id="glossary-status"></small>
+          </div>
+          <details class="glossary-prompt"><summary>實際送給 AI 的提示</summary><p id="glossary-prompt" class="sub"></p></details>
+        </details>
       </section>
 
       <!-- 第五列：Cloudflare 用量。預設收合、展開才打 /usage：避免每次開
@@ -705,10 +716,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=228"></script>
+<script src="pdf-editor.js?v=229"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=228"></script>
+<script src="richtext-editor.js?v=229"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -719,10 +730,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=228"></script>
-<script src="inspector.js?v=228"></script>
+<script src="file-selection.js?v=229"></script>
+<script src="inspector.js?v=229"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=228"></script>
+<script src="app.js?v=229"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
