@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "229";
+const APP_VERSION = "230";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2116,12 +2116,47 @@ async function loadLinksWidget() {
   try { LINKS = (await api("/widgets/links")).links || []; }
   catch (err) { $("links-list").innerHTML = `<p class="sub">常用網頁載入失敗：${esc(err.message)}</p>`; return; }
   renderLinks();
+  renderSidebarLinks();
+}
+
+// v230 左側欄「常用連結」：跟首頁「常用網頁」同一份 LINKS；收合狀態記在瀏覽器
+const SIDEBAR_LINKS_COLLAPSED_KEY = "fieldlog_sidebar_links_collapsed";
+function renderSidebarLinks() {
+  const body = $("desktop-links-body");
+  if (!body) return;
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(SIDEBAR_LINKS_COLLAPSED_KEY) === "1"; } catch { collapsed = false; }
+  $("desktop-links-count").textContent = LINKS.length ? String(LINKS.length) : "";
+  $("desktop-links-toggle").setAttribute("aria-expanded", String(!collapsed));
+  $("desktop-links-toggle").querySelector(".desktop-tree-section-caret").textContent = collapsed ? "▸" : "▾";
+  body.hidden = collapsed;
+  body.innerHTML = LINKS.length
+    ? LINKS.map((l) => `<a class="desktop-tree-row desktop-link-row" href="${esc(l.url)}" target="_blank" rel="noopener" title="${esc(l.url)}"><span class="desktop-link-mark" aria-hidden="true">${esc((l.name || "?").slice(0, 1))}</span><span>${esc(l.name)}</span></a>`).join("")
+    : `<span class="desktop-tree-empty">尚無連結，按「＋」新增</span>`;
+}
+
+function initSidebarLinks() {
+  if (!$("desktop-links")) return;
+  $("desktop-links-toggle").onclick = () => {
+    const collapsed = !$("desktop-links-body").hidden;
+    try { localStorage.setItem(SIDEBAR_LINKS_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch { /* 無痕模式等存不了就算了 */ }
+    renderSidebarLinks();
+  };
+  // 「＋」：回首頁並打開「常用網頁」的管理模式
+  $("desktop-links-add").onclick = async () => {
+    await backHome(true);
+    if (!LINKS_MANAGING) $("links-manage")?.click();
+    $("links-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => $("link-name")?.focus(), 400);
+  };
+  renderSidebarLinks();
 }
 
 async function saveLinks(list) {
   try {
     LINKS = (await api("/widgets/links", { method: "PUT", body: JSON.stringify({ links: list }) })).links || [];
     renderLinks();
+    renderSidebarLinks();
   } catch (err) { showToast("常用網頁儲存失敗：" + err.message); }
 }
 
@@ -8682,6 +8717,7 @@ function init() {
   initHomeWidgets();
   initFolderSuggestions();
   initTranscribeGlossary();
+  initSidebarLinks();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
