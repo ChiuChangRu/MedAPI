@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "228";
+const APP_VERSION = "229";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2184,6 +2184,32 @@ async function saveTodos(list) {
     showToast("待辦儲存失敗：" + err.message);
     await loadTodosWidget();
   }
+}
+
+// v229 錄音轉文字專業詞彙：展開時才讀取；提示有長度上限，超過的詞不會送出，這裡顯示實際用到幾個
+function renderGlossary(data) {
+  $("glossary-terms").value = (data.terms || []).join("\n");
+  $("glossary-prompt").textContent = data.prompt || "";
+  const used = (data.terms || []).filter((t) => String(data.prompt || "").includes(t)).length;
+  $("glossary-status").textContent = `${data.custom ? "自訂詞彙" : "預設詞彙"}｜提示用到 ${used}／${(data.terms || []).length} 個${used < (data.terms || []).length ? "（提示有長度上限，排在前面的優先）" : ""}`;
+}
+
+function initTranscribeGlossary() {
+  const box = $("transcribe-glossary");
+  if (!box) return;
+  let loaded = false;
+  box.addEventListener("toggle", async () => {
+    if (!box.open || loaded) return;
+    try { renderGlossary(await api("/transcribe/glossary")); loaded = true; }
+    catch (err) { $("glossary-status").textContent = "讀取失敗：" + err.message; }
+  });
+  $("glossary-save").onclick = async () => {
+    const terms = $("glossary-terms").value.split(/\n+/).map((t) => t.trim()).filter(Boolean);
+    try {
+      renderGlossary(await api("/transcribe/glossary", { method: "PUT", body: JSON.stringify({ terms }) }));
+      showToast("已儲存，之後的新錄音會使用這些詞彙");
+    } catch (err) { showToast("儲存失敗：" + err.message); }
+  };
 }
 
 function initHomeWidgets() {
@@ -8655,6 +8681,7 @@ function init() {
   initHomeLayout();
   initHomeWidgets();
   initFolderSuggestions();
+  initTranscribeGlossary();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");

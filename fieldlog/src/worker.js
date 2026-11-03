@@ -59,6 +59,7 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
+import { GLOSSARY_SETTING_KEY, cleanGlossary, loadGlossary, looksLikePromptEcho, toTraditional, whisperInput } from "./lib/transcribe.js";
 import { cleanFeedList, cleanLinks, cleanTodos, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
 import {
   canonicalFolderLocalName,
@@ -134,7 +135,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "228";
+const UI_VERSION = "229";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -962,12 +963,14 @@ async function transcribeAttachment(env, db, old) {
   const obj = await env.FILES.get(old.key);
   if (!obj) throw new Error("找不到檔案內容");
   const bytes = new Uint8Array(await obj.arrayBuffer());
-  const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", { audio: bytesToBase64(bytes), task: "transcribe" });
-  const raw = (result?.text || "").trim();
-  const hallucinated = looksLikeSilenceHallucination(raw);
+  // v229：指定中文、專業詞彙提示、去除靜音、不沿用前句（減少重複迴圈），結果再簡轉繁（見 lib/transcribe.js）
+  const { terms } = await loadGlossary(db);
+  const result = await budgetedAi(env).run("@cf/openai/whisper-large-v3-turbo", whisperInput(bytesToBase64(bytes), terms));
+  const raw = toTraditional((result?.text || "").trim());
+  const hallucinated = looksLikeSilenceHallucination(raw) || looksLikePromptEcho(raw);
   // 判定成幻覺就存成空的：留著只會讓之後的搜尋、命名、向量庫都以為這段有內容。
   const text = hallucinated ? "" : raw;
-  const transcriptVtt = hallucinated ? "" : String(result?.vtt || result?.transcription_info?.vtt || "").trim();
+  const transcriptVtt = hallucinated ? "" : toTraditional(String(result?.vtt || result?.transcription_info?.vtt || "").trim());
   await db.prepare("UPDATE attachments SET transcript = ?, transcript_vtt = ?, transcribed_at = ? WHERE id = ?")
     .bind(text, transcriptVtt, now(), old.id).run();
   await autoRenameAttachment(db, old, text);
@@ -3636,6 +3639,18 @@ async function handleApi(request, env, url, identity = {}) {
   if (path === "/patrol/folder" && method === "GET") {
     const folderId = await ensurePatrolFolder(db, now());
     return json({ folder_id: folderId });
+  }
+
+  // v229 錄音轉文字的專業詞彙（Whisper initial_prompt 用）；未自訂時回預設清單
+  if (path === "/transcribe/glossary" && (method === "GET" || method === "PUT")) {
+    if (method === "PUT") {
+      const body = await request.json().catch(() => ({}));
+      const terms = cleanGlossary(body?.terms);
+      await db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+        .bind(GLOSSARY_SETTING_KEY, JSON.stringify(terms), now()).run();
+    }
+    const { terms, custom } = await loadGlossary(db);
+    return json({ terms, custom, prompt: whisperInput("", terms).initial_prompt });
   }
 
   const transcribeMatch = path.match(/^\/attachments\/(\d+)\/transcribe$/);
