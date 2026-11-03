@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "230";
+const APP_VERSION = "231";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2069,95 +2069,39 @@ async function saveFeeds(list) {
   } catch (err) { showToast("訂閱儲存失敗：" + err.message); }
 }
 
+// v231 首頁「常用網頁」：列出打星號的連結記事（連結本身放在各主題資料夾）。
+// 管理模式可取消星號；新增的連結先放進待分類並打星號，之後再分類到主題資料夾。
 let LINKS = [];
 let LINKS_MANAGING = false;
 function renderLinks() {
   const wrap = $("links-list");
   if (!LINKS.length) {
-    wrap.innerHTML = `<p class="sub">還沒有常用網頁。按右上角「管理」新增名稱與網址。</p>`;
+    wrap.innerHTML = `<p class="sub">還沒有常用網頁。在資料夾裡用「網址／連結」加入連結並打 ⭐，或按右上角「管理」直接新增。</p>`;
     return;
   }
-  wrap.innerHTML = LINKS.map((l, i) => {
+  wrap.innerHTML = LINKS.map((l) => {
     let host = "";
     try { host = new URL(l.url).hostname.replace(/^www\./, ""); } catch { host = ""; }
-    return `<div class="link-item${LINKS_MANAGING ? " managing" : ""}" draggable="${LINKS_MANAGING}" data-index="${i}">
-      <a class="toolbar-link-card" href="${esc(l.url)}" target="_blank" rel="noopener">
-        <span class="link-mark" aria-hidden="true">${esc((l.name || "?").slice(0, 1))}</span>
-        <span class="toolbar-link-text"><strong>${esc(l.name)}</strong><small>${esc(host)}</small></span>
+    return `<div class="link-item${LINKS_MANAGING ? " managing" : ""}">
+      <a class="toolbar-link-card" href="${esc(l.url)}" target="_blank" rel="noopener" title="${esc(l.url)}">
+        <span class="link-mark" aria-hidden="true">${esc((l.title || "?").slice(0, 1))}</span>
+        <span class="toolbar-link-text"><strong>${esc(l.title)}</strong><small>${esc(l.folder_name ? `${l.folder_name}｜${host}` : host)}</small></span>
       </a>
-      ${LINKS_MANAGING ? `<span class="link-tools"><button type="button" class="btn small" data-move="-1" data-index="${i}" aria-label="往前">往前</button><button type="button" class="btn small" data-move="1" data-index="${i}" aria-label="往後">往後</button><button type="button" class="btn small" data-del="${i}">刪除</button></span>` : ""}
+      ${LINKS_MANAGING ? `<span class="link-tools"><button type="button" class="btn small" data-unstar="${l.id}">取消常用</button>${l.folder_id ? `<button type="button" class="btn small" data-open-folder="${l.folder_id}">到資料夾</button>` : ""}</span>` : ""}
     </div>`;
   }).join("");
-  wrap.querySelectorAll("[data-del]").forEach((b) => b.onclick = () => saveLinks(LINKS.filter((_, i) => i !== Number(b.dataset.del))));
-  wrap.querySelectorAll("[data-move]").forEach((b) => b.onclick = () => {
-    const i = Number(b.dataset.index), j = i + Number(b.dataset.move);
-    if (j < 0 || j >= LINKS.length) return;
-    const next = [...LINKS]; [next[i], next[j]] = [next[j], next[i]];
-    saveLinks(next);
+  wrap.querySelectorAll("[data-unstar]").forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    try { await api(`/links/${b.dataset.unstar}/star`, { method: "PUT", body: JSON.stringify({ starred: false }) }); await loadLinksWidget(); }
+    catch (err) { b.disabled = false; showToast("設定失敗：" + err.message); }
   });
-  if (LINKS_MANAGING) {
-    let from = null;
-    wrap.querySelectorAll(".link-item").forEach((el) => {
-      el.addEventListener("dragstart", (ev) => { ev.stopPropagation(); from = Number(el.dataset.index); });
-      el.addEventListener("dragover", (ev) => { if (from !== null) { ev.preventDefault(); ev.stopPropagation(); } });
-      el.addEventListener("drop", (ev) => {
-        ev.preventDefault(); ev.stopPropagation();
-        const to = Number(el.dataset.index);
-        if (from === null || from === to) return;
-        const next = [...LINKS]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved);
-        from = null;
-        saveLinks(next);
-      });
-    });
-  }
+  wrap.querySelectorAll("[data-open-folder]").forEach((b) => b.onclick = () => openFolder(Number(b.dataset.openFolder)));
 }
 
 async function loadLinksWidget() {
-  try { LINKS = (await api("/widgets/links")).links || []; }
+  try { LINKS = (await api("/links/starred")).links || []; }
   catch (err) { $("links-list").innerHTML = `<p class="sub">常用網頁載入失敗：${esc(err.message)}</p>`; return; }
   renderLinks();
-  renderSidebarLinks();
-}
-
-// v230 左側欄「常用連結」：跟首頁「常用網頁」同一份 LINKS；收合狀態記在瀏覽器
-const SIDEBAR_LINKS_COLLAPSED_KEY = "fieldlog_sidebar_links_collapsed";
-function renderSidebarLinks() {
-  const body = $("desktop-links-body");
-  if (!body) return;
-  let collapsed = false;
-  try { collapsed = localStorage.getItem(SIDEBAR_LINKS_COLLAPSED_KEY) === "1"; } catch { collapsed = false; }
-  $("desktop-links-count").textContent = LINKS.length ? String(LINKS.length) : "";
-  $("desktop-links-toggle").setAttribute("aria-expanded", String(!collapsed));
-  $("desktop-links-toggle").querySelector(".desktop-tree-section-caret").textContent = collapsed ? "▸" : "▾";
-  body.hidden = collapsed;
-  body.innerHTML = LINKS.length
-    ? LINKS.map((l) => `<a class="desktop-tree-row desktop-link-row" href="${esc(l.url)}" target="_blank" rel="noopener" title="${esc(l.url)}"><span class="desktop-link-mark" aria-hidden="true">${esc((l.name || "?").slice(0, 1))}</span><span>${esc(l.name)}</span></a>`).join("")
-    : `<span class="desktop-tree-empty">尚無連結，按「＋」新增</span>`;
-}
-
-function initSidebarLinks() {
-  if (!$("desktop-links")) return;
-  $("desktop-links-toggle").onclick = () => {
-    const collapsed = !$("desktop-links-body").hidden;
-    try { localStorage.setItem(SIDEBAR_LINKS_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch { /* 無痕模式等存不了就算了 */ }
-    renderSidebarLinks();
-  };
-  // 「＋」：回首頁並打開「常用網頁」的管理模式
-  $("desktop-links-add").onclick = async () => {
-    await backHome(true);
-    if (!LINKS_MANAGING) $("links-manage")?.click();
-    $("links-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    setTimeout(() => $("link-name")?.focus(), 400);
-  };
-  renderSidebarLinks();
-}
-
-async function saveLinks(list) {
-  try {
-    LINKS = (await api("/widgets/links", { method: "PUT", body: JSON.stringify({ links: list }) })).links || [];
-    renderLinks();
-    renderSidebarLinks();
-  } catch (err) { showToast("常用網頁儲存失敗：" + err.message); }
 }
 
 // 首頁待辦清單（v217）：整份存在 settings 的 widgets.todos。同一個 group
@@ -2286,9 +2230,13 @@ function initHomeWidgets() {
     $("link-add").onclick = async () => {
       const name = $("link-name").value.trim();
       const url = $("link-url").value.trim();
-      if (!name || !/^https?:\/\//i.test(url)) { showToast("請填名稱，網址需為 http:// 或 https:// 開頭"); return; }
-      $("link-name").value = ""; $("link-url").value = "";
-      await saveLinks([...LINKS, { name, url }]);
+      if (!/^https?:\/\//i.test(url)) { showToast("網址需為 http:// 或 https:// 開頭"); return; }
+      try {
+        await api("/links", { method: "POST", body: JSON.stringify({ url, title: name, starred: true }) });
+        $("link-name").value = ""; $("link-url").value = "";
+        showToast("已加入常用，連結先放在待分類，可再分類到主題資料夾");
+        await Promise.all([loadLinksWidget(), loadRecent()]);
+      } catch (err) { showToast("新增失敗：" + err.message); }
     };
   }
   loadCalendarWidget().catch(() => {});
@@ -2503,9 +2451,18 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   // 資料夾內頁已由標題／麵包屑清楚標示目前位置，不要在每一筆下面重複一次路徑。
   // 最近作業與待分類仍要顯示位置，否則使用者看不出記事現在放在哪裡。
   const location = explorer ? "" : `<span class="entry-where">${esc(entryLocationLabel(e))}</span>`;
-  return `<div class="entry-row${explorer ? " explorer-item" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
+  // v231 連結記事：標題直接是外部連結（新分頁），旁邊的星號決定是否出現在首頁「常用網頁」
+  let linkHost = "";
+  if (e.link_url) { try { linkHost = new URL(e.link_url).hostname.replace(/^www\./, ""); } catch { linkHost = ""; } }
+  const titleHtml = e.link_url
+    ? `<a class="entry-title entry-link" href="${esc(e.link_url)}" target="_blank" rel="noopener" title="${esc(e.link_url)}">${esc(e.title || linkHost || "連結")}</a><span class="entry-link-host">${esc(linkHost)}</span>`
+    : `<span class="entry-title">${esc(e.title || "（未命名）")}</span>`;
+  const star = e.link_url
+    ? `<button class="entry-star${Number(e.link_starred) ? " on" : ""}" type="button" data-star="${e.id}" aria-pressed="${Number(e.link_starred) ? "true" : "false"}" title="${Number(e.link_starred) ? "從首頁「常用網頁」移除" : "加到首頁「常用網頁」"}">${Number(e.link_starred) ? "★" : "☆"}</button>`
+    : "";
+  return `<div class="entry-row${explorer ? " explorer-item" : ""}${e.link_url ? " is-link" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
-    <span class="entry-main"><span class="entry-title">${esc(e.title || "（未命名）")}</span>
+    <span class="entry-main">${titleHtml}${star}
       <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/></svg></button>
     </span>
     <span class="entry-secondary">${location}${aiChip}${filingSuggestion}
@@ -2518,6 +2475,20 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
 
 function bindEntryRows(wrap) {
   prepareFileSelection(wrap);
+  // 連結本身開新分頁，不要同時觸發整列的預覽／開啟
+  wrap.querySelectorAll(".entry-link").forEach((a) => a.addEventListener("click", (ev) => ev.stopPropagation()));
+  wrap.querySelectorAll("[data-star]").forEach((b) => b.onclick = async (ev) => {
+    ev.stopPropagation();
+    const on = !b.classList.contains("on");
+    try {
+      await api(`/links/${b.dataset.star}/star`, { method: "PUT", body: JSON.stringify({ starred: on }) });
+      b.classList.toggle("on", on);
+      b.textContent = on ? "★" : "☆";
+      b.setAttribute("aria-pressed", String(on));
+      b.title = on ? "從首頁「常用網頁」移除" : "加到首頁「常用網頁」";
+      loadLinksWidget().catch(() => {});
+    } catch (err) { showToast("設定失敗：" + err.message); }
+  });
   wrap.querySelectorAll(".entry-row").forEach((el) => {
     el.onclick = () => {
       const entryId = Number(el.dataset.id);
@@ -3144,7 +3115,7 @@ function syncFileSortButton() {
 
 // 類型排序用的分組：筆記 → 錄音 → 資料包 → 檔案依副檔名（同類型再比名稱）
 function explorerTypeKey(item) {
-  if (item.kind === "note") return "0 筆記";
+  if (item.kind === "note") return item.link ? "0 連結" : "0 筆記";
   if (item.kind === "package") return item.recording ? "1 錄音" : "2 資料包";
   const ext = String(item.name || "").split(".").pop().toLowerCase();
   return `3 ${ext || "~"}`;
@@ -3258,7 +3229,7 @@ async function openFolder(id) {
       if (isRecordingEntry(e) || atts.length > 1) {
         return [{ kind: "package", id: e.id, name: e.title, createdAt: e.created_at, recording: isRecordingEntry(e), html: recordGroupCardHtml(e, atts) }];
       }
-      return [{ kind: "note", id: e.id, name: e.title, createdAt: e.created_at, html: entryRowHtml(e, { explorer: true }) }];
+      return [{ kind: "note", id: e.id, name: e.title, createdAt: e.created_at, link: !!e.link_url, html: entryRowHtml(e, { explorer: true }) }];
     }),
   ];
   sortExplorerItems(explorerItems);
@@ -5503,11 +5474,32 @@ function openUrlImport() {
   $("url-import-destination").textContent = `存入「${CURRENT_FOLDER.name}」`;
   $("url-import-input").value = "";
   $("url-import-name").value = "";
+  $("url-import-note").value = "";
+  $("url-import-star").checked = false;
+  let mode = "link";
+  try { mode = localStorage.getItem("fieldlog_url_import_mode") === "pdf" ? "pdf" : "link"; } catch { mode = "link"; }
+  document.querySelectorAll('input[name="url-import-mode"]').forEach((r) => { r.checked = r.value === mode; });
+  syncUrlImportMode();
   $("url-import-status").textContent = "";
   $("url-import-status").classList.remove("error");
   overlay.classList.add("open");
   overlay.setAttribute("aria-hidden", "false");
   requestAnimationFrame(() => $("url-import-input").focus());
+}
+
+// v231：加入連結（書籤記事）或存成 PDF（下載內容）兩種模式，記住上次的選擇
+function urlImportMode() {
+  return document.querySelector('input[name="url-import-mode"]:checked')?.value === "pdf" ? "pdf" : "link";
+}
+
+function syncUrlImportMode() {
+  const mode = urlImportMode();
+  $("url-import-form").dataset.mode = mode;
+  $("url-import-confirm").textContent = mode === "pdf" ? "開始匯入" : "加入連結";
+  $("url-import-name").placeholder = mode === "pdf" ? "系統會從 PDF 或網頁標題自動命名" : "不填就用網站名稱";
+  $("url-import-hint").textContent = mode === "pdf"
+    ? "PDF 會直接下載；其他公開網頁會轉成 PDF。需要登入的網頁請改用 MyWiki Clip 擴充功能。檔案上限 50MB。"
+    : "只存網址（像書籤），點了會開新分頁。勾「加到常用」會出現在首頁「常用網頁」。";
 }
 
 function closeUrlImport() {
@@ -5533,6 +5525,24 @@ async function submitUrlImport(event) {
   }
 
   const folderId = Number(CURRENT_FOLDER.id);
+  const mode = urlImportMode();
+  try { localStorage.setItem("fieldlog_url_import_mode", mode); } catch { /* 存不了就算了 */ }
+  if (mode === "link") {
+    try {
+      const result = await api("/links", {
+        method: "POST",
+        body: JSON.stringify({ url, title: name, note: $("url-import-note").value.trim(), folder_id: folderId, starred: $("url-import-star").checked }),
+      });
+      closeUrlImport();
+      showToast(`已加入連結：${result.title}${result.starred ? "（已加到常用）" : ""}`);
+      if (result.starred) loadLinksWidget().catch(() => {});
+      if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === folderId) await openFolder(folderId);
+    } catch (error) {
+      $("url-import-status").classList.add("error");
+      $("url-import-status").textContent = error.message;
+    }
+    return;
+  }
   const confirmButton = $("url-import-confirm");
   const cancelButton = $("url-import-cancel");
   const modal = $("url-import-form");
@@ -5567,6 +5577,7 @@ async function submitUrlImport(event) {
     cancelButton.disabled = false;
     confirmButton.textContent = "開始匯入";
     modal.removeAttribute("aria-busy");
+    syncUrlImportMode();
   }
 }
 
@@ -8698,6 +8709,7 @@ function init() {
     uploadFilesToFolder(files);
   };
   $("btn-folder-import-url").onclick = openUrlImport;
+  document.querySelectorAll('input[name="url-import-mode"]').forEach((r) => { r.onchange = syncUrlImportMode; });
   $("url-import-form").addEventListener("submit", submitUrlImport);
   $("url-import-cancel").onclick = closeUrlImport;
   $("url-import-overlay").addEventListener("click", (event) => {
@@ -8717,7 +8729,6 @@ function init() {
   initHomeWidgets();
   initFolderSuggestions();
   initTranscribeGlossary();
-  initSidebarLinks();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
   $("btn-inner-grid").onclick = () => setInnerFolderView("grid");

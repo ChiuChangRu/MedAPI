@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=230" />
-<link rel="stylesheet" href="home.css?v=230" />
+<link rel="stylesheet" href="style.css?v=231" />
+<link rel="stylesheet" href="home.css?v=231" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -28,18 +28,6 @@
             aria-expanded="true" title="收合左欄">◀</button>
   </div>
   <button class="desktop-shortcut active" id="desktop-pending" type="button"><span class="side-dot" aria-hidden="true"></span><span>待分類</span></button>
-  <!-- v230 常用連結：與首頁「常用網頁」同一份清單（/api/widgets/links），點了開新分頁 -->
-  <section class="desktop-tree-section desktop-links-section" id="desktop-links" style="--section-accent:#B87333;--section-bg:#FBF1E6">
-    <div class="desktop-tree-section-head">
-      <button class="desktop-tree-section-toggle" id="desktop-links-toggle" type="button" aria-expanded="true">
-        <span class="desktop-tree-section-caret">▾</span>
-        <span class="desktop-tree-section-icon" aria-hidden="true"></span>
-        <strong>常用連結</strong><small id="desktop-links-count"></small>
-      </button>
-      <button class="desktop-tree-section-add" id="desktop-links-add" type="button" aria-label="管理常用連結" title="在首頁新增或管理常用連結">＋</button>
-    </div>
-    <div class="desktop-tree-section-body" id="desktop-links-body"></div>
-  </section>
   <div class="desktop-nav-divider"></div>
   <div class="desktop-folder-tree" id="desktop-folder-tree"></div>
   <button class="desktop-shortcut desktop-new-folder" id="desktop-new-folder" type="button">＋ <span>新增資料夾</span></button>
@@ -89,7 +77,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=230">使用說明</a>
+        <a class="head-link" href="help.html?v=231">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -276,7 +264,7 @@
         </div>
         <div id="links-list" class="toolbar-link-list links-list"><p class="sub">讀取中…</p></div>
         <div class="widget-form links-form" id="links-form" hidden>
-          <input id="link-name" type="text" placeholder="名稱" maxlength="60" />
+          <input id="link-name" type="text" placeholder="名稱（可不填）" maxlength="60" />
           <input id="link-url" type="url" placeholder="https://…" />
           <button type="button" class="btn small primary" id="link-add">新增</button>
         </div>
@@ -379,7 +367,7 @@
         <button class="btn small" id="btn-folder-entry">新紀錄</button>
         <button class="btn small upload-btn" id="btn-folder-upload-file" type="button">＋ 上傳檔案</button>
         <input id="folder-upload-file-input" type="file" multiple hidden />
-        <button class="btn small" id="btn-folder-import-url" type="button">網址匯入</button>
+        <button class="btn small" id="btn-folder-import-url" type="button">網址／連結</button>
         <button class="btn small primary" id="btn-folder-export">匯出給 AI</button>
       </div>
     </div>
@@ -598,13 +586,23 @@
 <!-- 網址匯入：同一欄位先判斷 PDF，否則把公開網頁轉成 PDF。 -->
 <div class="overlay" id="url-import-overlay" aria-hidden="true">
   <form class="modal url-import-modal" id="url-import-form" role="dialog" aria-modal="true" aria-labelledby="url-import-title">
-    <h2 id="url-import-title">🔗 網址匯入</h2>
+    <h2 id="url-import-title">網址</h2>
     <p class="url-import-destination" id="url-import-destination"></p>
-    <label for="url-import-input">PDF 或公開網頁網址</label>
-    <input id="url-import-input" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/file.pdf" required />
-    <label for="url-import-name">檔案名稱（可不填）</label>
-    <input id="url-import-name" type="text" maxlength="160" placeholder="系統會從 PDF 或網頁標題自動命名" />
-    <p class="sub">PDF 會直接下載；其他公開網頁會轉成 PDF。需要登入的網頁請改用 MyWiki Clip 擴充功能。檔案上限 50MB。</p>
+    <!-- v231 加入連結（書籤，放在這個資料夾）或存成 PDF（下載內容） -->
+    <div class="url-import-mode" role="radiogroup" aria-label="要怎麼存">
+      <label><input type="radio" name="url-import-mode" value="link" checked> 加入連結</label>
+      <label><input type="radio" name="url-import-mode" value="pdf"> 存成 PDF</label>
+    </div>
+    <label for="url-import-input">網址</label>
+    <input id="url-import-input" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://…" required />
+    <label for="url-import-name" id="url-import-name-label">名稱（可不填）</label>
+    <input id="url-import-name" type="text" maxlength="160" placeholder="不填就用網站名稱" />
+    <div class="url-import-link-only">
+      <label for="url-import-note">備註（可不填）</label>
+      <input id="url-import-note" type="text" maxlength="300" placeholder="例如：查 ISO 版次用、帳號問品保" />
+      <label class="url-import-star"><input type="checkbox" id="url-import-star"> ⭐ 加到常用（首頁「常用網頁」）</label>
+    </div>
+    <p class="sub" id="url-import-hint"></p>
     <p class="url-import-status" id="url-import-status" role="status" aria-live="polite"></p>
     <div class="modal-actions">
       <button class="btn" id="url-import-cancel" type="button">取消</button>
@@ -728,10 +726,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=230"></script>
+<script src="pdf-editor.js?v=231"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=230"></script>
+<script src="richtext-editor.js?v=231"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -742,10 +740,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=230"></script>
-<script src="inspector.js?v=230"></script>
+<script src="file-selection.js?v=231"></script>
+<script src="inspector.js?v=231"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=230"></script>
+<script src="app.js?v=231"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

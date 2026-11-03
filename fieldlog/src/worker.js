@@ -135,7 +135,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "230";
+const UI_VERSION = "231";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1126,6 +1126,42 @@ async function keepAttachmentVersion(env, db, old) {
   }
 }
 
+/** 連結網址：只收 http/https，去掉前後空白，最長 1000 字 */
+function cleanLinkUrl(value) {
+  try {
+    const u = new URL(String(value || "").trim());
+    return ["http:", "https:"].includes(u.protocol) ? u.toString().slice(0, 1000) : "";
+  } catch { return ""; }
+}
+
+/**
+ * v231 一次性搬家：v215 首頁「常用網頁」存在 settings 的 widgets.links，改成
+ * 待分類裡打星號的連結記事（同網址已存在就略過），之後由使用者分類到主題資料夾。
+ */
+async function migrateWidgetLinks(db) {
+  const done = await db.prepare("SELECT value FROM settings WHERE key = 'links.migrated_v231'").first().catch(() => null);
+  if (done) return;
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'widgets.links'").first().catch(() => null);
+  let old = [];
+  try { old = cleanLinks(JSON.parse(row?.value || "[]")); } catch { old = []; }
+  if (old.length) {
+    const staging = await ensureStagingFolder(db, now());
+    for (const link of old) {
+      const exists = await db.prepare(
+        "SELECT id FROM entries WHERE COALESCE(deleted_at, '') = '' AND json_extract(fields_json, '$.link_url') = ?"
+      ).bind(link.url).first();
+      if (exists) continue;
+      const stamp = now();
+      await db.prepare(
+        "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'html', ?)"
+      ).bind(staging.id, link.name, JSON.stringify({ link_url: link.url, link_starred: true, link_starred_at: stamp }),
+        sanitizeEntryHtml(textToHtml(link.url)), stamp).run();
+    }
+  }
+  await db.prepare("INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('links.migrated_v231', ?, ?)")
+    .bind(String(old.length), now()).run();
+}
+
 async function activeAttachment(db, id) {
   return db.prepare(
     `SELECT a.* FROM attachments a JOIN entries e ON e.id = a.entry_id LEFT JOIN folders f ON f.id = e.folder_id
@@ -2037,6 +2073,7 @@ async function handleApi(request, env, url, identity = {}) {
     const limit = Math.min(Number(url.searchParams.get("limit") || 25) || 25, 100);
     const { results } = await db.prepare(
       `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                json_extract(e.fields_json, '$.link_url') AS link_url, json_extract(e.fields_json, '$.link_starred') AS link_starred,
               COALESCE(e.auto_filed_at, '') AS auto_filed_at,
               COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
               f.name AS folder_name, f.type AS folder_type, COALESCE(f.role, '') AS folder_role,
@@ -2066,6 +2103,7 @@ async function handleApi(request, env, url, identity = {}) {
     if (inbox) {
       q = db.prepare(
         `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                json_extract(e.fields_json, '$.link_url') AS link_url, json_extract(e.fields_json, '$.link_starred') AS link_starred,
                 COALESCE(e.auto_filed_at, '') AS auto_filed_at,
                 COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
                 (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
@@ -2075,6 +2113,7 @@ async function handleApi(request, env, url, identity = {}) {
     } else if (folderId) {
       q = db.prepare(
         `SELECT e.id, e.folder_id, e.title, e.created_at, e.updated_at,
+                json_extract(e.fields_json, '$.link_url') AS link_url, json_extract(e.fields_json, '$.link_starred') AS link_starred,
                 COALESCE(e.auto_filed_at, '') AS auto_filed_at,
                 COALESCE(e.auto_filed_reason, '') AS auto_filed_reason,
                 (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id) AS att_count
@@ -2105,6 +2144,55 @@ async function handleApi(request, env, url, identity = {}) {
     }
     return json(results);
   }
+  // ---- v231 連結：連結是一筆記事（fields_json.link_url），放在它所屬主題的資料夾；
+  // 常用的打星號（link_starred），首頁「常用網頁」只列打星號的。----
+  if (path === "/links" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const href = cleanLinkUrl(body.url);
+    if (!href) return bad("網址需為 http:// 或 https:// 開頭");
+    let folderId = body.folder_id ? Number(body.folder_id) : null;
+    if (folderId && !await db.prepare("SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(folderId).first()) {
+      return bad("找不到資料夾", 404);
+    }
+    if (!folderId) folderId = (await ensureStagingFolder(db, now())).id;
+    const title = String(body.title || "").trim().slice(0, 160) || new URL(href).hostname.replace(/^www\./, "");
+    const note = String(body.note || "").trim().slice(0, 2000);
+    const fields = { link_url: href, link_starred: body.starred === true, ...(body.starred === true ? { link_starred_at: now() } : {}) };
+    // 內文放備註＋網址：搜尋找得到、打開記事也看得到完整網址
+    const html = sanitizeEntryHtml(textToHtml([note, href].filter(Boolean).join("\n")));
+    const r = await db.prepare(
+      "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'html', ?)"
+    ).bind(folderId, title, JSON.stringify(fields), html, now()).run();
+    await logHistory(db, r.meta.last_row_id, folderId, "新增連結", `${title}｜${href}`);
+    return json({ ok: true, id: Number(r.meta.last_row_id), folder_id: folderId, title, url: href, starred: fields.link_starred });
+  }
+  const linkStarMatch = path.match(/^\/links\/(\d+)\/star$/);
+  if (linkStarMatch && method === "PUT") {
+    const id = Number(linkStarMatch[1]);
+    const entry = await db.prepare("SELECT id, fields_json FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
+    if (!entry) return bad("找不到連結", 404);
+    let fields = {};
+    try { fields = JSON.parse(entry.fields_json || "{}"); } catch { fields = {}; }
+    if (!fields.link_url) return bad("這筆不是連結");
+    const body = await request.json().catch(() => ({}));
+    fields.link_starred = body.starred === true;
+    if (fields.link_starred) fields.link_starred_at = now(); else delete fields.link_starred_at;
+    await db.prepare("UPDATE entries SET fields_json = ? WHERE id = ?").bind(JSON.stringify(fields), id).run();
+    return json({ ok: true, id, starred: fields.link_starred });
+  }
+  if (path === "/links/starred" && method === "GET") {
+    await migrateWidgetLinks(db);
+    const { results = [] } = await db.prepare(
+      `SELECT e.id, e.title, e.folder_id, f.name AS folder_name,
+              json_extract(e.fields_json, '$.link_url') AS url
+       FROM entries e LEFT JOIN folders f ON f.id = e.folder_id
+       WHERE COALESCE(e.deleted_at, '') = '' AND json_extract(e.fields_json, '$.link_starred') = 1
+         AND json_extract(e.fields_json, '$.link_url') IS NOT NULL
+       ORDER BY json_extract(e.fields_json, '$.link_starred_at'), e.id LIMIT 50`
+    ).all();
+    return json({ links: results });
+  }
+
   if (path === "/entries" && method === "POST") {
     const body = await request.json().catch(() => ({}));
     let folderId = body.folder_id ? Number(body.folder_id) : null;
