@@ -2441,3 +2441,14 @@ body.reader-fullscreen .folder-preview {
   width: auto; min-width: 0; height: auto; flex: none; margin: 0; padding: 0; box-shadow: none;
 }
 .url-import-modal[data-mode="pdf"] .url-import-link-only { display: none; }
+
+/* v233 AI 命名 */
+.ai-naming-modal { width: min(720px, calc(100vw - 28px)); }
+.ai-naming-list { display: grid; gap: 10px; max-height: 60vh; overflow: auto; margin: 10px 0; }
+.ai-naming-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.ai-naming-check input { width: auto; margin-top: 4px; }
+.ai-naming-body { flex: 1; display: grid; gap: 4px; min-width: 0; }
+.ai-naming-current { color: var(--text-muted); overflow-wrap: anywhere; }
+.ai-naming-input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 6px 8px; }
+.ai-naming-status { color: var(--text-muted); font-size: 12px; }
+.ai-naming-status.error { color: #b91c1c; }
