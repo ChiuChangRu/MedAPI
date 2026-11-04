@@ -198,3 +198,41 @@ test("v187 網址匯入查重不會查詢 attachments.deleted_at", async () => {
   assert.doesNotMatch(worker, /a\.deleted_at/);
   assert.match(worker, /WHERE e\.folder_id = \? AND a\.content_hash = \?[\s\S]*COALESCE\(e\.deleted_at, ''\) = ''/);
 });
+
+test("v232 pdf_only：PDF 照常下載；網頁、需要登入、內容不是 PDF 都回 pdf:false，且不轉網頁", async () => {
+  const originalFetch = globalThis.fetch;
+  let browserCalls = 0;
+  const env = (DB) => ({
+    FIELD_PIN: "pin", DB,
+    FILES: { async put() {}, async delete() {} },
+    BROWSER: { async quickAction() { browserCalls++; throw new Error("不應呼叫"); } },
+  });
+  const cases = [
+    ["https://example.com/report.pdf", () => new Response(new TextEncoder().encode("%PDF-1.7 data"), { headers: { "content-type": "application/pdf" } }), true],
+    ["https://example.com/page", () => new Response("<html><title>x</title></html>", { headers: { "content-type": "text/html" } }), false],
+    ["https://example.com/login.pdf", () => new Response("denied", { status: 403, headers: { "content-type": "text/html" } }), false],
+    ["https://example.com/fake.pdf", () => new Response("<html>not pdf</html>", { headers: { "content-type": "application/octet-stream" } }), false],
+  ];
+  try {
+    for (const [url, respond, expectPdf] of cases) {
+      const DB = makeDb();
+      globalThis.fetch = async () => respond();
+      const result = await importUrl(env(DB), { url, pdf_only: true });
+      assert.equal(result.status, 200, url);
+      assert.equal(result.data.pdf, expectPdf, url);
+      assert.equal(DB.state.entries.length, expectPdf ? 1 : 0, `${url} 只有 PDF 才建立記事`);
+    }
+    assert.equal(browserCalls, 0, "pdf_only 不會把網頁轉成 PDF");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("v232 加入連結時先檢查是不是 PDF，不是才存成連結", async () => {
+  const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
+  const helper = app.match(/async function addLinkOrDownloadPdf\([\s\S]*?\n}/)[0];
+  assert.match(helper, /pdf_only: true/);
+  assert.ok(helper.indexOf("/import-url") < helper.indexOf('api("/links"'), "先試 PDF 再存連結");
+  assert.match(app, /await addLinkOrDownloadPdf\(\{\s*url, title: name, note:/);
+  assert.match(app, /await addLinkOrDownloadPdf\(\{ url, title: name, starred: true \}\)/);
+});

@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "231";
+const APP_VERSION = "232";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2232,9 +2232,12 @@ function initHomeWidgets() {
       const url = $("link-url").value.trim();
       if (!/^https?:\/\//i.test(url)) { showToast("網址需為 http:// 或 https:// 開頭"); return; }
       try {
-        await api("/links", { method: "POST", body: JSON.stringify({ url, title: name, starred: true }) });
+        const result = await addLinkOrDownloadPdf({ url, title: name, starred: true });
+        if (result.kind === "duplicate") throw new Error(result.message);
         $("link-name").value = ""; $("link-url").value = "";
-        showToast("已加入常用，連結先放在待分類，可再分類到主題資料夾");
+        showToast(result.kind === "pdf"
+          ? `這是 PDF，已直接下載到待分類：${result.filename}`
+          : "已加入常用，連結先放在待分類，可再分類到主題資料夾");
         await Promise.all([loadLinksWidget(), loadRecent()]);
       } catch (err) { showToast("新增失敗：" + err.message); }
     };
@@ -5487,6 +5490,23 @@ function openUrlImport() {
   requestAnimationFrame(() => $("url-import-input").focus());
 }
 
+// v232 加入連結時，網址若其實是 PDF 就直接下載存進資料夾（不只存網址）。
+// 伺服器實際讀檔判斷；不是 PDF、需要登入或連不到時回 { pdf: false } 或錯誤，一律改存成連結。
+async function addLinkOrDownloadPdf({ url, title = "", note = "", folderId = null, starred = false }) {
+  const targetFolder = folderId || await stagingFolderId();
+  if (targetFolder) {
+    try {
+      const pdf = await api("/import-url", { method: "POST", body: JSON.stringify({ url, name: title, folder_id: targetFolder, pdf_only: true }) });
+      if (pdf.pdf) return { kind: "pdf", filename: pdf.filename, folderId: targetFolder };
+    } catch (error) {
+      // 相同 PDF 已在資料夾裡：不要再多存一筆連結
+      if (/相同的 PDF 已存在/.test(error.message || "")) return { kind: "duplicate", message: error.message };
+    }
+  }
+  const link = await api("/links", { method: "POST", body: JSON.stringify({ url, title, note, folder_id: folderId, starred }) });
+  return { kind: "link", ...link };
+}
+
 // v231：加入連結（書籤記事）或存成 PDF（下載內容）兩種模式，記住上次的選擇
 function urlImportMode() {
   return document.querySelector('input[name="url-import-mode"]:checked')?.value === "pdf" ? "pdf" : "link";
@@ -5499,7 +5519,7 @@ function syncUrlImportMode() {
   $("url-import-name").placeholder = mode === "pdf" ? "系統會從 PDF 或網頁標題自動命名" : "不填就用網站名稱";
   $("url-import-hint").textContent = mode === "pdf"
     ? "PDF 會直接下載；其他公開網頁會轉成 PDF。需要登入的網頁請改用 MyWiki Clip 擴充功能。檔案上限 50MB。"
-    : "只存網址（像書籤），點了會開新分頁。勾「加到常用」會出現在首頁「常用網頁」。";
+    : "只存網址（像書籤），點了會開新分頁。勾「加到常用」會出現在首頁「常用網頁」。網址如果是 PDF，會直接下載存進這個資料夾。";
 }
 
 function closeUrlImport() {
@@ -5528,18 +5548,24 @@ async function submitUrlImport(event) {
   const mode = urlImportMode();
   try { localStorage.setItem("fieldlog_url_import_mode", mode); } catch { /* 存不了就算了 */ }
   if (mode === "link") {
+    $("url-import-confirm").disabled = true;
+    $("url-import-status").classList.remove("error");
+    $("url-import-status").textContent = "檢查網址中…";
     try {
-      const result = await api("/links", {
-        method: "POST",
-        body: JSON.stringify({ url, title: name, note: $("url-import-note").value.trim(), folder_id: folderId, starred: $("url-import-star").checked }),
+      const result = await addLinkOrDownloadPdf({
+        url, title: name, note: $("url-import-note").value.trim(), folderId, starred: $("url-import-star").checked,
       });
+      if (result.kind === "duplicate") throw new Error(result.message);
       closeUrlImport();
-      showToast(`已加入連結：${result.title}${result.starred ? "（已加到常用）" : ""}`);
-      if (result.starred) loadLinksWidget().catch(() => {});
+      if (result.kind === "pdf") showToast(`這是 PDF，已直接下載存入：${result.filename}`);
+      else showToast(`已加入連結：${result.title}${result.starred ? "（已加到常用）" : ""}`);
+      if (result.kind === "link" && result.starred) loadLinksWidget().catch(() => {});
       if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === folderId) await openFolder(folderId);
     } catch (error) {
       $("url-import-status").classList.add("error");
       $("url-import-status").textContent = error.message;
+    } finally {
+      $("url-import-confirm").disabled = false;
     }
     return;
   }
