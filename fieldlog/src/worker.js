@@ -135,7 +135,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "231";
+const UI_VERSION = "232";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -2307,11 +2307,22 @@ async function handleApi(request, env, url, identity = {}) {
     let sourceUrl;
     try { sourceUrl = assertPublicImportUrl(body.url); } catch (error) { return bad(error.message, error.status || 400); }
     const requestedName = String(body.name || "").trim().slice(0, 160);
+    // v232 pdf_only：「加入連結」時先用這支看網址是不是 PDF。是 PDF 就照常下載存檔；
+    // 不是（網頁、需要登入、連不到）就回 { pdf: false }，前端改存成連結，不轉網頁 PDF。
+    const pdfOnly = body.pdf_only === true;
 
     try {
       const downloadUrl = directDownloadUrlForGoogleDrive(sourceUrl);
       const fetched = await fetchPublicImportUrl(downloadUrl.toString());
       const response = fetched.response;
+      if (pdfOnly) {
+        const type = String(response.headers.get("content-type") || "").toLowerCase();
+        const maybePdf = /pdf|octet-stream|binary/.test(type) || /\.pdf$/i.test(fetched.finalUrl.pathname);
+        if (!response.ok || !maybePdf) {
+          await response.body?.cancel?.().catch(() => {});
+          return json({ ok: true, pdf: false });
+        }
+      }
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           throw urlImportError("來源網頁需要登入或拒絕存取；請改用 MyWiki Clip 擴充功能", 422);
@@ -2325,6 +2336,7 @@ async function handleApi(request, env, url, identity = {}) {
       let pdfBytes;
       let format;
       let suggestedName;
+      if (pdfOnly && !isPdfBytes(sourceBytes)) return json({ ok: true, pdf: false });
       if (isPdfBytes(sourceBytes)) {
         pdfBytes = sourceBytes;
         format = "pdf";
@@ -2420,6 +2432,7 @@ async function handleApi(request, env, url, identity = {}) {
       });
       return json({
         ok: true,
+        pdf: true,
         entry_id: entryId,
         attachment,
         format,
