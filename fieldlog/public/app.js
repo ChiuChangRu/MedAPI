@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "232";
+const APP_VERSION = "233";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2189,6 +2189,82 @@ function initTranscribeGlossary() {
       showToast("已儲存，之後的新錄音會使用這些詞彙");
     } catch (err) { showToast("儲存失敗：" + err.message); }
   };
+}
+
+// v233 AI 命名：選取的檔案逐一請伺服器讀內容產生建議（POST /attachments/:id/suggest-name），
+// 使用者可改、可取消勾選，按「套用」才用一般改名 API 改檔名。
+let AI_NAMING_RUN = 0;
+async function openAiNaming(items) {
+  const files = (items || []).filter((item) => item.type === "attachment");
+  if (!files.length) { showToast("請先選取檔案（AI 命名只處理檔案，不處理資料夾或筆記）"); return; }
+  const run = ++AI_NAMING_RUN;
+  const overlay = $("ai-naming-overlay");
+  const list = $("ai-naming-list");
+  list.innerHTML = files.map((f) => `<div class="ai-naming-row" data-att="${f.id}" data-entry="${f.entryId}">
+      <label class="ai-naming-check"><input type="checkbox" disabled></label>
+      <div class="ai-naming-body">
+        <small class="ai-naming-current">${esc(f.title)}</small>
+        <input class="ai-naming-input" type="text" maxlength="240" placeholder="分析中…" disabled>
+        <small class="ai-naming-status">讀取內容中…</small>
+      </div>
+    </div>`).join("");
+  overlay.classList.add("open");
+  overlay.setAttribute("aria-hidden", "false");
+  $("ai-naming-apply").disabled = true;
+  $("ai-naming-cancel").onclick = () => { AI_NAMING_RUN++; overlay.classList.remove("open"); overlay.setAttribute("aria-hidden", "true"); };
+  $("ai-naming-apply").onclick = () => applyAiNaming(run);
+  for (const f of files) {
+    if (run !== AI_NAMING_RUN) return;
+    const row = list.querySelector(`[data-att="${f.id}"]`);
+    const input = row.querySelector(".ai-naming-input");
+    const check = row.querySelector("input[type=checkbox]");
+    const status = row.querySelector(".ai-naming-status");
+    try {
+      const r = await api(`/attachments/${f.id}/suggest-name`, { method: "POST", body: "{}" });
+      if (run !== AI_NAMING_RUN) return;
+      input.value = r.filename;
+      input.disabled = false;
+      check.disabled = false;
+      check.checked = r.filename !== r.current;
+      status.textContent = [r.company && `公司：${r.company}`, r.product && `產品：${r.product}`, r.doc_type && `類型：${r.doc_type}`].filter(Boolean).join("｜");
+    } catch (err) {
+      if (run !== AI_NAMING_RUN) return;
+      input.value = f.title;
+      input.disabled = false;
+      check.disabled = false;
+      check.checked = false;
+      status.textContent = `無法建議：${err.message}（可手動輸入後勾選）`;
+      status.classList.add("error");
+    }
+    $("ai-naming-apply").disabled = false;
+  }
+}
+
+async function applyAiNaming(run) {
+  const rows = [...$("ai-naming-list").querySelectorAll(".ai-naming-row")]
+    .filter((row) => row.querySelector("input[type=checkbox]").checked && row.querySelector(".ai-naming-input").value.trim());
+  if (!rows.length) { showToast("沒有勾選要套用的檔名"); return; }
+  $("ai-naming-apply").disabled = true;
+  let done = 0;
+  for (const row of rows) {
+    const name = row.querySelector(".ai-naming-input").value.trim();
+    try {
+      const r = await api(`/attachments/${row.dataset.att}`, { method: "PUT", body: JSON.stringify({ filename: name }) });
+      if (typeof updateInspectorFilename === "function") updateInspectorFilename(Number(row.dataset.att), r.filename || name);
+      done++;
+    } catch (err) {
+      const status = row.querySelector(".ai-naming-status");
+      status.textContent = `改名失敗：${err.message}`;
+      status.classList.add("error");
+    }
+  }
+  if (run === AI_NAMING_RUN && done === rows.length) {
+    $("ai-naming-overlay").classList.remove("open");
+    $("ai-naming-overlay").setAttribute("aria-hidden", "true");
+  }
+  $("ai-naming-apply").disabled = false;
+  showToast(`已改名 ${done} 個檔案`);
+  if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id);
 }
 
 function initHomeWidgets() {

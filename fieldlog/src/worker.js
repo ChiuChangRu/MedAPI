@@ -59,6 +59,7 @@ import {
   updateCategory,
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
+import { suggestFilename } from "./lib/ai-naming.js";
 import { GLOSSARY_SETTING_KEY, cleanGlossary, loadGlossary, looksLikePromptEcho, toTraditional, whisperInput } from "./lib/transcribe.js";
 import { cleanFeedList, cleanLinks, cleanTodos, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
 import {
@@ -135,7 +136,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "232";
+const UI_VERSION = "233";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1160,6 +1161,19 @@ async function migrateWidgetLinks(db) {
   }
   await db.prepare("INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('links.migrated_v231', ?, ?)")
     .bind(String(old.length), now()).run();
+}
+
+/** 資料夾路徑名稱（由上而下），給 AI 命名當情境用；最多走 6 層避免資料異常時無限迴圈 */
+async function folderPathNames(db, folderId) {
+  const names = [];
+  let id = Number(folderId);
+  for (let i = 0; id && i < 6; i++) {
+    const row = await db.prepare("SELECT name, parent_id FROM folders WHERE id = ?").bind(id).first();
+    if (!row) break;
+    names.unshift(row.name);
+    id = Number(row.parent_id || 0);
+  }
+  return names;
 }
 
 async function activeAttachment(db, id) {
@@ -3880,6 +3894,52 @@ async function handleApi(request, env, url, identity = {}) {
   // ---- 照片擷取文字（影像 skill，與 Medtec 共用同一份模組）----
   // 同一筆紀錄（entry）就是一段採集經驗：照片的 offset_secs 落在哪一段錄音
   // 的範圍，就拿那段的逐字稿判斷「拍這張時在講什麼」，附上關聯句
+  // v233 AI 命名：只回建議，不改檔名（使用者確認後前端用 PUT /attachments/:id 套用）。
+  // 還沒擷取文字的 PDF／Office 先擷取並存起來（之後搜尋也用得到），但不觸發自動改名。
+  const suggestNameMatch = path.match(/^\/attachments\/(\d+)\/suggest-name$/);
+  if (suggestNameMatch && method === "POST") {
+    if (!env.AI) return bad("尚未啟用 Workers AI", 501);
+    const id = Number(suggestNameMatch[1]);
+    const att = await activeAttachment(db, id);
+    if (!att) return bad("找不到附件", 404);
+    if (att.kind === "audio") return bad("錄音檔請用逐字稿自動命名");
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    let text = String(att.ocr_text || "").trim();
+    const isPdf = (att.mime || "") === "application/pdf" || /\.pdf$/i.test(att.filename || "");
+    const nativeKind = !isPdf ? detectNativeTextKind(att.filename, att.mime) : null;
+    if (!text && env.FILES && (isPdf || (nativeKind && nativeKind !== "legacy-office"))) {
+      const obj = await env.FILES.get(att.key);
+      if (obj) {
+        try {
+          if (isPdf) {
+            const converted = await env.AI.toMarkdown([{ name: att.filename, blob: new Blob([await obj.arrayBuffer()], { type: "application/pdf" }) }]);
+            text = stripPdfMetadata(converted?.[0]?.data || "").slice(0, 60000);
+          } else {
+            text = (await extractNativeText(nativeKind, new Uint8Array(await obj.arrayBuffer()))).trim();
+          }
+          await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
+          await triggerEmbedding(env, { kind: "attachment", id, entryId: att.entry_id, textContent: text });
+        } catch { /* 擷取失敗就只用檔名與來源網址判斷 */ }
+      }
+    }
+    const context = await db.prepare(
+      `SELECT e.fields_json, e.folder_id FROM entries e WHERE e.id = ?`
+    ).bind(att.entry_id).first();
+    let fields = {};
+    try { fields = JSON.parse(context?.fields_json || "{}"); } catch { fields = {}; }
+    const sourceUrl = String(fields.source_url || fields.original_url || att.source_url || "");
+    const folderPath = context?.folder_id ? (await folderPathNames(db, context.folder_id)).join(" / ") : "";
+    if (!text && !sourceUrl) return bad("這份檔案擷取不到文字，也沒有來源網址，無法判斷名稱", 422);
+    try {
+      const suggestion = await suggestFilename(budgetedAi(env), { filename: att.filename, sourceUrl, folderPath, text });
+      if (!suggestion.filename) return bad("AI 判斷不出公司或產品，請手動命名", 422);
+      return json({ id, current: att.filename, ...suggestion });
+    } catch (err) {
+      return bad(`AI 命名失敗：${err.message}`, 502);
+    }
+  }
+
   const ocrMatch = path.match(/^\/attachments\/(\d+)\/ocr$/);
   if (ocrMatch && method === "POST") {
     if (!env.FILES) return bad("尚未啟用附件儲存（需 R2）", 501);

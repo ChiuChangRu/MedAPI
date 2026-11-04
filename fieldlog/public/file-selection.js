@@ -328,6 +328,8 @@ function initFileSelection() {
   initFileMarquee();
   document.getElementById("file-selection-clear").onclick = clearFileSelection;
   document.getElementById("file-selection-trash").onclick = () => runFileBatch(selectedFileItems());
+  const aiName = document.getElementById("file-selection-ai-name");
+  if (aiName) aiName.onclick = () => openAiNaming(selectedFileItems());
   document.getElementById("file-selection-move").onclick = async () => {
     const items = selectedFileItems();
     const folder = await openFolderPicker({ title: `移動 ${items.length} 項`, allowInbox: false });
