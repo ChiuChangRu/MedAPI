@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "236";
+const APP_VERSION = "237";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -353,7 +353,9 @@ function folderDisplayPath(folder) {
   return path;
 }
 let TRANSCRIBE_ENABLED = false;
-let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") || (matchMedia("(max-width: 719px)").matches ? "list" : "grid");
+// v237：資料夾內頁的「卡片」模式拿掉（使用者從沒用過），只留清單／詳細；
+// 舊設定存的是 grid 就當清單。
+let INNER_FOLDER_VIEW = localStorage.getItem("fieldlog_inner_folder_view") === "details" ? "details" : "list";
 // 待分類預設清單模式（本來就是待整理的內容，清單本來就夠緊湊），卡片模式
 // 是給想要一眼看縮圖式排版的人選的，不像資料夾內頁的卡片那麼大張。
 // v208：待分類預設回到清單（使用者回饋：待處理項目用清單掃比較快）；便利貼仍可手動切換。
@@ -2553,6 +2555,31 @@ function entryLocationLabel(e) {
  * 作業最上面卻還看得到一週前的日期——因為顯示的是 created_at，但排序用的
  * 是 updated_at，兩者對不上，使用者根本看不出排序邏輯有沒有在動）。
  */
+/**
+ * v237 資料夾清單的顯示名稱：前面的【AI彙整】這類括號標籤、後面的（2026-09-30）
+ * 日期、檔案副檔名，各自包成 .title-affix 小段。資料夾內頁用 CSS 把它們藏起來，
+ * 清單看起來就一致；textContent 仍是完整原名，重新命名／拖曳帶出的名稱不受影響。
+ */
+function explorerNameHtml(name, { ext = false } = {}) {
+  let rest = String(name || "");
+  let pre = "", post = "";
+  const head = rest.match(/^\s*(?:【[^】]{1,20}】|\[[^\]]{1,20}\])\s*/);
+  if (head && head[0].length < rest.length) { pre = head[0]; rest = rest.slice(pre.length); }
+  const tail = ext
+    ? rest.match(/\.[A-Za-z0-9]{1,6}$/)
+    : rest.match(/\s*[（(]\s*\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s*[）)]\s*$/);
+  if (tail && tail.index > 0) { post = tail[0]; rest = rest.slice(0, tail.index); }
+  const affix = (t) => t ? `<span class="title-affix">${esc(t)}</span>` : "";
+  return `${affix(pre)}${esc(rest)}${affix(post)}`;
+}
+
+/** 清單裡每一列最前面的圖示：一律有，記事也不例外。 */
+function entryIconFor(e) {
+  if (e.link_url) return "🔗";
+  if (/^\s*【\s*AI/i.test(e.title || "")) return "🤖";
+  return "📝";
+}
+
 function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   // 🤖＝這個位置是 AI 挑的，不是人放的。這個區別對法規／專利場景很重要：
   // 引用之前要知道哪些判斷出自機器。點一下可以確認或改掉。
@@ -2576,12 +2603,13 @@ function entryRowHtml(e, { showRecency = false, explorer = false } = {}) {
   if (e.link_url) { try { linkHost = new URL(e.link_url).hostname.replace(/^www\./, ""); } catch { linkHost = ""; } }
   const titleHtml = e.link_url
     ? `<a class="entry-title entry-link" href="${esc(e.link_url)}" target="_blank" rel="noopener" title="${esc(e.link_url)}">${esc(e.title || linkHost || "連結")}</a><span class="entry-link-host">${esc(linkHost)}</span>`
-    : `<span class="entry-title">${esc(e.title || "（未命名）")}</span>`;
+    : `<span class="entry-title" title="${esc(e.title || "")}">${explorer && e.title ? explorerNameHtml(e.title) : esc(e.title || "（未命名）")}</span>`;
   const star = e.link_url
     ? `<button class="entry-star${Number(e.link_starred) ? " on" : ""}" type="button" data-star="${e.id}" aria-pressed="${Number(e.link_starred) ? "true" : "false"}" title="${Number(e.link_starred) ? "從首頁「常用網頁」移除" : "加到首頁「常用網頁」"}">${Number(e.link_starred) ? "★" : "☆"}</button>`
     : "";
   return `<div class="entry-row${explorer ? " explorer-item" : ""}${e.link_url ? " is-link" : ""}" data-id="${e.id}" data-folder-id="${e.folder_id ?? ""}">
     <button class="entry-drag" draggable="true" type="button" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
+    ${explorer ? `<span class="explorer-icon" aria-hidden="true">${entryIconFor(e)}</span>` : ""}
     <span class="entry-main">${titleHtml}${star}
       <button class="entry-rename" data-id="${e.id}" type="button" title="重新命名" aria-label="重新命名${esc(e.title || "未命名記事")}"><svg class="ln-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19z"/></svg></button>
     </span>
@@ -3119,7 +3147,7 @@ function renderChildFolders(parentId) {
 
 function childFolderHtml(f) {
   return `<div class="child-folder-card explorer-item" draggable="true" data-id="${f.id}"${folderCategoryStyle(f)}>
-    <span>📁</span><strong title="${esc(f.name)}">${esc(f.name)}</strong>
+    <span class="explorer-icon">📁</span><strong title="${esc(f.name)}">${esc(f.name)}</strong>
     <button class="child-folder-edit" type="button" data-id="${f.id}" title="編輯資料夾名稱／類型" aria-label="編輯${esc(f.name)}資料夾">✏️</button>
     <button class="child-folder-move" type="button" data-id="${f.id}" title="把這個子資料夾搬到別的地方" aria-label="移動${esc(f.name)}資料夾">📂</button>
   </div>`;
@@ -3155,15 +3183,16 @@ function folderFileHtml(a, entryId) {
   const ext = (a.filename || "").split(".").pop().toLowerCase();
   const icon = isPdfAtt(a) ? "📕" : a.kind === "photo" ? "🖼️" : a.kind === "audio" ? "🎙️"
     : ["doc", "docx"].includes(ext) ? "📘" : ["xls", "xlsx", "csv"].includes(ext) ? "📊"
-      : ["ppt", "pptx"].includes(ext) ? "📙" : "📄";
+      : ["ppt", "pptx"].includes(ext) ? "📙"
+        : (a.kind === "video" || ["mp4", "mov", "m4v", "webm", "avi", "mkv"].includes(ext)) ? "🎬" : "📄";
   // 照片走站內檢視器；其他檔案（PDF、Office）交給瀏覽器開新分頁，那邊的檢視器比較好用
   const nameLink = isImageAtt(a)
-    ? `<a class="folder-file-name is-photo" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}" data-image-id="${a.id}" data-image-rotation="${Number(a.rotation) || 0}">${esc(a.filename)}</a>`
-    : `<a class="folder-file-name" href="${url}" target="_blank" rel="noopener">${esc(a.filename)}</a>`;
+    ? `<a class="folder-file-name is-photo" href="${url}" data-image-url="${url}" data-image-name="${esc(a.filename)}" data-image-id="${a.id}" data-image-rotation="${Number(a.rotation) || 0}" title="${esc(a.filename)}">${explorerNameHtml(a.filename, { ext: true })}</a>`
+    : `<a class="folder-file-name" href="${url}" target="_blank" rel="noopener" title="${esc(a.filename)}">${explorerNameHtml(a.filename, { ext: true })}</a>`;
   // 每一列是「一份檔案」而不是「一筆記事」：可以拖到上方子資料夾搬移，
   // 🗑 只刪這一份，⋯ 開這一份的詳情（附屬記事、分類、AI 整理）
   return `<div class="folder-file-row explorer-item" draggable="true" data-entry-id="${entryId}" data-att-id="${a.id}" data-filename="${esc(a.filename)}" data-key="${esc(a.key)}" data-mime="${esc(a.mime || "")}" data-kind="${esc(a.kind || "")}">
-    <span class="folder-file-icon" title="拖曳到上方子資料夾">${icon}</span>
+    <span class="folder-file-icon explorer-icon" title="拖曳到上方子資料夾">${icon}</span>
     ${nameLink}
     <span class="folder-file-meta">${esc(localDateTimeShort(a.created_at))}</span>
     <button class="folder-file-delete" type="button" data-entry-id="${entryId}" data-att-id="${a.id}" title="刪除這份檔案" aria-label="刪除這份檔案">🗑</button>
@@ -3315,7 +3344,6 @@ async function openFolder(id) {
   // 標題顯示完整路徑，四層架構下才看得出「現在在哪一層的哪個分支」
   renderFolderBreadcrumb(CURRENT_FOLDER);
   const activeView = matchMedia("(max-width: 719px)").matches ? "list" : INNER_FOLDER_VIEW;
-  $("btn-inner-grid").classList.toggle("active", activeView === "grid");
   $("btn-inner-list").classList.toggle("active", activeView === "list");
   $("btn-inner-details").classList.toggle("active", activeView === "details");
   syncFileSortButton();
@@ -3379,7 +3407,8 @@ function recordGroupCardHtml(e, atts) {
   const kindLabel = { audio: "🎙️ 錄音", photo: "🖼️ 照片", video: "🎥 影片" };
   const counts = atts.reduce((acc, a) => { acc[a.kind] = (acc[a.kind] || 0) + 1; return acc; }, {});
   const summary = Object.entries(counts).map(([k, n]) => `${kindLabel[k] || k} ×${n}`).join("、");
-  const icon = counts.audio ? "🎙️" : "📁";
+  // v237：資料包不再用 📁（會跟真的子資料夾搞混），依內容給圖示
+  const icon = counts.audio ? "🎙️" : counts.video ? "🎬" : counts.photo ? "🖼️" : "🗂️";
   const status = counts.audio ? recordingStatus(atts.filter((item) => item.kind === "audio")) : null;
   // 刻意不共用 .child-folder-card 這個 class 名稱：bindFolderDropTargets() 用
   // ".child-folder-card[data-id]" 當拖曳檔案的落點，抓的是真正的資料夾 id；
@@ -3392,7 +3421,7 @@ function recordGroupCardHtml(e, atts) {
   // 刪掉重建（entry 266：之前這裡只有刪除鍵，完全搬不動）。
   return `<div class="record-group-card explorer-item" data-id="${e.id}" data-recording="${counts.audio ? "1" : "0"}">
     <button class="record-group-drag" type="button" draggable="true" title="拖曳到子資料夾" aria-label="拖曳${esc(e.title || "未命名記事")}">⠿</button>
-    <span>${icon}</span><strong>${esc(e.title || "（未命名）")}</strong>
+    <span class="explorer-icon">${icon}</span><strong title="${esc(e.title || "")}">${e.title ? explorerNameHtml(e.title) : "（未命名）"}</strong>
     <small class="record-group-meta"><span class="record-group-date">${esc(localDateTimeShort(e.created_at))}</span><span class="record-group-summary">｜📎${atts.length}${summary ? `｜${summary}` : ""}</span></small>
     ${status ? `<small class="recording-status recording-card-status ${status.tone}">${esc(status.label)}</small>` : ""}
     ${counts.audio
@@ -4918,8 +4947,8 @@ function bindFolderDropTargets() {
 }
 
 function setInnerFolderView(view) {
-  INNER_FOLDER_VIEW = view;
-  localStorage.setItem("fieldlog_inner_folder_view", view);
+  INNER_FOLDER_VIEW = view === "details" ? "details" : "list";
+  localStorage.setItem("fieldlog_inner_folder_view", INNER_FOLDER_VIEW);
   if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id);
 }
 
@@ -8878,7 +8907,6 @@ function init() {
   initTranscribeGlossary();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
-  $("btn-inner-grid").onclick = () => setInnerFolderView("grid");
   $("btn-inner-list").onclick = () => setInnerFolderView("list");
   $("btn-inner-details").onclick = () => setInnerFolderView("details");
   $("desktop-pending").onclick = openPendingFromDesktop;
