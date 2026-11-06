@@ -52,7 +52,7 @@ export async function renderDocxPreview(url, body, filename) {
   body.innerHTML = `<section class="docx-preview" aria-label="Word 排版預覽">
     <p class="docx-preview-status" role="status">正在載入 Word 排版…</p>
     <div class="docx-preview-stage"></div>
-    <p class="docx-preview-note">排版預覽；文字方塊、追蹤修訂、特殊欄位與精確字型可能與 Word 不同，請以原檔為準。純文字請切換至「文字內容」。</p>
+    <p class="docx-preview-note">排版預覽；文字方塊、追蹤修訂、特殊欄位與精確字型可能與 Word 不同，請以原檔為準。要改文字請切換至「編輯」。</p>
   </section>`;
   const status = body.querySelector(".docx-preview-status");
   const stage = body.querySelector(".docx-preview-stage");
@@ -102,7 +102,7 @@ export async function renderDocxPreview(url, body, filename) {
     status.hidden = true;
   } catch (error) {
     if (disposed) return;
-    status.textContent = "無法產生 Word 排版預覽。可重試、開啟原檔，或切換至「文字內容」看純文字。";
+    status.textContent = "無法產生 Word 排版預覽。可重試、開啟原檔，或切換至「編輯」看文字。";
     const retry = document.createElement("button");
     retry.type = "button"; retry.className = "btn small"; retry.textContent = "重新載入預覽";
     retry.onclick = () => { cleanup(); return renderDocxPreview(url, body, filename); };

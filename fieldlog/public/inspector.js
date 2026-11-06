@@ -212,7 +212,9 @@ async function openInspector(item, tab = "preview", { selection, onCancel, reloa
 function installInspectorTabs(item, tab) {
   const hasTabs = ["attachment", "entry"].includes(item.type);
   $("file-preview-mode-toggle").hidden = !hasTabs;
-  $("file-preview-mode-content").textContent = item.type === "attachment" && /\.xlsx$/i.test(String(item.title || "")) ? "編輯 Excel" : "文字內容";
+  // v235 介面簡化：頁籤只留「預覽」「編輯」。「檔案資訊」與標題列的 ⋯ 收起來，
+  // 檔案的名稱／備註／分類／分享等仍可從清單每一列的 ⋯ 開啟（同一個畫面）。
+  $("file-preview-mode-content").textContent = "編輯";
   for (const mode of ["preview", "content", "info"]) {
     const button = $(`file-preview-mode-${mode}`);
     button.disabled = mode === tab;
@@ -222,7 +224,8 @@ function installInspectorTabs(item, tab) {
   }
   $("folder-preview-edit").hidden = true;
   $("folder-preview-transcribe").hidden = true;
-  $("folder-preview-manage").hidden = !hasTabs;
+  $("file-preview-mode-info").hidden = true;
+  $("folder-preview-manage").hidden = true;
   $("folder-preview-manage").disabled = !hasTabs;
   $("folder-preview-manage").onclick = () => openInspector(item, "info");
   inspectorStatus();
@@ -474,7 +477,7 @@ async function renderInspectorEntry(item, tab) {
       if (entry.body) {
         const frame = document.createElement("iframe"); frame.className = "folder-preview-frame"; frame.title = "記事內容（保留 AI 整理標示）"; frame.setAttribute("sandbox", "");
         frame.srcdoc = safeHtmlPreviewDocument(entry.body_format === "html" ? entry.body : entryTextPreviewHtml(entry.body)); documentPreview.appendChild(frame);
-      } else if (!attachments.length && !visibleEntryFields(entry).length && !String(entry.ai_note?.markdown || "").trim()) body.innerHTML = '<p class="folder-preview-empty">尚無內容，可切到「文字內容」編輯。</p>';
+      } else if (!attachments.length && !visibleEntryFields(entry).length && !String(entry.ai_note?.markdown || "").trim()) body.innerHTML = '<p class="folder-preview-empty">尚無內容，可切到「編輯」輸入。</p>';
     }
     const fields = visibleEntryFields(entry);
     if (fields.length) (body.querySelector(".inspector-recording-preview") || body.querySelector(".inspector-document-preview") || body).insertAdjacentHTML("beforeend", `<dl class="inspector-metadata">${fields.map(([key, value]) => `<div><dt>${esc(key)}</dt><dd>${esc(String(value ?? ""))}</dd></div>`).join("")}</dl>`);
@@ -482,7 +485,7 @@ async function renderInspectorEntry(item, tab) {
     return;
   }
   body.innerHTML = `<form class="preview-editor" id="inspector-entry-info"><label for="inspector-entry-name">名稱</label><input id="inspector-entry-name" value="${esc(entry.title || "")}" required maxlength="240">${inspectorMetadata(entry)}
-    <p class="sub">記事與逐字稿請到「文字內容」編輯。</p><div class="preview-management-actions"><button class="btn small" type="button" id="inspector-entry-move">移動</button><button class="btn small danger" type="button" id="inspector-entry-trash">移到垃圾桶</button>${attachments.some((a) => a.kind === "audio") ? '<button class="btn small" type="button" id="inspector-recording-actions">錄音操作</button>' : ""}</div></form>`;
+    <p class="sub">記事與逐字稿請到「編輯」修改。</p><div class="preview-management-actions"><button class="btn small" type="button" id="inspector-entry-move">移動</button><button class="btn small danger" type="button" id="inspector-entry-trash">移到垃圾桶</button>${attachments.some((a) => a.kind === "audio") ? '<button class="btn small" type="button" id="inspector-recording-actions">錄音操作</button>' : ""}</div></form>`;
   inspectorBindForm($("inspector-entry-info"), async () => {
     const title = $("inspector-entry-name").value.trim(); if (!title) throw new Error("名稱不可空白");
     await api(`/entries/${entry.id}`, { method: "PUT", body: JSON.stringify({ title }) }); setFolderPreviewTitle(title);
