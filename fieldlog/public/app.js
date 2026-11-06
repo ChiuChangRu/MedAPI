@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "235";
+const APP_VERSION = "236";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -1094,10 +1094,51 @@ async function boot(preloadedFolders = null) {
   await openLinkedKnowledgeRecord();
 }
 
+// v236 重新整理回到原本位置：瀏覽時把目前資料夾與右欄選取的項目寫進網址
+// （?folder=12&att=345&e=67 或 ?folder=12&note=67），用 replaceState 不增加上一頁紀錄。
+// 重新整理時 openLinkedKnowledgeRecord 照網址開回資料夾並在右欄打開同一個項目。
+function setLocationState({ folder = null, att = null, entry = null, note = null } = {}) {
+  try {
+    const params = new URLSearchParams();
+    if (folder) params.set("folder", String(folder));
+    if (att && entry) { params.set("att", String(att)); params.set("e", String(entry)); }
+    else if (note) params.set("note", String(note));
+    const query = params.toString();
+    const next = `${location.pathname}${query ? `?${query}` : ""}`;
+    if (next !== `${location.pathname}${location.search}`) history.replaceState(history.state, "", next);
+  } catch { /* 某些內嵌環境不允許改網址，忽略 */ }
+}
+
+async function restoreLocationState(params) {
+  const folderId = Number(params.get("folder"));
+  if (!(folderId > 0) || !FOLDERS.some((f) => Number(f.id) === folderId)) return false;
+  await openFolder(folderId);
+  const att = Number(params.get("att")), entry = Number(params.get("e")), note = Number(params.get("note"));
+  const desktop = PREVIEW_ENABLED && matchMedia("(min-width: 1000px)").matches;
+  if (!desktop) return true;
+  if (att > 0 && entry > 0) {
+    const row = document.querySelector(`.folder-file-row[data-att-id="${att}"]`);
+    await openInspector({ type: "attachment", id: att, entryId: entry, title: row?.dataset.filename || "" }, "preview");
+    row?.classList.add("preview-selected");
+    row?.scrollIntoView({ block: "center" });
+  } else if (note > 0) {
+    const row = document.querySelector(`#folder-entries [data-id="${note}"]`);
+    await openInspector({ type: "entry", id: note, entryId: note, title: row?.querySelector(".entry-title, strong")?.textContent || "" }, "preview");
+    row?.scrollIntoView({ block: "center" });
+  }
+  return true;
+}
+
 let linkedKnowledgeRecordOpened = false;
 async function openLinkedKnowledgeRecord() {
   if (linkedKnowledgeRecordOpened) return;
   const params = new URLSearchParams(location.search);
+  if (!params.has("entry") && params.has("folder")) {
+    linkedKnowledgeRecordOpened = true;
+    try { if (!await restoreLocationState(params)) setLocationState(); }
+    catch { setLocationState(); }
+    return;
+  }
   const entryId = Number(params.get("entry"));
   const folderId = Number(params.get("folder"));
   if (!Number.isSafeInteger(entryId) || !Number.isSafeInteger(folderId)) return;
@@ -3287,6 +3328,8 @@ async function openFolder(id) {
   const entries = await api(`/entries?folder_id=${id}&include=attachments`);
   // API 成功回來才算「使用過」；網路失敗或 id 已不存在時不能污染最近清單。
   rememberRecentFolder(id);
+  // 已選取同資料夾裡的項目時保留在網址上（重新開啟同一資料夾會經過這裡）
+  if (new URLSearchParams(location.search).get("folder") !== String(id)) setLocationState({ folder: id });
   const visibleAtts = (e) => (e.attachments || []).filter((a) => !a.source_pdf_id);
   // 錄音不論只有一段或多段，都維持「一筆錄音紀錄」：先錄音再分類，和先進
   // 資料夾再錄音，最後都會看到同一種結構。舊邏輯把單段錄音攤成檔案列、多段錄音
@@ -4942,6 +4985,7 @@ async function openPendingFromDesktop() {
     $("desktop-pending")?.classList.add("active");
     $("desktop-trash")?.classList.remove("active");
     CURRENT_FOLDER = null;
+    setLocationState();
     renderDesktopFolderTree();
     $("view-folder").style.display = "none";
     $("view-home").style.display = "block";
@@ -4955,6 +4999,7 @@ async function backHome(forceHome = false) {
   return withViewLoading("正在載入首頁…", async () => {
     await Promise.all([loadFolders(), loadRecent()]);
     CURRENT_FOLDER = null;
+    setLocationState();
     renderDesktopFolderTree();
     $("view-folder").style.display = "none";
     $("view-home").style.display = "block";

@@ -3,8 +3,8 @@
 // 換 CACHE 名稱＝舊快取全部作廢（activate 時會刪掉名稱不符的）。
 // ASSETS 裡的查詢字串要跟 index.html 上的一致，否則預快取的是另一個 URL、
 // 等於沒快取到（斷網時開不起來，而且不會有任何錯誤提示）。
-const CACHE = "fieldlog-v235-simple-pane";
-const ASSETS = ["./", "index.html", "app.js?v=235", "file-selection.js?v=235", "inspector.js?v=235", "style.css?v=235", "home.css?v=235", "pdf-editor.js?v=235", "richtext-editor.js?v=235", "wiki.html", "help.html?v=235", "patrol.html", "pm.html", "manifest.json", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
+const CACHE = "fieldlog-v236-restore-location";
+const ASSETS = ["./", "index.html", "app.js?v=236", "file-selection.js?v=236", "inspector.js?v=236", "style.css?v=236", "home.css?v=236", "pdf-editor.js?v=236", "richtext-editor.js?v=236", "wiki.html", "help.html?v=236", "patrol.html", "pm.html", "manifest.json", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
