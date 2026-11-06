@@ -17,7 +17,8 @@ test("桌機有資料夾樹、三種內容模式、待分類與垃圾桶快捷�
   assert.match(html, /id="desktop-folder-tree"/);
   assert.match(html, /id="desktop-pending"/);
   assert.match(html, /id="desktop-trash"/);
-  assert.match(html, /id="btn-inner-grid"/);
+  // v237：卡片模式拿掉，只剩清單／詳細
+  assert.doesNotMatch(html, /id="btn-inner-grid"/);
   assert.match(html, /id="btn-inner-list"/);
   assert.match(html, /id="btn-inner-details"/);
   assert.match(app, /matchMedia\("\(max-width: 719px\)"\)\.matches \? "list" : INNER_FOLDER_VIEW/);

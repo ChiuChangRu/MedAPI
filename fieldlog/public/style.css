@@ -2463,3 +2463,40 @@ body.reader-fullscreen .folder-preview {
   /* 右欄窄時按鈕換行，不要藏在橫向捲軸裡 */
   .folder-preview-head .folder-preview-actions { flex-wrap: wrap; overflow: visible; row-gap: 4px; }
 }
+
+/* ===== v237 資料夾清單一致化 =====
+   每一列（子資料夾／檔案／錄音資料包／記事／連結）都是同一個版面：
+   [圖示 24px][名稱單行省略]，同樣高度、字級、字重。括號標籤、日期尾巴、副檔名、
+   轉錄狀態徽章、鉛筆／拖曳把手在清單模式一律不顯示（詳細模式仍看得到狀態與日期）。 */
+#folder-entries .title-affix { display: none; }
+#folder-entries .explorer-icon { font-size: 18px; line-height: 1; text-align: center; }
+.entry-row > .explorer-icon { flex: none; }
+#folder-entries.list-view { gap: 4px; }
+#folder-entries.list-view > .explorer-item {
+  display: grid !important; grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center; column-gap: 10px; min-height: 42px; height: auto;
+  padding: 6px 12px !important; flex-wrap: nowrap;
+}
+#folder-entries.list-view > .explorer-item > * { grid-row: 1; margin: 0; }
+#folder-entries.list-view > .explorer-item > .explorer-icon { grid-column: 1; font-size: 18px; position: static; }
+#folder-entries.list-view > .explorer-item > :is(strong, .folder-file-name, .entry-main) {
+  grid-column: 2; min-width: 0; max-width: none; position: static;
+  font-size: 15px; font-weight: 500; line-height: 1.4; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none;
+  -webkit-line-clamp: unset; display: block;
+}
+#folder-entries.list-view > .entry-row > .entry-main { display: flex; align-items: center; gap: 6px; }
+#folder-entries.list-view > .entry-row .entry-title {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 15px; font-weight: 500; color: var(--text);
+}
+#folder-entries.list-view > .entry-row .entry-link-host,
+#folder-entries.list-view > .entry-row .entry-rename,
+#folder-entries.list-view > .record-group-card > .recording-card-status,
+#folder-entries.list-view > .record-group-card > small { display: none !important; }
+#folder-entries.list-view > .entry-row .entry-star { flex: none; }
+/* 詳細模式：記事也用同一套圖示，不再畫空白方框 */
+#folder-entries.details-view > .entry-row::before { content: none; display: none; }
+#folder-entries.details-view > .entry-row > .explorer-icon { grid-area: icon; }
+#folder-entries.list-view > .explorer-item > :is(.child-folder-edit, .child-folder-move, .record-group-drag, .record-group-rename, .record-group-move, .record-group-del, .record-group-manage, .entry-drag, .entry-move, .entry-merge, .entry-del, .entry-secondary, .folder-file-meta, .folder-file-delete, .folder-file-manage) { display: none !important; }
+#folder-entries.list-view > .entry-row .entry-link { text-decoration: none; }

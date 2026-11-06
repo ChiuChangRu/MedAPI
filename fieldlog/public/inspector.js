@@ -325,7 +325,7 @@ function updateInspectorFilename(id, filename) {
   setFolderPreviewTitle(filename);
   document.querySelectorAll(`.folder-file-row[data-att-id="${id}"]`).forEach((row) => {
     row.dataset.filename = filename; row.title = filename;
-    const name = row.querySelector(".folder-file-name"); if (name) name.textContent = filename;
+    const name = row.querySelector(".folder-file-name"); if (name) { if (typeof explorerNameHtml === "function") name.innerHTML = explorerNameHtml(filename, { ext: true }); else name.textContent = filename; name.title = filename; }
   });
 }
 

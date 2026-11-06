@@ -33,11 +33,11 @@ test("資料夾內的錄音不論單段或多段都維持同一筆紀錄，不�
   assert.match(openFolder, /html: recordGroupCardHtml\(e, atts\)/);
 });
 
-test("錄音紀錄卡使用錄音圖示，一般多附件紀錄仍使用資料夾圖示", async () => {
+test("錄音紀錄卡使用錄音圖示，其他資料包依內容給圖示（v237 不再用 📁，避免跟子資料夾混淆）", async () => {
   const app = await read("../fieldlog/public/app.js");
   const fn = app.match(/function recordGroupCardHtml\(e, atts\)[\s\S]*?\n\}/)[0];
-  assert.match(fn, /const icon = counts\.audio \? "🎙️" : "📁"/);
-  assert.match(fn, /<span>\$\{icon\}<\/span>/);
+  assert.match(fn, /const icon = counts\.audio \? "🎙️" : counts\.video \? "🎬" : counts\.photo \? "🖼️" : "🗂️"/);
+  assert.match(fn, /<span class="explorer-icon">\$\{icon\}<\/span>/);
 });
 
 test("bindRecordGroupCards：📂 按鈕呼叫 openMoveEntryDialog，拖曳把手掛 application/x-fieldlog-entry", async () => {
