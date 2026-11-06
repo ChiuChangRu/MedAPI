@@ -136,7 +136,7 @@ test("真實 SQLite：人工規則自動搬動，AI 單獨判斷只產生待確�
 
 test("分類模型只使用 Cloudflare Workers AI 的 BGE-M3 與 Llama", () => {
   assert.equal(AUTOFILING_EMBED_MODEL, "@cf/baai/bge-m3");
-  assert.equal(AUTOFILING_DECISION_MODEL, "@cf/meta/llama-3.2-3b-instruct");
+  assert.equal(AUTOFILING_DECISION_MODEL, "@cf/google/gemma-4-26b-a4b-it");
   assert.doesNotMatch(`${AUTOFILING_EMBED_MODEL} ${AUTOFILING_DECISION_MODEL}`, /gpt|claude|anthropic|openai/i);
 });
 

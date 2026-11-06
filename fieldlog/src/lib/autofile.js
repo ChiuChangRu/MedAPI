@@ -16,12 +16,14 @@
  */
 
 import { htmlToPlainText } from "./richtext.js";
+import { aiText, NO_THINKING } from "../imageSkill.js";
 
 export const STAGING_FOLDER_NAME = "⏳ 待分類";
 export const STAGING_FOLDER_ROLE = "staging";
 export const STAGING_FOLDER_TYPE = "其他";
 export const AUTOFILING_EMBED_MODEL = "@cf/baai/bge-m3";
-export const AUTOFILING_DECISION_MODEL = "@cf/meta/llama-3.2-3b-instruct";
+// 2026-11：llama-3.2-3b-instruct 預定 11/20 下架，改用 gemma-4-26b-a4b-it
+export const AUTOFILING_DECISION_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 export const AUTOFILING_DAILY_LIMIT = 25;
 
 const AUTO_VECTOR_MIN = 0.72;
@@ -41,7 +43,7 @@ function normalizeMatchText(value) {
 }
 
 function parseAiDecision(result) {
-  const raw = compactText(result?.response || result?.result?.response || "");
+  const raw = compactText(aiText(result));
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) return { folderId: null, reason: "AI 未回傳可驗證的 JSON" };
   try {
@@ -241,6 +243,7 @@ async function aiFolderSuggestion(runAi, content, folders, vector) {
     ],
     temperature: 0,
     max_tokens: 160,
+    ...NO_THINKING,
   });
   return parseAiDecision(result);
 }
