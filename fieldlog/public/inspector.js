@@ -193,6 +193,12 @@ async function openInspector(item, tab = "preview", { selection, onCancel, reloa
       if (seq !== INSPECTOR.seq) return false;
       installInspectorTabs(item, tab);
       INSPECTOR.loaded = true;
+      // v236 記下右欄目前的項目，重新整理時開回來
+      if (typeof setLocationState === "function" && CURRENT_FOLDER) {
+        if (item.type === "attachment") setLocationState({ folder: CURRENT_FOLDER.id, att: item.id, entry: item.entryId });
+        else if (item.type === "entry") setLocationState({ folder: CURRENT_FOLDER.id, note: item.id });
+        else setLocationState({ folder: CURRENT_FOLDER.id });
+      }
       return true;
     } catch (error) {
       if (seq === INSPECTOR.seq) {
