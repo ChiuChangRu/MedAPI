@@ -494,8 +494,31 @@ export const MAX_FOLDER_DEPTH = 4;
 let schemaReady = false;
 
 /** 建表、補欄位、必要時寫入分類種子。整個 Worker 生命週期只跑一次。 */
+// v234 結構版本號：SCHEMA／MIGRATIONS 內容的雜湊。資料庫裡的版本一樣就代表
+// 這些建表與升級都跑過了，冷啟動只要查這一筆，不用再一道一道送 54 道 ALTER TABLE
+// （每道都是一次 D1 來回；個人系統流量低、執行個體常被回收，原本幾乎每次點擊都可能
+// 碰到這段開機延遲）。改了 SCHEMA 或 MIGRATIONS，雜湊就變，下一次冷啟動自動跑完整升級。
+function schemaFingerprint(text) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+export const SCHEMA_VERSION_KEY = "schema.version";
+export function currentSchemaVersion() {
+  return schemaFingerprint(`${SCHEMA.join("\n")}\n--\n${MIGRATIONS.join("\n")}\n--seeds-v1`);
+}
+
 export async function ensureSchema(db, timestamp) {
   if (schemaReady) return;
+  const version = currentSchemaVersion();
+  const stored = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(SCHEMA_VERSION_KEY).first().catch(() => null);
+  if (stored?.value === version) {
+    schemaReady = true;
+    return;
+  }
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
   for (const sql of MIGRATIONS) {
     await db.prepare(sql).run().catch(() => {});
@@ -509,6 +532,10 @@ export async function ensureSchema(db, timestamp) {
     `INSERT OR IGNORE INTO settings (key, value, updated_at)
      VALUES ('ai_summary.cutoff', ?, ?)`
   ).bind(timestamp, timestamp).run();
+  await db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).bind(SCHEMA_VERSION_KEY, version, timestamp).run();
   schemaReady = true;
 }
 
