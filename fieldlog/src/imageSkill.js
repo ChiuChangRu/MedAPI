@@ -23,7 +23,24 @@
  */
 
 export const OCR_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
-export const RELATION_MODEL = "@cf/meta/llama-3.2-3b-instruct";
+// 2026-11：llama-3.2-3b-instruct 預定 11/20 下架，改用 gemma-4-26b-a4b-it
+export const RELATION_MODEL = "@cf/google/gemma-4-26b-a4b-it";
+
+// Workers AI 文字模型的回傳格式不一：舊模型是 { response: "..." }，新模型
+// （gemma-4 等）可能是 OpenAI 格式 { choices:[{ message:{ content } }] }。
+// 統一在這裡取文字，並去掉推理模型可能帶出的 <think>…</think>。
+export function aiText(result) {
+  const raw = result?.response ?? result?.result?.response
+    ?? result?.choices?.[0]?.message?.content ?? result?.choices?.[0]?.text ?? "";
+  const text = Array.isArray(raw)
+    ? raw.map((part) => (typeof part === "string" ? part : part?.text || "")).join("")
+    : (typeof raw === "string" ? raw : "");
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
+
+// 小型推理模型預設會先「思考」再回答，這裡的判斷任務不需要，關掉省 token 與時間。
+export const NO_THINKING = { chat_template_kwargs: { enable_thinking: false } };
+
 
 export const OCR_PROMPT =
   "你是機械式的文字抄錄員，不是圖片說明員。任務只有一件事：把這張圖片裡「所有看得到的文字」逐字抄出來，依照原本的排版順序（由上到下、由左到右）條列輸出。\n\n" +
@@ -171,8 +188,9 @@ export async function judgeRelation(ai, transcript, ocrText) {
       }],
       max_tokens: 200,
       temperature: 0,
+      ...NO_THINKING,
     });
-    return (result?.response || "").trim();
+    return aiText(result);
   } catch {
     return "";
   }

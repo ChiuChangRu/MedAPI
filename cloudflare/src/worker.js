@@ -12,7 +12,7 @@
  * TEAM_PIN 未設定時一律拒絕（fail-closed）。
  */
 
-import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
+import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, aiText, NO_THINKING, stripPdfMetadata } from "./imageSkill.js";
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS members (
@@ -483,7 +483,8 @@ function toCustomExhibitor(row) {
 
 // ---------- 廠商協尋看板：AI 候選建議（純函式，具名 export 供單元測試） ----------
 
-const HELP_SUGGEST_MODEL = "@cf/meta/llama-3.2-3b-instruct";
+// 2026-11：llama-3.2-3b-instruct 預定 11/20 下架，改用 gemma-4-26b-a4b-it
+const HELP_SUGGEST_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 
 // 問題斷詞：英數字詞（≥2 字）直接當關鍵字；中文沒有空白分詞，退而求其次用
 // 2-gram（連續兩字）當關鍵字，對「找OO材質」「找OO製程」這種短問題已經夠用，
@@ -585,9 +586,9 @@ async function runAiSuggest(env, db, row) {
     } else {
       const prompt = buildSuggestPrompt(row.question, candidates);
       const result = await env.AI.run(HELP_SUGGEST_MODEL, {
-        messages: [{ role: "user", content: prompt }], max_tokens: 400, temperature: 0,
+        messages: [{ role: "user", content: prompt }], max_tokens: 400, temperature: 0, ...NO_THINKING,
       });
-      const text = (result?.response || "").trim();
+      const text = aiText(result);
       suggestions = parseSuggestionLines(text, candidates);
       if (!suggestions.length) aiNote = "AI 認為候選清單中沒有明顯相關的廠商";
     }
