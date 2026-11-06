@@ -80,7 +80,7 @@ export async function renderPptxPreview(url, body, filename) {
   } catch (error) {
     if (disposed) return;
     viewer?.destroy(); viewer = null;
-    status.textContent = "無法產生投影片畫面。可重試或開啟原檔；擷取文字請切換至「文字內容」。";
+    status.textContent = "無法產生投影片畫面。可重試或開啟原檔；擷取文字請切換至「編輯」。";
     const retry = document.createElement("button");
     retry.type = "button"; retry.className = "btn small"; retry.textContent = "重新載入預覽";
     retry.onclick = () => { cleanup(); return renderPptxPreview(url, body, filename); };

@@ -2452,3 +2452,14 @@ body.reader-fullscreen .folder-preview {
 .ai-naming-input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 6px 8px; }
 .ai-naming-status { color: var(--text-muted); font-size: 12px; }
 .ai-naming-status.error { color: #b91c1c; }
+
+/* v235 右欄標題列簡化：只留「預覽／編輯」頁籤、儲存與狀態（檔案另有「開啟原檔」與全螢幕）。
+   寬度改用拖曳右欄邊線；檔案資訊由清單每一列的 ⋯ 開啟。元素保留在 DOM，其他程式仍可呼叫。 */
+#folder-preview-width,
+#folder-preview-close,
+#folder-preview-manage,
+#file-preview-mode-info { display: none !important; }
+@media (min-width: 1000px) {
+  /* 右欄窄時按鈕換行，不要藏在橫向捲軸裡 */
+  .folder-preview-head .folder-preview-actions { flex-wrap: wrap; overflow: visible; row-gap: 4px; }
+}

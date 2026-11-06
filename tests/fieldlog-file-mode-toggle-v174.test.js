@@ -18,7 +18,7 @@ test("點 PDF、圖片或其他檔案整列時，桌機右欄預設開啟預覽"
     "圖片檔名也要走同一個右欄預覽入口");
 });
 
-test("右欄有預覽／文字內容／檔案資訊三個頁籤", async () => {
+test("右欄頁籤：預覽／編輯（v235 起檔案資訊頁籤收起，改由清單列的 ⋯ 開啟）", async () => {
   const [app, html, css] = await Promise.all([
     read("../fieldlog/public/app.js"),
     read("../fieldlog/public/index.html"),
@@ -26,8 +26,10 @@ test("右欄有預覽／文字內容／檔案資訊三個頁籤", async () => {
   ]);
 
   assert.match(html, /id="file-preview-mode-preview"[^>]*>預覽<\/button>/);
-  assert.match(html, /id="file-preview-mode-content"[^>]*>文字內容<\/button>/);
-  assert.match(html, /id="file-preview-mode-info"[^>]*>檔案資訊<\/button>/);
+  assert.match(html, /id="file-preview-mode-content"[^>]*>編輯<\/button>/);
+  assert.match(html, /id="file-preview-mode-info"[^>]*>檔案資訊<\/button>/, "元素保留給清單列的 ⋯ 使用");
+  assert.match(css, /#file-preview-mode-info \{ display: none !important; \}/, "標題列不顯示檔案資訊頁籤");
+  assert.match(css, /#folder-preview-manage,/, "標題列的 ⋯ 隱藏");
   assert.match(app, /function setFilePreviewMode\(active, \{ onPreview, onContent \}\)/);
   assert.match(app, /setFilePreviewMode\("preview"/);
   assert.match(app, /setFilePreviewMode\("content"/);
