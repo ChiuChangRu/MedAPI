@@ -1497,11 +1497,11 @@ const TOOLS = [
   // 全部透過 FIELDLOG Service Binding 打 fieldlog 自己既有的 PUT／DELETE
   // /api/folders、/api/entries，重用同一套已經上線、有巢狀深度檢查／防
   // 循環／歷史紀錄的邏輯，這裡不重寫一份會分歧的版本。
-  // v222：AI 不能直接建立資料夾（fieldlog 會擋 fieldlog.internal 來的 POST /folders），
-  // 只能用這支提出建議；使用者在隨身記首頁按「同意」才會真的建立。
+  // v222：fieldlog 會擋 fieldlog.internal 來的 POST /folders，AI 一律走這支。
+  // v238：建議或直接建立，由使用者在隨身記首頁的「AI 新增資料夾」模式決定。
   {
     name: "suggest_folder",
-    description: "建議新增一個資料夾（AI 不能直接建立資料夾）。建議會出現在使用者的隨身記首頁，由使用者本人同意後才建立，AI 無法自行同意。先用 list_fieldlog_folders 確認沒有合適的既有資料夾再建議；同一層已有同名資料夾時會回傳既有 id，請直接使用。等待確認期間請把內容放在既有資料夾或待分類，不要假設資料夾已存在。parent_id 不給代表建在最上層，此時要給 category（色系分組）；有 parent_id 時沿用上層的 category。",
+    description: "新增資料夾。結果依使用者在隨身記首頁設定的「AI 新增資料夾」模式而定：「AI 可直接建立」時會立刻建好並回傳資料夾 id（每天上限 10 個，超過改為建議）；「先建議，由我確認」時只送出建議，由使用者本人同意後才建立，AI 無法自行同意；「禁止」時會被拒絕。先用 list_fieldlog_folders 確認沒有合適的既有資料夾再呼叫；同一層已有同名資料夾時會回傳既有 id，請直接使用。只送出建議時，等待確認期間請把內容放在既有資料夾或待分類，不要假設資料夾已存在。parent_id 不給代表建在最上層，此時要給 category（色系分組）；有 parent_id 時沿用上層的 category；最多四層。",
     inputSchema: {
       type: "object",
       properties: {
@@ -1537,6 +1537,9 @@ const TOOLS = [
         return `沒有建立建議：${data.error}（既有資料夾 id ${data.existing_folder_id}）`;
       }
       if (!res.ok) throw new Error(`建議送出失敗（HTTP ${res.status}）：${(data.error || text).slice(0, 150)}`);
+      if (data.status === "created") {
+        return `已建立資料夾「${name}」（id ${data.folder_id}，第 ${data.depth} 層）。使用者可在隨身記首頁看到並復原。`;
+      }
       return data.duplicate
         ? `已有相同的資料夾建議在等待使用者確認（建議 #${data.id}），不需要重複送出。確認前請把內容放在既有資料夾或待分類。`
         : `已送出資料夾建議 #${data.id}「${name}」，等待使用者在隨身記首頁確認；確認前資料夾不存在，請把內容放在既有資料夾或待分類。`;
@@ -1857,7 +1860,7 @@ const TOOL_TITLES = {
   move_folder: "移動資料夾",
   move_entry: "移動紀錄",
   delete_folder: "刪除資料夾",
-  suggest_folder: "建議新增資料夾",
+  suggest_folder: "新增資料夾",
   get_fieldlog_image: "取得隨身記圖片",
   get_fieldlog_image_base64: "取得圖片 Base64",
   image_probe: "檢查圖片資訊",
@@ -1925,7 +1928,7 @@ async function handleMcp(request, env, auth = {}) {
       capabilities: { tools: { listChanged: true } },
       serverInfo: { name: "medapi-mcp", version: "1.1.0" },
       instructions:
-        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。update_weekly_report 是唯一可更新記事內容的例外，而且只能寫入前台建立並標記為 weekly_report 的週報欄位。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。AI 不能直接建立資料夾：需要新資料夾時用 suggest_folder 提出建議，由使用者在隨身記首頁同意後才建立。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
+        "長儒的個人知識層窗口：策略地圖 Wiki（披膜技術條目）、隨身記（現場採集：逐字稿／照片文字，含一次性併入的 LitDB 文獻/專利）、Medtec 2026 展商與團隊拜訪紀錄。預設唯讀；create_fieldlog_entry（新增記事）、create_fieldlog_attachment（上傳附件，如 Word／Excel／PDF）、create_relation（建立關聯）、add_synonym（新增同義詞對照）四支只能新增、不能修改或刪除既有內容。update_weekly_report 是唯一可更新記事內容的例外，而且只能寫入前台建立並標記為 weekly_report 的週報欄位。另外 update_folder／move_folder／move_entry／delete_folder 四支可以整理資料夾結構（改名、設定色系分類 category、排序、移動資料夾、移動記事、把完整資料夾子樹移到保留 60 天的垃圾桶），但一樣不會改寫其他記事／附件的實際內容。新增資料夾用 suggest_folder：使用者在隨身記首頁選「AI 可直接建立」時會立刻建好（每天上限 10 個），選「先建議」時要等使用者同意，選「禁止」時不能建。除此之外要改資料請走各系統前台，wiki 收錄走 git 人審。" +
         " category 是「色系分組」（project／qa_reg／literature／training／admin／misc），跟既有的 type（活動性質，例如「參展／實驗／會議」）是兩個不同的欄位，回應裡提到這兩者時不要混為一談。" +
         " 檢索建議：search_* 查不到不代表沒有這份資料，可能只是關鍵字沒猜對——先用 list_fieldlog_folders／list_fieldlog_entries／list_attachments／list_exhibitor_files 直接看資料夾或展商底下實際有什麼（檔名通常就足以判斷），再決定要不要細看，不要一開始就反覆猜詞；確定是慣用語沒對上時用 add_synonym 當場補一組。" +
         " 照片可以直接看，不是只能讀擷取出來的文字：用 get_fieldlog_image 把照片本身取回來（斷面、外觀不良、現場照這種「文字描述不出來」的東西一定要看圖再判斷，光讀 ocr_text 會漏掉重點）；不確定值不值得取就先用 image_probe 看尺寸與類型。組內嵌照片的 HTML 報告請用 get_fieldlog_image_base64 拿純文字 base64，不要用 get_fieldlog_image 的圖片內容硬抄。" +

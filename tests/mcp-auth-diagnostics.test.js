@@ -281,5 +281,5 @@ test("tools/list 可在 OAuth 前探索，並提供 ChatGPT 所需的標題、�
   assert.equal(byName.update_weekly_report.annotations.readOnlyHint, false);
   assert.equal(byName.delete_folder.annotations.destructiveHint, true);
   assert.equal(byName.suggest_folder.annotations.readOnlyHint, false);
-  assert.equal(byName.suggest_folder.title, "建議新增資料夾");
+  assert.equal(byName.suggest_folder.title, "新增資料夾");
 });

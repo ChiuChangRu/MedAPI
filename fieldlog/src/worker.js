@@ -136,7 +136,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "237";
+const UI_VERSION = "238";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1338,6 +1338,15 @@ function isMcpCaller(url) {
 
 const AI_FOLDER_MODE_KEY = "ai.folder_create_mode";
 const AI_FOLDER_MAX_PENDING = 10;
+// v238：「auto」模式＝使用者授權 AI（經 MCP 的 suggest_folder）直接建立資料夾。
+// 仍受四層深度、同層同名檢查限制；每天最多自動建 AI_FOLDER_AUTO_DAILY_MAX 個，超過就退回
+// 「先建議、等本人同意」，避免 AI 失控一次建一堆。
+const AI_FOLDER_AUTO_DAILY_MAX = 10;
+const AI_FOLDER_MODES = ["off", "suggest", "auto"];
+async function readAiFolderMode(db) {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(AI_FOLDER_MODE_KEY).first();
+  return AI_FOLDER_MODES.includes(row?.value) ? row.value : "suggest";
+}
 
 async function handleApi(request, env, url, identity = {}) {
   const db = env.DB;
@@ -1571,8 +1580,9 @@ async function handleApi(request, env, url, identity = {}) {
     return json(results);
   }
   if (path === "/folders" && method === "POST") {
-    // v222：AI 不能直接建立資料夾，只能用 suggest_folder 提出建議，由使用者在首頁同意
-    if (isMcpCaller(url)) return bad("AI 不能直接建立資料夾，請改用 suggest_folder 提出建議，由使用者在首頁確認", 403);
+    // v222：AI 不直接打這個端點；一律走 suggest_folder（/folder-suggestions），
+    // 由使用者在首頁設定的模式決定是建議、直接建立或禁止（v238）
+    if (isMcpCaller(url)) return bad("AI 請改用 suggest_folder 新增資料夾（是否直接建立由使用者在首頁設定）", 403);
     const plan = await planFolder(db, await request.json().catch(() => ({})));
     if (plan.error) return bad(plan.error, plan.status);
     const id = await insertPlannedFolder(db, plan);
@@ -1584,13 +1594,12 @@ async function handleApi(request, env, url, identity = {}) {
     if (method === "PUT") {
       if (isMcpCaller(url)) return bad("只有使用者本人可以變更這個設定", 403);
       const body = await request.json().catch(() => ({}));
-      const mode = body.mode === "off" ? "off" : "suggest";
+      const mode = AI_FOLDER_MODES.includes(body.mode) ? body.mode : "suggest";
       await db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
         .bind(AI_FOLDER_MODE_KEY, mode, now()).run();
       return json({ mode });
     }
-    const row = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(AI_FOLDER_MODE_KEY).first();
-    return json({ mode: row?.value === "off" ? "off" : "suggest" });
+    return json({ mode: await readAiFolderMode(db) });
   }
   if (path === "/folder-suggestions" && method === "GET") {
     const status = ["pending", "approved", "rejected"].includes(url.searchParams.get("status")) ? url.searchParams.get("status") : "pending";
@@ -1599,18 +1608,41 @@ async function handleApi(request, env, url, identity = {}) {
        LEFT JOIN folders p ON p.id = s.parent_id AND COALESCE(p.deleted_at, '') = ''
        WHERE s.status = ? ORDER BY s.id DESC LIMIT 50`
     ).bind(status).all();
-    const modeRow = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(AI_FOLDER_MODE_KEY).first();
-    return json({ mode: modeRow?.value === "off" ? "off" : "suggest", suggestions: results });
+    // 近 7 天 AI 自動建立的資料夾（只列還在的），首頁給使用者看、可一鍵復原（移到垃圾桶）
+    const { results: autoCreated = [] } = await db.prepare(
+      `SELECT s.id, s.name, s.reason, s.requested_by, s.decided_at, s.folder_id
+         FROM folder_suggestions s JOIN folders f ON f.id = s.folder_id AND COALESCE(f.deleted_at, '') = ''
+        WHERE s.source = 'mcp-auto' AND s.decided_at >= ? ORDER BY s.id DESC LIMIT 20`
+    ).bind(new Date(Date.now() - 7 * 86400000).toISOString()).all();
+    return json({ mode: await readAiFolderMode(db), suggestions: results, auto_created: autoCreated });
   }
   if (path === "/folder-suggestions" && method === "POST") {
-    const modeRow = await db.prepare("SELECT value FROM settings WHERE key = ?").bind(AI_FOLDER_MODE_KEY).first();
-    if (modeRow?.value === "off") return bad("使用者已關閉「AI 建議新增資料夾」，請把內容放進既有資料夾或待分類", 403);
+    const mode = await readAiFolderMode(db);
+    if (mode === "off") return bad("使用者已關閉「AI 新增資料夾」，請把內容放進既有資料夾或待分類", 403);
     const body = await request.json().catch(() => ({}));
     const plan = await planFolder(db, body);
     if (plan.conflict) {
       return json({ error: `同一層已經有「${plan.conflict.name}」資料夾，請直接使用它`, existing_folder_id: Number(plan.conflict.id) }, 409);
     }
     if (plan.error) return bad(plan.error, plan.status);
+    // v238 auto 模式：只有 AI（MCP）送來的建議才直接建立；本人在網頁送的仍走確認流程
+    if (mode === "auto" && isMcpCaller(url)) {
+      const since = new Date(Date.now() - 86400000).toISOString();
+      const used = await db.prepare(
+        "SELECT COUNT(*) AS n FROM folder_suggestions WHERE source = 'mcp-auto' AND decided_at >= ?"
+      ).bind(since).first();
+      if (Number(used?.n || 0) < AI_FOLDER_AUTO_DAILY_MAX) {
+        const who = String(body.requested_by || "").trim().slice(0, 40);
+        const reason = String(body.reason || "").trim().slice(0, 500);
+        const folderId = await insertPlannedFolder(db, plan, `；AI 自動建立${who ? `（${who}）` : ""}${reason ? `，理由：${reason.slice(0, 120)}` : ""}`);
+        const r = await db.prepare(
+          `INSERT INTO folder_suggestions (name, parent_id, category, type, reason, requested_by, source, status, folder_id, created_at, decided_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'mcp-auto', 'approved', ?, ?, ?)`
+        ).bind(plan.name, plan.parentId, plan.category, plan.type.slice(0, 60), reason, who, folderId, now(), new Date().toISOString()).run();
+        return json({ ok: true, id: Number(r.meta.last_row_id), status: "created", folder_id: folderId, depth: plan.depth });
+      }
+      // 超過每日上限：退回「先建議」，下面照原流程排進待確認
+    }
     const same = await db.prepare(
       "SELECT id FROM folder_suggestions WHERE status = 'pending' AND name = ? AND COALESCE(parent_id, 0) = ?"
     ).bind(plan.name, plan.parentId || 0).first();
