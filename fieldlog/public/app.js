@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "243";
+const APP_VERSION = "244";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -5762,6 +5762,16 @@ async function submitUrlImport(event) {
       method: "POST",
       body: JSON.stringify({ url, name, folder_id: folderId }),
     });
+    if (mode === "full" && result.saved?.source_pdf && Number(result.saved.max_image_width || 0) < 800) {
+      // 網頁只給小圖、但有 PDF 原檔：留在這個視窗把圖面頁轉成高清圖片，進度與錯誤都看得到
+      confirmButton.textContent = "轉高清圖片中…";
+      try {
+        const r = await renderPdfDrawings(result.entry_id, result.saved.source_pdf, { onProgress: (text) => { status.textContent = `已下載網頁內容；${text}`; } });
+        result.drawings = r;
+      } catch (err) {
+        result.drawingsError = err.message;
+      }
+    }
     URL_IMPORT_BUSY = false;
     closeUrlImport();
     if (mode === "full") {
@@ -5769,12 +5779,8 @@ async function submitUrlImport(event) {
       const parts = [`${s.images || 0} 張圖片`, `${s.videos || 0} 支影片`, s.source_pdfs ? `${s.source_pdfs} 份 PDF 原檔` : "", s.pdf ? "整頁 PDF" : ""].filter(Boolean).join("、");
       const notes = [(result.embeds || []).length ? `${result.embeds.length} 個內嵌影片只留連結` : "", (result.failures || []).length ? `${result.failures.length} 項下載失敗` : ""].filter(Boolean).join("；");
       showToast(`已下載「${result.title}」：${parts}${notes ? `（${notes}）` : ""}`);
-      // 有 PDF 原檔、但網頁上的圖很小（專利常見 300px）：自動把圖面頁轉成高清圖片存進同一筆紀錄
-      if (s.source_pdf && Number(s.max_image_width || 0) < 800) {
-        renderPdfDrawings(result.entry_id, s.source_pdf, { onProgress: (text) => showToast(text) })
-          .then((r) => { if (r.made) showToast(`已自動存入 ${r.made} 張高清圖面`); return openFolder(folderId); })
-          .catch((err) => showToast("圖面轉高清失敗：" + err.message));
-      }
+      if (result.drawings?.made) showToast(`已自動存入 ${result.drawings.made} 張高清圖面（共 ${result.drawings.pages} 頁）`);
+      if (result.drawingsError) alert(`網頁內容已存好，但圖面轉高清圖片失敗：${result.drawingsError}\n\n可以打開該筆紀錄，在 PDF 附件旁按「🖼 圖面轉高清圖片」重試。`);
     } else {
       showToast(result.format === "pdf"
         ? `已下載 PDF：${result.filename}`
