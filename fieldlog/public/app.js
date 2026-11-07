@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "244";
+const APP_VERSION = "245";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -4278,12 +4278,13 @@ async function attachmentWithText(entryId, attachmentId, { extract = false } = {
   return { entry, attachment };
 }
 
-async function renderPdfPreview(url, body, filename) {
+async function renderPdfPreview(url, body, filename, ids = null) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`PDF 讀取失敗（HTTP ${response.status}）`);
   const pdfBytes = await response.arrayBuffer();
   const pdfBlobUrl = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
   const fileControls = `<div class="pdf-file-controls" aria-label="PDF 檔案操作"><a class="btn small" data-pdf-download href="${pdfBlobUrl}" download="${esc(filename)}">⬇️ 下載</a><button class="btn small" type="button" data-pdf-print>🖨️ 列印</button></div>`;
+  const drawingsBar = ids ? `<div class="pdf-drawings-bar"><button class="btn small" type="button" data-pdf-drawings>🖼 圖面轉高清圖片</button><span class="sub">把這份 PDF 的圖面頁轉成高解析度圖片，存進同一個資料夾（不下載到電腦、不耗 AI 額度）</span></div>` : "";
   if (!window.pdfjsLib?.getDocument) {
     body.innerHTML = `<div class="pdf-sidebar-preview"><div class="pdf-sidebar-toolbar">${fileControls}</div><p class="folder-preview-empty">PDF 預覽程式尚未載入，仍可下載或列印原始 PDF。</p></div>`;
     body.querySelector("[data-pdf-print]").onclick = () => printPdfBlobUrl(pdfBlobUrl);
@@ -4303,6 +4304,7 @@ async function renderPdfPreview(url, body, filename) {
       <div class="pdf-zoom-controls" aria-label="PDF 顯示大小"><button class="btn small" type="button" data-zoom="out" title="縮小">−</button><span data-zoom-label>符合寬度</span><button class="btn small" type="button" data-zoom="in" title="放大">＋</button><button class="btn small" type="button" data-zoom="fit">符合寬度</button></div>
       ${fileControls}
     </div>
+    ${drawingsBar}
     <div class="pdf-sidebar-canvas-wrap"><canvas aria-label="${esc(filename)} PDF 預覽"></canvas></div>
   </div>`;
   const canvas = body.querySelector("canvas");
@@ -4467,6 +4469,26 @@ async function showFilePreview({ entryId, attachmentId, filename, key, mime, kin
   return openInspector({ type: "attachment", id: Number(attachmentId), entryId: Number(entryId), title: filename }, "preview");
 }
 
+// PDF 預覽工具列上的「🖼 圖面轉高清」：把圖面頁轉成大圖，存進同一筆紀錄、同一個資料夾
+function bindPdfDrawingsButton(body, { entryId, attachmentId, key }) {
+  const btn = body.querySelector("[data-pdf-drawings]");
+  if (!btn) return;
+  btn.onclick = async () => {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const label = btn.textContent;
+    try {
+      const r = await renderPdfDrawings(entryId, { id: attachmentId, key }, { onProgress: (text) => { btn.textContent = text; } });
+      showToast(r.made ? `已存入 ${r.made} 張高清圖面（共 ${r.pages} 頁）` : "這份 PDF 的圖面已經都轉過了");
+    } catch (err) {
+      alert(`圖面轉高清圖片失敗：${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  };
+}
+
 async function renderFilePreview({ entryId, attachmentId, filename, key, mime, kind }) {
   const pane = $("folder-preview");
   const body = $("folder-preview-body");
@@ -4497,7 +4519,10 @@ async function renderFilePreview({ entryId, attachmentId, filename, key, mime, k
   if (image) body.innerHTML = `<img class="folder-preview-image" src="${url}" alt="${esc(filename)}" />`;
   else if (audio) body.innerHTML = `<audio class="folder-preview-media" controls preload="metadata" src="${url}"></audio>`;
   else if (video) body.innerHTML = `<video class="folder-preview-media" controls preload="metadata" src="${url}"></video>`;
-  else if (pdf) await renderPdfPreview(url, body, filename);
+  else if (pdf) {
+    await renderPdfPreview(url, body, filename, { entryId, attachmentId, key });
+    bindPdfDrawingsButton(body, { entryId, attachmentId, key });
+  }
   else if (ext === "pptx" || /presentationml\.presentation/i.test(mime)) {
     const { renderPptxPreview } = await import("./pptx-preview.js?v=182");
     await renderPptxPreview(url, body, filename);

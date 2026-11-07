@@ -473,3 +473,12 @@ test("import-url/full：只有縮圖時內文註明最大寬度，並提示用 P
     assert.match(body, /圖面轉高清圖片/);
   } finally { fx.restore(); }
 });
+
+test("v245 PDF 預覽有獨立一列「圖面轉高清圖片」按鈕（舊入口在清單模式被藏起來，找不到）", async () => {
+  const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
+  assert.match(app, /class="pdf-drawings-bar"><button class="btn small" type="button" data-pdf-drawings>🖼 圖面轉高清圖片/);
+  assert.match(app, /renderPdfPreview\(url, body, filename, \{ entryId, attachmentId, key \}\)/);
+  const fn = app.match(/function bindPdfDrawingsButton\([\s\S]*?\n\}\n/)[0];
+  assert.match(fn, /renderPdfDrawings\(entryId, \{ id: attachmentId, key \}/);
+  assert.match(fn, /alert\(`圖面轉高清圖片失敗/, "失敗要看得到");
+});
