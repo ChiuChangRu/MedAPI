@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "241";
+const APP_VERSION = "242";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -5690,7 +5690,7 @@ function syncUrlImportMode() {
   $("url-import-confirm").textContent = mode === "link" ? "加入連結" : mode === "full" ? "開始下載" : "開始匯入";
   $("url-import-name").placeholder = mode === "pdf" ? "系統會從 PDF 或網頁標題自動命名" : mode === "full" ? "不填就用網頁標題" : "不填就用網站名稱";
   $("url-import-hint").textContent = mode === "full"
-    ? "把網頁的文字、圖片、可直接下載的影片，加上整頁 PDF，全部存進這個資料夾的同一筆紀錄。YouTube、Facebook 等內嵌影片沒有公開檔案，只會留下連結；需要登入的網頁請改用 MyWiki Clip 擴充功能。通常要 1～2 分鐘。"
+    ? "把網頁的文字、圖片、可直接下載的影片，加上整頁 PDF，全部存進這個資料夾的同一筆紀錄。網址若是單張圖片或影片檔（對圖片按右鍵「複製圖片網址」），會直接以原始大小存進資料夾。YouTube、Facebook 等內嵌影片沒有公開檔案，只會留下連結；需要登入的網頁請改用 MyWiki Clip 擴充功能。通常要 1～2 分鐘。"
     : mode === "pdf"
     ? "PDF 會直接下載；其他公開網頁會轉成 PDF。需要登入的網頁請改用 MyWiki Clip 擴充功能。檔案上限 50MB。"
     : "只存網址（像書籤），點了會開新分頁。勾「加到常用」會出現在首頁「常用網頁」。網址如果是 PDF，會直接下載存進這個資料夾。";
@@ -7368,6 +7368,33 @@ function setupFolderFileDropZone(el, onFiles) {
   }, true);
 }
 
+// v242 在資料夾頁按 Ctrl+V：剪貼簿裡的圖片／檔案直接存進目前資料夾，不經過電腦下載。
+// 用法：在網頁上對圖片按右鍵「複製圖片」→ 回 MyWiki 資料夾頁按 Ctrl+V。
+// 正在輸入文字（輸入框、編輯器）時不攔截，讓一般貼上照常運作。
+function setupFolderPaste() {
+  document.addEventListener("paste", (ev) => {
+    if (!CURRENT_FOLDER || $("view-folder")?.style.display === "none") return;
+    const target = ev.target;
+    if (target?.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true'], .ql-editor")) return;
+    if (document.querySelector(".overlay.open")) return;
+    const items = Array.from(ev.clipboardData?.items || []).filter((item) => item.kind === "file");
+    if (!items.length) return;
+    const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+    const files = items.map((item, index) => {
+      const blob = item.getAsFile();
+      if (!blob) return null;
+      const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "png";
+      // 瀏覽器複製圖片時檔名一律是 image.png；改成有時間的名稱才不會互相撞名
+      const generic = !blob.name || /^image\.\w+$/i.test(blob.name);
+      return generic ? new File([blob], `貼上圖片-${stamp}${items.length > 1 ? `-${index + 1}` : ""}.${ext}`, { type: blob.type }) : blob;
+    }).filter(Boolean);
+    if (!files.length) return;
+    ev.preventDefault();
+    uploadStandaloneFiles(files, Number(CURRENT_FOLDER.id), { destination: `「${CURRENT_FOLDER.name}」` })
+      .catch((error) => showToast("貼上失敗：" + error.message));
+  });
+}
+
 async function uploadFiles(entryId, files) {
   if (!files || !files.length) return;
   const status = $("e-upload-status");
@@ -8936,6 +8963,7 @@ function init() {
   initHomeLayout();
   initHomeWidgets();
   initFolderSuggestions();
+  setupFolderPaste();
   initTranscribeGlossary();
   $("btn-inbox-grid").onclick = () => setInboxView("grid");
   $("btn-inbox-list").onclick = () => setInboxView("list");
