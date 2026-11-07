@@ -66,6 +66,7 @@ test("extractPageResources：數量上限與 srcset 解析", () => {
   const r = extractPageResources(`<body>${many}</body>`, BASE, { maxImages: 30 });
   assert.equal(r.images.length, 30);
   assert.equal(r.skipped.images, 10);
+  assert.equal(extractPageResources(`<body>${many}</body>`, BASE).images.length, 40, "預設上限 50，專利圖面多");
   assert.equal(bestSrcsetUrl("a.jpg 1x, b.jpg 2x, c.jpg 3x"), "c.jpg");
   assert.equal(bestSrcsetUrl("only.jpg"), "only.jpg");
 });
@@ -218,5 +219,62 @@ test("import-url/full：網址本身是影片檔時直接存成一個影片附�
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.saved.videos, 1);
     assert.equal(db.sqlite.prepare("SELECT kind, filename FROM attachments").get().kind, "video");
+  } finally { fx.restore(); }
+});
+
+// ---------- v240 專利／圖庫：優先抓高清圖與 PDF 原檔 ----------
+const PATENT = `<html><head><title>US123 - 某專利</title>
+<meta name="citation_pdf_url" content="https://patentimages.storage.example.org/ab/US123.pdf">
+</head><body><section>
+<ul>
+<li itemprop="images"><img itemprop="thumbnail" src="https://patentimages.storage.example.org/ab/US123-thumb-1.png"><meta itemprop="full" content="https://patentimages.storage.example.org/ab/US123-drawings-page-1.png"></li>
+<li itemprop="images"><img itemprop="thumbnail" src="https://patentimages.storage.example.org/ab/US123-thumb-2.png"><meta itemprop="full" content="https://patentimages.storage.example.org/ab/US123-drawings-page-2.png"></li>
+</ul>
+<a href="/big/photo-large.jpg"><img src="/small/photo-small.jpg"></a>
+<img src="/x/zoom-thumb.jpg" data-zoom-image="/x/zoom-full.jpg">
+</section></body></html>`;
+
+test("專利頁：取 itemprop=full 高清圖、略過縮圖、找出 citation_pdf_url", () => {
+  const r = extractPageResources(PATENT, "https://patents.example.org/patent/US123");
+  const urls = r.images.map((i) => i.url);
+  assert.deepEqual(urls.slice(0, 2), [
+    "https://patentimages.storage.example.org/ab/US123-drawings-page-1.png",
+    "https://patentimages.storage.example.org/ab/US123-drawings-page-2.png",
+  ], "高清圖排最前面、依頁序");
+  assert.ok(!urls.some((u) => /thumb-[12]/.test(u)), "有高清版的縮圖不抓");
+  assert.ok(urls.includes("https://patents.example.org/big/photo-large.jpg"), "<a href=大圖><img 縮圖> 取連結的大圖");
+  assert.ok(!urls.includes("https://patents.example.org/small/photo-small.jpg"));
+  assert.ok(urls.includes("https://patents.example.org/x/zoom-full.jpg"), "data-zoom-image 優先");
+  assert.ok(!urls.includes("https://patents.example.org/x/zoom-thumb.jpg"));
+  assert.deepEqual(r.pdfs.map((p) => p.url), ["https://patentimages.storage.example.org/ab/US123.pdf"]);
+});
+
+test("import-url/full：專利頁下載高清圖與 PDF 原檔，不再另外轉整頁 PDF", async () => {
+  resetSchemaCacheForTests();
+  const db = d1();
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, ...bytes(6000, 5)]);
+  const fx = installFetch({
+    "https://patents.example.org/patent/US123": { body: PATENT.replace(/<a href="\/big[^]*?<\/a>/, ""), headers: { "content-type": "text/html" } },
+    "https://patentimages.storage.example.org/ab/US123-drawings-page-1.png": { body: bytes(8000, 1), headers: { "content-type": "image/png" } },
+    "https://patentimages.storage.example.org/ab/US123-drawings-page-2.png": { body: bytes(9000, 2), headers: { "content-type": "image/png" } },
+    "https://patentimages.storage.example.org/ab/US123.pdf": { body: pdf, headers: { "content-type": "application/pdf" } },
+    "https://patents.example.org/x/zoom-full.jpg": { body: bytes(7000, 3), headers: { "content-type": "image/jpeg" } },
+  });
+  let browserCalls = 0;
+  try {
+    await fieldlogWorker.fetch(new Request("https://fieldlog.example.dev/api/folders", {
+      method: "POST", headers: { "x-pin": "1234", "content-type": "application/json" }, body: JSON.stringify({ name: "專利", category: "misc" }),
+    }), { DB: db, FIELD_PIN: "1234" });
+    const folderId = db.sqlite.prepare("SELECT id FROM folders LIMIT 1").get().id;
+    const r = await runImport(db, { url: "https://patents.example.org/patent/US123", folder_id: folderId }, { BROWSER: { quickAction: async () => { browserCalls++; return new Response("x", { status: 500 }); } } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.saved.images, 3);
+    assert.equal(r.body.saved.source_pdfs, 1);
+    assert.equal(browserCalls, 0, "已有 PDF 原檔就不再轉整頁 PDF");
+    const atts = db.sqlite.prepare("SELECT kind, filename, mime FROM attachments ORDER BY id").all();
+    assert.deepEqual(atts.map((a) => a.kind), ["photo", "photo", "photo", "file"]);
+    assert.equal(atts[3].mime, "application/pdf");
+    assert.match(atts[3].filename, /\.pdf$/);
+    assert.match(db.sqlite.prepare("SELECT body FROM entries").get().body, /1 份 PDF 原檔/);
   } finally { fx.restore(); }
 });
