@@ -362,3 +362,61 @@ test("公開網址抓取帶瀏覽器式 User-Agent 與語言", async () => {
     assert.match(seen[0]["accept-language"], /zh-TW/);
   } finally { globalThis.fetch = original; }
 });
+
+// ---------- v243 小圖＋PDF 原檔：回報最大圖寬與 PDF，讓前端自動把圖面轉高清 ----------
+import { imageWidth } from "../fieldlog/src/lib/page-extract.js";
+import { readFile } from "node:fs/promises";
+
+function pngWithWidth(width, total = 4000) {
+  const b = new Uint8Array(total);
+  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52], 0);
+  b[16] = (width >>> 24) & 255; b[17] = (width >>> 16) & 255; b[18] = (width >>> 8) & 255; b[19] = width & 255;
+  b[23] = 120;
+  for (let i = 30; i < total; i++) b[i] = (i * 7) & 255;
+  return b;
+}
+
+test("imageWidth：PNG／GIF／JPEG 讀檔頭寬度，其餘回 0", () => {
+  assert.equal(imageWidth(pngWithWidth(303)), 303);
+  const gif = new Uint8Array(40); gif.set([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x40, 0x01], 0);
+  assert.equal(imageWidth(gif), 320);
+  const jpg = new Uint8Array(60); jpg.set([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 11, 8, 0, 100, 0x02, 0x58], 0);
+  assert.equal(imageWidth(jpg), 600);
+  assert.equal(imageWidth(new Uint8Array(100)), 0);
+  assert.equal(imageWidth(null), 0);
+});
+
+test("import-url/full：回報 max_image_width 與 source_pdf（專利小圖＋PDF 原檔）", async () => {
+  resetSchemaCacheForTests();
+  const db = d1();
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, ...bytes(6000, 5)]);
+  const html = `<html><head><title>CN 專利</title><meta name="citation_pdf_url" content="https://img.example.org/p.pdf"></head><body><article><p>內文</p>
+    <img src="https://img.example.org/f1.png"><img src="https://img.example.org/f2.png"></article></body></html>`;
+  const fx = installFetch({
+    "https://pat.example.org/cn": { body: html, headers: { "content-type": "text/html" } },
+    "https://img.example.org/f1.png": { body: pngWithWidth(303, 4000), headers: { "content-type": "image/png" } },
+    "https://img.example.org/f2.png": { body: pngWithWidth(450, 5000), headers: { "content-type": "image/png" } },
+    "https://img.example.org/p.pdf": { body: pdf, headers: { "content-type": "application/pdf" } },
+  });
+  try {
+    const folderId = await makeFolder(db);
+    const r = await runImport(db, { url: "https://pat.example.org/cn", folder_id: folderId });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.saved.max_image_width, 450);
+    assert.equal(r.body.saved.source_pdf.filename.endsWith(".pdf"), true);
+    const pdfRow = db.sqlite.prepare("SELECT id, key FROM attachments WHERE mime = 'application/pdf'").get();
+    assert.equal(r.body.saved.source_pdf.id, pdfRow.id);
+    assert.equal(r.body.saved.source_pdf.key, pdfRow.key);
+  } finally { fx.restore(); }
+});
+
+test("前端：圖面轉高清（renderPdfDrawings）與自動觸發條件", async () => {
+  const app = await readFile(new URL("../fieldlog/public/app.js", import.meta.url), "utf8");
+  const fn = app.match(/async function renderPdfDrawings\([\s\S]*?\n\}\n/)[0];
+  assert.match(fn, /< 300\) sparse\.push\(p\)/, "文字少於 300 字的頁面才當圖面頁");
+  assert.match(fn, /2400 \/ base\.width/, "目標寬約 2400px");
+  assert.doesNotMatch(fn, /\/ocr/, "不呼叫 AI 辨識，不耗額度");
+  assert.match(fn, /existing\.has\(name\)/, "已轉過的頁面不重複");
+  assert.match(app, /s\.source_pdf && Number\(s\.max_image_width \|\| 0\) < 800/, "有 PDF 原檔且網頁圖很小才自動轉");
+  assert.match(app, /class="att-pdf-drawings"/, "PDF 附件上有手動按鈕");
+});

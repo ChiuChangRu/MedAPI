@@ -215,3 +215,23 @@ export function mediaFilename(kind, index, ext, url) {
   }
   return `圖片-${String(index).padStart(3, "0")}.${ext}`;
 }
+
+/** 圖片寬度（像素）：只讀檔頭，支援 PNG／GIF／JPEG；讀不出來回 0。用來判斷抓到的圖是不是太小。 */
+export function imageWidth(bytes) {
+  if (!bytes || bytes.byteLength < 24) return 0;
+  const b = bytes;
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+    return ((b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19]) >>> 0;
+  }
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return b[6] | (b[7] << 8);
+  if (b[0] === 0xff && b[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < b.byteLength) {
+      if (b[i] !== 0xff) { i++; continue; }
+      const marker = b[i + 1];
+      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) return (b[i + 7] << 8) | b[i + 8];
+      i += 2 + ((b[i + 2] << 8) | b[i + 3]);
+    }
+  }
+  return 0;
+}
