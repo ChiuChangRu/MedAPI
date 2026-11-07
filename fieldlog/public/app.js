@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "238";
+const APP_VERSION = "239";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -5649,8 +5649,9 @@ function openUrlImport() {
   $("url-import-name").value = "";
   $("url-import-note").value = "";
   $("url-import-star").checked = false;
-  let mode = "link";
-  try { mode = localStorage.getItem("fieldlog_url_import_mode") === "pdf" ? "pdf" : "link"; } catch { mode = "link"; }
+  // v239：預設改成「完整下載」；用新的設定鍵，舊的「加入連結」偏好不沿用，之後的選擇才會記住
+  let mode = "full";
+  try { const saved = localStorage.getItem("fieldlog_url_import_mode_v239"); mode = ["full", "link", "pdf"].includes(saved) ? saved : "full"; } catch { mode = "full"; }
   document.querySelectorAll('input[name="url-import-mode"]').forEach((r) => { r.checked = r.value === mode; });
   syncUrlImportMode();
   $("url-import-status").textContent = "";
@@ -5679,15 +5680,18 @@ async function addLinkOrDownloadPdf({ url, title = "", note = "", folderId = nul
 
 // v231：加入連結（書籤記事）或存成 PDF（下載內容）兩種模式，記住上次的選擇
 function urlImportMode() {
-  return document.querySelector('input[name="url-import-mode"]:checked')?.value === "pdf" ? "pdf" : "link";
+  const value = document.querySelector('input[name="url-import-mode"]:checked')?.value;
+  return ["full", "link", "pdf"].includes(value) ? value : "full";
 }
 
 function syncUrlImportMode() {
   const mode = urlImportMode();
   $("url-import-form").dataset.mode = mode;
-  $("url-import-confirm").textContent = mode === "pdf" ? "開始匯入" : "加入連結";
-  $("url-import-name").placeholder = mode === "pdf" ? "系統會從 PDF 或網頁標題自動命名" : "不填就用網站名稱";
-  $("url-import-hint").textContent = mode === "pdf"
+  $("url-import-confirm").textContent = mode === "link" ? "加入連結" : mode === "full" ? "開始下載" : "開始匯入";
+  $("url-import-name").placeholder = mode === "pdf" ? "系統會從 PDF 或網頁標題自動命名" : mode === "full" ? "不填就用網頁標題" : "不填就用網站名稱";
+  $("url-import-hint").textContent = mode === "full"
+    ? "把網頁的文字、圖片、可直接下載的影片，加上整頁 PDF，全部存進這個資料夾的同一筆紀錄。YouTube、Facebook 等內嵌影片沒有公開檔案，只會留下連結；需要登入的網頁請改用 MyWiki Clip 擴充功能。通常要 1～2 分鐘。"
+    : mode === "pdf"
     ? "PDF 會直接下載；其他公開網頁會轉成 PDF。需要登入的網頁請改用 MyWiki Clip 擴充功能。檔案上限 50MB。"
     : "只存網址（像書籤），點了會開新分頁。勾「加到常用」會出現在首頁「常用網頁」。網址如果是 PDF，會直接下載存進這個資料夾。";
 }
@@ -5716,7 +5720,7 @@ async function submitUrlImport(event) {
 
   const folderId = Number(CURRENT_FOLDER.id);
   const mode = urlImportMode();
-  try { localStorage.setItem("fieldlog_url_import_mode", mode); } catch { /* 存不了就算了 */ }
+  try { localStorage.setItem("fieldlog_url_import_mode_v239", mode); } catch { /* 存不了就算了 */ }
   if (mode === "link") {
     $("url-import-confirm").disabled = true;
     $("url-import-status").classList.remove("error");
@@ -5749,18 +5753,27 @@ async function submitUrlImport(event) {
   confirmButton.textContent = "匯入中…";
   modal.setAttribute("aria-busy", "true");
   status.classList.remove("error");
-  status.textContent = "正在判斷網址內容；若是網頁，轉成 PDF 可能需要約一分鐘…";
+  status.textContent = mode === "full"
+    ? "正在下載網頁文字、圖片與影片，可能需要 1～2 分鐘，請先不要關閉這個視窗…"
+    : "正在判斷網址內容；若是網頁，轉成 PDF 可能需要約一分鐘…";
 
   try {
-    const result = await api("/import-url", {
+    const result = await api(mode === "full" ? "/import-url/full" : "/import-url", {
       method: "POST",
       body: JSON.stringify({ url, name, folder_id: folderId }),
     });
     URL_IMPORT_BUSY = false;
     closeUrlImport();
-    showToast(result.format === "pdf"
-      ? `已下載 PDF：${result.filename}`
-      : `已將公開網頁轉成 PDF：${result.filename}`);
+    if (mode === "full") {
+      const s = result.saved || {};
+      const parts = [`${s.images || 0} 張圖片`, `${s.videos || 0} 支影片`, s.pdf ? "整頁 PDF" : ""].filter(Boolean).join("、");
+      const notes = [(result.embeds || []).length ? `${result.embeds.length} 個內嵌影片只留連結` : "", (result.failures || []).length ? `${result.failures.length} 項下載失敗` : ""].filter(Boolean).join("；");
+      showToast(`已下載「${result.title}」：${parts}${notes ? `（${notes}）` : ""}`);
+    } else {
+      showToast(result.format === "pdf"
+        ? `已下載 PDF：${result.filename}`
+        : `已將公開網頁轉成 PDF：${result.filename}`);
+    }
     await Promise.all([loadFolders(), loadRecent()]);
     if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === folderId) await openFolder(folderId);
   } catch (error) {
@@ -5771,7 +5784,6 @@ async function submitUrlImport(event) {
     URL_IMPORT_BUSY = false;
     confirmButton.disabled = false;
     cancelButton.disabled = false;
-    confirmButton.textContent = "開始匯入";
     modal.removeAttribute("aria-busy");
     syncUrlImportMode();
   }
