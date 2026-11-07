@@ -41,6 +41,7 @@ import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFol
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
+import { extractPageResources, extractPageText, mediaExtension, mediaFilename, mediaKind } from "./lib/page-extract.js";
 import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
 import { createAudioZipStream, recordingZipFilename } from "./lib/audio-zip.js";
 import {
@@ -136,7 +137,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "238";
+const UI_VERSION = "239";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -802,15 +803,15 @@ export function directDownloadUrlForGoogleDrive(value) {
   return direct;
 }
 
-async function fetchPublicImportUrl(value) {
+async function fetchPublicImportUrl(value, { accept = "application/pdf,text/html,application/xhtml+xml;q=0.9,*/*;q=0.2", referer = "", timeoutMs = 30000 } = {}) {
   let current = assertPublicImportUrl(value);
   for (let redirectCount = 0; redirectCount <= URL_IMPORT_MAX_REDIRECTS; redirectCount++) {
     let response;
     try {
       response = await fetch(current.toString(), {
         redirect: "manual",
-        headers: { accept: "application/pdf,text/html,application/xhtml+xml;q=0.9,*/*;q=0.2" },
-        signal: AbortSignal.timeout(30000),
+        headers: { accept, ...(referer ? { referer } : {}) },
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       if (error?.name === "TimeoutError" || error?.name === "AbortError") {
@@ -829,11 +830,48 @@ async function fetchPublicImportUrl(value) {
 
 export async function readUrlImportBytes(response, maxBytes = URL_IMPORT_MAX_BYTES) {
   const declaredLength = Number(response.headers.get("content-length") || 0);
-  if (declaredLength > maxBytes) throw urlImportError("檔案超過 50MB，無法匯入", 413);
+  const limitLabel = `${Math.round(maxBytes / 1048576)}MB`;
+  if (declaredLength > maxBytes) throw urlImportError(`檔案超過 ${limitLabel}，無法匯入`, 413);
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength > maxBytes) throw urlImportError("檔案超過 50MB，無法匯入", 413);
+  if (bytes.byteLength > maxBytes) throw urlImportError(`檔案超過 ${limitLabel}，無法匯入`, 413);
   return bytes;
 }
+
+
+// ---- v239 網址完整下載：網頁文字＋圖片＋影片＋整頁 PDF，全部存進同一筆紀錄 ----
+const FULL_IMPORT_MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const FULL_IMPORT_MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const FULL_IMPORT_MAX_TOTAL_BYTES = 150 * 1024 * 1024;
+const FULL_IMPORT_MIN_IMAGE_BYTES = 3000;   // 小於這個多半是追蹤像素或小圖示
+const FULL_IMPORT_BATCH = 4;
+
+function htmlCharsetDecode(bytes, contentType) {
+  const head = new TextDecoder("latin1").decode(bytes.subarray(0, Math.min(bytes.byteLength, 4096)));
+  const label = (String(contentType || "").match(/charset=([\w-]+)/i)
+    || head.match(/<meta[^>]+charset=["']?([\w-]+)/i) || [])[1] || "utf-8";
+  try { return new TextDecoder(label).decode(bytes); } catch { return new TextDecoder().decode(bytes); }
+}
+
+/** 下載一個圖片或影片：每個網址都過公開網址檢查（含轉址）、驗 content-type、限制大小。 */
+async function fetchFullImportMedia(item, kind, referer) {
+  const isVideo = kind === "video";
+  const limit = isVideo ? FULL_IMPORT_MAX_VIDEO_BYTES : FULL_IMPORT_MAX_IMAGE_BYTES;
+  const fetched = await fetchPublicImportUrl(item.url, {
+    accept: isVideo ? "video/*,*/*;q=0.5" : "image/*,*/*;q=0.5", referer, timeoutMs: isVideo ? 120000 : 30000,
+  });
+  const response = fetched.response;
+  if (!response.ok) { await response.body?.cancel?.().catch(() => {}); throw new Error(`HTTP ${response.status}`); }
+  const mime = String(response.headers.get("content-type") || "");
+  const ext = mediaExtension(mime, fetched.finalUrl.toString());
+  if (!ext || mediaKind(ext) !== kind) { await response.body?.cancel?.().catch(() => {}); throw new Error(`不是${isVideo ? "影片" : "圖片"}（${mime.split(";")[0] || "未知類型"}）`); }
+  const declared = Number(response.headers.get("content-length") || 0);
+  if (declared > limit) { await response.body?.cancel?.().catch(() => {}); throw new Error(`超過 ${Math.round(limit / 1048576)}MB`); }
+  const bytes = await readUrlImportBytes(response, limit);
+  if (!isVideo && bytes.byteLength < FULL_IMPORT_MIN_IMAGE_BYTES) throw new Error("圖片太小（多半是圖示）");
+  const outMime = mime.split(";")[0].trim().toLowerCase() || (isVideo ? "video/mp4" : "image/jpeg");
+  return { bytes, ext, mime: MIME_FALLBACK[ext] && !/^(?:image|video)\//.test(outMime) ? MIME_FALLBACK[ext] : outMime, url: fetched.finalUrl.toString() };
+}
+const MIME_FALLBACK = { jpg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", avif: "image/avif", bmp: "image/bmp", mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", m4v: "video/x-m4v", ogv: "video/ogg" };
 
 function isPdfBytes(bytes) {
   return bytes?.byteLength >= 5
@@ -877,16 +915,16 @@ async function contentHashForBytes(bytes) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function storeClipAttachment(db, files, entryId, filename, mime, bytes, sourceUrl) {
+async function storeClipAttachment(db, files, entryId, filename, mime, bytes, sourceUrl, kind = "file") {
   const contentHash = await contentHashForBytes(bytes);
   const safeName = filename.replace(/[^\w.\-一-鿿]+/g, "_");
   const key = `${entryId}/${Date.now()}-${safeName}`;
   await files.put(key, bytes, { httpMetadata: { contentType: mime } });
   try {
     const result = await db.prepare(
-      "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, content_hash, source_url, created_at) VALUES (?, 'file', ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(entryId, filename, filename, key, bytes.byteLength, mime, contentHash, sourceUrl, now()).run();
-    return { id: result.meta.last_row_id, key, filename, mime, size: bytes.byteLength, source_url: sourceUrl };
+      "INSERT INTO attachments (entry_id, kind, filename, original_filename, key, size, mime, content_hash, source_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(entryId, kind, filename, filename, key, bytes.byteLength, mime, contentHash, sourceUrl, now()).run();
+    return { id: result.meta.last_row_id, key, filename, mime, size: bytes.byteLength, source_url: sourceUrl, kind };
   } catch (error) {
     await files.delete(key).catch(() => {});
     throw error;
@@ -2340,6 +2378,155 @@ async function handleApi(request, env, url, identity = {}) {
   }
 
   // ---- 網址匯入：PDF 原檔直接保存；公開 HTML 才交給 Browser Run 轉成 PDF ----
+  // ---- v239 網址完整下載：文字、圖片、影片、整頁 PDF 都存進資料夾裡同一筆紀錄 ----
+  if (path === "/import-url/full" && method === "POST") {
+    if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+    const body = await request.json().catch(() => null);
+    if (!body) return bad("網址匯入資料格式錯誤");
+    const folderId = Number(body.folder_id);
+    if (!Number.isSafeInteger(folderId) || folderId <= 0) return bad("請先進入要存放內容的資料夾");
+    const folder = await db.prepare("SELECT id, name FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(folderId).first();
+    if (!folder) return bad("找不到指定資料夾", 404);
+    let sourceUrl;
+    try { sourceUrl = assertPublicImportUrl(body.url); } catch (error) { return bad(error.message, error.status || 400); }
+    const requestedName = String(body.name || "").trim().slice(0, 160);
+    const wantPdf = body.include_pdf !== false;
+
+    let entryId = 0;
+    try {
+      const fetched = await fetchPublicImportUrl(directDownloadUrlForGoogleDrive(sourceUrl).toString(), {
+        accept: "text/html,application/xhtml+xml,application/pdf;q=0.9,image/*;q=0.5,video/*;q=0.5,*/*;q=0.2",
+      });
+      const response = fetched.response;
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) throw urlImportError("來源網頁需要登入或拒絕存取；請改用 MyWiki Clip 擴充功能", 422);
+        if (response.status === 404) throw urlImportError("來源網址找不到內容（HTTP 404）", 404);
+        throw urlImportError(`來源網站回應 HTTP ${response.status}`, 502);
+      }
+      const contentType = String(response.headers.get("content-type") || "");
+      const finalUrl = fetched.finalUrl.toString();
+      const pageBytes = await readUrlImportBytes(response);
+      const importedAt = now();
+      const baseFields = { source: "url_full_import", source_url: finalUrl, original_url: sourceUrl.toString(), imported_at: importedAt };
+      const failures = [];
+      const saved = { images: 0, videos: 0, pdf: false, files: 0 };
+      let totalBytes = 0;
+      const createEntry = async (title, entryBody, fields) => {
+        const created = await db.prepare(
+          "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'html', ?)"
+        ).bind(folderId, title, JSON.stringify(fields), sanitizeEntryHtml(entryBody), importedAt).run();
+        return Number(created.meta.last_row_id);
+      };
+
+      // 網址本身就是 PDF／圖片／影片：直接存成一個檔案
+      const directExt = mediaExtension(contentType, finalUrl);
+      if (isPdfBytes(pageBytes) || directExt) {
+        const isPdf = isPdfBytes(pageBytes);
+        const kind = isPdf ? "file" : mediaKind(directExt);
+        const name = requestedName || urlPathFilename(fetched.finalUrl) || fetched.finalUrl.hostname;
+        const filename = isPdf ? importedPdfFilename(name) : `${name.replace(/\.[a-z0-9]{2,4}$/i, "") || "下載"}.${directExt}`;
+        const mime = isPdf ? "application/pdf" : (MIME_FALLBACK[directExt] || contentType.split(";")[0]);
+        entryId = await createEntry(filename.replace(/\.[a-z0-9]{2,4}$/i, ""), textToHtml(`來源：${sourceUrl.toString()}\n匯入時間：${importedAt}`), baseFields);
+        const attachment = await storeClipAttachment(db, env.FILES, entryId, filename, mime, pageBytes, finalUrl, kind);
+        await logHistory(db, entryId, folderId, "網址完整下載", `${filename}｜${finalUrl}`);
+        return json({ ok: true, entry_id: entryId, title: filename, saved: { images: kind === "photo" ? 1 : 0, videos: kind === "video" ? 1 : 0, pdf: isPdf, files: 1 }, attachment, failures, embeds: [], skipped: { images: 0, videos: 0 } });
+      }
+
+      const isHtml = /(?:text\/html|application\/xhtml\+xml)/i.test(contentType)
+        || /^\s*(?:<!doctype\s+html|<html\b)/i.test(new TextDecoder().decode(pageBytes.subarray(0, 2048)));
+      if (!isHtml) throw urlImportError("這個網址不是網頁、PDF、圖片或影片，無法下載", 415);
+      const html = htmlCharsetDecode(pageBytes, contentType);
+      const resources = extractPageResources(html, finalUrl);
+      const text = extractPageText(html);
+      const title = requestedName || resources.title || fetched.finalUrl.hostname;
+      entryId = await createEntry(title, textToHtml(`來源：${sourceUrl.toString()}\n匯入時間：${importedAt}\n（下載中…）`), baseFields);
+
+      const seenHashes = new Set();
+      const storeMedia = async (media, kind, counter) => {
+        const hash = await contentHashForBytes(media.bytes);
+        if (seenHashes.has(hash)) return false;
+        seenHashes.add(hash);
+        const filename = mediaFilename(kind, counter, media.ext, media.url);
+        await storeClipAttachment(db, env.FILES, entryId, filename, media.mime, media.bytes, media.url, kind);
+        totalBytes += media.bytes.byteLength;
+        return true;
+      };
+      // 圖片：4 張一批同時抓，依網頁出現順序存檔
+      let imageNo = 0;
+      for (let i = 0; i < resources.images.length; i += FULL_IMPORT_BATCH) {
+        if (totalBytes >= FULL_IMPORT_MAX_TOTAL_BYTES) { failures.push({ url: "", reason: "已達總容量上限，後面的圖片沒有下載" }); break; }
+        const batch = resources.images.slice(i, i + FULL_IMPORT_BATCH);
+        const results = await Promise.allSettled(batch.map((item) => fetchFullImportMedia(item, "photo", finalUrl)));
+        for (let j = 0; j < results.length; j++) {
+          const r = results[j];
+          if (r.status === "rejected") {
+            if (!/太小/.test(r.reason?.message || "")) failures.push({ url: batch[j].url, reason: String(r.reason?.message || r.reason).slice(0, 80) });
+            continue;
+          }
+          try { if (await storeMedia(r.value, "photo", imageNo + 1)) { imageNo++; saved.images++; } }
+          catch (error) { failures.push({ url: batch[j].url, reason: `儲存失敗：${String(error.message).slice(0, 60)}` }); }
+        }
+      }
+      // 影片：一支一支抓（檔案大，避免同時吃掉記憶體）
+      let videoNo = 0;
+      for (const item of resources.videos) {
+        if (totalBytes >= FULL_IMPORT_MAX_TOTAL_BYTES) { failures.push({ url: item.url, reason: "已達總容量上限，沒有下載" }); continue; }
+        try {
+          const media = await fetchFullImportMedia(item, "video", finalUrl);
+          if (await storeMedia(media, "video", videoNo + 1)) { videoNo++; saved.videos++; }
+        } catch (error) { failures.push({ url: item.url, reason: String(error.message || error).slice(0, 80) }); }
+      }
+      // 整頁 PDF（保留版面）：盡力而為，失敗不影響其他內容
+      if (wantPdf && env.BROWSER?.quickAction) {
+        try {
+          const rendered = await env.BROWSER.quickAction("pdf", {
+            url: finalUrl,
+            gotoOptions: { waitUntil: "networkidle2", timeout: 30000 },
+            pdfOptions: { format: "a4", printBackground: true, preferCSSPageSize: true, margin: { top: "12mm", right: "10mm", bottom: "12mm", left: "10mm" }, timeout: 30000 },
+          });
+          if (!rendered.ok) throw new Error(`HTTP ${rendered.status}`);
+          const pdfBytes = await readUrlImportBytes(rendered, 30 * 1024 * 1024);
+          if (!isPdfBytes(pdfBytes)) throw new Error("沒有回傳有效的 PDF");
+          await storeClipAttachment(db, env.FILES, entryId, importedPdfFilename(title), "application/pdf", pdfBytes, finalUrl);
+          saved.pdf = true;
+        } catch (error) {
+          failures.push({ url: "", reason: `整頁 PDF 失敗：${String(error.message || error).slice(0, 80)}` });
+        }
+      }
+
+      if (!text.trim() && !saved.images && !saved.videos && !saved.pdf) {
+        await db.prepare("DELETE FROM attachments WHERE entry_id = ?").bind(entryId).run().catch(() => {});
+        await db.prepare("DELETE FROM entries WHERE id = ?").bind(entryId).run().catch(() => {});
+        throw urlImportError("沒有抓到任何內容：網頁可能需要登入，或內容要靠 JavaScript 才會出現。需要登入的網頁請改用 MyWiki Clip 擴充功能。", 422);
+      }
+
+      const lines = [
+        `來源：${sourceUrl.toString()}`,
+        `匯入時間：${importedAt}`,
+        `已下載：${saved.images} 張圖片、${saved.videos} 支影片${saved.pdf ? "、整頁 PDF" : ""}`,
+      ];
+      if (resources.skipped.images || resources.skipped.videos) {
+        lines.push(`超過數量上限沒有下載：圖片 ${resources.skipped.images} 張、影片 ${resources.skipped.videos} 支`);
+      }
+      if (resources.embeds.length) {
+        lines.push("", "內嵌影片（YouTube、Vimeo、Facebook 等沒有公開檔案網址，無法下載，請用連結開啟）：", ...resources.embeds.map((e) => e.url));
+      }
+      if (failures.length) lines.push("", `沒有下載成功（${failures.length}）：`, ...failures.slice(0, 10).map((f) => `${f.reason}${f.url ? `：${f.url}` : ""}`));
+      lines.push("", "──── 網頁文字 ────", "", text);
+      const finalFields = { ...baseFields, image_count: saved.images, video_count: saved.videos, has_page_pdf: saved.pdf };
+      await db.prepare("UPDATE entries SET body = ?, fields_json = ? WHERE id = ?")
+        .bind(sanitizeEntryHtml(textToHtml(lines.join("\n"))), JSON.stringify(finalFields), entryId).run();
+      await logHistory(db, entryId, folderId, "網址完整下載", `${title}｜圖片 ${saved.images}、影片 ${saved.videos}${saved.pdf ? "、PDF" : ""}｜${finalUrl}`);
+      await triggerEmbedding(env, { kind: "entry", id: entryId, entryId, textContent: text, title });
+      return json({ ok: true, entry_id: entryId, title, saved, failures: failures.slice(0, 10), embeds: resources.embeds, skipped: resources.skipped, destination: "folder" });
+    } catch (error) {
+      if (entryId && !error.status) {
+        // 非預期錯誤：保留已存的部分內容，不要整筆丟掉
+        return bad(`下載中斷：${error.message}（已存入的部分在資料夾裡，可到該筆紀錄查看）`, 502);
+      }
+      return bad(error.message || "網址匯入失敗", error.status || 502);
+    }
+  }
   if (path === "/import-url" && method === "POST") {
     if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
     const body = await request.json().catch(() => null);
