@@ -137,7 +137,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "240";
+const UI_VERSION = "241";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -722,6 +722,7 @@ function base64ToBytes(value) {
 
 const URL_IMPORT_MAX_BYTES = 50 * 1024 * 1024;
 const URL_IMPORT_MAX_REDIRECTS = 5;
+const URL_IMPORT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
 function urlImportError(message, status = 400) {
   const error = new Error(message);
@@ -810,7 +811,8 @@ async function fetchPublicImportUrl(value, { accept = "application/pdf,text/html
     try {
       response = await fetch(current.toString(), {
         redirect: "manual",
-        headers: { accept, ...(referer ? { referer } : {}) },
+        // 沒有 User-Agent 的自動請求常被網站（例如 Google 系列）直接回 403／503
+        headers: { accept, "user-agent": URL_IMPORT_USER_AGENT, "accept-language": "zh-TW,zh;q=0.9,en;q=0.8", ...(referer ? { referer } : {}) },
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
@@ -837,6 +839,25 @@ export async function readUrlImportBytes(response, maxBytes = URL_IMPORT_MAX_BYT
   return bytes;
 }
 
+
+/** 用 Browser Run 開網頁、等 JavaScript 跑完，取回渲染後的 HTML（擋自動下載或靠 JS 產生內容的網站）。 */
+async function renderHtmlWithBrowser(env, url) {
+  let rendered;
+  try {
+    rendered = await env.BROWSER.quickAction("content", { url, gotoOptions: { waitUntil: "networkidle2", timeout: 30000 } });
+  } catch (error) {
+    throw urlImportError(`瀏覽器轉譯失敗：${String(error.message || error).slice(0, 120)}`, 502);
+  }
+  if (!rendered.ok) {
+    const detail = (await rendered.text().catch(() => "")).slice(0, 160);
+    throw urlImportError(rendered.status === 429
+      ? "瀏覽器轉譯服務的使用頻率或額度已達上限，請稍後再試"
+      : `瀏覽器轉譯失敗（HTTP ${rendered.status}）${detail ? `：${detail}` : ""}`, rendered.status === 429 ? 429 : 502);
+  }
+  const data = await rendered.json().catch(() => null);
+  if (!data?.success || typeof data.result !== "string" || !data.result.trim()) throw urlImportError("瀏覽器轉譯沒有回傳內容", 502);
+  return data.result;
+}
 
 // ---- v239 網址完整下載：網頁文字＋圖片＋影片＋整頁 PDF，全部存進同一筆紀錄 ----
 const FULL_IMPORT_MAX_IMAGE_BYTES = 15 * 1024 * 1024;
@@ -2394,20 +2415,37 @@ async function handleApi(request, env, url, identity = {}) {
 
     let entryId = 0;
     try {
-      const fetched = await fetchPublicImportUrl(directDownloadUrlForGoogleDrive(sourceUrl).toString(), {
-        accept: "text/html,application/xhtml+xml,application/pdf;q=0.9,image/*;q=0.5,video/*;q=0.5,*/*;q=0.2",
-      });
-      const response = fetched.response;
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) throw urlImportError("來源網頁需要登入或拒絕存取；請改用 MyWiki Clip 擴充功能", 422);
-        if (response.status === 404) throw urlImportError("來源網址找不到內容（HTTP 404）", 404);
-        throw urlImportError(`來源網站回應 HTTP ${response.status}`, 502);
+      // 先用一般連線；被擋（403／429／5xx）或連不上時，改用 Browser Run 以真實瀏覽器開網頁
+      let fetched = null; let contentType = ""; let pageBytes = null; let renderedHtml = null; let usedBrowser = false;
+      try {
+        fetched = await fetchPublicImportUrl(directDownloadUrlForGoogleDrive(sourceUrl).toString(), {
+          accept: "text/html,application/xhtml+xml,application/pdf;q=0.9,image/*;q=0.5,video/*;q=0.5,*/*;q=0.2",
+        });
+        const response = fetched.response;
+        if (!response.ok) {
+          const status = response.status;
+          await response.body?.cancel?.().catch(() => {});
+          const err = urlImportError(status === 401 || status === 403
+            ? "來源網頁需要登入或拒絕存取；請改用 MyWiki Clip 擴充功能"
+            : status === 404 ? "來源網址找不到內容（HTTP 404）" : `來源網站回應 HTTP ${status}`,
+          status === 401 || status === 403 ? 422 : status === 404 ? 404 : 502);
+          err.fallback = [401, 403, 429, 500, 502, 503, 504].includes(status);
+          throw err;
+        }
+        contentType = String(response.headers.get("content-type") || "");
+        pageBytes = await readUrlImportBytes(response);
+      } catch (error) {
+        if (!(error.fallback || error.status === 502 || error.status === 504)) throw error;
+        if (!env.BROWSER?.quickAction) {
+          throw urlImportError(`${error.message}（網站擋下自動下載，而且尚未啟用瀏覽器轉譯服務）`, error.status);
+        }
+        try { renderedHtml = await renderHtmlWithBrowser(env, sourceUrl.toString()); usedBrowser = true; }
+        catch (renderError) { throw urlImportError(`${error.message}；改用瀏覽器轉譯也失敗：${renderError.message}`, renderError.status || 502); }
       }
-      const contentType = String(response.headers.get("content-type") || "");
-      const finalUrl = fetched.finalUrl.toString();
-      const pageBytes = await readUrlImportBytes(response);
+      const finalUrlObj = fetched ? fetched.finalUrl : sourceUrl;
+      const finalUrl = finalUrlObj.toString();
       const importedAt = now();
-      const baseFields = { source: "url_full_import", source_url: finalUrl, original_url: sourceUrl.toString(), imported_at: importedAt };
+      const baseFields = { source: "url_full_import", source_url: finalUrl, original_url: sourceUrl.toString(), imported_at: importedAt, ...(renderedHtml !== null ? { rendered_by_browser: true } : {}) };
       const failures = [];
       const saved = { images: 0, videos: 0, pdf: false, files: 0 };
       let totalBytes = 0;
@@ -2419,11 +2457,11 @@ async function handleApi(request, env, url, identity = {}) {
       };
 
       // 網址本身就是 PDF／圖片／影片：直接存成一個檔案
-      const directExt = mediaExtension(contentType, finalUrl);
-      if (isPdfBytes(pageBytes) || directExt) {
+      const directExt = pageBytes ? mediaExtension(contentType, finalUrl) : "";
+      if (pageBytes && (isPdfBytes(pageBytes) || directExt)) {
         const isPdf = isPdfBytes(pageBytes);
         const kind = isPdf ? "file" : mediaKind(directExt);
-        const name = requestedName || urlPathFilename(fetched.finalUrl) || fetched.finalUrl.hostname;
+        const name = requestedName || urlPathFilename(finalUrlObj) || finalUrlObj.hostname;
         const filename = isPdf ? importedPdfFilename(name) : `${name.replace(/\.[a-z0-9]{2,4}$/i, "") || "下載"}.${directExt}`;
         const mime = isPdf ? "application/pdf" : (MIME_FALLBACK[directExt] || contentType.split(";")[0]);
         entryId = await createEntry(filename.replace(/\.[a-z0-9]{2,4}$/i, ""), textToHtml(`來源：${sourceUrl.toString()}\n匯入時間：${importedAt}`), baseFields);
@@ -2432,13 +2470,22 @@ async function handleApi(request, env, url, identity = {}) {
         return json({ ok: true, entry_id: entryId, title: filename, saved: { images: kind === "photo" ? 1 : 0, videos: kind === "video" ? 1 : 0, pdf: isPdf, files: 1 }, attachment, failures, embeds: [], skipped: { images: 0, videos: 0 } });
       }
 
-      const isHtml = /(?:text\/html|application\/xhtml\+xml)/i.test(contentType)
+      const isHtml = renderedHtml !== null || /(?:text\/html|application\/xhtml\+xml)/i.test(contentType)
         || /^\s*(?:<!doctype\s+html|<html\b)/i.test(new TextDecoder().decode(pageBytes.subarray(0, 2048)));
       if (!isHtml) throw urlImportError("這個網址不是網頁、PDF、圖片或影片，無法下載", 415);
-      const html = htmlCharsetDecode(pageBytes, contentType);
-      const resources = extractPageResources(html, finalUrl);
-      const text = extractPageText(html);
-      const title = requestedName || resources.title || fetched.finalUrl.hostname;
+      let html = renderedHtml ?? htmlCharsetDecode(pageBytes, contentType);
+      let resources = extractPageResources(html, finalUrl);
+      let text = extractPageText(html);
+      // 一般連線抓到的是空殼（內容靠 JavaScript 才出現）：改用瀏覽器轉譯再解析一次
+      if (!usedBrowser && env.BROWSER?.quickAction && !text.trim() && !resources.images.length && !resources.videos.length) {
+        try {
+          html = await renderHtmlWithBrowser(env, sourceUrl.toString());
+          usedBrowser = true;
+          resources = extractPageResources(html, finalUrl);
+          text = extractPageText(html);
+        } catch { /* 轉譯失敗就維持原本結果，下面會回報沒有內容 */ }
+      }
+      const title = requestedName || resources.title || finalUrlObj.hostname;
       entryId = await createEntry(title, textToHtml(`來源：${sourceUrl.toString()}\n匯入時間：${importedAt}\n（下載中…）`), baseFields);
 
       const seenHashes = new Set();

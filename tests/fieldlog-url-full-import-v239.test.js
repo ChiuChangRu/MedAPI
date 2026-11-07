@@ -278,3 +278,87 @@ test("import-url/full：專利頁下載高清圖與 PDF 原檔，不再另外轉
     assert.match(db.sqlite.prepare("SELECT body FROM entries").get().body, /1 份 PDF 原檔/);
   } finally { fx.restore(); }
 });
+
+// ---------- v241 被擋（HTTP 503）時改用瀏覽器轉譯 ----------
+async function makeFolder(db) {
+  await fieldlogWorker.fetch(new Request("https://fieldlog.example.dev/api/folders", {
+    method: "POST", headers: { "x-pin": "1234", "content-type": "application/json" }, body: JSON.stringify({ name: "F", category: "misc" }),
+  }), { DB: db, FIELD_PIN: "1234" });
+  return db.sqlite.prepare("SELECT id FROM folders LIMIT 1").get().id;
+}
+const browserReturning = (html, calls) => ({
+  quickAction: async (action, opts) => {
+    calls.push({ action, url: opts.url });
+    return new Response(JSON.stringify({ success: true, result: html }), { status: 200, headers: { "content-type": "application/json" } });
+  },
+});
+
+test("import-url/full：一般連線被擋（503）時改用 Browser Run 取得網頁，再下載圖片", async () => {
+  resetSchemaCacheForTests();
+  const db = d1();
+  const rendered = `<html><head><title>被擋的頁面</title></head><body><article><p>渲染後的文字</p><img src="/pic.jpg"></article></body></html>`;
+  const fx = installFetch({
+    "https://blocked.example.org/p": { status: 503, body: "unusual traffic", headers: { "content-type": "text/html" } },
+    "https://blocked.example.org/pic.jpg": { body: bytes(6000, 4), headers: { "content-type": "image/jpeg" } },
+  });
+  const calls = [];
+  try {
+    const folderId = await makeFolder(db);
+    const r = await runImport(db, { url: "https://blocked.example.org/p", folder_id: folderId, include_pdf: false }, { BROWSER: browserReturning(rendered, calls) });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(calls, [{ action: "content", url: "https://blocked.example.org/p" }]);
+    assert.equal(r.body.title, "被擋的頁面");
+    assert.equal(r.body.saved.images, 1);
+    assert.match(db.sqlite.prepare("SELECT body FROM entries").get().body, /渲染後的文字/);
+    assert.equal(JSON.parse(db.sqlite.prepare("SELECT fields_json FROM entries").get().fields_json).rendered_by_browser, true);
+  } finally { fx.restore(); }
+});
+
+test("import-url/full：被擋且沒有瀏覽器服務時，錯誤訊息說明原因；404 不會誤走瀏覽器", async () => {
+  resetSchemaCacheForTests();
+  const db = d1();
+  const fx = installFetch({ "https://blocked.example.org/p": { status: 503, body: "x", headers: {} } });
+  const calls = [];
+  try {
+    const folderId = await makeFolder(db);
+    const noBrowser = await runImport(db, { url: "https://blocked.example.org/p", folder_id: folderId });
+    assert.equal(noBrowser.status, 502);
+    assert.match(noBrowser.body.error, /HTTP 503.*瀏覽器轉譯服務/);
+    const notFound = await runImport(db, { url: "https://blocked.example.org/missing", folder_id: folderId }, { BROWSER: browserReturning("<p>x</p>", calls) });
+    assert.equal(notFound.status, 404);
+    assert.equal(calls.length, 0, "404 是真的不存在，不用瀏覽器重試");
+  } finally { fx.restore(); }
+});
+
+test("import-url/full：一般連線只拿到空殼（靠 JS 才有內容）時，再用瀏覽器渲染一次", async () => {
+  resetSchemaCacheForTests();
+  const db = d1();
+  const fx = installFetch({
+    "https://spa.example.org/app": { body: "<html><head><title>App</title></head><body><div id=root></div><script>render()</script></body></html>", headers: { "content-type": "text/html" } },
+    "https://spa.example.org/chart.png": { body: bytes(7000, 8), headers: { "content-type": "image/png" } },
+  });
+  const calls = [];
+  try {
+    const folderId = await makeFolder(db);
+    const r = await runImport(db, { url: "https://spa.example.org/app", folder_id: folderId, include_pdf: false },
+      { BROWSER: browserReturning(`<html><head><title>App</title></head><body><main><p>JS 產生的內容</p><img src="/chart.png"></main></body></html>`, calls) });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(calls.length, 1);
+    assert.equal(r.body.saved.images, 1);
+    assert.match(db.sqlite.prepare("SELECT body FROM entries").get().body, /JS 產生的內容/);
+  } finally { fx.restore(); }
+});
+
+test("公開網址抓取帶瀏覽器式 User-Agent 與語言", async () => {
+  const seen = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => { seen.push(init.headers); return new Response("<html><body><p>x</p></body></html>", { headers: { "content-type": "text/html" } }); };
+  resetSchemaCacheForTests();
+  const db = d1();
+  try {
+    const folderId = await makeFolder(db);
+    await runImport(db, { url: "https://ua.example.org/", folder_id: folderId, include_pdf: false });
+    assert.match(seen[0]["user-agent"], /Mozilla\/5\.0.*Chrome/);
+    assert.match(seen[0]["accept-language"], /zh-TW/);
+  } finally { globalThis.fetch = original; }
+});
