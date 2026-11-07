@@ -137,7 +137,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "239";
+const UI_VERSION = "240";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -2476,8 +2476,26 @@ async function handleApi(request, env, url, identity = {}) {
           if (await storeMedia(media, "video", videoNo + 1)) { videoNo++; saved.videos++; }
         } catch (error) { failures.push({ url: item.url, reason: String(error.message || error).slice(0, 80) }); }
       }
+      // 網頁宣告的 PDF 原檔（專利、論文）：高清圖面與完整文字都在裡面，優先於「整頁 PDF」
+      let sourcePdfs = 0;
+      for (const item of resources.pdfs || []) {
+        try {
+          const f = await fetchPublicImportUrl(item.url, { accept: "application/pdf,*/*;q=0.2", referer: finalUrl, timeoutMs: 60000 });
+          if (!f.response.ok) { await f.response.body?.cancel?.().catch(() => {}); throw new Error(`HTTP ${f.response.status}`); }
+          const pdfBytes = await readUrlImportBytes(f.response);
+          if (!isPdfBytes(pdfBytes)) throw new Error("不是有效的 PDF");
+          const hash = await contentHashForBytes(pdfBytes);
+          if (seenHashes.has(hash)) continue;
+          seenHashes.add(hash);
+          const pdfName = contentDispositionFilename(f.response.headers.get("content-disposition")) || urlPathFilename(f.finalUrl) || title;
+          await storeClipAttachment(db, env.FILES, entryId, importedPdfFilename(sourcePdfs ? `${pdfName}-${sourcePdfs + 1}` : pdfName), "application/pdf", pdfBytes, f.finalUrl.toString());
+          totalBytes += pdfBytes.byteLength; saved.files++; sourcePdfs++;
+        } catch (error) {
+          failures.push({ url: item.url, reason: `PDF 原檔下載失敗：${String(error.message || error).slice(0, 60)}` });
+        }
+      }
       // 整頁 PDF（保留版面）：盡力而為，失敗不影響其他內容
-      if (wantPdf && env.BROWSER?.quickAction) {
+      if (wantPdf && !sourcePdfs && env.BROWSER?.quickAction) {
         try {
           const rendered = await env.BROWSER.quickAction("pdf", {
             url: finalUrl,
@@ -2494,7 +2512,7 @@ async function handleApi(request, env, url, identity = {}) {
         }
       }
 
-      if (!text.trim() && !saved.images && !saved.videos && !saved.pdf) {
+      if (!text.trim() && !saved.images && !saved.videos && !saved.pdf && !sourcePdfs) {
         await db.prepare("DELETE FROM attachments WHERE entry_id = ?").bind(entryId).run().catch(() => {});
         await db.prepare("DELETE FROM entries WHERE id = ?").bind(entryId).run().catch(() => {});
         throw urlImportError("沒有抓到任何內容：網頁可能需要登入，或內容要靠 JavaScript 才會出現。需要登入的網頁請改用 MyWiki Clip 擴充功能。", 422);
@@ -2503,7 +2521,7 @@ async function handleApi(request, env, url, identity = {}) {
       const lines = [
         `來源：${sourceUrl.toString()}`,
         `匯入時間：${importedAt}`,
-        `已下載：${saved.images} 張圖片、${saved.videos} 支影片${saved.pdf ? "、整頁 PDF" : ""}`,
+        `已下載：${saved.images} 張圖片、${saved.videos} 支影片${sourcePdfs ? `、${sourcePdfs} 份 PDF 原檔` : ""}${saved.pdf ? "、整頁 PDF" : ""}`,
       ];
       if (resources.skipped.images || resources.skipped.videos) {
         lines.push(`超過數量上限沒有下載：圖片 ${resources.skipped.images} 張、影片 ${resources.skipped.videos} 支`);
@@ -2513,11 +2531,12 @@ async function handleApi(request, env, url, identity = {}) {
       }
       if (failures.length) lines.push("", `沒有下載成功（${failures.length}）：`, ...failures.slice(0, 10).map((f) => `${f.reason}${f.url ? `：${f.url}` : ""}`));
       lines.push("", "──── 網頁文字 ────", "", text);
-      const finalFields = { ...baseFields, image_count: saved.images, video_count: saved.videos, has_page_pdf: saved.pdf };
+      const finalFields = { ...baseFields, image_count: saved.images, video_count: saved.videos, has_page_pdf: saved.pdf, source_pdf_count: sourcePdfs };
       await db.prepare("UPDATE entries SET body = ?, fields_json = ? WHERE id = ?")
         .bind(sanitizeEntryHtml(textToHtml(lines.join("\n"))), JSON.stringify(finalFields), entryId).run();
       await logHistory(db, entryId, folderId, "網址完整下載", `${title}｜圖片 ${saved.images}、影片 ${saved.videos}${saved.pdf ? "、PDF" : ""}｜${finalUrl}`);
       await triggerEmbedding(env, { kind: "entry", id: entryId, entryId, textContent: text, title });
+      saved.source_pdfs = sourcePdfs;
       return json({ ok: true, entry_id: entryId, title, saved, failures: failures.slice(0, 10), embeds: resources.embeds, skipped: resources.skipped, destination: "folder" });
     } catch (error) {
       if (entryId && !error.status) {

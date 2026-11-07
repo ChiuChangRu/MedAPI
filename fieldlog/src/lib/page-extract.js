@@ -67,9 +67,10 @@ function metaContent(html, names) {
   return out;
 }
 
-export function extractPageResources(html, baseUrl, { maxImages = 30, maxVideos = 3 } = {}) {
+export function extractPageResources(html, baseUrl, { maxImages = 50, maxVideos = 3 } = {}) {
   const source = String(html || "");
-  const images = []; const videos = []; const embeds = [];
+  const images = []; const videos = []; const embeds = []; const pdfs = [];
+  const thumbs = new Set();   // 已有高清版的縮圖網址，不再下載
   const seenImages = new Set(); const seenVideos = new Set(); const seenEmbeds = new Set();
   const addImage = (value, hint = {}) => {
     const url = absolute(value, baseUrl);
@@ -91,6 +92,24 @@ export function extractPageResources(html, baseUrl, { maxImages = 30, maxVideos 
     seenEmbeds.add(url); embeds.push({ url });
   };
 
+  // v240 專利／圖庫類網頁：縮圖旁邊通常有高清版。Google Patents 的每張圖是
+  //   <li itemprop="images"><img itemprop="thumbnail" src="縮圖"><meta itemprop="full" content="高清圖">
+  // 先收高清版（排最前面），並把對應縮圖標記為不下載。（*這段依 Google Patents 的已知結構寫，
+  // 其他專利網站若結構不同會落到下面的一般規則。）
+  const fullTags = source.match(/<meta\b[^>]*\bitemprop\s*=\s*["']?(?:full|contentUrl)["']?[^>]*>/gi) || [];
+  for (const tag of fullTags) {
+    const a = parseAttrs(tag);
+    if (a.content && !VIDEO_EXT.test(a.content)) addImage(a.content);
+  }
+  for (const tag of source.match(/<img\b[^>]*\bitemprop\s*=\s*["']?thumbnail["']?[^>]*>/gi) || []) {
+    const thumb = absolute(parseAttrs(tag).src, baseUrl);
+    if (thumb && fullTags.length) thumbs.add(thumb);
+  }
+  // 論文／專利常見的 PDF 原檔宣告（Google Scholar、Google Patents、許多期刊網站都有）
+  for (const value of metaContent(source, ["citation_pdf_url"])) {
+    const url = absolute(value, baseUrl);
+    if (url && !pdfs.some((p) => p.url === url)) pdfs.push({ url });
+  }
   // og:image 通常是最具代表性的一張，排最前面
   for (const value of metaContent(source, ["og:image", "og:image:url", "og:image:secure_url", "twitter:image", "twitter:image:src"])) addImage(value);
   for (const value of metaContent(source, ["og:video", "og:video:url", "og:video:secure_url", "twitter:player:stream"])) {
@@ -99,11 +118,26 @@ export function extractPageResources(html, baseUrl, { maxImages = 30, maxVideos 
   }
 
   const body = source.replace(/<!--[\s\S]*?-->/g, "").replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+  // <a href="大圖"><img src="縮圖"></a>（燈箱／放大鏡）：連結指向的就是高清原圖
+  const linkedFull = new Set();
+  for (const m of body.matchAll(/<a\b[^>]*>\s*(?:<(?!img\b|\/a\b)[^>]+>\s*)*(<img\b[^>]*>)/gi)) {
+    const href = parseAttrs(m[0].match(/^<a\b[^>]*>/i)[0]).href;
+    const full = absolute(href, baseUrl);
+    if (full && IMAGE_EXT.test(full)) {
+      const img = parseAttrs(m[1]);
+      linkedFull.add(absolute(img.src || img["data-src"] || "", baseUrl));
+      addImage(full, { alt: img.alt });
+    }
+  }
   // 懶載入常把真正的 <img> 放在 <noscript>，所以不能先把 noscript 整段拿掉
   for (const tag of body.match(/<img\b[^>]*>/gi) || []) {
     const a = parseAttrs(tag);
+    // 常見的「高清圖」專用屬性優先於 src／srcset
+    const hires = a["data-full"] || a["data-large"] || a["data-zoom-image"] || a["data-zoom"] || a["data-hires"] || a["data-original-src"] || a["data-full-url"] || "";
     const srcset = a.srcset || a["data-srcset"] || "";
-    const pick = (srcset && bestSrcsetUrl(srcset)) || a["data-original"] || a["data-lazy-src"] || a["data-src"] || a.src;
+    const pick = hires || (srcset && bestSrcsetUrl(srcset)) || a["data-original"] || a["data-lazy-src"] || a["data-src"] || a.src;
+    const abs = absolute(pick, baseUrl);
+    if (thumbs.has(abs) || linkedFull.has(abs)) continue;
     addImage(pick, { alt: a.alt, width: a.width, height: a.height });
   }
   for (const tag of body.match(/<source\b[^>]*>/gi) || []) {
@@ -131,6 +165,7 @@ export function extractPageResources(html, baseUrl, { maxImages = 30, maxVideos 
     images: images.slice(0, maxImages),
     videos: videos.slice(0, maxVideos),
     embeds: embeds.slice(0, 10),
+    pdfs: pdfs.slice(0, 2),
     skipped: {
       images: Math.max(0, images.length - maxImages),
       videos: Math.max(0, videos.length - maxVideos),
