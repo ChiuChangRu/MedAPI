@@ -912,3 +912,7 @@ body.home-layout-editing .sketch-canvas { pointer-events: none; }
 .glossary-prompt { margin-top: 6px; font-size: 13px; }
 .glossary-prompt summary { cursor: pointer; color: var(--text-muted); }
 .folder-auto-created .link-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent, #2f6f5e); text-align: left; cursor: pointer; text-decoration: underline; }
+
+/* v246 Face ID 登入 */
+.passkey-settings { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+.passkey-login-btn { width: 100%; margin: 10px 0 4px; min-height: 48px; font-size: 16px; }

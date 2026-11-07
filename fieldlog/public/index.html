@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=245" />
-<link rel="stylesheet" href="home.css?v=245" />
+<link rel="stylesheet" href="style.css?v=246" />
+<link rel="stylesheet" href="home.css?v=246" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -78,7 +78,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=245">使用說明</a>
+        <a class="head-link" href="help.html?v=246">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -171,6 +171,13 @@
         <!-- v222 AI 建議新增資料夾；v238 可選「AI 可直接建立」，並列出近 7 天 AI 自動建立的資料夾供復原 -->
         <div id="folder-suggestions" class="folder-suggestions" hidden></div>
         <div id="inbox-list" class="entry-list"></div>
+        <!-- v246 Face ID 登入（WebAuthn passkey）：只有支援且已登入時才顯示 -->
+        <div class="passkey-settings" id="passkey-settings" hidden>
+          <label>Face ID 登入</label>
+          <span class="sub" id="passkey-status"></span>
+          <button class="btn small" id="btn-passkey-enable" type="button">啟用這支手機</button>
+          <button class="btn small" id="btn-passkey-remove" type="button" hidden>移除</button>
+        </div>
         <div class="ai-folder-mode">
           <label for="ai-folder-mode">AI 新增資料夾</label>
           <select id="ai-folder-mode">
@@ -619,6 +626,7 @@
     <h2>🎒 隨身記</h2>
     <p class="sub">輸入 PIN 碼進入。</p>
     <input type="password" id="login-pin" placeholder="PIN" />
+    <button class="btn primary passkey-login-btn" id="btn-passkey-login" type="button" hidden>🔐 使用 Face ID 登入</button>
     <div class="modal-actions"><button class="btn primary" id="btn-login">進入</button></div>
     <p class="sub" id="login-error" style="color:#b91c1c; display:none;"></p>
   </div>
@@ -741,10 +749,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=245"></script>
+<script src="pdf-editor.js?v=246"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=245"></script>
+<script src="richtext-editor.js?v=246"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -755,10 +763,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=245"></script>
-<script src="inspector.js?v=245"></script>
+<script src="file-selection.js?v=246"></script>
+<script src="inspector.js?v=246"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=245"></script>
+<script src="app.js?v=246"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

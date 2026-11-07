@@ -41,6 +41,7 @@ import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFol
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
+import { issueChallenge, loginOptions, registrationOptions, verifyAssertion, verifyRegistration } from "./lib/passkey.js";
 import { extractPageResources, extractPageText, imageWidth, mediaExtension, mediaFilename, mediaKind } from "./lib/page-extract.js";
 import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
 import { createAudioZipStream, recordingZipFilename } from "./lib/audio-zip.js";
@@ -137,7 +138,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "245";
+const UI_VERSION = "246";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1646,6 +1647,36 @@ async function handleApi(request, env, url, identity = {}) {
     if (plan.error) return bad(plan.error, plan.status);
     const id = await insertPlannedFolder(db, plan);
     return json({ id, ok: true, depth: plan.depth, max_depth: MAX_FOLDER_DEPTH });
+  }
+
+  // ---- v246 Face ID 登入的註冊與管理：必須已登入；AI（MCP）一律不行 ----
+  if (path === "/passkeys" && method === "GET") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以管理 Face ID 登入", 403);
+    const { results = [] } = await db.prepare("SELECT id, label, created_at, last_used_at FROM passkeys ORDER BY id").all();
+    return json({ passkeys: results });
+  }
+  if (path === "/passkey/register/options" && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以啟用 Face ID 登入", 403);
+    if (env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD) return bad("已啟用 Cloudflare Access，不使用 Passkey 登入", 404);
+    const { results = [] } = await db.prepare("SELECT credential_id FROM passkeys").all();
+    return json({ ok: true, options: registrationOptions(await issueChallenge(db, "register"), url, { excludeIds: results.map((r) => r.credential_id) }) });
+  }
+  if (path === "/passkey/register" && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以啟用 Face ID 登入", 403);
+    const body = await request.json().catch(() => ({}));
+    try {
+      const saved = await verifyRegistration(db, body, url, { label: body.label });
+      await logHistory(db, null, null, "啟用 Face ID 登入", String(body.label || "").slice(0, 60));
+      return json({ ok: true, ...saved });
+    } catch (error) { return bad(`啟用失敗：${error.message}`, 400); }
+  }
+  const passkeyMatch = path.match(/^\/passkeys\/(\d+)$/);
+  if (passkeyMatch && method === "DELETE") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以管理 Face ID 登入", 403);
+    const removed = await db.prepare("DELETE FROM passkeys WHERE id = ?").bind(Number(passkeyMatch[1])).run();
+    if (!Number(removed.meta?.changes || 0)) return bad("找不到這個登入裝置", 404);
+    await logHistory(db, null, null, "移除 Face ID 登入", `passkey ${passkeyMatch[1]}`);
+    return json({ ok: true });
   }
 
   // ---- v222 AI 建議新增資料夾：AI 提出 → 使用者在首頁同意／拒絕 ----
@@ -4469,6 +4500,48 @@ async function handleSession(request, env) {
   return new Response(JSON.stringify({ ok: true, expires_in: 43200 }), { headers });
 }
 
+/**
+ * v246 Face ID 登入：不需要先登入（它就是登入），所以放在驗證閘門之前。
+ * 換到的 Session 跟 PIN 登入完全相同；失敗過多會跟 PIN 一樣暫時鎖定。
+ */
+async function handlePasskeyLogin(request, env, url) {
+  if (env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD) return bad("已啟用 Cloudflare Access，不接受 Passkey 登入", 404);
+  if (isMcpCaller(url)) return bad("不開放", 403);
+  const fieldPin = String(env.FIELD_PIN || "").trim();
+  if (!fieldPin) return bad("尚未設定登入方式", 401);
+  await ensureSchema(env.DB, now());
+  const headers = new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  if (request.method !== "POST") return bad("只接受 POST", 405);
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  const clientKey = await sha256Hex(`passkey:${ip}:${fieldPin}`);
+  const attempt = await env.DB.prepare("SELECT * FROM auth_attempts WHERE client_key = ?").bind(clientKey).first();
+  if (attempt?.blocked_until && Date.parse(attempt.blocked_until) > Date.now()) return bad("登入嘗試過多，請稍後再試", 429);
+
+  if (url.pathname === "/api/passkey/login/options") {
+    const any = await env.DB.prepare("SELECT id FROM passkeys LIMIT 1").first();
+    if (!any) return bad("尚未啟用 Face ID 登入", 404);
+    return new Response(JSON.stringify({ ok: true, options: loginOptions(await issueChallenge(env.DB, "login"), url) }), { headers });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  try {
+    await verifyAssertion(env.DB, body, url);
+  } catch (error) {
+    const activeWindow = attempt && Date.now() - Date.parse(attempt.window_started_at) < 10 * 60 * 1000;
+    const failures = activeWindow ? Number(attempt.failures || 0) + 1 : 1;
+    const blockedUntil = failures >= 8 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : "";
+    await env.DB.prepare(
+      `INSERT INTO auth_attempts (client_key, failures, window_started_at, blocked_until) VALUES (?, ?, ?, ?)
+       ON CONFLICT(client_key) DO UPDATE SET failures = excluded.failures, window_started_at = excluded.window_started_at, blocked_until = excluded.blocked_until`
+    ).bind(clientKey, failures, activeWindow ? attempt.window_started_at : new Date().toISOString(), blockedUntil).run();
+    return bad(`Face ID 登入失敗：${error.message}`, failures >= 8 ? 429 : 401);
+  }
+  await env.DB.prepare("DELETE FROM auth_attempts WHERE client_key = ?").bind(clientKey).run();
+  const session = await createLegacySession(fieldPin);
+  headers.set("set-cookie", `__Host-myw_session=${session}; Path=/; Max-Age=43200; HttpOnly; Secure; SameSite=Strict`);
+  return new Response(JSON.stringify({ ok: true, expires_in: 43200 }), { headers });
+}
+
 const FILENAME_MAINTENANCE_KEY = "maintenance.filename_cleanup";
 const FILENAME_MAINTENANCE_VERSION = "2026-08-24-v1";
 
@@ -4557,6 +4630,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/api/session") return secureResponse(await handleSession(request, env));
+    if (url.pathname === "/api/passkey/login/options" || url.pathname === "/api/passkey/login") {
+      return secureResponse(await handlePasskeyLogin(request, env, url));
+    }
     // /wiki/* 是個人知識庫內容（wrangler run_worker_first 導進來的），
     // 與 API 同一套 PIN 驗證，通過才放行到靜態資產
     if (url.pathname.startsWith("/wiki/")) {

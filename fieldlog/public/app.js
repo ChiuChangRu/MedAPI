@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "245";
+const APP_VERSION = "246";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -828,6 +828,118 @@ function initUsageDetails() {
 function showLogin() {
   hideBootProgress();
   $("login-overlay").classList.add("open");
+  // 支援 Face ID 的裝置顯示登入按鈕；這支裝置註冊過就順手跳出（iOS 要使用者點一下才允許，被擋就維持按鈕）
+  passkeySupported().then((ok) => {
+    $("btn-passkey-login").hidden = !ok;
+    let enrolled = false;
+    try { enrolled = localStorage.getItem(PASSKEY_FLAG) === "1"; } catch { /* ignore */ }
+    if (ok && enrolled) passkeyLogin().catch(() => {});
+  });
+}
+
+// ---------- v246 Face ID／Touch ID 登入（WebAuthn passkey）----------
+const PASSKEY_FLAG = "fieldlog_passkey";
+const b64u = {
+  enc: (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
+  dec: (text) => Uint8Array.from(atob(String(text).replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(String(text).length / 4) * 4, "=")), (c) => c.charCodeAt(0)),
+};
+async function passkeySupported() {
+  try {
+    return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+  } catch { return false; }
+}
+function passkeyErrorText(error) {
+  if (error?.name === "NotAllowedError") return "已取消，或這個裝置還沒有可用的 Face ID Passkey";
+  if (error?.name === "InvalidStateError") return "這支手機已經註冊過了";
+  return error?.message || String(error);
+}
+
+async function passkeyLogin() {
+  const err = $("login-error");
+  err.style.display = "none";
+  const button = $("btn-passkey-login");
+  button.disabled = true;
+  try {
+    const optionsRes = await fetch("/api/passkey/login/options", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const optionsData = await optionsRes.json().catch(() => ({}));
+    if (!optionsRes.ok) throw new Error(optionsData.error || `HTTP ${optionsRes.status}`);
+    const o = optionsData.options;
+    const credential = await navigator.credentials.get({ publicKey: {
+      challenge: b64u.dec(o.challenge), rpId: o.rpId, userVerification: o.userVerification, timeout: o.timeout,
+    } });
+    const r = credential.response;
+    const loginRes = await fetch("/api/passkey/login", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: credential.id,
+        clientDataJSON: b64u.enc(r.clientDataJSON), authenticatorData: b64u.enc(r.authenticatorData), signature: b64u.enc(r.signature),
+      }),
+    });
+    const result = await loginRes.json().catch(() => ({}));
+    if (!loginRes.ok) throw new Error(result.error || `HTTP ${loginRes.status}`);
+    localStorage.removeItem("fieldlog_pin");
+    await finishLogin();
+  } catch (e) {
+    err.textContent = passkeyErrorText(e);
+    err.style.display = "block";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function enablePasskey() {
+  const button = $("btn-passkey-enable");
+  button.disabled = true;
+  try {
+    const optionsData = await api("/passkey/register/options", { method: "POST", body: "{}" });
+    const o = optionsData.options;
+    const credential = await navigator.credentials.create({ publicKey: {
+      ...o,
+      challenge: b64u.dec(o.challenge),
+      user: { ...o.user, id: b64u.dec(o.user.id) },
+      excludeCredentials: (o.excludeCredentials || []).map((c) => ({ ...c, id: b64u.dec(c.id) })),
+    } });
+    const r = credential.response;
+    if (typeof r.getPublicKey !== "function") throw new Error("這個瀏覽器不支援讀取 Passkey 公鑰，請更新 iOS／Safari");
+    const device = /iPhone/.test(navigator.userAgent) ? "iPhone" : /iPad/.test(navigator.userAgent) ? "iPad" : /Mac/.test(navigator.userAgent) ? "Mac" : "這個裝置";
+    await api("/passkey/register", { method: "POST", body: JSON.stringify({
+      id: credential.id, clientDataJSON: b64u.enc(r.clientDataJSON), publicKey: b64u.enc(r.getPublicKey()),
+      transports: r.getTransports?.() || [], label: `${device}（${new Date().toISOString().slice(0, 10)}）`,
+    }) });
+    try { localStorage.setItem(PASSKEY_FLAG, "1"); } catch { /* 存不了就算了 */ }
+    showToast("已啟用 Face ID 登入：下次開啟可直接用臉部登入");
+    await loadPasskeySettings();
+  } catch (e) {
+    alert(`啟用 Face ID 登入失敗：${passkeyErrorText(e)}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadPasskeySettings() {
+  const box = $("passkey-settings");
+  if (!box) return;
+  if (!await passkeySupported()) { box.hidden = true; return; }
+  let list = [];
+  try { list = (await api("/passkeys")).passkeys || []; } catch { box.hidden = true; return; }
+  box.hidden = false;
+  $("passkey-status").textContent = list.length ? `已啟用（${list.map((p) => p.label || "裝置").join("、")}）` : "尚未啟用";
+  $("btn-passkey-enable").textContent = list.length ? "再加一支裝置" : "啟用這支手機";
+  const remove = $("btn-passkey-remove");
+  remove.hidden = !list.length;
+  remove.onclick = async () => {
+    if (!confirm("移除全部 Face ID 登入？之後要用 PIN 登入，需要時可以再啟用。")) return;
+    for (const p of list) await api(`/passkeys/${p.id}`, { method: "DELETE" }).catch(() => {});
+    try { localStorage.removeItem(PASSKEY_FLAG); } catch { /* ignore */ }
+    await loadPasskeySettings();
+  };
+}
+
+async function finishLogin() {
+  $("login-pin").value = "";
+  const folders = await api("/folders");
+  $("login-overlay").classList.remove("open");
+  boot(folders);
 }
 
 async function doLogin() {
@@ -841,10 +953,7 @@ async function doLogin() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
     localStorage.removeItem("fieldlog_pin");
-    $("login-pin").value = "";
-    const folders = await api("/folders");
-    $("login-overlay").classList.remove("open");
-    boot(folders);
+    await finishLogin();
   } catch (e) {
     err.textContent = e.message;
     err.style.display = "block";
@@ -2526,6 +2635,7 @@ function initFolderSuggestions() {
 
 async function loadRecent() {
   loadFolderSuggestions().catch(() => {});
+  loadPasskeySettings().catch(() => {});
   const entries = await api("/entries/recent?limit=25");
   $("inbox-count").textContent = entries.length ? `（${entries.length}）` : "";
   $("inbox-panel").style.display = "block";
@@ -9004,6 +9114,8 @@ function init() {
   // 同時保留記事內的待補傳提示，讓使用者在成功前知道檔案仍在本機。
   window.addEventListener("online", () => { syncPendingFiles(); });
   $("btn-login").onclick = doLogin;
+  $("btn-passkey-login").onclick = passkeyLogin;
+  $("btn-passkey-enable").onclick = enablePasskey;
   $("login-pin").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
   $("btn-video").onclick = () => startVideo(null);
   $("btn-photo").onclick = () => startPhoto(null);
