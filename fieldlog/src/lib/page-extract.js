@@ -158,11 +158,28 @@ export function extractPageResources(html, baseUrl, { maxImages = 50, maxVideos 
     addEmbed(a.src || a["data-src"]);
   }
 
+  // v244 同檔名的其他網址＝同一張圖的另一個尺寸（縮圖／高清）。網頁常把高清版網址放在
+  // 別的屬性、JSON 或 data 欄位，不一定在 <img> 上；整份 HTML 掃一遍，把同檔名的網址記成
+  // alternates，下載時兩個都抓、留較大的那張。
+  const byName = new Map();
+  for (const m of source.replace(/\\\//g, "/").replace(/\\u0026/g, "&").matchAll(/https?:\/\/[^\s"'<>\\)]+?\.(?:png|jpe?g|webp|gif)(?=[\s"'<>\\)?#]|$)/gi)) {
+    const url = absolute(m[0], baseUrl);
+    if (!url || SKIP_IMAGE_EXT.test(url)) continue;
+    const key = decodeURIComponent(url.split("?")[0].split("/").pop() || "").toLowerCase();
+    if (!key) continue;
+    if (!byName.has(key)) byName.set(key, new Set());
+    byName.get(key).add(url);
+  }
+  for (const image of images) {
+    const key = decodeURIComponent(image.url.split("?")[0].split("/").pop() || "").toLowerCase();
+    const others = [...(byName.get(key) || [])].filter((u) => u !== image.url).slice(0, 4);
+    if (others.length) image.alternates = others;
+  }
   const title = decodeAttr(metaContent(source, ["og:title"])[0] || "")
     || decodeAttr(htmlToPlainText((source.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || "")).replace(/\s+/g, " ");
   return {
     title: title.trim().slice(0, 160),
-    images: images.slice(0, maxImages),
+    images: images.slice(0, maxImages).map((i) => ({ ...i })),
     videos: videos.slice(0, maxVideos),
     embeds: embeds.slice(0, 10),
     pdfs: pdfs.slice(0, 2),

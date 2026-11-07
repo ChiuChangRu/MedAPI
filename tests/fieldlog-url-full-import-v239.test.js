@@ -417,6 +417,59 @@ test("前端：圖面轉高清（renderPdfDrawings）與自動觸發條件", asy
   assert.match(fn, /2400 \/ base\.width/, "目標寬約 2400px");
   assert.doesNotMatch(fn, /\/ocr/, "不呼叫 AI 辨識，不耗額度");
   assert.match(fn, /existing\.has\(name\)/, "已轉過的頁面不重複");
-  assert.match(app, /s\.source_pdf && Number\(s\.max_image_width \|\| 0\) < 800/, "有 PDF 原檔且網頁圖很小才自動轉");
+  assert.match(app, /result\.saved\?\.source_pdf && Number\(result\.saved\.max_image_width \|\| 0\) < 800/, "有 PDF 原檔且網頁圖很小才自動轉");
+  assert.match(app, /alert\(`網頁內容已存好，但圖面轉高清圖片失敗/, "失敗要看得到（toast 只有 2.6 秒）");
   assert.match(app, /class="att-pdf-drawings"/, "PDF 附件上有手動按鈕");
+});
+
+// ---------- v244 同檔名的高清版：HTML 任何地方出現的同檔名網址都試，留較大的 ----------
+test("extractPageResources：縮圖網址在 <img>、高清網址藏在其他屬性／JSON 時，記成 alternates", () => {
+  const html = `<html><body><img src="https://img.example.org/aa/bb/US1-D00000.png">
+    <div data-config='{"full":"https:\\/\\/img.example.org\\/cc\\/dd\\/US1-D00000.png"}'></div></body></html>`;
+  const r = extractPageResources(html, "https://pat.example.org/x");
+  assert.equal(r.images.length, 1);
+  assert.deepEqual(r.images[0].alternates, ["https://img.example.org/cc/dd/US1-D00000.png"]);
+});
+
+test("import-url/full：同檔名有較大的版本時，存較大的那張（縮圖→高清）", async () => {
+  resetSchemaCacheForTests();
+  const db = d1();
+  const html = `<html><head><title>專利</title></head><body><article><p>內文</p>
+    <img src="https://img.example.org/thumb/US1-D00000.png">
+    <script>var cfg = {"full": "https://img.example.org/full/US1-D00000.png"};</script></article></body></html>`;
+  const fx = installFetch({
+    "https://pat.example.org/p": { body: html, headers: { "content-type": "text/html" } },
+    "https://img.example.org/thumb/US1-D00000.png": { body: pngWithWidth(87, 4000), headers: { "content-type": "image/png" } },
+    "https://img.example.org/full/US1-D00000.png": { body: pngWithWidth(1600, 90000), headers: { "content-type": "image/png" } },
+  });
+  try {
+    const folderId = await makeFolder(db);
+    const r = await runImport(db, { url: "https://pat.example.org/p", folder_id: folderId, include_pdf: false });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.saved.images, 1, "同一張圖只存一份");
+    assert.equal(r.body.saved.upgraded, 1);
+    assert.equal(r.body.saved.max_image_width, 1600);
+    const att = db.sqlite.prepare("SELECT size, source_url FROM attachments").get();
+    assert.equal(att.size, 90000);
+    assert.match(att.source_url, /\/full\//);
+  } finally { fx.restore(); }
+});
+
+test("import-url/full：只有縮圖時內文註明最大寬度，並提示用 PDF 圖面轉高清", async () => {
+  resetSchemaCacheForTests();
+  const db = d1();
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, ...bytes(6000, 5)]);
+  const html = `<html><head><title>專利</title><meta name="citation_pdf_url" content="https://img.example.org/p.pdf"></head><body><article><p>內文</p><img src="https://img.example.org/t.png"></article></body></html>`;
+  const fx = installFetch({
+    "https://pat.example.org/p": { body: html, headers: { "content-type": "text/html" } },
+    "https://img.example.org/t.png": { body: pngWithWidth(87, 4000), headers: { "content-type": "image/png" } },
+    "https://img.example.org/p.pdf": { body: pdf, headers: { "content-type": "application/pdf" } },
+  });
+  try {
+    const folderId = await makeFolder(db);
+    await runImport(db, { url: "https://pat.example.org/p", folder_id: folderId, include_pdf: false });
+    const body = db.sqlite.prepare("SELECT body FROM entries").get().body;
+    assert.match(body, /圖片最大寬度只有 87 像素/);
+    assert.match(body, /圖面轉高清圖片/);
+  } finally { fx.restore(); }
 });

@@ -137,7 +137,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "243";
+const UI_VERSION = "244";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -2501,17 +2501,29 @@ async function handleApi(request, env, url, identity = {}) {
       };
       // 圖片：4 張一批同時抓，依網頁出現順序存檔
       let imageNo = 0;
+      let extraFetches = 0;
+      const upgraded = { count: 0 };
       for (let i = 0; i < resources.images.length; i += FULL_IMPORT_BATCH) {
         if (totalBytes >= FULL_IMPORT_MAX_TOTAL_BYTES) { failures.push({ url: "", reason: "已達總容量上限，後面的圖片沒有下載" }); break; }
         const batch = resources.images.slice(i, i + FULL_IMPORT_BATCH);
         const results = await Promise.allSettled(batch.map((item) => fetchFullImportMedia(item, "photo", finalUrl)));
         for (let j = 0; j < results.length; j++) {
           const r = results[j];
-          if (r.status === "rejected") {
+          let media = r.status === "fulfilled" ? r.value : null;
+          // 同檔名的其他網址可能是高清版：也抓下來，留位元組較大的那張
+          for (const alt of batch[j].alternates || []) {
+            if (extraFetches >= 60) break;
+            extraFetches++;
+            try {
+              const other = await fetchFullImportMedia({ url: alt }, "photo", finalUrl);
+              if (!media || other.bytes.byteLength > media.bytes.byteLength) { media = other; upgraded.count++; }
+            } catch { /* 這個替代網址抓不到就算了 */ }
+          }
+          if (!media) {
             if (!/太小/.test(r.reason?.message || "")) failures.push({ url: batch[j].url, reason: String(r.reason?.message || r.reason).slice(0, 80) });
             continue;
           }
-          try { if (await storeMedia(r.value, "photo", imageNo + 1)) { imageNo++; saved.images++; } }
+          try { if (await storeMedia(media, "photo", imageNo + 1)) { imageNo++; saved.images++; } }
           catch (error) { failures.push({ url: batch[j].url, reason: `儲存失敗：${String(error.message).slice(0, 60)}` }); }
         }
       }
@@ -2567,11 +2579,15 @@ async function handleApi(request, env, url, identity = {}) {
         throw urlImportError("沒有抓到任何內容：網頁可能需要登入，或內容要靠 JavaScript 才會出現。需要登入的網頁請改用 MyWiki Clip 擴充功能。", 422);
       }
 
+      saved.upgraded = upgraded.count;
       const lines = [
         `來源：${sourceUrl.toString()}`,
         `匯入時間：${importedAt}`,
         `已下載：${saved.images} 張圖片、${saved.videos} 支影片${sourcePdfs ? `、${sourcePdfs} 份 PDF 原檔` : ""}${saved.pdf ? "、整頁 PDF" : ""}`,
       ];
+      if (saved.images && saved.max_image_width && saved.max_image_width < 800) {
+        lines.push(`圖片最大寬度只有 ${saved.max_image_width} 像素（網頁只提供小圖）${sourcePdfs ? "，可用 PDF 原檔的「圖面轉高清圖片」取得完整圖面" : ""}`);
+      }
       if (resources.skipped.images || resources.skipped.videos) {
         lines.push(`超過數量上限沒有下載：圖片 ${resources.skipped.images} 張、影片 ${resources.skipped.videos} 支`);
       }
