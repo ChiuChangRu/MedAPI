@@ -41,7 +41,7 @@ import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFol
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
-import { extractPageResources, extractPageText, mediaExtension, mediaFilename, mediaKind } from "./lib/page-extract.js";
+import { extractPageResources, extractPageText, imageWidth, mediaExtension, mediaFilename, mediaKind } from "./lib/page-extract.js";
 import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
 import { createAudioZipStream, recordingZipFilename } from "./lib/audio-zip.js";
 import {
@@ -137,7 +137,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "242";
+const UI_VERSION = "243";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -2447,7 +2447,7 @@ async function handleApi(request, env, url, identity = {}) {
       const importedAt = now();
       const baseFields = { source: "url_full_import", source_url: finalUrl, original_url: sourceUrl.toString(), imported_at: importedAt, ...(renderedHtml !== null ? { rendered_by_browser: true } : {}) };
       const failures = [];
-      const saved = { images: 0, videos: 0, pdf: false, files: 0 };
+      const saved = { images: 0, videos: 0, pdf: false, files: 0, max_image_width: 0 };
       let totalBytes = 0;
       const createEntry = async (title, entryBody, fields) => {
         const created = await db.prepare(
@@ -2495,6 +2495,7 @@ async function handleApi(request, env, url, identity = {}) {
         seenHashes.add(hash);
         const filename = mediaFilename(kind, counter, media.ext, media.url);
         await storeClipAttachment(db, env.FILES, entryId, filename, media.mime, media.bytes, media.url, kind);
+        if (kind === "photo") saved.max_image_width = Math.max(saved.max_image_width, imageWidth(media.bytes));
         totalBytes += media.bytes.byteLength;
         return true;
       };
@@ -2535,7 +2536,8 @@ async function handleApi(request, env, url, identity = {}) {
           if (seenHashes.has(hash)) continue;
           seenHashes.add(hash);
           const pdfName = contentDispositionFilename(f.response.headers.get("content-disposition")) || urlPathFilename(f.finalUrl) || title;
-          await storeClipAttachment(db, env.FILES, entryId, importedPdfFilename(sourcePdfs ? `${pdfName}-${sourcePdfs + 1}` : pdfName), "application/pdf", pdfBytes, f.finalUrl.toString());
+          const storedPdf = await storeClipAttachment(db, env.FILES, entryId, importedPdfFilename(sourcePdfs ? `${pdfName}-${sourcePdfs + 1}` : pdfName), "application/pdf", pdfBytes, f.finalUrl.toString());
+          if (!sourcePdfs) saved.source_pdf = { id: storedPdf.id, key: storedPdf.key, filename: storedPdf.filename };
           totalBytes += pdfBytes.byteLength; saved.files++; sourcePdfs++;
         } catch (error) {
           failures.push({ url: item.url, reason: `PDF 原檔下載失敗：${String(error.message || error).slice(0, 60)}` });

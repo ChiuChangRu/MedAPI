@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "242";
+const APP_VERSION = "243";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -5769,6 +5769,12 @@ async function submitUrlImport(event) {
       const parts = [`${s.images || 0} 張圖片`, `${s.videos || 0} 支影片`, s.source_pdfs ? `${s.source_pdfs} 份 PDF 原檔` : "", s.pdf ? "整頁 PDF" : ""].filter(Boolean).join("、");
       const notes = [(result.embeds || []).length ? `${result.embeds.length} 個內嵌影片只留連結` : "", (result.failures || []).length ? `${result.failures.length} 項下載失敗` : ""].filter(Boolean).join("；");
       showToast(`已下載「${result.title}」：${parts}${notes ? `（${notes}）` : ""}`);
+      // 有 PDF 原檔、但網頁上的圖很小（專利常見 300px）：自動把圖面頁轉成高清圖片存進同一筆紀錄
+      if (s.source_pdf && Number(s.max_image_width || 0) < 800) {
+        renderPdfDrawings(result.entry_id, s.source_pdf, { onProgress: (text) => showToast(text) })
+          .then((r) => { if (r.made) showToast(`已自動存入 ${r.made} 張高清圖面`); return openFolder(folderId); })
+          .catch((err) => showToast("圖面轉高清失敗：" + err.message));
+      }
     } else {
       showToast(result.format === "pdf"
         ? `已下載 PDF：${result.filename}`
@@ -6297,6 +6303,51 @@ async function processEntryAttachments(id, btn) {
 // Cloudflare Worker 沒有 PDF 渲染能力，這步只能在瀏覽器端用 pdf.js 把每一頁畫成圖片，
 // 再把每張頁面圖丟進既有的照片 OCR 流程——向量圖表跟排版化的技術參數文字都變成看得見
 // 的像素，Llama Vision 抄得到，也自動進搜尋索引，不用另外蓋一套 Tier 2 儲存/搜尋機制。
+// v243 PDF 圖面轉高清圖片：專利網頁上的圖常只有 300 像素寬的小圖，PDF 原檔裡才是完整圖面。
+// 在瀏覽器用 pdf.js 把「圖面頁」畫成大圖（寬約 2400px），直接上傳到同一筆紀錄的同一個資料夾，
+// 不經過電腦下載、也不呼叫 AI（不耗額度）。圖面頁＝文字少於 300 字的頁面；掃描檔沒有文字層時就全部頁面。
+async function renderPdfDrawings(entryId, pdfAtt, { onProgress = () => {}, maxPages = 40 } = {}) {
+  if (!window.pdfjsLib?.getDocument) throw new Error("PDF 渲染程式庫還沒載入，請稍後再試");
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  }
+  onProgress("下載 PDF…");
+  const fileRes = await fetch(fileUrlForKey(pdfAtt.key));
+  if (!fileRes.ok) throw new Error(`讀取 PDF 失敗（HTTP ${fileRes.status}）`);
+  const pdf = await pdfjsLib.getDocument({ data: await fileRes.arrayBuffer() }).promise;
+  const entry = await api(`/entries/${entryId}`);
+  const existing = new Set((entry.attachments || []).map((a) => a.filename));
+  // 先找圖面頁：文字項目很少的頁面
+  const sparse = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const text = await page.getTextContent();
+    // 用字數判斷（pdf.js 會把同一行的字合併成少數幾個項目，項目數不準）：文字頁通常上千字，圖面頁只有幾個標號
+    if (text.items.reduce((n, item) => n + String(item.str || "").length, 0) < 300) sparse.push(p);
+  }
+  const pages = (sparse.length ? sparse : Array.from({ length: pdf.numPages }, (_, i) => i + 1)).slice(0, maxPages);
+  let made = 0;
+  for (let i = 0; i < pages.length; i++) {
+    const p = pages[i];
+    const name = `圖面-p${String(p).padStart(2, "0")}.png`;
+    if (existing.has(name)) continue;
+    onProgress(`轉高清圖片 ${i + 1}/${pages.length}…`);
+    const page = await pdf.getPage(p);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(4, Math.max(2, 2400 / base.width));
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("畫布輸出失敗");
+    const uploaded = await putFile(entryId, blob, name, null, {});
+    if (!uploaded?.duplicate) made++;
+  }
+  return { made, pages: pages.length, total: pdf.numPages };
+}
+
 async function deepProcessPdf(entryId, pdfAtt, btn, existingPages = [], onComplete = null) {
   if (!window.pdfjsLib) { showToast("PDF 渲染程式庫載入失敗，請檢查網路連線後重新整理頁面再試"); return; }
   if (btn.disabled) return;
@@ -7155,7 +7206,8 @@ function attHtml(a, siblings) {
   const tier2Core = tier2Count
     ? `<p class="att-tier2">🔬 深度頁面：${tier2Done} 頁完成／${tier2Count} 頁已建立 <a href="#" class="att-tier2-btn" data-id="${a.id}">檢查並接續</a></p>`
     : `<p class="att-tier2"><a href="#" class="att-tier2-btn" data-id="${a.id}" title="把這份 PDF 逐頁轉成圖片並跑 AI 辨識，補齊一般擷取抓不到的圖形化排版/圖表內容。手動觸發、只處理這一份，較耗時間與額度">🔬 深度處理（逐頁轉圖辨識）</a></p>`;
-  const tier2Bit = !isPdfAtt(a) || !TRANSCRIBE_ENABLED ? "" : `${tier2Core}${tier2Warn}`;
+  const drawingsBit = isPdfAtt(a) ? `<p class="att-tier2"><a href="#" class="att-pdf-drawings" data-id="${a.id}" title="把這份 PDF 的圖面頁轉成高解析度圖片，存在同一個資料夾（不耗 AI 額度）">🖼 圖面轉高清圖片</a></p>` : "";
+  const tier2Bit = !isPdfAtt(a) ? "" : `${drawingsBit}${TRANSCRIBE_ENABLED ? `${tier2Core}${tier2Warn}` : ""}`;
   // PDF 塗鴉：實作在 pdf-editor.js（獨立載入，因為要動態抓 pdf-lib）。
   // 那支檔案載入後會掛上 window.fieldlogOpenPdfEditor；還沒載入完就先不顯示這個入口。
   const doodleBit = isPdfAtt(a) ? `<a href="#" class="att-pdf-doodle" data-id="${a.id}">✍️ 塗鴉</a>` : "";
@@ -7245,6 +7297,23 @@ function bindAttActions(entryId) {
         if (!attachment) throw new Error("找不到 PDF 附件");
         await window.fieldlogOpenPdfEditor(entryId, attachment);
       } catch (e) { showToast("開啟塗鴉失敗：" + e.message); }
+    };
+  });
+  document.querySelectorAll(".att-pdf-drawings").forEach((el) => {
+    el.onclick = async (ev) => {
+      ev.preventDefault();
+      if (el.dataset.busy) return;
+      el.dataset.busy = "1";
+      const label = el.textContent;
+      try {
+        const e = await api(`/entries/${entryId}`);
+        const pdfAtt = (e.attachments || []).find((x) => String(x.id) === el.dataset.id);
+        if (!pdfAtt) throw new Error("找不到 PDF 附件");
+        const r = await renderPdfDrawings(entryId, pdfAtt, { onProgress: (text) => { el.textContent = text; } });
+        showToast(r.made ? `已存入 ${r.made} 張高清圖面（共 ${r.pages} 頁）` : "這份 PDF 的圖面已經都轉過了");
+        await openEntry(entryId);
+      } catch (err) { showToast("轉換失敗：" + err.message); }
+      finally { delete el.dataset.busy; el.textContent = label; }
     };
   });
   // Tier 2 深度處理：手動觸發，一次只處理使用者點的這一份 PDF
