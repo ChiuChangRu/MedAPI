@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "237";
+const APP_VERSION = "238";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2458,10 +2458,20 @@ async function loadFolderSuggestions() {
   if (!wrap) return;
   let data;
   try { data = await api("/folder-suggestions"); } catch { wrap.hidden = true; return; }
-  if ($("ai-folder-mode")) $("ai-folder-mode").value = data.mode === "off" ? "off" : "suggest";
+  if ($("ai-folder-mode")) $("ai-folder-mode").value = ["off", "auto"].includes(data.mode) ? data.mode : "suggest";
   const list = data.suggestions || [];
-  wrap.hidden = !list.length;
-  wrap.innerHTML = list.length ? `<p class="folder-suggestions-title">AI 建議新增資料夾（${list.length}）</p>` + list.map((s) => `
+  const autoCreated = data.auto_created || [];
+  wrap.hidden = !list.length && !autoCreated.length;
+  const autoHtml = autoCreated.length ? `<p class="folder-suggestions-title">AI 最近自動建立的資料夾（${autoCreated.length}）</p>` + autoCreated.map((s) => `
+    <div class="folder-suggestion folder-auto-created" data-folder-id="${s.folder_id}">
+      <div class="folder-suggestion-main">
+        <button type="button" class="link-btn" data-open-folder="${s.folder_id}">${esc(s.name)}</button>
+        <small>${s.requested_by ? `提出：${esc(s.requested_by)}｜` : ""}${esc(localDateTimeShort(s.decided_at))}</small>
+        ${s.reason ? `<small class="folder-suggestion-reason">理由：${esc(s.reason)}</small>` : ""}
+      </div>
+      <div class="folder-suggestion-actions"><button type="button" class="btn small" data-undo-folder="${s.folder_id}">復原</button></div>
+    </div>`).join("") : "";
+  wrap.innerHTML = autoHtml + (list.length ? `<p class="folder-suggestions-title">AI 建議新增資料夾（${list.length}）</p>` + list.map((s) => `
     <div class="folder-suggestion" data-id="${s.id}">
       <div class="folder-suggestion-main">
         <input class="folder-suggestion-name" type="text" value="${esc(s.name)}" maxlength="80" aria-label="資料夾名稱，可修改後再同意" />
@@ -2472,7 +2482,17 @@ async function loadFolderSuggestions() {
         <button type="button" class="btn small primary" data-approve="${s.id}">同意建立</button>
         <button type="button" class="btn small" data-reject="${s.id}">拒絕</button>
       </div>
-    </div>`).join("") : "";
+    </div>`).join("") : "");
+  wrap.querySelectorAll("[data-open-folder]").forEach((b) => b.onclick = () => openFolder(Number(b.dataset.openFolder)));
+  wrap.querySelectorAll("[data-undo-folder]").forEach((b) => b.onclick = async () => {
+    if (!confirm("把這個 AI 建立的資料夾（連同裡面已放的內容）移到垃圾桶？垃圾桶保留 60 天，可還原。")) return;
+    b.disabled = true;
+    try {
+      await api(`/folders/${b.dataset.undoFolder}`, { method: "DELETE" });
+      showToast("已移到垃圾桶");
+      await Promise.all([loadFolders(), loadFolderSuggestions()]);
+    } catch (err) { b.disabled = false; showToast("復原失敗：" + err.message); }
+  });
   wrap.querySelectorAll("[data-approve]").forEach((b) => b.onclick = async () => {
     const card = b.closest(".folder-suggestion");
     const name = card.querySelector(".folder-suggestion-name").value.trim();
@@ -2499,7 +2519,7 @@ function initFolderSuggestions() {
   select.onchange = async () => {
     try {
       await api("/folder-suggestions/mode", { method: "PUT", body: JSON.stringify({ mode: select.value }) });
-      showToast(select.value === "off" ? "已禁止 AI 新增資料夾" : "AI 新增資料夾：先建議，由你確認");
+      showToast({ off: "已禁止 AI 新增資料夾", auto: "AI 可直接建立資料夾（每天最多 10 個，可在這裡復原）" }[select.value] || "AI 新增資料夾：先建議，由你確認");
     } catch (err) { showToast("設定失敗：" + err.message); }
   };
 }

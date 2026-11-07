@@ -84,10 +84,76 @@ test("關閉後 AI 不能建議；只有本人能改設定", async () => {
   assert.equal((await call(env, WEB, "/folder-suggestions")).body.mode, "off");
 });
 
-test("MCP 有 suggest_folder 工具，說明 AI 不能直接建立", async () => {
+test("MCP 有 suggest_folder 工具，說明三種模式（直接建立／先建議／禁止）", async () => {
   const mcp = await read("../mcp/src/worker.js");
   assert.match(mcp, /name: "suggest_folder"/);
   assert.match(mcp, /fieldlog\.internal\/api\/folder-suggestions/);
-  assert.match(mcp, /AI 不能直接建立資料夾：需要新資料夾時用 suggest_folder/);
+  assert.match(mcp, /新增資料夾用 suggest_folder：使用者在隨身記首頁選「AI 可直接建立」/);
   assert.doesNotMatch(mcp, /fieldlog\.internal\/api\/folders"\)[\s\S]{0,200}method: "POST"/, "MCP 不直接 POST /folders");
+});
+
+test("v238 auto 模式：AI 經 suggest_folder 直接建立，本人送的仍走確認；有層數／同名／每日上限保護", async () => {
+  resetSchemaCacheForTests();
+  const db = d1();
+  const env = { DB: db };
+  // AI 不能自己切到 auto
+  assert.equal((await call(env, AI, "/folder-suggestions/mode", "PUT", { mode: "auto" })).status, 403);
+  assert.equal((await call(env, WEB, "/folder-suggestions/mode", "PUT", { mode: "auto" })).body.mode, "auto");
+  assert.equal((await call(env, WEB, "/folder-suggestions")).body.mode, "auto");
+  // 預設與無效值仍是 suggest
+  assert.equal((await call(env, WEB, "/folder-suggestions/mode", "PUT", { mode: "bogus" })).body.mode, "suggest");
+  await call(env, WEB, "/folder-suggestions/mode", "PUT", { mode: "auto" });
+
+  const parent = await call(env, WEB, "/folders", "POST", { name: "專案乙", category: "project" });
+  const made = await call(env, AI, "/folder-suggestions", "POST", { name: "試驗報告", parent_id: parent.body.id, reason: "放試驗報告", requested_by: "Claude" });
+  assert.equal(made.status, 200);
+  assert.equal(made.body.status, "created");
+  const folder = db.sqlite.prepare("SELECT * FROM folders WHERE id = ?").get(made.body.folder_id);
+  assert.equal(folder.name, "試驗報告");
+  assert.equal(folder.parent_id, parent.body.id);
+  const hist = db.sqlite.prepare("SELECT detail FROM history WHERE folder_id = ? AND action = '建立資料夾'").get(made.body.folder_id);
+  assert.match(hist.detail, /AI 自動建立（Claude），理由：放試驗報告/);
+
+  // 首頁可看到自動建立的紀錄，不會出現在待確認
+  const list = (await call(env, WEB, "/folder-suggestions")).body;
+  assert.equal(list.suggestions.length, 0);
+  assert.equal(list.auto_created.length, 1);
+  assert.equal(list.auto_created[0].folder_id, made.body.folder_id);
+
+  // 同名仍擋下並回既有 id
+  const dup = await call(env, AI, "/folder-suggestions", "POST", { name: "試驗報告", parent_id: parent.body.id, reason: "重複" });
+  assert.equal(dup.status, 409);
+  assert.equal(dup.body.existing_folder_id, made.body.folder_id);
+
+  // 本人在網頁送的建議仍是待確認（不因 auto 而直接建）
+  const web = await call(env, WEB, "/folder-suggestions", "POST", { name: "本人建議", category: "misc", reason: "x" });
+  assert.equal(web.body.status, "pending");
+
+  // 復原＝移到垃圾桶後不再列在 auto_created
+  assert.equal((await call(env, WEB, `/folders/${made.body.folder_id}`, "DELETE")).body.trashed, true);
+  assert.equal((await call(env, WEB, "/folder-suggestions")).body.auto_created.length, 0);
+
+  // 每日上限：用滿後退回「先建議」
+  for (let i = 0; i < 9; i++) {
+    const r = await call(env, AI, "/folder-suggestions", "POST", { name: `自動${i}`, category: "misc", reason: "批次" });
+    assert.equal(r.body.status, "created", `第 ${i + 2} 個仍可自動建立`);
+  }
+  const over = await call(env, AI, "/folder-suggestions", "POST", { name: "超額", category: "misc", reason: "批次" });
+  assert.equal(over.body.status, "pending", "超過每日上限改為等待確認");
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM folders WHERE name = '超額'").get().n, 0);
+});
+
+test("v238 auto 模式仍擋四層深度；AI 直接 POST /folders 仍被擋", async () => {
+  resetSchemaCacheForTests();
+  const env = { DB: d1() };
+  await call(env, WEB, "/folder-suggestions/mode", "PUT", { mode: "auto" });
+  assert.equal((await call(env, AI, "/folders", "POST", { name: "直接建", category: "misc" })).status, 403);
+  let parentId = (await call(env, WEB, "/folders", "POST", { name: "L1", category: "project" })).body.id;
+  for (const name of ["L2", "L3", "L4"]) {
+    const r = await call(env, AI, "/folder-suggestions", "POST", { name, parent_id: parentId, reason: "層級" });
+    assert.equal(r.body.status, "created");
+    parentId = r.body.folder_id;
+  }
+  const tooDeep = await call(env, AI, "/folder-suggestions", "POST", { name: "L5", parent_id: parentId, reason: "太深" });
+  assert.equal(tooDeep.status >= 400, true, "第五層被擋下");
 });

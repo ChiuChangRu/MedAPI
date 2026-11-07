@@ -911,3 +911,4 @@ body.home-layout-editing .sketch-canvas { pointer-events: none; }
 .glossary-actions small { color: var(--text-muted); }
 .glossary-prompt { margin-top: 6px; font-size: 13px; }
 .glossary-prompt summary { cursor: pointer; color: var(--text-muted); }
+.folder-auto-created .link-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent, #2f6f5e); text-align: left; cursor: pointer; text-decoration: underline; }
