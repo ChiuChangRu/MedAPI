@@ -61,6 +61,21 @@ export const SCHEMA = [
     access_count INTEGER DEFAULT 0,
     last_accessed_at TEXT DEFAULT ''
   )`,
+  // v246 Face ID／Touch ID 登入（WebAuthn passkey）：已註冊的公鑰，與一次性挑戰碼
+  `CREATE TABLE IF NOT EXISTS passkeys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    credential_id TEXT NOT NULL UNIQUE,
+    public_key TEXT NOT NULL,
+    label TEXT DEFAULT '',
+    transports TEXT DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    last_used_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS webauthn_challenges (
+    challenge TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS auth_attempts (
     client_key TEXT PRIMARY KEY,
     failures INTEGER DEFAULT 0,
