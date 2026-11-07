@@ -243,7 +243,7 @@ test("PDF 預覽使用 PDF.js，舊檔 MIME 會由資料庫與副檔名修正", 
   ]);
   assert.match(app, /async function renderPdfPreview/);
   assert.match(app, /pdfjsLib\.getDocument/);
-  assert.match(app, /else if \(pdf\) await renderPdfPreview/);
+  assert.match(app, /else if \(pdf\) \{\s*await renderPdfPreview/);
   assert.match(worker, /SELECT a\.id, a\.mime, a\.filename FROM attachments/);
   assert.match(worker, /pdf: "application\/pdf"/);
 });

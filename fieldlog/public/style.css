@@ -2501,3 +2501,7 @@ body.reader-fullscreen .folder-preview {
 #folder-entries.details-view > .entry-row > .explorer-icon { grid-area: icon; }
 #folder-entries.list-view > .explorer-item > :is(.child-folder-edit, .child-folder-move, .record-group-drag, .record-group-rename, .record-group-move, .record-group-del, .record-group-manage, .entry-drag, .entry-move, .entry-merge, .entry-del, .entry-secondary, .folder-file-meta, .folder-file-delete, .folder-file-manage) { display: none !important; }
 #folder-entries.list-view > .entry-row .entry-link { text-decoration: none; }
+
+/* v245 PDF 預覽：圖面轉高清按鈕獨立一列，窄欄位也看得到 */
+.pdf-drawings-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: #f6faf8; }
+.pdf-drawings-bar .sub { font-size: 12px; min-width: 0; }
