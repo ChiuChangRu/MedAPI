@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=246" />
-<link rel="stylesheet" href="home.css?v=246" />
+<link rel="stylesheet" href="style.css?v=247" />
+<link rel="stylesheet" href="home.css?v=247" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -39,7 +39,7 @@
   <div id="file-selection-bar" class="file-selection-bar" hidden>
     <span id="file-selection-count" role="status" aria-live="polite"></span>
     <button id="file-selection-move" class="btn small" type="button">移動</button>
-    <button id="file-selection-ai-name" class="btn small" type="button" title="讀檔案內容，建議「公司_產品_文件類型」檔名，確認後才套用">AI 命名</button>
+    <button id="file-selection-ai-name" class="btn small" type="button" title="讀內容，依固定命名法則建議名稱，並建議搬到合適的位置，確認後才套用（檔案、記事、資料夾都可以）">AI 整理</button>
     <button id="file-selection-trash" class="btn small danger" type="button">刪除</button>
     <button id="file-selection-clear" class="btn small ghost" type="button">取消選取</button>
   </div>
@@ -78,7 +78,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=246">使用說明</a>
+        <a class="head-link" href="help.html?v=247">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -733,11 +733,25 @@
   </div>
 </div>
 
-<!-- v233 AI 命名：逐一讀檔案內容產生建議檔名，可修改、勾選後才套用 -->
+<!-- v247 AI 整理：任何檔案／記事／資料夾 → 依命名法則建議名稱、建議搬到合適位置；使用者勾選確認後才套用 -->
 <div class="overlay" id="ai-naming-overlay" aria-hidden="true">
   <div class="modal ai-naming-modal" role="dialog" aria-modal="true" aria-labelledby="ai-naming-title">
-    <h2 id="ai-naming-title">AI 建議檔名</h2>
-    <p class="sub">依檔案內容與下載來源判斷「公司_產品_文件類型」。可直接修改，只會套用有勾選的；原始檔名會保留。</p>
+    <h2 id="ai-naming-title">AI 整理建議</h2>
+    <p class="sub">AI 讀內容後建議名稱與位置。可直接修改名稱、換位置，只會套用有勾選的；檔案的原始檔名會保留，資料夾可從垃圾桶還原。</p>
+    <div class="ai-organize-options">
+      <label><input type="checkbox" id="ai-want-name" checked> 建議名稱</label>
+      <label><input type="checkbox" id="ai-want-move" checked> 建議搬到合適位置</label>
+    </div>
+    <details class="ai-naming-rules"><summary>命名法則</summary>
+      <ul>
+        <li><b>文件</b>（PDF、Word、Excel、簡報、專利）：公司_產品_文件類型，例如 BD_Mission Core Biopsy Instrument_使用說明書.pdf</li>
+        <li><b>照片、影片</b>：日期_主題，例如 20261107_活檢針斷面觀察.jpg</li>
+        <li><b>錄音</b>：日期_主題，例如 20261107_廠商拜訪訪談.m4a</li>
+        <li><b>記事／資料包</b>：簡短主題（30 字內、不含日期），例如 天虹科技參訪重點</li>
+        <li><b>資料夾</b>：依層級——① 產品或專案　② 文件類型　③ 主題／試驗／標準系列　④ 年份或版本</li>
+      </ul>
+      <p class="sub">【AI彙整】開頭的記事、週報與待分類容器是系統慣例，不會改名。</p>
+    </details>
     <div id="ai-naming-list" class="ai-naming-list"></div>
     <div class="modal-actions">
       <button class="btn" id="ai-naming-cancel" type="button">取消</button>
@@ -749,10 +763,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=246"></script>
+<script src="pdf-editor.js?v=247"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=246"></script>
+<script src="richtext-editor.js?v=247"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -763,10 +777,10 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=246"></script>
-<script src="inspector.js?v=246"></script>
+<script src="file-selection.js?v=247"></script>
+<script src="inspector.js?v=247"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=246"></script>
+<script src="app.js?v=247"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
