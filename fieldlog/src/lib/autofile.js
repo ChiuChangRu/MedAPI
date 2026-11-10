@@ -182,7 +182,7 @@ function entryContent(entry, attachments) {
   return [entry.title, fields, body, attachmentText].map(compactText).filter(Boolean).join("\n").slice(0, 8000);
 }
 
-async function vectorFolderSuggestion(env, runAi, content, entryId, allowedFolderIds) {
+export async function vectorFolderSuggestion(env, runAi, content, entryId, allowedFolderIds) {
   if (!env.VECTOR_INDEX || !runAi || !content) return null;
   const embedded = await runAi(AUTOFILING_EMBED_MODEL, { text: content.slice(0, 3000) });
   const vector = embeddingVector(embedded);

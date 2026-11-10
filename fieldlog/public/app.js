@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "246";
+const APP_VERSION = "247";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -2343,42 +2343,75 @@ function initTranscribeGlossary() {
   };
 }
 
-// v233 AI 命名：選取的檔案逐一請伺服器讀內容產生建議（POST /attachments/:id/suggest-name），
-// 使用者可改、可取消勾選，按「套用」才用一般改名 API 改檔名。
+// v247 AI 整理（v233 AI 命名的擴充）：選取任何檔案、記事或資料夾，逐一請伺服器讀內容，
+// 依固定命名法則建議名稱，並建議搬到合適的位置（POST /ai-organize）。
+// 使用者可改名稱、換目標資料夾、取消勾選；按「套用」才用一般的改名／搬移 API 動手，AI 自己不改任何東西。
 let AI_NAMING_RUN = 0;
+const AI_ORGANIZE_TYPE_LABEL = { attachment: "檔案", entry: "記事", folder: "資料夾" };
 async function openAiNaming(items) {
-  const files = (items || []).filter((item) => item.type === "attachment");
-  if (!files.length) { showToast("請先選取檔案（AI 命名只處理檔案，不處理資料夾或筆記）"); return; }
+  items = (items || []).filter((item) => ["attachment", "entry", "folder"].includes(item.type));
+  if (!items.length) { showToast("請先選取要整理的檔案、記事或資料夾"); return; }
+  if (items.length > 30 && !confirm(`一次選了 ${items.length} 項，AI 會逐項分析，耗時較久也會用到 AI 額度。確定繼續嗎？`)) return;
   const run = ++AI_NAMING_RUN;
   const overlay = $("ai-naming-overlay");
   const list = $("ai-naming-list");
-  list.innerHTML = files.map((f) => `<div class="ai-naming-row" data-att="${f.id}" data-entry="${f.entryId}">
-      <label class="ai-naming-check"><input type="checkbox" disabled></label>
+  list.innerHTML = items.map((f) => `<div class="ai-naming-row" data-type="${f.type}" data-id="${f.id}" data-entry="${f.entryId || ""}">
       <div class="ai-naming-body">
-        <small class="ai-naming-current">${esc(f.title)}</small>
-        <input class="ai-naming-input" type="text" maxlength="240" placeholder="分析中…" disabled>
-        <small class="ai-naming-status">讀取內容中…</small>
+        <small class="ai-naming-current"><b>${AI_ORGANIZE_TYPE_LABEL[f.type]}</b>　${esc(f.title)}</small>
+        <label class="ai-naming-line"><input type="checkbox" class="ai-name-check" disabled><input class="ai-naming-input" type="text" maxlength="240" placeholder="分析中…" disabled></label>
+        <small class="ai-naming-status ai-name-status">讀取內容中…</small>
+        <label class="ai-naming-line ai-move-line" hidden><input type="checkbox" class="ai-move-check" disabled><span class="ai-move-text"></span><button type="button" class="btn small ai-move-change">換位置</button></label>
+        <small class="ai-naming-status ai-move-status"></small>
       </div>
     </div>`).join("");
   overlay.classList.add("open");
   overlay.setAttribute("aria-hidden", "false");
   $("ai-naming-apply").disabled = true;
+  const wantName = $("ai-want-name").checked;
+  const wantMove = $("ai-want-move").checked;
   $("ai-naming-cancel").onclick = () => { AI_NAMING_RUN++; overlay.classList.remove("open"); overlay.setAttribute("aria-hidden", "true"); };
   $("ai-naming-apply").onclick = () => applyAiNaming(run);
-  for (const f of files) {
+  for (const f of items) {
     if (run !== AI_NAMING_RUN) return;
-    const row = list.querySelector(`[data-att="${f.id}"]`);
+    const row = list.querySelector(`[data-type="${f.type}"][data-id="${f.id}"]`);
     const input = row.querySelector(".ai-naming-input");
-    const check = row.querySelector("input[type=checkbox]");
-    const status = row.querySelector(".ai-naming-status");
+    const check = row.querySelector(".ai-name-check");
+    const status = row.querySelector(".ai-name-status");
+    const moveLine = row.querySelector(".ai-move-line");
+    const moveCheck = row.querySelector(".ai-move-check");
+    const moveText = row.querySelector(".ai-move-text");
+    const moveStatus = row.querySelector(".ai-move-status");
     try {
-      const r = await api(`/attachments/${f.id}/suggest-name`, { method: "POST", body: "{}" });
+      const r = await api("/ai-organize", { method: "POST", body: JSON.stringify({ type: f.type, id: f.id, want_name: wantName, want_move: wantMove }) });
       if (run !== AI_NAMING_RUN) return;
-      input.value = r.filename;
-      input.disabled = false;
-      check.disabled = false;
-      check.checked = r.filename !== r.current;
-      status.textContent = [r.company && `公司：${r.company}`, r.product && `產品：${r.product}`, r.doc_type && `類型：${r.doc_type}`].filter(Boolean).join("｜");
+      input.value = r.name || r.current || f.title;
+      input.disabled = !wantName;
+      check.disabled = !r.name;
+      check.checked = !!r.name;
+      const parts = r.parts ? [r.parts.company && `公司：${r.parts.company}`, r.parts.product && `產品：${r.parts.product}`, r.parts.doc_type && `類型：${r.parts.doc_type}`].filter(Boolean).join("｜") : "";
+      status.textContent = wantName ? (r.name ? [r.rule && `法則：${r.rule}`, parts].filter(Boolean).join("｜") : (r.name_note || "沒有名稱建議")) : "";
+      row._move = r.move || null;
+      if (r.move) {
+        moveLine.hidden = false;
+        moveCheck.disabled = false;
+        moveCheck.checked = true;
+        const m = r.move;
+        moveText.textContent = m.new_folder
+          ? `建立新資料夾「${m.new_folder.name}」（在 ${m.new_folder.parent_path} 底下）並搬入${m.reason ? `：${m.reason}` : ""}`
+          : `搬到「${m.path}」${m.confidence ? `（把握：${m.confidence}）` : ""}${m.reason ? `：${m.reason}` : ""}`;
+        moveStatus.textContent = m.current_path ? `目前位置：${m.current_path}` : "";
+        row.querySelector(".ai-move-change").onclick = async () => {
+          const picked = await openFolderPicker({ title: "改搬到哪個資料夾", allowInbox: false });
+          if (!picked) return;
+          const name = picked.name || FOLDERS.find((x) => x.id === picked.id)?.name || "資料夾";
+          row._move = { folder_id: picked.id, path: folderDisplayPath(FOLDERS.find((x) => Number(x.id) === Number(picked.id)) || { name, id: picked.id }).join(" ／ ") || name, reason: "手動指定", current_path: m.current_path };
+          moveText.textContent = `搬到「${row._move.path}」（手動指定）`;
+          moveCheck.checked = true;
+        };
+      } else if (wantMove) {
+        moveLine.hidden = true;
+        moveStatus.textContent = r.move_note ? `位置：${r.move_note}` : "";
+      }
     } catch (err) {
       if (run !== AI_NAMING_RUN) return;
       input.value = f.title;
@@ -2393,30 +2426,59 @@ async function openAiNaming(items) {
 }
 
 async function applyAiNaming(run) {
-  const rows = [...$("ai-naming-list").querySelectorAll(".ai-naming-row")]
-    .filter((row) => row.querySelector("input[type=checkbox]").checked && row.querySelector(".ai-naming-input").value.trim());
-  if (!rows.length) { showToast("沒有勾選要套用的檔名"); return; }
+  const rows = [...$("ai-naming-list").querySelectorAll(".ai-naming-row")].filter((row) =>
+    (row.querySelector(".ai-name-check").checked && row.querySelector(".ai-naming-input").value.trim())
+    || (row.querySelector(".ai-move-check").checked && row._move));
+  if (!rows.length) { showToast("沒有勾選要套用的項目"); return; }
   $("ai-naming-apply").disabled = true;
-  let done = 0;
+  let renamed = 0, moved = 0, failed = 0, createdFolders = 0;
+  const newFolderIds = new Map();
   for (const row of rows) {
-    const name = row.querySelector(".ai-naming-input").value.trim();
+    const type = row.dataset.type, id = Number(row.dataset.id);
+    const status = row.querySelector(".ai-name-status");
     try {
-      const r = await api(`/attachments/${row.dataset.att}`, { method: "PUT", body: JSON.stringify({ filename: name }) });
-      if (typeof updateInspectorFilename === "function") updateInspectorFilename(Number(row.dataset.att), r.filename || name);
-      done++;
+      if (row.querySelector(".ai-name-check").checked && row.querySelector(".ai-naming-input").value.trim()) {
+        const name = row.querySelector(".ai-naming-input").value.trim();
+        if (type === "attachment") {
+          const r = await api(`/attachments/${id}`, { method: "PUT", body: JSON.stringify({ filename: name }) });
+          if (typeof updateInspectorFilename === "function") updateInspectorFilename(id, r.filename || name);
+        } else if (type === "entry") await api(`/entries/${id}`, { method: "PUT", body: JSON.stringify({ title: name }) });
+        else await api(`/folders/${id}`, { method: "PUT", body: JSON.stringify({ name }) });
+        renamed++;
+      }
+      if (row.querySelector(".ai-move-check").checked && row._move) {
+        const m = row._move;
+        let targetId = m.folder_id;
+        if (m.new_folder) {
+          // 使用者在對話框勾選同意，才由這裡（使用者本人的操作）建立新資料夾
+          const key = `${m.new_folder.parent_id}:${m.new_folder.name}`;
+          if (!newFolderIds.has(key)) {
+            const created = await api("/folders", { method: "POST", body: JSON.stringify({ name: m.new_folder.name, parent_id: m.new_folder.parent_id, type: m.new_folder.type || "其他" }) });
+            newFolderIds.set(key, created.id);
+            createdFolders++;
+          }
+          targetId = newFolderIds.get(key);
+        }
+        if (type === "attachment") await api(`/attachments/${id}/move`, { method: "POST", body: JSON.stringify({ folder_id: targetId }) });
+        else if (type === "entry") await api(`/entries/${id}`, { method: "PUT", body: JSON.stringify({ folder_id: targetId }) });
+        else await api(`/folders/${id}`, { method: "PUT", body: JSON.stringify({ parent_id: targetId }) });
+        moved++;
+      }
     } catch (err) {
-      const status = row.querySelector(".ai-naming-status");
-      status.textContent = `改名失敗：${err.message}`;
+      failed++;
+      status.textContent = `套用失敗：${err.message}`;
       status.classList.add("error");
     }
   }
-  if (run === AI_NAMING_RUN && done === rows.length) {
+  if (run === AI_NAMING_RUN && !failed) {
     $("ai-naming-overlay").classList.remove("open");
     $("ai-naming-overlay").setAttribute("aria-hidden", "true");
   }
   $("ai-naming-apply").disabled = false;
-  showToast(`已改名 ${done} 個檔案`);
-  if (CURRENT_FOLDER) openFolder(CURRENT_FOLDER.id);
+  showToast(`已改名 ${renamed} 項、搬動 ${moved} 項${createdFolders ? `、新建 ${createdFolders} 個資料夾` : ""}${failed ? `；${failed} 項失敗` : ""}`);
+  if (typeof clearFileSelection === "function") clearFileSelection();
+  await loadFolders().catch(() => {});
+  if (CURRENT_FOLDER && FOLDERS.some((x) => Number(x.id) === Number(CURRENT_FOLDER.id))) openFolder(CURRENT_FOLDER.id); else backHome?.();
 }
 
 function initHomeWidgets() {

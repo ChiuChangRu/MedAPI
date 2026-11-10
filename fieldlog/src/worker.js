@@ -41,6 +41,10 @@ import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFol
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
 import { htmlToPlainText, sanitizeEntryHtml, textToHtml } from "./lib/richtext.js";
+import {
+  attachmentRuleKey, cleanName, composeOrganizedName, folderSubtree, MAX_FOLDER_DEPTH as ORGANIZE_MAX_DEPTH,
+  suggestGenericName, suggestMove, withPaths,
+} from "./lib/ai-organize.js";
 import { issueChallenge, loginOptions, registrationOptions, verifyAssertion, verifyRegistration } from "./lib/passkey.js";
 import { extractPageResources, extractPageText, imageWidth, mediaExtension, mediaFilename, mediaKind } from "./lib/page-extract.js";
 import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
@@ -138,7 +142,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "246";
+const UI_VERSION = "247";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -4239,24 +4243,7 @@ async function handleApi(request, env, url, identity = {}) {
     if (att.kind === "audio") return bad("錄音檔請用逐字稿自動命名");
     try { await enforceAiSoftBudget(env); }
     catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
-    let text = String(att.ocr_text || "").trim();
-    const isPdf = (att.mime || "") === "application/pdf" || /\.pdf$/i.test(att.filename || "");
-    const nativeKind = !isPdf ? detectNativeTextKind(att.filename, att.mime) : null;
-    if (!text && env.FILES && (isPdf || (nativeKind && nativeKind !== "legacy-office"))) {
-      const obj = await env.FILES.get(att.key);
-      if (obj) {
-        try {
-          if (isPdf) {
-            const converted = await env.AI.toMarkdown([{ name: att.filename, blob: new Blob([await obj.arrayBuffer()], { type: "application/pdf" }) }]);
-            text = stripPdfMetadata(converted?.[0]?.data || "").slice(0, 60000);
-          } else {
-            text = (await extractNativeText(nativeKind, new Uint8Array(await obj.arrayBuffer()))).trim();
-          }
-          await db.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
-          await triggerEmbedding(env, { kind: "attachment", id, entryId: att.entry_id, textContent: text });
-        } catch { /* 擷取失敗就只用檔名與來源網址判斷 */ }
-      }
-    }
+    const text = await ensureAttachmentText(env, db, att);
     const context = await db.prepare(
       `SELECT e.fields_json, e.folder_id FROM entries e WHERE e.id = ?`
     ).bind(att.entry_id).first();
@@ -4272,6 +4259,159 @@ async function handleApi(request, env, url, identity = {}) {
     } catch (err) {
       return bad(`AI 命名失敗：${err.message}`, 502);
     }
+  }
+
+  // ---- v247 AI 整理：任何檔案／記事／資料夾 → 建議名稱（固定命名法則）＋建議搬到哪裡 ----
+  // 只回建議，不改任何東西；前端對話框讓使用者逐項確認後，才用既有的改名／搬移 API 套用。
+  if (path === "/ai-organize" && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以使用 AI 整理", 403);
+    if (!env.AI) return bad("尚未啟用 Workers AI", 501);
+    const body = await request.json().catch(() => ({}));
+    const type = String(body.type || "");
+    const id = Number(body.id);
+    const wantName = body.want_name !== false;
+    const wantMove = body.want_move !== false;
+    if (!["attachment", "entry", "folder"].includes(type) || !Number.isSafeInteger(id) || id < 1) return bad("type 或 id 不正確");
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    const ai = budgetedAi(env);
+    const out = { type, id, current: "", name: "", name_note: "", move: null, move_note: "" };
+    const { results: folderRows = [] } = await db.prepare(
+      "SELECT id, name, parent_id, type, role FROM folders WHERE COALESCE(deleted_at, '') = ''"
+    ).all();
+    const folders = withPaths(folderRows);
+    const folderById = new Map(folders.map((f) => [Number(f.id), f]));
+    const realFolders = folders.filter((f) => f.role !== "staging");
+    const pathOf = (fid) => folderById.get(Number(fid))?.path || "";
+
+    // 找出可以放進哪些資料夾；new_folder 提議要再確認上層深度與同名
+    const resolveMove = async (suggestion, { currentFolderId, depthLimit = ORGANIZE_MAX_DEPTH }) => {
+      if (!suggestion) return { move: null, note: "AI 判斷不出適合的位置" };
+      if (suggestion.stay) return { move: null, note: suggestion.reason || "目前位置已經合適" };
+      if (suggestion.new_folder) {
+        const nf = suggestion.new_folder;
+        const parent = folderById.get(Number(nf.parent_id));
+        if (!parent || parent.depth + 1 > depthLimit) return { move: null, note: "AI 想建立新資料夾，但層級超過上限，請自行決定位置" };
+        const plan = await planFolder(db, { name: nf.name, parent_id: nf.parent_id, type: parent.type || "其他" });
+        if (plan.conflict) {
+          return { move: { folder_id: Number(plan.conflict.id), path: pathOf(plan.conflict.id), reason: suggestion.reason, confidence: "中" }, note: "" };
+        }
+        if (plan.error) return { move: null, note: `AI 想建立新資料夾「${nf.name}」，但無法建立：${plan.error}` };
+        return { move: { new_folder: { name: plan.name, parent_id: nf.parent_id, parent_path: nf.parent_path, type: plan.type }, reason: suggestion.reason }, note: "" };
+      }
+      return { move: { ...suggestion, current_path: pathOf(currentFolderId) }, note: "" };
+    };
+
+    try {
+      if (type === "attachment") {
+        const att = await activeAttachment(db, id);
+        if (!att) return bad("找不到附件", 404);
+        out.current = att.filename;
+        const entry = await db.prepare("SELECT id, title, body, fields_json, folder_id, created_at FROM entries WHERE id = ?").bind(att.entry_id).first();
+        let fields = {};
+        try { fields = JSON.parse(entry?.fields_json || "{}"); } catch { fields = {}; }
+        const folderPath = entry?.folder_id ? pathOf(entry.folder_id) : "";
+        const ruleKey = attachmentRuleKey(att);
+        const text = await ensureAttachmentText(env, db, att);
+        const entryText = htmlToPlainText(entry?.body || "").slice(0, 1500);
+        const sourceUrl = String(fields.source_url || fields.original_url || att.source_url || "");
+        if (wantName) {
+          if (ruleKey === "doc") {
+            if (!text && !sourceUrl) out.name_note = "擷取不到文字也沒有來源網址，無法判斷名稱";
+            else {
+              const suggestion = await suggestFilename(ai, { filename: att.filename, sourceUrl, folderPath, text });
+              if (suggestion.filename) { out.name = suggestion.filename; out.parts = { company: suggestion.company, product: suggestion.product, doc_type: suggestion.doc_type }; out.rule = "公司_產品_文件類型"; }
+              else out.name_note = "AI 判斷不出公司或產品，請手動命名";
+            }
+          } else {
+            const subject = await suggestGenericName(ai, {
+              kind: ruleKey, current: att.filename, text: text || entryText,
+              context: [folderPath && `所在資料夾：${folderPath}`, entry?.title && `所屬記事：${entry.title}`].filter(Boolean).join("；"),
+            });
+            const name = composeOrganizedName(ruleKey, subject, { filename: att.filename, createdAt: att.created_at });
+            if (name) { out.name = name; out.rule = "日期_主題"; } else out.name_note = "資料不足，判斷不出主題（照片請先「擷取文字」，或手動命名）";
+          }
+          if (out.name && out.name === att.filename) { out.name = ""; out.name_note = "名稱已經符合命名法則"; }
+        }
+        if (wantMove) {
+          const currentId = Number(entry?.folder_id || 0) || null;
+          const suggestion = await suggestMove(env, ai, {
+            kind: "檔案", entryId: att.entry_id, title: `${att.filename}（所屬記事：${entry?.title || ""}）`, text: [text, entryText].filter(Boolean).join("\n"),
+            currentFolderId: currentId, candidates: realFolders,
+          });
+          const r = await resolveMove(suggestion, { currentFolderId: currentId });
+          out.move = r.move; out.move_note = r.note;
+          if (out.move) out.move.current_path = out.move.current_path ?? pathOf(currentId);
+        }
+      } else if (type === "entry") {
+        const entry = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
+        if (!entry) return bad("找不到紀錄", 404);
+        out.current = entry.title || "";
+        let fields = {};
+        try { fields = JSON.parse(entry.fields_json || "{}"); } catch { fields = {}; }
+        const { results: atts = [] } = await db.prepare(
+          "SELECT filename, ocr_text, transcript FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY id LIMIT 12"
+        ).bind(id).all();
+        const text = [htmlToPlainText(entry.body || "").slice(0, 3000), ...atts.map((a) => `${a.filename}：${String(a.ocr_text || a.transcript || "").slice(0, 300)}`)].filter(Boolean).join("\n");
+        if (wantName) {
+          if (fields._kind === "weekly_report") out.name_note = "週報的標題由系統固定，不改名";
+          else if (/^\s*【AI彙整】/.test(entry.title || "")) out.name_note = "【AI彙整】開頭是系統慣例，不改名";
+          else {
+            const name = cleanName(await suggestGenericName(ai, {
+              kind: "entry", current: entry.title, text,
+              context: entry.folder_id ? `所在資料夾：${pathOf(entry.folder_id)}` : "",
+            }), 60);
+            if (name && name !== entry.title) { out.name = name; out.rule = "簡短主題"; }
+            else out.name_note = name ? "標題已經合適" : "資料不足，判斷不出主題";
+          }
+        }
+        if (wantMove) {
+          const currentId = Number(entry.folder_id || 0) || null;
+          const suggestion = await suggestMove(env, ai, { kind: "記事", entryId: id, title: entry.title, text, currentFolderId: currentId, candidates: realFolders });
+          const r = await resolveMove(suggestion, { currentFolderId: currentId });
+          out.move = r.move; out.move_note = r.note;
+          if (out.move) out.move.current_path = out.move.current_path ?? pathOf(currentId);
+        }
+      } else {
+        const folder = folderById.get(id);
+        if (!folder) return bad("找不到資料夾", 404);
+        out.current = folder.name;
+        const siblings = folders.filter((f) => Number(f.parent_id || 0) === Number(folder.parent_id || 0) && Number(f.id) !== id).map((f) => f.name);
+        const children = folders.filter((f) => Number(f.parent_id || 0) === id).map((f) => f.name);
+        const { results: entryRows = [] } = await db.prepare(
+          "SELECT title FROM entries WHERE folder_id = ? AND COALESCE(deleted_at, '') = '' ORDER BY id DESC LIMIT 25"
+        ).bind(id).all();
+        const { results: fileRows = [] } = await db.prepare(
+          `SELECT a.filename FROM attachments a JOIN entries e ON e.id = a.entry_id
+            WHERE e.folder_id = ? AND COALESCE(e.deleted_at, '') = '' AND a.source_pdf_id IS NULL ORDER BY a.id DESC LIMIT 25`
+        ).bind(id).all();
+        const text = [
+          `路徑：${folder.path}`, children.length && `子資料夾：${children.slice(0, 30).join("、")}`,
+          entryRows.length && `記事：${entryRows.map((r) => r.title).join("、")}`, fileRows.length && `檔案：${fileRows.map((r) => r.filename).join("、")}`,
+        ].filter(Boolean).join("\n");
+        if (wantName) {
+          if (folder.role === "staging") out.name_note = "待分類容器是系統資料夾，不改名";
+          else {
+            const name = cleanName(await suggestGenericName(ai, { kind: "folder", current: folder.name, text, depth: folder.depth, siblings }), 60);
+            if (name && name !== folder.name) { out.name = name; out.rule = `第 ${folder.depth} 層`; }
+            else out.name_note = name ? "名稱已經符合命名法則" : "資料不足，判斷不出主題";
+          }
+        }
+        if (wantMove) {
+          const sub = folderSubtree(folders, id);
+          const candidates = realFolders.filter((f) => !sub.ids.has(Number(f.id)) && f.depth + sub.height <= ORGANIZE_MAX_DEPTH);
+          const currentParent = folder.parent_id ? Number(folder.parent_id) : null;
+          const suggestion = await suggestMove(env, ai, { kind: "資料夾", title: folder.name, text, currentFolderId: currentParent, candidates, level: folder.depth });
+          // 新資料夾放在它底下時，資料夾本身也要塞得進四層：上層深度＋1＋子樹高度
+          const r = await resolveMove(suggestion, { currentFolderId: currentParent, depthLimit: ORGANIZE_MAX_DEPTH - sub.height });
+          out.move = r.move; out.move_note = r.note;
+          if (out.move) out.move.current_path = out.move.current_path ?? (currentParent ? pathOf(currentParent) : "最上層");
+        }
+      }
+    } catch (err) {
+      return bad(`AI 整理失敗：${err.message}`, 502);
+    }
+    return json(out);
   }
 
   const ocrMatch = path.match(/^\/attachments\/(\d+)\/ocr$/);
@@ -4466,6 +4606,30 @@ function aiSummaryAgentIdentity(request, env, url) {
   const authorization = String(request.headers.get("authorization") || "");
   const given = authorization.replace(/^Bearer\s+/i, "").trim();
   return configured && given === configured ? { ok: true, email: "claude-ai-agent" } : null;
+}
+
+/** 附件的可讀文字：已有的 OCR／逐字稿優先；PDF 與 Office 文件現場擷取並存起來（之後搜尋也用得到）。 */
+async function ensureAttachmentText(env, db, att) {
+  let text = String(att.ocr_text || att.transcript || "").trim();
+  const id = Number(att.id);
+  const isPdf = (att.mime || "") === "application/pdf" || /\.pdf$/i.test(att.filename || "");
+  const nativeKind = !isPdf ? detectNativeTextKind(att.filename, att.mime) : null;
+  if (!text && env.FILES && (isPdf || (nativeKind && nativeKind !== "legacy-office"))) {
+    const obj = await env.FILES.get(att.key);
+    if (obj) {
+      try {
+        if (isPdf) {
+          const converted = await env.AI.toMarkdown([{ name: att.filename, blob: new Blob([await obj.arrayBuffer()], { type: "application/pdf" }) }]);
+          text = stripPdfMetadata(converted?.[0]?.data || "").slice(0, 60000);
+        } else {
+          text = (await extractNativeText(nativeKind, new Uint8Array(await obj.arrayBuffer()))).trim();
+        }
+        await env.DB.prepare("UPDATE attachments SET ocr_text = ?, ocr_at = ? WHERE id = ?").bind(text, now(), id).run();
+        await triggerEmbedding(env, { kind: "attachment", id, entryId: att.entry_id, textContent: text });
+      } catch { /* 擷取失敗就只用檔名與來源網址判斷 */ }
+    }
+  }
+  return text;
 }
 
 async function handleSession(request, env) {
