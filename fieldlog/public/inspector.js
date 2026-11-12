@@ -234,6 +234,12 @@ function installInspectorTabs(item, tab) {
   $("folder-preview-manage").hidden = true;
   $("folder-preview-manage").disabled = !hasTabs;
   $("folder-preview-manage").onclick = () => openInspector(item, "info");
+  // v248 關聯圖：檔案用它所屬的記事當中心
+  const graphButton = $("folder-preview-graph");
+  if (graphButton) {
+    graphButton.hidden = !hasTabs;
+    graphButton.onclick = () => window.openRelationGraph?.({ type: item.type, id: item.id });
+  }
   inspectorStatus();
 }
 

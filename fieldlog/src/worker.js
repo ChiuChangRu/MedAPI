@@ -45,6 +45,7 @@ import {
   attachmentRuleKey, cleanName, composeOrganizedName, folderSubtree, MAX_FOLDER_DEPTH as ORGANIZE_MAX_DEPTH,
   suggestGenericName, suggestMove, withPaths,
 } from "./lib/ai-organize.js";
+import { extractIdentifiers, identifierLikeForms, mergeEdges } from "./lib/graph.js";
 import { issueChallenge, loginOptions, registrationOptions, verifyAssertion, verifyRegistration } from "./lib/passkey.js";
 import { extractPageResources, extractPageText, imageWidth, mediaExtension, mediaFilename, mediaKind } from "./lib/page-extract.js";
 import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
@@ -142,7 +143,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "247";
+const UI_VERSION = "248";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -3175,6 +3176,139 @@ async function handleApi(request, env, url, identity = {}) {
   }
 
   // ---- relations（記事與記事的關聯：實驗引用標準、專利對照廠商產品……不限類型）----
+  // ---- v248 關聯圖：以一筆記事（或附件所屬記事）為中心，找相關記事與原因 ----
+  if (path === "/graph" && method === "GET") {
+    const type = url.searchParams.get("type") || "entry";
+    let centerId = Number(url.searchParams.get("id") || 0);
+    if (type === "attachment") {
+      const att = await activeAttachment(db, centerId);
+      if (!att) return bad("找不到附件", 404);
+      centerId = Number(att.entry_id);
+    }
+    const center = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(centerId).first();
+    if (!center) return bad("找不到紀錄", 404);
+    const minScore = Math.min(0.95, Math.max(0.3, Number(url.searchParams.get("min") || 0.6)));
+    const maxSimilar = Math.min(30, Math.max(3, Number(url.searchParams.get("limit") || 15)));
+    const edges = [];
+    const nodeIds = new Set([centerId]);
+    const notes = [];
+
+    // 1) 正式關聯（雙向）
+    const { results: rels = [] } = await db.prepare(
+      `SELECT r.id, r.from_entry_id, r.to_entry_id, r.relation_type FROM relations r
+        JOIN entries ef ON ef.id = r.from_entry_id AND COALESCE(ef.deleted_at, '') = ''
+        JOIN entries et ON et.id = r.to_entry_id AND COALESCE(et.deleted_at, '') = ''
+       WHERE r.from_entry_id = ? OR r.to_entry_id = ?`
+    ).bind(centerId, centerId).all();
+    for (const r of rels) {
+      nodeIds.add(Number(r.from_entry_id)); nodeIds.add(Number(r.to_entry_id));
+      edges.push({ source: r.from_entry_id, target: r.to_entry_id, kind: "relation", label: r.relation_type, relation_id: r.id });
+    }
+
+    // 2) 語意相似：用這筆記事（與它前幾個附件）已存的向量查鄰居；還沒向量化就現場算一次
+    const { results: centerAtts = [] } = await db.prepare(
+      "SELECT id, filename, ocr_text, transcript FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY id LIMIT 6"
+    ).bind(centerId).all();
+    const centerText = [center.title, htmlToPlainText(center.body || ""), ...centerAtts.map((a) => `${a.filename}\n${String(a.ocr_text || a.transcript || "").slice(0, 20000)}`)].join("\n");
+    let similarCount = 0;
+    if (env.VECTOR_INDEX) {
+      try {
+        const ids = [`entry-${centerId}`, ...centerAtts.slice(0, 3).map((a) => `att-${a.id}-0`)];
+        let vectors = (await env.VECTOR_INDEX.getByIds(ids).catch(() => [])) || [];
+        vectors = vectors.filter((v) => Array.isArray(v?.values) && v.values.length);
+        if (!vectors.length && env.AI) {
+          const embedded = await budgetedAi(env).run("@cf/baai/bge-m3", { text: centerText.slice(0, 3000) });
+          if (embedded?.data?.[0]) vectors = [{ values: embedded.data[0] }];
+          notes.push("這筆還沒建立語意向量，相似度是現場計算的");
+        }
+        const best = new Map();
+        for (const v of vectors) {
+          const res = await env.VECTOR_INDEX.query(v.values, { topK: 40, returnMetadata: true });
+          for (const m of res?.matches || []) {
+            const eid = Number(m?.metadata?.entryId || 0);
+            if (!eid || eid === centerId) continue;
+            if (m.score > (best.get(eid) || 0)) best.set(eid, m.score);
+          }
+        }
+        const ranked = [...best.entries()].filter(([, score]) => score >= minScore).sort((a, b) => b[1] - a[1]).slice(0, maxSimilar);
+        if (ranked.length) {
+          const alive = new Set((await db.prepare(
+            `SELECT id FROM entries WHERE id IN (${ranked.map(() => "?").join(",")}) AND COALESCE(deleted_at, '') = ''`
+          ).bind(...ranked.map(([eid]) => eid)).all()).results.map((r) => Number(r.id)));
+          for (const [eid, score] of ranked) {
+            if (!alive.has(eid)) continue;
+            nodeIds.add(eid); similarCount++;
+            edges.push({ source: centerId, target: eid, kind: "similar", label: `相似 ${Math.round(score * 100)}%`, score: Math.round(score * 1000) / 1000 });
+          }
+        }
+      } catch (err) {
+        notes.push(`語意相似查詢失敗：${err.message}`);
+      }
+    } else {
+      notes.push("尚未設定語意向量索引，只顯示正式關聯與共同編號");
+    }
+
+    // 3) 共同編號（專利號、標準號）
+    const identifiers = extractIdentifiers(centerText, 6);
+    for (const ident of identifiers) {
+      const forms = identifierLikeForms(ident);
+      const likeSql = forms.map(() => "(e.title LIKE ? OR e.body LIKE ? OR a.filename LIKE ? OR a.ocr_text LIKE ?)").join(" OR ");
+      const params = forms.flatMap((f) => Array(4).fill(`%${f}%`));
+      const { results: hits = [] } = await db.prepare(
+        `SELECT DISTINCT e.id FROM entries e LEFT JOIN attachments a ON a.entry_id = e.id
+          WHERE COALESCE(e.deleted_at, '') = '' AND e.id != ? AND (${likeSql}) LIMIT 6`
+      ).bind(centerId, ...params).all();
+      for (const h of hits) {
+        nodeIds.add(Number(h.id));
+        edges.push({ source: centerId, target: h.id, kind: "identifier", label: ident });
+      }
+    }
+
+    // 4) 周邊節點彼此之間的正式關聯（讓圖看得出群聚）
+    const others = [...nodeIds].filter((x) => x !== centerId);
+    if (others.length > 1) {
+      const ph = others.map(() => "?").join(",");
+      const { results: inner = [] } = await db.prepare(
+        `SELECT id, from_entry_id, to_entry_id, relation_type FROM relations WHERE from_entry_id IN (${ph}) AND to_entry_id IN (${ph})`
+      ).bind(...others, ...others).all();
+      for (const r of inner) edges.push({ source: r.from_entry_id, target: r.to_entry_id, kind: "relation", label: r.relation_type, relation_id: r.id });
+    }
+
+    // 節點資訊
+    const all = [...nodeIds];
+    const { results: rows = [] } = await db.prepare(
+      `SELECT e.id, e.title, e.folder_id, e.created_at, e.embedding_status, e.fields_json,
+              (SELECT COUNT(*) FROM attachments a WHERE a.entry_id = e.id AND a.source_pdf_id IS NULL) AS att_count,
+              (SELECT a.kind FROM attachments a WHERE a.entry_id = e.id AND a.source_pdf_id IS NULL ORDER BY a.id LIMIT 1) AS first_kind,
+              (SELECT a.filename FROM attachments a WHERE a.entry_id = e.id AND a.source_pdf_id IS NULL ORDER BY a.id LIMIT 1) AS first_file
+         FROM entries e WHERE e.id IN (${all.map(() => "?").join(",")})`
+    ).bind(...all).all();
+    const nodes = await Promise.all(rows.map(async (r) => {
+      let fields = {};
+      try { fields = JSON.parse(r.fields_json || "{}"); } catch { fields = {}; }
+      const path = r.folder_id ? await folderPathNames(db, r.folder_id) : [];
+      const root = r.folder_id ? await db.prepare(
+        `WITH RECURSIVE up(id, parent_id, category) AS (SELECT id, parent_id, category FROM folders WHERE id = ?
+           UNION ALL SELECT f.id, f.parent_id, f.category FROM folders f JOIN up ON f.id = up.parent_id)
+         SELECT category FROM up WHERE parent_id IS NULL LIMIT 1`
+      ).bind(r.folder_id).first() : null;
+      return {
+        id: Number(r.id), title: r.title || r.first_file || "（未命名）", folder_id: r.folder_id, path: path.join(" ／ "),
+        category: root?.category || "misc", created_at: r.created_at, att_count: Number(r.att_count || 0),
+        kind: fields.link_url ? "link" : r.first_kind || (Number(r.att_count) ? "file" : "note"),
+        embedded: r.embedding_status === "done", center: Number(r.id) === centerId,
+      };
+    }));
+    const pending = await db.prepare(
+      `SELECT (SELECT COUNT(*) FROM entries WHERE COALESCE(deleted_at, '') = '' AND COALESCE(embedding_status, 'pending') = 'pending') AS entries,
+              (SELECT COUNT(*) FROM entries WHERE COALESCE(deleted_at, '') = '') AS total`
+    ).first();
+    return json({
+      center: centerId, nodes, edges: mergeEdges(edges), identifiers, notes,
+      stats: { similar: similarCount, relations: rels.length, min_score: minScore, pending_embeddings: Number(pending?.entries || 0), total_entries: Number(pending?.total || 0) },
+    });
+  }
+
   if (path === "/relations" && method === "GET") {
     const entryId = Number(url.searchParams.get("entry_id") || 0);
     if (!entryId) return bad("需指定 entry_id");

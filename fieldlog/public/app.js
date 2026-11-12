@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "247";
+const APP_VERSION = "248";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -5445,7 +5445,7 @@ async function openEntry(id) {
     </div>` : ""}
     <div id="e-attachments" class="att-list">${visibleAttachments.map((a) => attHtml(a, e.attachments)).join("") || (pendingUploads.length ? `<p class="sub">伺服器上尚無附件；上方檔案仍保存在本機。</p>` : `<p class="sub">尚無附件</p>`)}</div>
     <hr/>
-    <h3 class="section-title">關聯 <button class="btn small" id="e-add-relation" type="button" title="關聯到另一筆記事，例如這次實驗引用的標準、對照的廠商產品">🔗 新增關聯</button></h3>
+    <h3 class="section-title">關聯 <button class="btn small" id="e-add-relation" type="button" title="關聯到另一筆記事，例如這次實驗引用的標準、對照的廠商產品">🔗 新增關聯</button> <button class="btn small" id="e-open-graph" type="button" title="以這筆為中心，看跟它有關的記事與原因">🕸 關聯圖</button></h3>
     <div id="e-relations"><p class="sub">載入中…</p></div>
     <hr/>
     <!-- AI 處理的背景資訊（來源、AI 動過哪裡、操作履歷、原始資料列）預設收合：
@@ -5624,6 +5624,7 @@ async function openEntry(id) {
     });
   }
   $("e-add-relation").onclick = () => openRelationPicker(id, () => loadRelations(id));
+  $("e-open-graph").onclick = () => window.openRelationGraph?.({ type: "entry", id });
   api(`/entries/${id}/auto-transcribe`, { method: "POST", body: "{}" }).then((r) => {
     if (r.processed) {
       showToast(`已安全自動轉錄 ${r.processed} 段`);
