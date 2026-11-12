@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=247" />
-<link rel="stylesheet" href="home.css?v=247" />
+<link rel="stylesheet" href="style.css?v=248" />
+<link rel="stylesheet" href="home.css?v=248" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -78,7 +78,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=247">使用說明</a>
+        <a class="head-link" href="help.html?v=248">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -406,6 +406,7 @@
             <button class="btn small primary" id="folder-preview-save" type="button" hidden>儲存</button>
             <button class="btn small ghost" id="folder-preview-edit" type="button" hidden>編輯</button>
             <a class="btn small ghost" id="folder-preview-open" href="#" target="_blank" rel="noopener">開啟原檔</a>
+            <button class="btn small" id="folder-preview-graph" type="button" title="以這一筆為中心，看跟它有關的記事與原因" hidden>🕸 關聯圖</button>
             <select class="preview-width-select" id="folder-preview-width" aria-label="調整右欄寬度" title="調整右欄寬度">
               <option value="custom">寬度</option>
               <option value="40">窄</option>
@@ -760,13 +761,38 @@
   </div>
 </div>
 
+<!-- v248 關聯圖：以一筆記事為中心，畫出正式關聯、內容相似、共同編號（專利號、標準號） -->
+<div class="overlay graph-overlay" id="graph-overlay" aria-hidden="true">
+  <div class="modal graph-modal" role="dialog" aria-modal="true" aria-labelledby="graph-title">
+    <div class="graph-head">
+      <button class="btn small ghost" id="graph-back" type="button" hidden>‹ 上一個</button>
+      <h2 id="graph-title">關聯圖</h2>
+      <button class="btn small" id="graph-close" type="button">關閉</button>
+    </div>
+    <div class="graph-legend">
+      <label><input type="checkbox" data-graph-kind="relation" checked><span class="graph-line relation"></span>正式關聯</label>
+      <label><input type="checkbox" data-graph-kind="identifier" checked><span class="graph-line identifier"></span>共同編號</label>
+      <label><input type="checkbox" data-graph-kind="similar" checked><span class="graph-line similar"></span>內容相似</label>
+      <label class="graph-min-label">相似度至少
+        <select id="graph-min"><option value="0.5">50%</option><option value="0.6" selected>60%</option><option value="0.7">70%</option><option value="0.8">80%</option></select>
+      </label>
+    </div>
+    <div class="graph-body">
+      <svg id="graph-svg" class="graph-svg" role="img" aria-label="關聯圖"></svg>
+      <aside id="graph-info" class="graph-info"></aside>
+    </div>
+    <p class="graph-stats sub" id="graph-stats"></p>
+    <p class="graph-hint sub">點一下看原因；點兩下或按「以這筆為中心」換中心。顏色＝資料夾分類；虛線外框＝還沒建立語意向量。內容相似只代表意思接近，不一定真的有關。</p>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=247"></script>
+<script src="pdf-editor.js?v=248"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=247"></script>
+<script src="richtext-editor.js?v=248"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -777,10 +803,11 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=247"></script>
-<script src="inspector.js?v=247"></script>
+<script src="file-selection.js?v=248"></script>
+<script src="inspector.js?v=248"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=247"></script>
+<script src="app.js?v=248"></script>
+<script src="graph-view.js?v=248"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
