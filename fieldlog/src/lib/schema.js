@@ -61,6 +61,26 @@ export const SCHEMA = [
     access_count INTEGER DEFAULT 0,
     last_accessed_at TEXT DEFAULT ''
   )`,
+  // v250 MyLab／藥品櫃：試劑清冊（欄位沿用使用者 Excel）與每次修改的紀錄
+  `CREATE TABLE IF NOT EXISTS lab_reagents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    name_zh TEXT, name_en TEXT, formula TEXT, cas TEXT, brand TEXT, catalog_no TEXT, grade TEXT,
+    purity_spec TEXT, coa_result TEXT, lot_no TEXT,
+    purchased_qty REAL, remaining_qty REAL, unit TEXT DEFAULT 'g', location TEXT,
+    opened_date TEXT, manufactured_date TEXT, released_date TEXT, expiry_date TEXT, retest_date TEXT, retest_month TEXT,
+    source TEXT, note TEXT,
+    coa_key TEXT, coa_filename TEXT, coa_mime TEXT, coa_size INTEGER,
+    created_at TEXT NOT NULL, updated_at TEXT, deleted_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS lab_reagent_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reagent_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    changes_json TEXT DEFAULT '{}',
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
   // v246 Face ID／Touch ID 登入（WebAuthn passkey）：已註冊的公鑰，與一次性挑戰碼
   `CREATE TABLE IF NOT EXISTS passkeys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

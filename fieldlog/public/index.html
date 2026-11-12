@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=249" />
-<link rel="stylesheet" href="home.css?v=249" />
+<link rel="stylesheet" href="style.css?v=250" />
+<link rel="stylesheet" href="home.css?v=250" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -28,6 +28,9 @@
             aria-expanded="true" title="收合左欄">◀</button>
   </div>
   <button class="desktop-shortcut active" id="desktop-pending" type="button"><span class="side-dot" aria-hidden="true"></span><span>待分類</span></button>
+  <!-- v250 MyLab：實驗室工具（第一個是藥品櫃） -->
+  <p class="desktop-side-heading">MyLab</p>
+  <button class="desktop-shortcut" id="desktop-lab-reagents" type="button"><span aria-hidden="true">🧪</span><span>藥品櫃</span><span class="lab-side-badge" id="lab-alert-badge" hidden></span></button>
   <div class="desktop-nav-divider"></div>
   <div class="desktop-folder-tree" id="desktop-folder-tree"></div>
   <button class="desktop-shortcut desktop-new-folder" id="desktop-new-folder" type="button">＋ <span>新增資料夾</span></button>
@@ -78,7 +81,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=249">使用說明</a>
+        <a class="head-link" href="help.html?v=250">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -186,6 +189,15 @@
             <option value="off">禁止</option>
           </select>
         </div>
+      </section>
+
+      <!-- v250 MyLab 藥品櫃提醒：即將到期／已過期；手機也從這裡進藥品櫃 -->
+      <section class="home-section lab-home" id="lab-home" hidden aria-labelledby="lab-home-title">
+        <div class="home-section-head">
+          <h2 class="home-section-title" id="lab-home-title">MyLab｜藥品櫃</h2>
+          <button class="btn small" id="lab-home-open" type="button">打開藥品櫃</button>
+        </div>
+        <div id="lab-home-body"></div>
       </section>
 
       <!-- v210 最新情報（v212 移到待分類下面）：顯示最近一筆【每日情報】記事的條列重點（/api/intel/latest） -->
@@ -790,13 +802,34 @@
   </div>
 </div>
 
+<!-- v250 MyLab／藥品櫃 -->
+<div class="overlay lab-overlay" id="lab-overlay" aria-hidden="true">
+  <div class="modal lab-modal" role="dialog" aria-modal="true" aria-labelledby="lab-title">
+    <div class="lab-head">
+      <h2 id="lab-title">🧪 MyLab｜藥品櫃</h2>
+      <button class="btn small primary" id="lab-add" type="button">＋ 新增藥品</button>
+      <button class="btn small" id="lab-close" type="button">關閉</button>
+    </div>
+    <p class="lab-summary" id="lab-summary"></p>
+    <div class="lab-toolbar">
+      <div class="lab-filters" id="lab-filters"></div>
+      <input id="lab-search" type="search" placeholder="搜尋名稱、CAS、批號、位置…" />
+      <label class="lab-warn">到期提醒 <input id="lab-warn-days" type="number" min="1" max="730" step="1" /> 天</label>
+    </div>
+    <div class="lab-list-wrap" id="lab-list-wrap">
+      <div class="lab-table-wrap" id="lab-table"></div>
+      <aside class="lab-editor" id="lab-editor" hidden></aside>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=249"></script>
+<script src="pdf-editor.js?v=250"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=249"></script>
+<script src="richtext-editor.js?v=250"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -807,11 +840,12 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=249"></script>
-<script src="inspector.js?v=249"></script>
+<script src="file-selection.js?v=250"></script>
+<script src="inspector.js?v=250"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=249"></script>
-<script src="graph-view.js?v=249"></script>
+<script src="app.js?v=250"></script>
+<script src="graph-view.js?v=250"></script>
+<script src="lab.js?v=250"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
