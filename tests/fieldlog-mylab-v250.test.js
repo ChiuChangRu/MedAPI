@@ -129,6 +129,9 @@ test("前端：側欄 MyLab／藥品櫃、首頁提醒卡、藥品櫃視窗", as
   const [html, lab, sw] = await Promise.all([read("../fieldlog/public/index.html"), read("../fieldlog/public/lab.js"), read("../fieldlog/public/sw.js")]);
   assert.match(html, /<p class="desktop-side-heading">MyLab<\/p>/);
   assert.match(html, /id="desktop-lab-reagents"/);
+  // v252：MyLab 放在左欄最下面（在 spacer 之後），不要太顯眼
+  assert.ok(html.indexOf('class="desktop-nav-spacer"') < html.indexOf('class="desktop-mylab"'), "MyLab 在左欄最下面");
+  assert.ok(html.indexOf('id="desktop-new-folder"') < html.indexOf('class="desktop-mylab"'));
   assert.match(html, /id="lab-home"/);
   assert.match(html, /id="lab-overlay"/);
   assert.match(lab, /\/lab\/reagents/);

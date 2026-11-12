@@ -2640,3 +2640,10 @@ body.reader-fullscreen .folder-preview {
 .lab-list-wrap.editing .lab-table th:nth-child(6), .lab-list-wrap.editing .lab-table td:nth-child(6) { display: none; }
 .lab-table td:nth-child(5), .lab-table td:nth-child(7) { white-space: nowrap; }
 .modal .lab-head label.btn, .modal .lab-coa label.btn { display: inline-flex; align-items: center; margin: 0; font-size: 12px; cursor: pointer; }
+
+/* v252 MyLab 移到左欄最下面，字小、顏色淡，提醒數字改成不搶眼的小字 */
+.desktop-mylab { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); opacity: .75; }
+.desktop-mylab:hover, .desktop-mylab:focus-within { opacity: 1; }
+.desktop-mylab .desktop-side-heading { margin: 2px 12px 0; font-size: 10px; }
+.desktop-mylab .desktop-mylab-link { min-height: 0; padding: 4px 12px; font-size: 12px; font-weight: 400; color: var(--text-muted); background: transparent; }
+.desktop-mylab .lab-side-badge { min-width: 0; padding: 0 5px; background: transparent; color: #b45309; font-size: 11px; font-weight: 600; }

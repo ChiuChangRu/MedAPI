@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=251" />
-<link rel="stylesheet" href="home.css?v=251" />
+<link rel="stylesheet" href="style.css?v=252" />
+<link rel="stylesheet" href="home.css?v=252" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -28,13 +28,15 @@
             aria-expanded="true" title="收合左欄">◀</button>
   </div>
   <button class="desktop-shortcut active" id="desktop-pending" type="button"><span class="side-dot" aria-hidden="true"></span><span>待分類</span></button>
-  <!-- v250 MyLab：實驗室工具（第一個是藥品櫃） -->
-  <p class="desktop-side-heading">MyLab</p>
-  <button class="desktop-shortcut" id="desktop-lab-reagents" type="button"><span aria-hidden="true">🧪</span><span>藥品櫃</span><span class="lab-side-badge" id="lab-alert-badge" hidden></span></button>
   <div class="desktop-nav-divider"></div>
   <div class="desktop-folder-tree" id="desktop-folder-tree"></div>
   <button class="desktop-shortcut desktop-new-folder" id="desktop-new-folder" type="button">＋ <span>新增資料夾</span></button>
   <div class="desktop-nav-spacer"></div>
+  <!-- v252 MyLab：放在左欄最下面、低調顯示（使用者要求不要太顯眼） -->
+  <div class="desktop-mylab">
+    <p class="desktop-side-heading">MyLab</p>
+    <button class="desktop-shortcut desktop-mylab-link" id="desktop-lab-reagents" type="button"><span>藥品櫃</span><span class="lab-side-badge" id="lab-alert-badge" hidden></span></button>
+  </div>
   <!-- 拖曳調整側欄寬度，見 app.js 的 initDesktopSidebarResize() -->
   <div class="desktop-explorer-resize" id="desktop-explorer-resize" role="separator" aria-orientation="vertical" aria-label="調整側欄寬度" tabindex="0"></div>
 </aside>
@@ -81,7 +83,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=251">使用說明</a>
+        <a class="head-link" href="help.html?v=252">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -827,10 +829,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=251"></script>
+<script src="pdf-editor.js?v=252"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=251"></script>
+<script src="richtext-editor.js?v=252"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -841,12 +843,12 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=251"></script>
-<script src="inspector.js?v=251"></script>
+<script src="file-selection.js?v=252"></script>
+<script src="inspector.js?v=252"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=251"></script>
-<script src="graph-view.js?v=251"></script>
-<script src="lab.js?v=251"></script>
+<script src="app.js?v=252"></script>
+<script src="graph-view.js?v=252"></script>
+<script src="lab.js?v=252"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
