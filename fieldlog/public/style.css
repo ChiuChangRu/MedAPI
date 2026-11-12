@@ -2559,3 +2559,22 @@ body.reader-fullscreen .folder-preview {
   .overlay.graph-overlay { padding: 0; }
   .modal.graph-modal { width: 100vw; height: 100dvh; margin: 0; border-radius: 0; padding: 12px; }
 }
+
+/* v249 關聯圖 AI 綜整 */
+.graph-ask { display: flex; gap: 8px; align-items: center; }
+.graph-ask input { flex: 1; min-width: 0; padding: 6px 10px; font-size: 14px; }
+.graph-ask .btn { flex: none; }
+.graph-body.synth { grid-template-columns: minmax(0, 1fr) minmax(360px, 48%); }
+.graph-synth-note { margin: 4px 0 8px; padding: 6px 8px; border-radius: 6px; background: #fff7ed; color: #9a3412; font-size: 12px; }
+.graph-synth-body { font-size: 13px; line-height: 1.6; }
+.graph-synth-body h2, .graph-synth-body h3 { font-size: 14px; margin: 12px 0 4px; color: #1f4d43; }
+.graph-synth-body ul, .graph-synth-body ol { margin: 4px 0; padding-left: 20px; }
+.graph-synth-body p { margin: 4px 0; }
+.graph-cite { color: #1d4ed8; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.graph-cite:hover, .graph-cite:focus { text-decoration: underline; outline: none; }
+@media (max-width: 760px) {
+  .graph-ask { flex-wrap: wrap; }
+  .graph-ask .btn { width: 100%; }
+  .graph-body.synth { grid-template-columns: 1fr; grid-template-rows: minmax(200px, 34vh) auto; }
+  .graph-body.synth .graph-info { max-height: none; }
+}

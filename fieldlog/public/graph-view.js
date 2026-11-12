@@ -10,7 +10,7 @@
     similar: { label: "內容相似", color: "#64748b", dash: "7 5", width: 1.6, length: 210, rank: 1 },
   };
   const NODE_ICON = { link: "🔗", audio: "🎙️", photo: "🖼️", video: "🎬", file: "📄", note: "📝" };
-  const state = { data: null, center: null, min: 0.6, hidden: new Set(), selected: null, history: [] };
+  const state = { data: null, center: null, min: 0.6, hidden: new Set(), selected: null, history: [], synth: null, synthMode: false, synthBusy: false };
 
   function $(id) { return document.getElementById(id); }
   function nodeColor(node) { return (FOLDER_CATEGORY_META[node.category] || FOLDER_CATEGORY_META.misc).accent; }
@@ -112,7 +112,7 @@
       g.ondblclick = () => recenter(id);
       g.onkeydown = (ev) => { if (ev.key === "Enter") selectNode(id); };
     });
-    renderInfo();
+    if (state.synthMode) renderSynth(); else renderInfo();
   }
 
   function reasonsFor(nodeId) {
@@ -148,7 +148,91 @@
     box.querySelector('[data-act="save"]')?.addEventListener("click", () => saveRelation(node.id));
   }
 
-  function selectNode(id) { state.selected = id; render(); }
+  function selectNode(id) { state.selected = id; state.synthMode = false; $("graph-body")?.classList.remove("synth"); render(); }
+
+  // ---- v249 AI 綜整：把圖上顯示的資料一起交給 AI 做橫向整理 ----
+  /** 圖上目前顯示的節點，中心第一，其餘依關聯強度（正式關聯＞共同編號＞相似度）排，最多 20 筆 */
+  function synthIds() {
+    const { nodes, edges } = visibleGraph();
+    const center = state.data.center;
+    const strength = (id) => {
+      const e = edges.find((x) => (x.source === id && x.target === center) || (x.target === id && x.source === center));
+      if (!e) return 0;
+      return (e.kinds.includes("relation") ? 3 : 0) + (e.kinds.includes("identifier") ? 2 : 0) + (e.score || 0);
+    };
+    return [center, ...nodes.filter((n) => n.id !== center).map((n) => n.id).sort((a, b) => strength(b) - strength(a))].slice(0, 20);
+  }
+
+  async function runSynthesis() {
+    if (!state.data || state.synthBusy) return;
+    const ids = synthIds();
+    if (ids.length < 2) { showToast("圖上至少要有兩筆資料才能綜整"); return; }
+    const question = $("graph-question").value.trim();
+    const button = $("graph-synth");
+    state.synthBusy = true; button.disabled = true;
+    try {
+      const est = await api("/graph/synthesize", { method: "POST", body: JSON.stringify({ center: state.data.center, ids, question, estimate_only: true }) });
+      const claims = est.docs.filter((d) => d.claims).length;
+      const msg = `AI 會讀圖上 ${est.docs.length} 筆資料（約 ${Math.round(est.estimate.input_tokens / 1000)} 千 token）。`
+        + (est.truncated ? `\n長文件只讀部分內容${claims ? `（其中 ${claims} 份優先讀請求項）` : ""}。` : "")
+        + `\n預估約用 ${est.estimate.neurons} Neurons，約每日免費額度的 ${est.estimate.percent_of_daily_free}%。\n\n要開始嗎？`;
+      if (!confirm(msg)) return;
+      state.synthMode = true;
+      $("graph-body").classList.add("synth");
+      $("graph-info").innerHTML = `<p class="graph-info-kind">AI 綜整</p><p class="sub">AI 正在閱讀 ${est.docs.length} 筆資料，約需 10～40 秒…</p>`;
+      const result = await api("/graph/synthesize", { method: "POST", body: JSON.stringify({ center: state.data.center, ids, question }) });
+      state.synth = { ...result, ids, question, center: state.data.center };
+      render();
+    } catch (error) {
+      if (state.synthMode) $("graph-info").innerHTML = `<p class="sub">AI 綜整失敗：${esc(error.message)}</p><div class="graph-info-actions"><button class="btn small" type="button" id="graph-synth-back">回到節點資訊</button></div>`;
+      else showToast("AI 綜整失敗：" + error.message);
+      $("graph-synth-back")?.addEventListener("click", leaveSynth);
+    } finally {
+      state.synthBusy = false; button.disabled = false;
+    }
+  }
+
+  function leaveSynth() { state.synthMode = false; $("graph-body").classList.remove("synth"); render(); }
+
+  function renderSynth() {
+    const box = $("graph-info");
+    const r = state.synth;
+    if (!r) return;
+    const warnings = [
+      r.truncated ? "部分長文件只讀了一部分" : "",
+      r.invalid_citations ? `有 ${r.invalid_citations} 處引用編號不在資料中，已標成 [#?]` : "",
+    ].filter(Boolean);
+    box.innerHTML = `<p class="graph-info-kind">AI 綜整（${r.docs.length} 筆資料）${r.question ? `｜問題：${esc(r.question)}` : ""}</p>
+      <p class="graph-synth-note">AI 產生的整理，引用前請點 [#編號] 回原文確認。${warnings.length ? `<br>${esc(warnings.join("；"))}` : ""}</p>
+      <div class="graph-synth-body">${r.html}</div>
+      <div class="graph-info-actions">
+        <button class="btn small primary" type="button" id="graph-synth-save">存成記事</button>
+        <button class="btn small" type="button" id="graph-synth-copy">複製文字</button>
+        <button class="btn small" type="button" id="graph-synth-back">回到節點資訊</button>
+      </div>`;
+    box.querySelectorAll(".graph-cite").forEach((el) => {
+      const go = () => { state.selected = Number(el.dataset.cite); const keep = box.scrollTop; render(); $("graph-info").scrollTop = keep; };
+      el.onclick = go;
+      el.onkeydown = (ev) => { if (ev.key === "Enter") go(); };
+      const node = state.data.nodes.find((n) => n.id === Number(el.dataset.cite));
+      if (node) el.title = node.title;
+    });
+    $("graph-synth-back").onclick = leaveSynth;
+    $("graph-synth-copy").onclick = async () => {
+      try { await navigator.clipboard.writeText(r.markdown); showToast("已複製"); } catch { showToast("無法複製，請手動選取文字"); }
+    };
+    $("graph-synth-save").onclick = async () => {
+      const btn = $("graph-synth-save");
+      btn.disabled = true;
+      try {
+        const saved = await api("/graph/synthesize/save", { method: "POST", body: JSON.stringify({ center: r.center, ids: r.ids, question: r.question, markdown: r.markdown }) });
+        showToast(`已存成記事「${saved.title}」，並與 ${saved.sources} 筆來源建立關聯`);
+        state.synthMode = false;
+        $("graph-body").classList.remove("synth");
+        await load({ type: "entry", id: r.center }, { keepSelection: saved.id });
+      } catch (error) { showToast("存檔失敗：" + error.message); btn.disabled = false; }
+    };
+  }
 
   async function recenter(id) {
     if (id === state.data.center) return;
@@ -198,6 +282,7 @@
       const data = await api(`/graph?type=${encodeURIComponent(target.type)}&id=${encodeURIComponent(target.id)}&min=${state.min}`);
       state.data = data;
       state.selected = keepSelection || data.center;
+      if (data.center !== state.synth?.center) { state.synthMode = false; $("graph-body")?.classList.remove("synth"); }
       const centerNode = data.nodes.find((n) => n.id === data.center);
       $("graph-title").textContent = `關聯圖：${centerNode?.title || ""}`;
       $("graph-back").hidden = !state.history.length;
@@ -229,6 +314,9 @@
     overlay.setAttribute("aria-hidden", "false");
     document.addEventListener("keydown", onKey);
     $("graph-close").onclick = close;
+    $("graph-synth").onclick = runSynthesis;
+    state.synthMode = false;
+    $("graph-body")?.classList.remove("synth");
     $("graph-back").onclick = async () => { const prev = state.history.pop(); if (prev) await load({ type: "entry", id: prev }); };
     $("graph-min").value = String(state.min);
     $("graph-min").onchange = async () => { state.min = Number($("graph-min").value); await load({ type: "entry", id: state.data?.center || target.id }); };
