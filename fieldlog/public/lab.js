@@ -215,6 +215,76 @@
     } catch { card.hidden = true; }
   }
 
+  // ---- 批次上傳 COA：一份多頁 PDF，依「資料來源：PDF 第 N 頁」拆頁後掛到各項 ----
+  function loadPdfLib() {
+    if (window.PDFLib?.PDFDocument) return Promise.resolve(window.PDFLib);
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js";
+      script.onload = () => window.PDFLib?.PDFDocument ? resolve(window.PDFLib) : reject(new Error("PDF 程式庫載入失敗"));
+      script.onerror = () => reject(new Error("PDF 程式庫載入失敗，請檢查網路"));
+      document.head.appendChild(script);
+    });
+  }
+
+  /** 每項試劑對應的 PDF 頁碼（來自資料來源欄「PDF 第 N 頁」） */
+  function coaPageMap(reagents, pageCount) {
+    const mapped = []; const unmatched = [];
+    for (const r of reagents) {
+      const m = String(r.source || "").match(/PDF\s*第\s*(\d+)\s*頁/);
+      const page = m ? Number(m[1]) : 0;
+      if (page >= 1 && page <= pageCount) mapped.push({ reagent: r, page }); else unmatched.push(r);
+    }
+    return { mapped, unmatched };
+  }
+
+  async function uploadCoaBytes(id, bytes, filename) {
+    const res = await fetch(`/api/lab/reagents/${id}/coa`, {
+      method: "POST",
+      headers: { "content-type": "application/pdf", "x-filename": encodeURIComponent(filename), "x-pin": pin() },
+      body: bytes,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  }
+
+  async function bulkCoa(file) {
+    if (!file) return;
+    const status = $("lab-summary");
+    try {
+      const PDFLib = await loadPdfLib();
+      const source = await PDFLib.PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+      const pageCount = source.getPageCount();
+      const { mapped, unmatched } = coaPageMap(state.data.reagents, pageCount);
+      if (!mapped.length) { alert(`這份 PDF 有 ${pageCount} 頁，但沒有任何藥品的「資料來源」寫著「PDF 第 N 頁」，無法自動對應。請改在各項按「上傳 COA」。`); return; }
+      const replaced = mapped.filter((m) => m.reagent.coa).length;
+      const msg = `這份 PDF 共 ${pageCount} 頁，會依「資料來源：PDF 第 N 頁」拆成 ${mapped.length} 份，分別掛到：\n`
+        + mapped.map((m) => `第 ${m.page} 頁 → ${m.reagent.code} ${m.reagent.name_zh || m.reagent.name_en || ""}`).join("\n")
+        + (unmatched.length ? `\n\n沒有對應頁的（不處理）：${unmatched.map((r) => r.code).join("、")}` : "")
+        + (replaced ? `\n\n其中 ${replaced} 項已有 COA，會被取代。` : "")
+        + "\n\n要開始嗎？";
+      if (!confirm(msg)) return;
+      let done = 0; const failed = [];
+      for (const { reagent, page } of mapped) {
+        status.textContent = `上傳 COA ${done + 1}/${mapped.length}：${reagent.code}…`;
+        try {
+          const single = await PDFLib.PDFDocument.create();
+          const [copied] = await single.copyPages(source, [page - 1]);
+          single.addPage(copied);
+          const bytes = await single.save();
+          await uploadCoaBytes(reagent.id, bytes, `${reagent.code}_${reagent.name_zh || reagent.name_en || "COA"}_COA（原檔第${page}頁）.pdf`);
+          done++;
+        } catch (error) { failed.push(`${reagent.code}：${error.message}`); }
+      }
+      showToast(`COA 已上傳 ${done} 項${failed.length ? `，失敗 ${failed.length} 項` : ""}`);
+      if (failed.length) alert(`以下沒有上傳成功：\n${failed.join("\n")}`);
+      await load();
+    } catch (error) {
+      alert(`批次上傳 COA 失敗：${error.message}`);
+      await load();
+    }
+  }
+
   function close() {
     $("lab-overlay").classList.remove("open");
     $("lab-overlay").setAttribute("aria-hidden", "true");
@@ -232,6 +302,7 @@
     document.querySelectorAll("#desktop-lab-reagents").forEach((b) => b.classList.add("active"));
     $("lab-close").onclick = close;
     $("lab-add").onclick = () => openEditor(null);
+    $("lab-bulk-coa-file").onchange = (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; bulkCoa(f); };
     $("lab-search").oninput = () => { state.query = $("lab-search").value; renderTable(); };
     $("lab-warn-days").onchange = async () => {
       try { await api("/lab/settings", { method: "PUT", body: JSON.stringify({ warn_days: Number($("lab-warn-days").value) }) }); await load(); }
@@ -247,5 +318,6 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
   window.openLab = openLab;
+  window.__labCoaPageMap = coaPageMap;
   window.loadLabHome = loadLabHome;
 })();
