@@ -2639,3 +2639,4 @@ body.reader-fullscreen .folder-preview {
 .lab-list-wrap.editing .lab-table th:nth-child(4), .lab-list-wrap.editing .lab-table td:nth-child(4),
 .lab-list-wrap.editing .lab-table th:nth-child(6), .lab-list-wrap.editing .lab-table td:nth-child(6) { display: none; }
 .lab-table td:nth-child(5), .lab-table td:nth-child(7) { white-space: nowrap; }
+.modal .lab-head label.btn, .modal .lab-coa label.btn { display: inline-flex; align-items: center; margin: 0; font-size: 12px; cursor: pointer; }

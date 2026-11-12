@@ -135,3 +135,19 @@ test("前端：側欄 MyLab／藥品櫃、首頁提醒卡、藥品櫃視窗", as
   assert.match(lab, /\/coa`/);
   assert.match(sw, /lab\.js\?v=/);
 });
+
+test("v251 批次上傳 COA：依「資料來源：PDF 第 N 頁」拆頁對應，超出頁數或沒寫頁碼的不處理", async () => {
+  const lab = await read("../fieldlog/public/lab.js");
+  const html = await read("../fieldlog/public/index.html");
+  assert.match(html, /id="lab-bulk-coa-file"[^>]*accept="application\/pdf"/);
+  const fnSrc = lab.match(/function coaPageMap\(reagents, pageCount\) \{[\s\S]*?\n  \}\n/)[0];
+  const coaPageMap = new Function(`${fnSrc}; return coaPageMap;`)();
+  const { mapped, unmatched } = coaPageMap([
+    { code: "CH-001", source: "PDF 第1頁" }, { code: "CH-012", source: "PDF 第12頁" },
+    { code: "CH-013", source: "使用者補充（2026/11/12）" }, { code: "CH-020", source: "PDF 第 20 頁" },
+  ], 12);
+  assert.deepEqual(mapped.map((m) => [m.reagent.code, m.page]), [["CH-001", 1], ["CH-012", 12]]);
+  assert.deepEqual(unmatched.map((r) => r.code), ["CH-013", "CH-020"]);
+  assert.match(lab, /copyPages\(source, \[page - 1\]\)/, "每份只拷貝一頁");
+  assert.match(lab, /confirm\(msg\)/, "上傳前先列出對應讓使用者確認");
+});
