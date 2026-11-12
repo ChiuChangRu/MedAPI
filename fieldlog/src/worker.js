@@ -36,7 +36,7 @@ try {
   WorkflowEntrypoint = class {};
 }
 
-import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata } from "./imageSkill.js";
+import { detectNativeTextKind, extractImageText, extractNativeText, judgeRelation, stripPdfMetadata, aiText, NO_THINKING } from "./imageSkill.js";
 import { FOLDER_CATEGORIES, FOLDER_CATEGORY_RANK_SQL, MAX_FOLDER_DEPTH, applyFolderReorg20260808, ensureSchema } from "./lib/schema.js";
 import { syncSources } from "./lib/sync.js";
 import { cleanupStandardAttachments } from "./lib/cleanup.js";
@@ -46,6 +46,9 @@ import {
   suggestGenericName, suggestMove, withPaths,
 } from "./lib/ai-organize.js";
 import { extractIdentifiers, identifierLikeForms, mergeEdges } from "./lib/graph.js";
+import {
+  estimateUsage, fitDocuments, markdownToHtml, normalizeCitations, SYNTHESIS_MAX_DOCS, SYNTHESIS_MODEL, synthesisMessages,
+} from "./lib/synthesis.js";
 import { issueChallenge, loginOptions, registrationOptions, verifyAssertion, verifyRegistration } from "./lib/passkey.js";
 import { extractPageResources, extractPageText, imageWidth, mediaExtension, mediaFilename, mediaKind } from "./lib/page-extract.js";
 import { buildRecordingDocumentHtml, shouldRegenerateRecordingDocument } from "./lib/recording-document.js";
@@ -143,7 +146,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "248";
+const UI_VERSION = "249";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -3307,6 +3310,82 @@ async function handleApi(request, env, url, identity = {}) {
       center: centerId, nodes, edges: mergeEdges(edges), identifiers, notes,
       stats: { similar: similarCount, relations: rels.length, min_score: minScore, pending_embeddings: Number(pending?.entries || 0), total_entries: Number(pending?.total || 0) },
     });
+  }
+
+  // ---- v249 關聯圖 AI 綜整：把圖上多筆資料一起交給 AI 做橫向整理（可附問題）----
+  // estimate_only＝只回「會讀幾筆、約用多少額度」，使用者確認後才真的呼叫 AI。結果先回給前端看，
+  // 使用者按「存成記事」才寫入（/graph/synthesize/save）。
+  if (path === "/graph/synthesize" && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以使用 AI 綜整", 403);
+    const body = await request.json().catch(() => ({}));
+    const centerId = Number(body.center || 0);
+    const ids = [...new Set([centerId, ...(Array.isArray(body.ids) ? body.ids : [])].map(Number).filter((x) => Number.isSafeInteger(x) && x > 0))].slice(0, SYNTHESIS_MAX_DOCS);
+    if (!centerId) return bad("需指定中心記事");
+    const docs = [];
+    for (const id of ids) {
+      const e = await db.prepare("SELECT id, title, body, folder_id, created_at FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
+      if (!e) continue;
+      const { results: atts = [] } = await db.prepare(
+        "SELECT filename, ocr_text, transcript FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY id LIMIT 4"
+      ).bind(id).all();
+      const text = [htmlToPlainText(e.body || ""), ...atts.map((a) => `【附件】${a.filename}\n${a.ocr_text || a.transcript || ""}`)].filter((t) => t.trim()).join("\n\n");
+      docs.push({ id: Number(e.id), title: e.title || atts[0]?.filename || "（未命名）", path: e.folder_id ? (await folderPathNames(db, e.folder_id)).join(" ／ ") : "", created_at: e.created_at, text });
+    }
+    if (docs.length < 2) return bad("至少要有兩筆資料才能做橫向綜整", 400);
+    const fitted = fitDocuments(docs);
+    const estimate = estimateUsage(fitted.chars);
+    const summaryDocs = fitted.docs.map((d) => ({ id: d.id, title: d.title, truncated: d.truncated, claims: d.claims }));
+    if (body.estimate_only) return json({ ok: true, estimate, docs: summaryDocs, truncated: fitted.truncated });
+    if (!env.AI) return bad("尚未啟用 Workers AI", 501);
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    try {
+      const result = await budgetedAi(env).run(SYNTHESIS_MODEL, {
+        messages: synthesisMessages({ docs: fitted.docs, centerId, question: body.question }),
+        max_tokens: 3000, temperature: 0.2, ...NO_THINKING,
+      });
+      const raw = aiText(result);
+      if (!raw.trim()) return bad("AI 沒有回傳內容，請再試一次", 502);
+      const norm = normalizeCitations(raw, fitted.docs.map((d) => d.id));
+      return json({
+        ok: true, markdown: norm.markdown, html: markdownToHtml(norm.markdown, { citeLinks: true }),
+        cited: norm.cited, invalid_citations: norm.invalid, docs: summaryDocs, truncated: fitted.truncated, estimate, model: SYNTHESIS_MODEL,
+      });
+    } catch (err) {
+      return bad(`AI 綜整失敗：${err.message}`, 502);
+    }
+  }
+  if (path === "/graph/synthesize/save" && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以儲存 AI 綜整", 403);
+    const body = await request.json().catch(() => ({}));
+    const centerId = Number(body.center || 0);
+    const markdown = String(body.markdown || "").trim().slice(0, 30000);
+    if (!centerId || !markdown) return bad("缺少中心記事或內容");
+    const center = await db.prepare("SELECT id, title, folder_id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(centerId).first();
+    if (!center) return bad("找不到中心記事", 404);
+    const sourceIds = [];
+    for (const id of [...new Set((Array.isArray(body.ids) ? body.ids : []).map(Number))].slice(0, SYNTHESIS_MAX_DOCS)) {
+      if (!Number.isSafeInteger(id) || id < 1) continue;
+      if (await db.prepare("SELECT id FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first()) sourceIds.push(id);
+    }
+    if (!sourceIds.includes(centerId)) sourceIds.unshift(centerId);
+    const question = String(body.question || "").trim().slice(0, 300);
+    const title = `【AI彙整】關聯綜整：${question || center.title || "未命名"}`.slice(0, 120);
+    const folderId = center.folder_id || (await ensureStagingFolder(db, now())).id;
+    const footer = `\n\n---\nAI 綜整（${SYNTHESIS_MODEL}），依關聯圖上 ${sourceIds.length} 筆資料產生；引用前請回原文確認。\n來源：${sourceIds.map((x) => `[#${x}]`).join(" ")}`;
+    const html = sanitizeEntryHtml(markdownToHtml(markdown + footer));
+    const fields = { _kind: "graph_synthesis", center_id: centerId, source_ids: sourceIds, question, generated_at: now(), model: SYNTHESIS_MODEL };
+    const created = await db.prepare(
+      "INSERT INTO entries (folder_id, title, fields_json, body, body_format, created_at) VALUES (?, ?, ?, ?, 'html', ?)"
+    ).bind(folderId, title, JSON.stringify(fields), html, now()).run();
+    const newId = Number(created.meta.last_row_id);
+    for (const sid of sourceIds) {
+      await db.prepare("INSERT INTO relations (from_entry_id, to_entry_id, relation_type, note, created_at) VALUES (?, ?, 'AI彙整來源', '關聯圖綜整', ?)")
+        .bind(newId, sid, now()).run();
+    }
+    await logHistory(db, newId, folderId, "AI 關聯綜整", `${title}｜來源 ${sourceIds.length} 筆`);
+    await triggerEmbedding(env, { kind: "entry", id: newId, entryId: newId, textContent: markdown, title });
+    return json({ ok: true, id: newId, title, folder_id: folderId, sources: sourceIds.length });
   }
 
   if (path === "/relations" && method === "GET") {
