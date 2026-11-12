@@ -47,6 +47,9 @@ import {
 } from "./lib/ai-organize.js";
 import { extractIdentifiers, identifierLikeForms, mergeEdges } from "./lib/graph.js";
 import {
+  cleanLabInput, DEFAULT_WARN_DAYS, diffReagent, LAB_FIELD_KEYS, labSummary, nextReagentCode, reagentStatus, taipeiToday,
+} from "./lib/lab.js";
+import {
   estimateUsage, fitDocuments, markdownToHtml, normalizeCitations, SYNTHESIS_MAX_DOCS, SYNTHESIS_MODEL, synthesisMessages,
 } from "./lib/synthesis.js";
 import { issueChallenge, loginOptions, registrationOptions, verifyAssertion, verifyRegistration } from "./lib/passkey.js";
@@ -146,7 +149,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "249";
+const UI_VERSION = "250";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -3179,6 +3182,118 @@ async function handleApi(request, env, url, identity = {}) {
   }
 
   // ---- relations（記事與記事的關聯：實驗引用標準、專利對照廠商產品……不限類型）----
+  // ---- v250 MyLab／藥品櫃 ----
+  // 只有使用者本人能改（AI 經 MCP 只能讀）；刪除是軟刪除，修改都留紀錄。
+  if (path.startsWith("/lab/")) {
+    const labWrite = method !== "GET";
+    if (labWrite && isMcpCaller(url)) return bad("只有使用者本人可以修改藥品櫃", 403);
+    const warnRow = await db.prepare("SELECT value FROM settings WHERE key = 'lab.warn_days'").first();
+    const warnDays = Math.min(730, Math.max(1, Number(warnRow?.value) || DEFAULT_WARN_DAYS));
+    const statusOpts = { today: taipeiToday(), warnDays };
+    const withStatus = (r) => ({ ...r, status: reagentStatus(r, statusOpts), coa: r.coa_key ? { filename: r.coa_filename, size: r.coa_size } : null, coa_key: undefined });
+    const logChange = (reagentId, action, changes = {}, note = "") => db.prepare(
+      "INSERT INTO lab_reagent_log (reagent_id, action, changes_json, note, created_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(reagentId, action, JSON.stringify(changes), String(note || "").slice(0, 500), now()).run();
+    const activeReagent = (id) => db.prepare("SELECT * FROM lab_reagents WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
+
+    if (path === "/lab/reagents" && method === "GET") {
+      const { results = [] } = await db.prepare("SELECT * FROM lab_reagents WHERE COALESCE(deleted_at, '') = '' ORDER BY code, id").all();
+      return json({ reagents: results.map(withStatus), summary: labSummary(results, statusOpts), warn_days: warnDays, today: statusOpts.today });
+    }
+    if (path === "/lab/reagents" && method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const { values, errors } = cleanLabInput(body);
+      if (errors.length) return bad(errors.join("；"));
+      const { results: codes = [] } = await db.prepare("SELECT code FROM lab_reagents WHERE COALESCE(deleted_at, '') = ''").all();
+      if (!values.code) values.code = nextReagentCode(codes.map((c) => c.code));
+      if (codes.some((c) => String(c.code).toLowerCase() === values.code.toLowerCase())) return bad(`編號 ${values.code} 已經存在`, 409);
+      if (!values.name_zh && !values.name_en) return bad("中文或英文名稱至少要填一個");
+      if (!values.unit) values.unit = "g";
+      const keys = Object.keys(values);
+      const r = await db.prepare(
+        `INSERT INTO lab_reagents (${keys.join(", ")}, created_at, updated_at) VALUES (${keys.map(() => "?").join(", ")}, ?, ?)`
+      ).bind(...keys.map((k) => values[k]), now(), now()).run();
+      const id = Number(r.meta.last_row_id);
+      await logChange(id, "create", values, body.log_note);
+      return json({ ok: true, reagent: withStatus(await activeReagent(id)) });
+    }
+    const reagentMatch = path.match(/^\/lab\/reagents\/(\d+)$/);
+    if (reagentMatch && method === "PUT") {
+      const id = Number(reagentMatch[1]);
+      const old = await activeReagent(id);
+      if (!old) return bad("找不到這項藥品", 404);
+      const body = await request.json().catch(() => ({}));
+      const { values, errors } = cleanLabInput(body);
+      if (errors.length) return bad(errors.join("；"));
+      if ("code" in values) {
+        if (!values.code) return bad("編號不可空白");
+        const clash = await db.prepare("SELECT id FROM lab_reagents WHERE lower(code) = lower(?) AND id != ? AND COALESCE(deleted_at, '') = ''").bind(values.code, id).first();
+        if (clash) return bad(`編號 ${values.code} 已經存在`, 409);
+      }
+      const changes = diffReagent(old, values);
+      if (!Object.keys(changes).length) return json({ ok: true, unchanged: true, reagent: withStatus(old) });
+      const keys = Object.keys(changes);
+      await db.prepare(`UPDATE lab_reagents SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ?`)
+        .bind(...keys.map((k) => values[k]), now(), id).run();
+      const inventoryOnly = keys.every((k) => ["remaining_qty", "location", "opened_date"].includes(k));
+      await logChange(id, inventoryOnly ? "inventory" : "update", changes, body.log_note);
+      return json({ ok: true, reagent: withStatus(await activeReagent(id)) });
+    }
+    if (reagentMatch && method === "DELETE") {
+      const id = Number(reagentMatch[1]);
+      const old = await activeReagent(id);
+      if (!old) return bad("找不到這項藥品", 404);
+      await db.prepare("UPDATE lab_reagents SET deleted_at = ?, updated_at = ? WHERE id = ?").bind(now(), now(), id).run();
+      await logChange(id, "delete", {}, `${old.code} ${old.name_zh || old.name_en || ""}`);
+      return json({ ok: true });
+    }
+    const logMatch = path.match(/^\/lab\/reagents\/(\d+)\/log$/);
+    if (logMatch && method === "GET") {
+      const { results = [] } = await db.prepare("SELECT * FROM lab_reagent_log WHERE reagent_id = ? ORDER BY id DESC LIMIT 100").bind(Number(logMatch[1])).all();
+      return json({ log: results.map((l) => ({ ...l, changes: JSON.parse(l.changes_json || "{}") })) });
+    }
+    const coaMatch = path.match(/^\/lab\/reagents\/(\d+)\/coa$/);
+    if (coaMatch && method === "POST") {
+      if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+      const id = Number(coaMatch[1]);
+      const old = await activeReagent(id);
+      if (!old) return bad("找不到這項藥品", 404);
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      if (!bytes.byteLength) return bad("沒有收到檔案");
+      if (bytes.byteLength > 25 * 1024 * 1024) return bad("COA 檔案超過 25MB", 413);
+      const filename = decodeURIComponent(request.headers.get("x-filename") || "COA.pdf").replace(/[\\/\u0000-\u001f]+/g, "_").slice(0, 200);
+      const mime = (request.headers.get("content-type") || "application/octet-stream").split(";")[0];
+      const key = `lab/coa/${id}-${Date.now()}-${filename.replace(/[^\w.\-一-鿿]+/g, "_")}`;
+      await env.FILES.put(key, bytes, { httpMetadata: { contentType: mime } });
+      await db.prepare("UPDATE lab_reagents SET coa_key = ?, coa_filename = ?, coa_mime = ?, coa_size = ?, updated_at = ? WHERE id = ?")
+        .bind(key, filename, mime, bytes.byteLength, now(), id).run();
+      if (old.coa_key) await env.FILES.delete(old.coa_key).catch(() => {});
+      await logChange(id, "coa", { coa: [old.coa_filename || null, filename] });
+      return json({ ok: true, reagent: withStatus(await activeReagent(id)) });
+    }
+    if (coaMatch && method === "GET") {
+      if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+      const r = await activeReagent(Number(coaMatch[1]));
+      if (!r?.coa_key) return bad("這項藥品還沒有 COA", 404);
+      const obj = await env.FILES.get(r.coa_key);
+      if (!obj) return bad("找不到 COA 檔案", 404);
+      return new Response(obj.body, { headers: {
+        "content-type": r.coa_mime || "application/octet-stream",
+        "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(r.coa_filename || "COA.pdf")}`,
+        "cache-control": "private, max-age=300",
+      } });
+    }
+    if (path === "/lab/settings" && method === "PUT") {
+      const body = await request.json().catch(() => ({}));
+      const days = Math.round(Number(body.warn_days));
+      if (!Number.isFinite(days) || days < 1 || days > 730) return bad("提醒天數要在 1～730 之間");
+      await db.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('lab.warn_days', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+        .bind(String(days), now()).run();
+      return json({ ok: true, warn_days: days });
+    }
+    return bad("找不到這個 MyLab 功能", 404);
+  }
+
   // ---- v248 關聯圖：以一筆記事（或附件所屬記事）為中心，找相關記事與原因 ----
   if (path === "/graph" && method === "GET") {
     const type = url.searchParams.get("type") || "entry";
