@@ -248,7 +248,7 @@ async function aiFolderSuggestion(runAi, content, folders, vector) {
   return parseAiDecision(result);
 }
 
-async function saveSuggestion(db, data) {
+export async function saveSuggestion(db, data) {
   await db.prepare(
     `INSERT INTO filing_suggestions
        (entry_id, suggested_folder_id, previous_folder_id, ai_folder_id, vector_folder_id,
