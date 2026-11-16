@@ -71,7 +71,7 @@ import {
   listCategories,
   updateCategory,
 } from "./lib/categories.js";
-import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile } from "./lib/autofile.js";
+import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile, saveSuggestion, vectorFolderSuggestion } from "./lib/autofile.js";
 import { suggestFilename } from "./lib/ai-naming.js";
 import { GLOSSARY_SETTING_KEY, cleanGlossary, loadGlossary, looksLikePromptEcho, toTraditional, whisperInput } from "./lib/transcribe.js";
 import { cleanFeedList, cleanLinks, cleanTodos, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
@@ -149,7 +149,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "252";
+const UI_VERSION = "253";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1157,6 +1157,146 @@ async function autoRenameAttachment(db, att, extractedText) {
   ).bind(next, att.id).run();
   await logHistory(db, att.entry_id, null, "自動重新命名", `${original} → ${next}`);
   return true;
+}
+
+// v253 錄完／上傳完自動命名＋歸類。使用者原本要自己點「AI 整理」；現在由前端在錄音結束、
+// 檔案上傳（轉錄完成）後呼叫一次，後端依 v247 的命名法則與搬移判斷直接套用。
+// - 命名：附件依「公司_產品_文件類型」／「日期_主題」；記事標題只有在還是預設標題
+//   （錄音 11/16 10:30、檔名原樣）時才改，使用者自己取的標題不動。原檔名保留在 original_filename。
+// - 搬移：只搬待分類容器裡的記事（使用者在某個資料夾裡直接錄的，位置是他選的，不動）。
+//   AI 沒有明確答案時，用向量找最接近的既有資料夾（使用者選擇「一律搬到最接近的」）。
+//   寫入 filing_suggestions（auto_applied），列表上的「復原」鈕可以搬回待分類。
+// - 每筆記事只做一次（fields_json._auto_organized_at）；音檔還在轉錄時回 pending，不標記完成。
+const DEFAULT_ENTRY_TITLE = /^(錄音|錄影|拍照|照片|影片|快速記事|新記事|未命名|無標題)(\s|$|[-_])/;
+
+async function autoOrganizeEntry(env, db, ai, entryId) {
+  const entry = await db.prepare("SELECT * FROM entries WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(entryId).first();
+  if (!entry) return { ok: false, error: "找不到紀錄" };
+  let fields = {};
+  try { fields = JSON.parse(entry.fields_json || "{}"); } catch { fields = {}; }
+  if (fields._kind === "weekly_report") return { ok: true, skipped: "週報由系統固定，不處理" };
+  if (fields._auto_organized_at) return { ok: true, skipped: "這筆已經自動整理過" };
+  const { results: atts = [] } = await db.prepare(
+    "SELECT * FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY id LIMIT 12"
+  ).bind(entryId).all();
+  // 音檔還在轉錄：沒有逐字稿就判斷不出主題，等下一輪
+  const waiting = atts.some((a) => a.kind === "audio" && !String(a.transcript || "").trim()
+    && !["auto_failed", "failed"].includes(String(a.transcribed_at || "")));
+  if (waiting) return { ok: true, pending: true };
+
+  const { results: folderRows = [] } = await db.prepare(
+    "SELECT id, name, parent_id, type, role FROM folders WHERE COALESCE(deleted_at, '') = ''"
+  ).all();
+  const folders = withPaths(folderRows);
+  const folderById = new Map(folders.map((f) => [Number(f.id), f]));
+  const realFolders = folders.filter((f) => f.role !== "staging");
+  const pathOf = (fid) => folderById.get(Number(fid))?.path || "";
+  const out = { ok: true, title: entry.title || "", renamed: [], moved: null, notes: [] };
+
+  const entryText = htmlToPlainText(entry.body || "").slice(0, 3000);
+  const attText = [];
+  for (const att of atts) {
+    const t = String(att.transcript || att.ocr_text || "").trim();
+    attText.push(t ? `${att.filename}：${t.slice(0, 600)}` : att.filename);
+  }
+  const text = [entryText, ...attText].filter(Boolean).join("\n");
+  const folderContext = entry.folder_id ? `所在資料夾：${pathOf(entry.folder_id)}` : "";
+
+  // 1) 附件檔名
+  for (const att of atts) {
+    try {
+      const ruleKey = attachmentRuleKey(att);
+      let next = "";
+      if (ruleKey === "doc") {
+        const body = await ensureAttachmentText(env, db, att).catch(() => "");
+        const suggestion = await suggestFilename(ai, { filename: att.filename, sourceUrl: String(fields.source_url || fields.original_url || ""), folderPath: pathOf(entry.folder_id), text: body });
+        next = suggestion.filename || "";
+      } else {
+        const subject = await suggestGenericName(ai, {
+          kind: ruleKey, current: att.filename,
+          text: String(att.transcript || att.ocr_text || "") || entryText,
+          context: [folderContext, entry.title && `所屬記事：${entry.title}`].filter(Boolean).join("；"),
+        });
+        next = composeOrganizedName(ruleKey, subject, { filename: att.filename, createdAt: att.created_at });
+      }
+      if (!next || next === att.filename) continue;
+      await db.prepare(
+        "UPDATE attachments SET original_filename = CASE WHEN COALESCE(original_filename, '') = '' THEN filename ELSE original_filename END, filename = ? WHERE id = ?"
+      ).bind(next, att.id).run();
+      await logHistory(db, entryId, null, "AI 自動重新命名", `${att.filename} → ${next}`);
+      out.renamed.push({ id: att.id, from: att.filename, to: next });
+      att.filename = next;
+    } catch (err) {
+      out.notes.push(`檔名「${att.filename}」未處理：${err.message}`);
+    }
+  }
+
+  // 2) 記事標題：只改預設標題或「就是檔名」的標題
+  const stems = atts.map((a) => String(a.original_filename || a.filename).replace(/\.[^.]+$/, ""));
+  const titleIsDefault = !String(entry.title || "").trim()
+    || DEFAULT_ENTRY_TITLE.test(entry.title) || stems.includes(String(entry.title).trim()) || isGenericFilename(entry.title);
+  if (titleIsDefault && !/^\s*【AI彙整】/.test(entry.title || "")) {
+    try {
+      let title = "";
+      if (atts.length === 1 && atts[0].kind !== "audio") title = String(atts[0].filename).replace(/\.[^.]+$/, "");
+      if (!title) title = cleanName(await suggestGenericName(ai, { kind: "entry", current: entry.title, text, context: folderContext }), 60);
+      if (title && title !== entry.title) {
+        await db.prepare("UPDATE entries SET title = ?, updated_at = ? WHERE id = ?").bind(title, now(), entryId).run();
+        await logHistory(db, entryId, null, "AI 自動命名", `${entry.title || "（無標題）"} → ${title}`);
+        out.title = title;
+        out.title_changed = true;
+      }
+    } catch (err) {
+      out.notes.push(`標題未處理：${err.message}`);
+    }
+  }
+
+  // 3) 歸類：只搬待分類容器裡的記事
+  const staging = await ensureStagingFolder(db, now());
+  if (Number(entry.folder_id) === Number(staging.id) && !entry.parent_entry_id) {
+    try {
+      let target = null;
+      let confidence = 0.6;
+      let reason = "";
+      const suggestion = await suggestMove(env, ai, { kind: "記事", entryId, title: out.title, text, currentFolderId: Number(staging.id), candidates: realFolders });
+      if (suggestion?.folder_id) {
+        target = Number(suggestion.folder_id);
+        reason = suggestion.reason || "";
+        confidence = suggestion.confidence === "高" ? 0.9 : 0.6;
+      } else {
+        // AI 沒有明確答案（提議新資料夾、判斷不出或只說維持原位）：用向量找最接近的既有資料夾
+        const allowed = new Set(realFolders.map((f) => Number(f.id)));
+        const near = await vectorFolderSuggestion(env, (model, input) => ai.run(model, input), text, entryId, allowed).catch(() => null);
+        if (near?.folderId && allowed.has(Number(near.folderId))) {
+          target = Number(near.folderId);
+          confidence = 0.4;
+          reason = `AI 沒有明確答案，依內容相似度放到最接近的資料夾${suggestion?.reason ? `（${suggestion.reason}）` : ""}`;
+        } else out.notes.push(suggestion?.reason || "找不到相近的資料夾，留在待分類");
+      }
+      if (target && folderById.has(target)) {
+        const stamp = now();
+        const moved = await db.prepare(
+          `UPDATE entries SET folder_id = ?, auto_filed_at = ?, auto_filed_reason = ?, updated_at = ?
+           WHERE id = ? AND folder_id = ? AND COALESCE(deleted_at, '') = ''`
+        ).bind(target, stamp, `AI 自動歸類：${reason}`.slice(0, 500), stamp, entryId, Number(staging.id)).run();
+        if (moved?.meta?.changes) {
+          await saveSuggestion(db, {
+            entryId, folderId: target, previousFolderId: Number(staging.id), aiFolderId: suggestion?.folder_id || null,
+            vectorFolderId: null, confidence, vectorScore: 0, status: "auto_applied", basis: "ai_organize_after_capture",
+            reason: reason || "AI 自動歸類", sourceUpdatedAt: "", timestamp: stamp,
+          });
+          await logHistory(db, entryId, target, "AI 自動分類", reason || "錄完／上傳後自動歸類");
+          out.moved = { folder_id: target, path: pathOf(target), from_path: staging.name };
+        }
+      }
+    } catch (err) {
+      out.notes.push(`歸類未完成：${err.message}`);
+    }
+  }
+
+  fields._auto_organized_at = now();
+  await db.prepare("UPDATE entries SET fields_json = ? WHERE id = ?").bind(JSON.stringify(fields), entryId).run();
+  return out;
 }
 
 const OFFICE_MIME = {
@@ -4465,6 +4605,19 @@ async function handleApi(request, env, url, identity = {}) {
     const document = await composeRecordingDocument(env, db, entryId);
     if (document.reason === "not_found") return bad("找不到紀錄", 404);
     return json(document);
+  }
+
+  const autoOrganizeMatch = path.match(/^\/entries\/(\d+)\/auto-organize$/);
+  if (autoOrganizeMatch && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以使用 AI 整理", 403);
+    if (!env.AI) return bad("尚未啟用 Workers AI", 501);
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    try {
+      return json(await autoOrganizeEntry(env, db, budgetedAi(env), Number(autoOrganizeMatch[1])));
+    } catch (err) {
+      return bad(`自動整理失敗：${err.message}`, 502);
+    }
   }
 
   const autoTranscribeMatch = path.match(/^\/entries\/(\d+)\/auto-transcribe$/);

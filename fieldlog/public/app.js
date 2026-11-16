@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // 為什麼需要：曾經發生「Cloudflare 部署確認是最新版，但瀏覽器跑的是快取住的舊
 // app.js」，而畫面上完全看不出版本，只能靠反覆試誤。現在啟動時會跟伺服器對版，
 // 不一致就直接在畫面上講，並給一顆按鈕清掉 service worker 與快取。
-const APP_VERSION = "252";
+const APP_VERSION = "253";
 
 // 工作分類是虛擬顯示層；分類內仍採四層知識架構，既有 parent_id 不需改動。
 const MAX_FOLDER_DEPTH = 4;
@@ -5675,6 +5675,44 @@ async function autoTranscribeUploadedEntries(entryIds) {
   return summary;
 }
 
+// v253 錄完／上傳完自動命名＋歸類：後端依 v247 的命名法則改名、把待分類裡的記事搬到最接近的資料夾
+// （可用列表上的「復原」搬回）。這裡只負責觸發，並把結果放進首頁「最近開啟」，方便立刻找到。
+// 音檔要先有逐字稿才判斷得出主題；後端回 pending 就隔幾秒再問，最多 4 次。
+async function autoOrganizeCaptured(entryIds, { transcribe = false } = {}) {
+  const ids = [...new Set((entryIds || []).map(Number).filter(Boolean))];
+  if (!ids.length || !navigator.onLine || !TRANSCRIBE_ENABLED) return;
+  if (transcribe) await autoTranscribeUploadedEntries(ids).catch(() => {});
+  const movedItems = [];
+  let changed = 0;
+  for (const id of ids) {
+    let result = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try { result = await api(`/entries/${id}/auto-organize`, { method: "POST", body: "{}" }); }
+      catch (error) {
+        console.error(`自動整理失敗 [entry ${id}]`, error);
+        if (/429|budget|額度|上限|費用/i.test(error.message || "")) return;
+        result = null;
+        break;
+      }
+      if (!result.pending) break;
+      await new Promise((resolve) => setTimeout(resolve, 8000));
+    }
+    if (!result || result.pending || result.skipped || !result.ok) continue;
+    if (result.title_changed || result.renamed?.length || result.moved) changed++;
+    if (result.moved) movedItems.push({ id, title: result.title, folder_id: result.moved.folder_id, path: result.moved.path });
+  }
+  if (!changed) return;
+  try { await loadFolders(); } catch { /* 清單稍後會自己更新 */ }
+  for (const item of movedItems) {
+    rememberRecentFolder(item.folder_id);
+    rememberRecentEntry({ id: item.id, title: item.title, folder_id: item.folder_id });
+  }
+  loadRecent?.();
+  showToast(movedItems.length === 1
+    ? `AI 已命名並歸類：「${movedItems[0].title}」→ ${movedItems[0].path}`
+    : `AI 已自動命名${movedItems.length ? `，${movedItems.length} 筆已歸類（見「最近開啟」）` : ""}`);
+}
+
 const AUTO_TRANSCRIBE_FOLDER_IDS = new Set();
 
 async function autoTranscribeFolderBacklog(folderId, entries) {
@@ -5735,6 +5773,7 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
   let duplicates = 0;
   let failed = 0;
   const audioEntryIds = [];
+  const organizeIds = [];
 
   try {
     for (let index = 0; index < files.length; index++) {
@@ -5758,6 +5797,7 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
           await api(`/entries/${entryId}`, { method: "DELETE" }).catch(() => {});
         } else {
           uploaded++;
+          organizeIds.push(entryId);
           if (isAudioUpload(file)) audioEntryIds.push(entryId);
         }
       } catch (error) {
@@ -5785,6 +5825,8 @@ async function uploadStandaloneFiles(files, folderId, { button = null, destinati
     updateUploadProgress(files.length, files.length, progressLabel);
     await Promise.all([loadFolders(), loadRecent()]);
     if (CURRENT_FOLDER && Number(CURRENT_FOLDER.id) === Number(folderId)) await openFolder(Number(folderId));
+    // v253：上傳（含轉錄）完成後自動命名＋歸類，不擋住上傳流程
+    autoOrganizeCaptured(organizeIds).catch((error) => console.error('自動整理失敗', error));
   } finally {
     UPLOAD_BATCH_ACTIVE = false;
     hideUploadProgress();
@@ -8623,6 +8665,8 @@ function finalizeAudioStop() {
   const emptyBit = emptySegments ? `，${emptySegments} 段未產生音檔` : "";
   showToast(`錄音結束：${savedBit}${pendingBit}${emptyBit}${photos ? `＋照片 ${photos} 張` : ""}${diagBit}`);
   openEntry(entryId);
+  // v253：錄完自動轉錄收尾 → 命名＋歸類（待分類裡的才會搬；在資料夾內錄的只改名）
+  if (uploadedSegments) autoOrganizeCaptured([entryId], { transcribe: true }).catch((error) => console.error('自動整理失敗', error));
 }
 
 async function onAudioSegmentStop(recorder, chunks, seg) {
