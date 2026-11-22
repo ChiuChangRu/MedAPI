@@ -81,6 +81,61 @@ export const SCHEMA = [
     note TEXT DEFAULT '',
     created_at TEXT NOT NULL
   )`,
+  // v254 實體關聯圖（知識圖譜試做）：AI 擷取的實體、出現位置、原文明寫的關係、合併建議、類型歸群
+  `CREATE TABLE IF NOT EXISTS kg_entities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    norm_key TEXT NOT NULL UNIQUE,
+    type_label TEXT DEFAULT '',
+    aliases_json TEXT DEFAULT '[]',
+    status TEXT DEFAULT 'active',
+    merged_into INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS kg_mentions (
+    entity_id INTEGER NOT NULL,
+    entry_id INTEGER NOT NULL,
+    salience INTEGER DEFAULT 1,
+    evidence TEXT DEFAULT '',
+    type_label TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (entity_id, entry_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS kg_relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER NOT NULL,
+    object_id INTEGER NOT NULL,
+    relation TEXT NOT NULL,
+    entry_id INTEGER NOT NULL,
+    evidence TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS kg_entry_state (
+    entry_id INTEGER PRIMARY KEY,
+    source_stamp TEXT DEFAULT '',
+    status TEXT DEFAULT '',
+    model TEXT DEFAULT '',
+    error TEXT DEFAULT '',
+    extracted_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS kg_merge_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    a_id INTEGER NOT NULL,
+    b_id INTEGER NOT NULL,
+    reason TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    reviewed_at TEXT DEFAULT '',
+    UNIQUE (a_id, b_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS kg_type_groups (
+    type_label TEXT PRIMARY KEY,
+    type_group TEXT NOT NULL,
+    updated_at TEXT DEFAULT ''
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_kg_mentions_entry ON kg_mentions(entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_kg_relations_entry ON kg_relations(entry_id)`,
   // v246 Face ID／Touch ID 登入（WebAuthn passkey）：已註冊的公鑰，與一次性挑戰碼
   `CREATE TABLE IF NOT EXISTS passkeys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
