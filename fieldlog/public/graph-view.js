@@ -1,6 +1,6 @@
 /* v248 關聯圖：以一筆記事為中心，畫出跟它有關的記事與「為什麼有關」。
  * 資料來自 GET /api/graph（正式關聯、語意相似、共同編號）。
- * 版面用簡單的力導向排版（節點最多數十個，直接在瀏覽器算完再畫 SVG），不依賴外部函式庫。
+ * v255 起改用共用的 3D 引擎（graph3d.js）：可旋轉、縮放、拖節點，有透視與落影。
  * 需要 app.js 的全域：api、esc、showToast、FOLDER_CATEGORY_META、openEntry、showEntryPreview、PREVIEW_ENABLED。
  */
 (function () {
@@ -17,54 +17,16 @@
   function strongestKind(edge) { return [...edge.kinds].sort((a, b) => KIND_META[b].rank - KIND_META[a].rank)[0]; }
   function shortTitle(text, n = 14) { const t = String(text || ""); return t.length > n ? `${t.slice(0, n)}…` : t; }
 
-  /** 力導向排版：中心固定在原點，其他節點受排斥、彈簧、向心力影響，跑固定步數後停止。 */
-  function layout(nodes, edges, centerId) {
-    const pos = new Map();
-    const others = nodes.filter((n) => n.id !== centerId);
-    others.forEach((n, i) => {
-      const angle = (i / Math.max(1, others.length)) * Math.PI * 2;
-      const edge = edges.find((e) => (e.source === n.id && e.target === centerId) || (e.target === n.id && e.source === centerId));
-      const r = edge ? KIND_META[strongestKind(edge)].length : 260;
-      pos.set(n.id, { x: Math.cos(angle) * r, y: Math.sin(angle) * r, vx: 0, vy: 0 });
-    });
-    pos.set(centerId, { x: 0, y: 0, vx: 0, vy: 0, fixed: true });
-    const ids = [...pos.keys()];
-    for (let step = 0; step < 450; step++) {
-      const cooling = 1 - step / 500;
-      for (let i = 0; i < ids.length; i++) {
-        for (let j = i + 1; j < ids.length; j++) {
-          const a = pos.get(ids[i]), b = pos.get(ids[j]);
-          let dx = a.x - b.x, dy = a.y - b.y;
-          let d2 = dx * dx + dy * dy;
-          if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
-          const f = 12000 / d2;
-          const d = Math.sqrt(d2);
-          a.vx += (dx / d) * f; a.vy += (dy / d) * f;
-          b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
-        }
-      }
-      for (const e of edges) {
-        const a = pos.get(e.source), b = pos.get(e.target);
-        if (!a || !b) continue;
-        const kind = strongestKind(e);
-        let length = KIND_META[kind].length;
-        if (kind === "similar" && e.score) length -= (e.score - 0.6) * 300;
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-        const f = (d - length) * 0.04;
-        a.vx += (dx / d) * f; a.vy += (dy / d) * f;
-        b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
-      }
-      for (const id of ids) {
-        const p = pos.get(id);
-        if (p.fixed) { p.vx = p.vy = 0; continue; }
-        p.vx -= p.x * 0.004; p.vy -= p.y * 0.004;
-        p.x += Math.max(-30, Math.min(30, p.vx)) * cooling;
-        p.y += Math.max(-30, Math.min(30, p.vy)) * cooling;
-        p.vx *= 0.6; p.vy *= 0.6;
-      }
+  /** 3D 引擎：第一次用到才建立（overlay 打開後才有尺寸） */
+  function engine() {
+    if (!state.g3d) {
+      state.g3d = Graph3D.create($("graph-stage"), {
+        label: "立體關聯圖：拖曳旋轉，滾輪縮放，點節點看說明",
+        onSelect: (id) => selectNode(id),
+        onActivate: (id) => recenter(id),
+      });
     }
-    return pos;
+    return state.g3d;
   }
 
   function visibleGraph() {
@@ -75,42 +37,22 @@
     return { nodes: nodes.filter((n) => keep.has(n.id)), edges: shownEdges.map((e) => ({ ...e, kinds: e.kinds.filter((k) => !state.hidden.has(k)) })) };
   }
 
+  /** 畫圖：資料或篩選改變時呼叫；只換選取請用 selectNode（不重新排版，畫面不會跳動） */
   function render() {
-    const svg = $("graph-svg");
     const { nodes, edges } = visibleGraph();
     const center = state.data.center;
-    const pos = layout(nodes, edges, center);
-    const xs = [...pos.values()].map((p) => p.x), ys = [...pos.values()].map((p) => p.y);
-    const pad = 70;
-    const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad, minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
-    svg.setAttribute("viewBox", `${minX} ${minY} ${Math.max(200, maxX - minX)} ${Math.max(200, maxY - minY)}`);
-    const edgeSvg = edges.map((e, index) => {
-      const a = pos.get(e.source), b = pos.get(e.target);
-      if (!a || !b) return "";
-      const kind = strongestKind(e);
-      const meta = KIND_META[kind];
-      const opacity = kind === "similar" ? Math.min(0.9, 0.35 + Math.max(0, (e.score || 0.6) - 0.55) * 2) : 0.9;
-      return `<line class="graph-edge" data-edge="${index}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${meta.color}" stroke-width="${meta.width}" stroke-dasharray="${meta.dash}" stroke-opacity="${opacity}"><title>${esc(e.labels.join("、"))}</title></line>`;
-    }).join("");
-    const nodeSvg = nodes.map((n) => {
-      const p = pos.get(n.id);
-      const isCenter = n.id === center;
-      const r = isCenter ? 17 : 11;
-      const selected = state.selected === n.id;
-      return `<g class="graph-node${isCenter ? " is-center" : ""}${selected ? " is-selected" : ""}" data-node="${n.id}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${esc(n.title)}">
-        <circle r="${r + 6}" fill="transparent"></circle>
-        <circle r="${r}" fill="${nodeColor(n)}" stroke="${selected ? "#111" : "#fff"}" stroke-width="${selected ? 3 : 2}" ${n.embedded ? "" : 'stroke-dasharray="3 2"'}></circle>
-        <text class="graph-icon" y="4" text-anchor="middle" font-size="${isCenter ? 14 : 10}">${NODE_ICON[n.kind] || "📝"}</text>
-        <text class="graph-label" y="${r + 15}" text-anchor="middle">${esc(shortTitle(n.title, isCenter ? 22 : 14))}</text>
-        <title>${esc(n.title)}${n.path ? `\n${esc(n.path)}` : ""}</title>
-      </g>`;
-    }).join("");
-    svg.innerHTML = `<g class="graph-edges">${edgeSvg}</g><g class="graph-nodes">${nodeSvg}</g>`;
-    svg.querySelectorAll(".graph-node").forEach((g) => {
-      const id = Number(g.dataset.node);
-      g.onclick = () => selectNode(id);
-      g.ondblclick = () => recenter(id);
-      g.onkeydown = (ev) => { if (ev.key === "Enter") selectNode(id); };
+    const g = engine();
+    g.setData({
+      center,
+      selected: state.selected,
+      nodes: nodes.map((n) => ({ id: n.id, kind: "doc", label: n.title, color: nodeColor(n), icon: NODE_ICON[n.kind] || "📝", center: n.id === center, dashed: !n.embedded, tip: `${n.title}${n.path ? `\n${n.path}` : ""}` })),
+      edges: edges.map((e) => {
+        const kind = strongestKind(e), meta = KIND_META[kind];
+        let length = meta.length;
+        if (kind === "similar" && e.score) length -= (e.score - 0.6) * 300;
+        const opacity = kind === "similar" ? Math.min(0.9, 0.35 + Math.max(0, (e.score || 0.6) - 0.55) * 2) : 0.9;
+        return { source: e.source, target: e.target, color: meta.color, width: meta.width, dash: meta.dash ? meta.dash.split(" ").map(Number) : null, opacity, length, tip: e.labels.join("、") };
+      }),
     });
     if (state.synthMode) renderSynth(); else renderInfo();
   }
@@ -148,7 +90,7 @@
     box.querySelector('[data-act="save"]')?.addEventListener("click", () => saveRelation(node.id));
   }
 
-  function selectNode(id) { state.selected = id; state.synthMode = false; $("graph-body")?.classList.remove("synth"); render(); }
+  function selectNode(id) { state.selected = id; state.synthMode = false; $("graph-body")?.classList.remove("synth"); state.g3d?.setSelected(id); renderInfo(); }
 
   // ---- v249 AI 綜整：把圖上顯示的資料一起交給 AI 做橫向整理 ----
   /** 圖上目前顯示的節點，中心第一，其餘依關聯強度（正式關聯＞共同編號＞相似度）排，最多 20 筆 */
@@ -211,7 +153,7 @@
         <button class="btn small" type="button" id="graph-synth-back">回到節點資訊</button>
       </div>`;
     box.querySelectorAll(".graph-cite").forEach((el) => {
-      const go = () => { state.selected = Number(el.dataset.cite); const keep = box.scrollTop; render(); $("graph-info").scrollTop = keep; };
+      const go = () => { state.selected = Number(el.dataset.cite); const keep = box.scrollTop; state.g3d?.setSelected(state.selected); state.synthMode = false; $("graph-body")?.classList.remove("synth"); renderInfo(); $("graph-info").scrollTop = keep; };
       el.onclick = go;
       el.onkeydown = (ev) => { if (ev.key === "Enter") go(); };
       const node = state.data.nodes.find((n) => n.id === Number(el.dataset.cite));
@@ -276,7 +218,7 @@
   }
 
   async function load(target, { keepSelection = null } = {}) {
-    $("graph-svg").innerHTML = "";
+    state.g3d?.clear();
     $("graph-info").innerHTML = `<p class="sub">讀取關聯中…</p>`;
     try {
       const data = await api(`/graph?type=${encodeURIComponent(target.type)}&id=${encodeURIComponent(target.id)}&min=${state.min}`);
@@ -288,7 +230,7 @@
       $("graph-back").hidden = !state.history.length;
       renderStats();
       if (data.nodes.length <= 1) {
-        $("graph-svg").innerHTML = "";
+        state.g3d?.clear();
         $("graph-info").innerHTML = `<h3>${esc(centerNode?.title || "")}</h3><p class="sub">目前找不到相關的記事。可以把相似度門檻調低，或先補齊語意向量；也可以在記事裡用「🔗 新增關聯」手動連結。</p>`;
         return;
       }
@@ -299,6 +241,7 @@
   }
 
   function close() {
+    state.g3d?.pause();
     $("graph-overlay").classList.remove("open");
     $("graph-overlay").setAttribute("aria-hidden", "true");
     document.removeEventListener("keydown", onKey);
@@ -328,9 +271,9 @@
         if (state.data && state.data.nodes.length > 1) render();
       };
     });
+    state.g3d?.resume();
     await load(target);
   }
 
   window.openRelationGraph = openRelationGraph;
-  window.__graphLayoutForTests = layout;
 })();

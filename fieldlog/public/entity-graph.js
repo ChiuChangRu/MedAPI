@@ -6,7 +6,7 @@
 (function () {
   const PALETTE = ["#0f766e", "#b45309", "#7c3aed", "#be123c", "#1d4ed8", "#15803d", "#a16207", "#0e7490", "#9333ea", "#c2410c", "#4d7c0f", "#475569"];
   const DOC_ICON = { link: "🔗", audio: "🎙️", photo: "🖼️", video: "🎬", file: "📄", note: "📝" };
-  const state = { data: null, history: [], hiddenTypes: new Set(), selected: null, folder: null, searchResults: [], extracting: false, stopRequested: false };
+  const state = { data: null, history: [], hiddenTypes: new Set(), selected: null, folder: null, searchResults: [], extracting: false, stopRequested: false, g3d: null };
 
   function $(id) { return document.getElementById(id); }
   // 類型顏色依「第一次出現」的順序分配，同一次使用中不會變色，也不會像雜湊那樣兩個類型撞同色
@@ -32,95 +32,32 @@
     return { nodes: finalNodes, edges: shownEdges };
   }
 
-  function layout(nodes, edges, centerId) {
-    const pos = new Map();
-    const others = nodes.filter((n) => n.id !== centerId);
-    others.forEach((n, i) => {
-      const angle = (i / Math.max(1, others.length)) * Math.PI * 2;
-      const r = n.kind === "entity" ? 170 : 290;
-      pos.set(n.id, { x: Math.cos(angle) * r, y: Math.sin(angle) * r, vx: 0, vy: 0 });
-    });
-    pos.set(centerId, { x: 0, y: 0, vx: 0, vy: 0, fixed: true });
-    const ids = [...pos.keys()];
-    for (let step = 0; step < 420; step++) {
-      const cooling = 1 - step / 460;
-      for (let i = 0; i < ids.length; i++) {
-        for (let j = i + 1; j < ids.length; j++) {
-          const a = pos.get(ids[i]), b = pos.get(ids[j]);
-          let dx = a.x - b.x, dy = a.y - b.y;
-          let d2 = dx * dx + dy * dy;
-          if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
-          const f = 14000 / d2, d = Math.sqrt(d2);
-          a.vx += (dx / d) * f; a.vy += (dy / d) * f; b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
-        }
-      }
-      for (const e of edges) {
-        const a = pos.get(e.source), b = pos.get(e.target);
-        if (!a || !b) continue;
-        const length = e.kind === "relation" ? 150 : 120;
-        const dx = b.x - a.x, dy = b.y - a.y, d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-        const f = (d - length) * 0.035;
-        a.vx += (dx / d) * f; a.vy += (dy / d) * f; b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
-      }
-      for (const id of ids) {
-        const p = pos.get(id);
-        if (p.fixed) { p.vx = p.vy = 0; continue; }
-        p.vx -= p.x * 0.004; p.vy -= p.y * 0.004;
-        p.x += Math.max(-30, Math.min(30, p.vx)) * cooling; p.y += Math.max(-30, Math.min(30, p.vy)) * cooling;
-        p.vx *= 0.6; p.vy *= 0.6;
-      }
+  /** 3D 引擎：第一次用到才建立（overlay 打開後才有尺寸） */
+  function engine() {
+    if (!state.g3d) {
+      state.g3d = Graph3D.create($("kg-stage"), {
+        label: "立體實體關聯圖：拖曳旋轉，滾輪縮放，點節點看原文依據",
+        onSelect: (id) => { state.selected = id; state.g3d.setSelected(id); renderInfo(); },
+        onActivate: (id) => recenter(id),
+      });
     }
-    return pos;
+    return state.g3d;
   }
 
+  /** 資料或篩選改變時呼叫；只換選取走 onSelect（不重新排版，畫面不會跳動） */
   function render() {
-    const svg = $("kg-svg");
-    if (!state.data) { svg.innerHTML = ""; return; }
+    if (!state.data) { state.g3d?.clear(); return; }
     const { nodes, edges } = visible();
     const center = state.data.center;
-    const pos = layout(nodes, edges, center);
-    const xs = [...pos.values()].map((p) => p.x), ys = [...pos.values()].map((p) => p.y);
-    const pad = 80;
-    const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad, minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
-    svg.setAttribute("viewBox", `${minX} ${minY} ${Math.max(220, maxX - minX)} ${Math.max(220, maxY - minY)}`);
-    const edgeSvg = edges.map((e) => {
-      const a = pos.get(e.source), b = pos.get(e.target);
-      if (!a || !b) return "";
-      if (e.kind === "relation") {
-        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-        return `<line class="kg-edge relation" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#334155" stroke-width="2.4"></line>
-          <text class="kg-edge-label" x="${mx}" y="${my - 4}" text-anchor="middle">${esc(e.label)}</text>`;
-      }
-      return `<line class="kg-edge mention" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#94a3b8" stroke-width="${0.6 + e.weight * 0.5}" stroke-opacity="0.75"><title>${esc(e.evidence || "")}</title></line>`;
-    }).join("");
-    const nodeSvg = nodes.map((n) => {
-      const p = pos.get(n.id);
-      const isCenter = n.id === center;
-      const selected = state.selected === n.id;
-      if (n.kind === "entity") {
-        const label = short(n.title, isCenter ? 24 : 18);
-        const w = Math.max(44, Math.min(230, [...label].reduce((sum, ch) => sum + (/[\u2E80-\uFFFF]/.test(ch) ? 13 : 7.5), 0) + 20)), h = isCenter ? 30 : 24;
-        return `<g class="kg-node entity${isCenter ? " is-center" : ""}${selected ? " is-selected" : ""}" data-node="${esc(n.id)}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${esc(n.title)}">
-          <rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="7" fill="${typeColor(n.type)}" stroke="${selected ? "#111" : "#fff"}" stroke-width="${selected ? 3 : 1.5}"></rect>
-          <text class="kg-entity-label" y="5" text-anchor="middle">${esc(label)}</text>
-          <title>${esc(n.title)}｜${esc(n.type)}｜${n.docs} 份資料</title>
-        </g>`;
-      }
-      const r = isCenter ? 15 : 9;
-      return `<g class="kg-node doc${isCenter ? " is-center" : ""}${selected ? " is-selected" : ""}" data-node="${esc(n.id)}" transform="translate(${p.x},${p.y})" tabindex="0" role="button" aria-label="${esc(n.title)}">
-        <circle r="${r + 7}" fill="transparent"></circle>
-        <circle r="${r}" fill="#e2e8f0" stroke="${selected ? "#111" : "#64748b"}" stroke-width="${selected ? 3 : 1.2}"></circle>
-        <text y="4" text-anchor="middle" font-size="${isCenter ? 13 : 9}">${DOC_ICON[n.doc_kind] || "📝"}</text>
-        <text class="graph-label" y="${r + 14}" text-anchor="middle">${esc(short(n.title, isCenter ? 22 : 12))}</text>
-        <title>${esc(n.title)}\n${esc(n.path || "")}</title>
-      </g>`;
-    }).join("");
-    svg.innerHTML = `<g>${edgeSvg}</g><g>${nodeSvg}</g>`;
-    svg.querySelectorAll(".kg-node").forEach((g) => {
-      const id = g.dataset.node;
-      g.onclick = () => { state.selected = id; render(); };
-      g.ondblclick = () => recenter(id);
-      g.onkeydown = (ev) => { if (ev.key === "Enter") { state.selected = id; render(); } };
+    engine().setData({
+      center,
+      selected: state.selected,
+      nodes: nodes.map((n) => n.kind === "entity"
+        ? { id: n.id, kind: "entity", label: short(n.title, n.id === center ? 24 : 18), color: typeColor(n.type), center: n.id === center, tip: `${n.title}｜${n.type}｜${n.docs} 份資料` }
+        : { id: n.id, kind: "doc", label: n.title, color: "#64748b", icon: DOC_ICON[n.doc_kind] || "📝", center: n.id === center, tip: `${n.title}${n.path ? `\n${n.path}` : ""}` }),
+      edges: edges.map((e) => e.kind === "relation"
+        ? { source: e.source, target: e.target, color: "#334155", width: 2.6, opacity: 0.95, length: 150, label: e.label, tip: e.evidence || "" }
+        : { source: e.source, target: e.target, color: "#94a3b8", width: 0.8 + e.weight * 0.5, opacity: 0.8, length: 120, tip: e.evidence || "" }),
     });
     renderTypes();
     renderInfo();
@@ -173,7 +110,7 @@
         </div>`;
     }
     box.querySelectorAll("[data-open]").forEach((b) => { b.onclick = () => openDoc(b.dataset.open); });
-    box.querySelectorAll("[data-pick]").forEach((b) => { b.onclick = () => { state.selected = b.dataset.pick; render(); }; });
+    box.querySelectorAll("[data-pick]").forEach((b) => { b.onclick = () => { state.selected = b.dataset.pick; state.g3d?.setSelected(state.selected); renderInfo(); }; });
     box.querySelector('[data-act="open"]')?.addEventListener("click", () => openDoc(node.id));
     box.querySelector('[data-act="center"]')?.addEventListener("click", () => recenter(node.id));
     box.querySelector('[data-act="hide"]')?.addEventListener("click", () => hideEntity(node));
@@ -222,7 +159,7 @@
       render();
     } catch (error) {
       state.data = null;
-      $("kg-svg").innerHTML = "";
+      state.g3d?.clear();
       $("kg-types").innerHTML = "";
       $("kg-info").innerHTML = `<p class="sub">${esc(error.message)}</p>`;
     }
@@ -237,7 +174,7 @@
   /** 沒有中心時：列出最常出現的實體當起點 */
   async function showStart() {
     $("kg-title").textContent = "實體關聯圖";
-    $("kg-svg").innerHTML = "";
+    state.g3d?.clear();
     $("kg-types").innerHTML = "";
     try {
       const r = await api("/kg/search?q=");
@@ -357,6 +294,7 @@
   }
 
   function close() {
+    state.g3d?.pause();
     $("kg-overlay").classList.remove("open");
     $("kg-overlay").setAttribute("aria-hidden", "true");
     document.removeEventListener("keydown", onKey);
@@ -381,11 +319,11 @@
     $("kg-go").onclick = goSearch;
     $("kg-merges").onclick = openMerges;
     $("kg-extract-run").onclick = runExtract;
+    state.g3d?.resume();
     await refreshStatus();
     if (target.entry || target.entity || target.q) await load(target);
     else await showStart();
   }
 
   window.openEntityGraph = openEntityGraph;
-  window.__kgLayoutForTests = layout;
 })();
