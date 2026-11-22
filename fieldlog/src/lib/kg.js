@@ -10,6 +10,29 @@
  *
  * 這支只放純函式（組提示、清理 AI 輸出、正規化、合併候選、算分與建圖）。資料庫與 API 在 worker.js。
  */
+/** 三大類：每個關鍵字只有一個主要大類，但不同大類之間可以互相關聯（圖上照樣連線） */
+export const KG_DOMAINS = [
+  { key: "project", label: "專案開發（行政）", short: "專案開發", colors: ["#1d4ed8", "#4f46e5", "#0369a1", "#6366f1", "#2563eb"] },
+  { key: "tech", label: "技術", short: "技術", colors: ["#0f766e", "#15803d", "#b45309", "#4d7c0f", "#0e7490", "#a16207"] },
+  { key: "reg", label: "法規", short: "法規", colors: ["#b91c1c", "#be123c", "#9f1239", "#c2410c", "#a21caf"] },
+];
+export const KG_DOMAIN_KEYS = KG_DOMAINS.map((d) => d.key);
+
+/**
+ * 沒人指定、AI 也沒判斷時的備用歸類（依類型名稱的字）：法規＞技術＞其餘歸專案開發（行政）。
+ * 例：標準、法規→法規；驗證項目、設備、材料、規格、零件、製程技術、競品、臨床部位→技術；人員、產品、廠商、文件→專案開發（行政）。
+ */
+export function guessDomain(typeLabel) {
+  const t = String(typeLabel || "");
+  if (/法規|法令|標準|認證|許可|稽核|規範|合規|法條/.test(t)) return "reg";
+  if (/驗證|測試|試驗|設備|儀器|材料|試劑|規格|零件|元件|製程|技術|工藝|競品|臨床|部位|成分|方法|機台|模具/.test(t)) return "tech";
+  return "project";
+}
+
+export function cleanDomain(value, fallbackType = "") {
+  return KG_DOMAIN_KEYS.includes(value) ? value : guessDomain(fallbackType);
+}
+
 export const KG_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 export const KG_TEXT_CHARS = 6000;
 export const KG_MAX_ENTITIES = 25;
@@ -162,7 +185,7 @@ export function mergeCandidates(entity, others) {
   return out.slice(0, 5);
 }
 
-/** 類型歸群提示：把意思相同的類型名稱歸到同一群（群名沿用最常見的寫法） */
+/** 類型歸群提示：把意思相同的類型名稱歸到同一群，並替每個群判斷屬於哪一大類 */
 export function typeGroupMessages(labels, existingGroups = []) {
   return [
     {
@@ -170,8 +193,9 @@ export function typeGroupMessages(labels, existingGroups = []) {
       content: [
         "下面是知識圖譜裡由 AI 自動取的實體類型名稱，很多是同義或幾乎同義（例如 廠商／供應商／代工廠）。",
         "請把它們歸成群：每個類型對應到一個群名（2～6 字繁體中文，沿用清單裡最常見、最清楚的寫法）。意思不同的不要硬併。",
+        "再替每個群名判斷它屬於三大類的哪一類：project＝專案開發（行政）：人員、廠商、產品、專案、文件、會議、地區、商業；tech＝技術：材料、設備、零件、規格、製程、驗證與測試、競品技術、臨床應用；reg＝法規：法規、標準、認證、許可、稽核。",
         existingGroups.length ? `已有的群名（能沿用就沿用）：${existingGroups.join("、")}` : "",
-        "只回傳 JSON：{\"mapping\":{\"類型\":\"群名\"}}",
+        "只回傳 JSON：{\"mapping\":{\"類型\":\"群名\"},\"domains\":{\"群名\":\"project|tech|reg\"}}",
       ].filter(Boolean).join("\n"),
     },
     { role: "user", content: labels.join("\n") },
@@ -186,6 +210,15 @@ export function parseTypeGroups(raw, labels) {
     const group = cleanTypeLabel(mapping[label]);
     out[label] = group && group !== "其他" ? group : label;
   }
+  return out;
+}
+
+/** AI 對每個群的大類判斷；不合法或缺漏的用 guessDomain 補 */
+export function parseTypeDomains(raw, groups) {
+  const data = parseJsonLoose(raw) || {};
+  const domains = data.domains && typeof data.domains === "object" ? data.domains : {};
+  const out = {};
+  for (const group of groups) out[group] = cleanDomain(domains[group], group);
   return out;
 }
 
@@ -226,7 +259,7 @@ export function buildEntityGraph({ center, mentions, entities, entries, relation
   const addEntity = (id, score = 0) => {
     const e = entities.get(id);
     if (!e || nodes.has(`e:${id}`)) return;
-    nodes.set(`e:${id}`, { id: `e:${id}`, kind: "entity", entity_id: id, title: e.name, type: e.type_group || e.type_label || "其他", type_label: e.type_label || "", aliases: e.aliases || [], docs: (docsOf.get(id) || []).length, score: Math.round(score * 100) / 100 });
+    nodes.set(`e:${id}`, { id: `e:${id}`, kind: "entity", entity_id: id, title: e.name, domain: e.domain || guessDomain(e.type_group || e.type_label), type: e.type_group || e.type_label || "其他", type_label: e.type_label || "", aliases: e.aliases || [], docs: (docsOf.get(id) || []).length, score: Math.round(score * 100) / 100 });
   };
   const addDoc = (id, score = 0) => {
     const d = entries.get(id);
@@ -300,6 +333,31 @@ export function buildEntityGraph({ center, mentions, entities, entries, relation
       edges.push({ source: `e:${first.subject_id}`, target: `e:${first.object_id}`, kind: "relation", label: [...new Set(list.map((r) => r.relation))].join("、"), evidence: first.evidence || "", entry_id: Number(first.entry_id), weight: list.length });
     }
   }
-  const types = [...new Set([...nodes.values()].filter((n) => n.kind === "entity").map((n) => n.type))];
-  return { nodes: [...nodes.values()], edges, center: centerId, types, total_docs: totalDocs };
+  const entityNodes = [...nodes.values()].filter((n) => n.kind === "entity");
+  const types = [...new Set(entityNodes.map((n) => n.type))];
+  const domainCounts = Object.fromEntries(KG_DOMAIN_KEYS.map((k) => [k, entityNodes.filter((n) => n.domain === k).length]));
+  // 跨大類的連線數：兩個關鍵字在同一份資料裡出現、但主要大類不同
+  const domainOf = new Map(entityNodes.map((n) => [n.id, n.domain]));
+  const crossLinks = edges.filter((e) => e.kind === "relation" && domainOf.get(e.source) && domainOf.get(e.target) && domainOf.get(e.source) !== domainOf.get(e.target)).length;
+  return { nodes: [...nodes.values()], edges, center: centerId, types, domain_counts: domainCounts, cross_relations: crossLinks, total_docs: totalDocs };
+}
+
+/**
+ * 樹狀瀏覽：大類 → 類型 → 關鍵字（出現在幾份資料）。entities：[{id,name,type_group,domain,docs,status}]
+ */
+export function buildKgTree(entities) {
+  const tree = KG_DOMAINS.map((d) => ({ key: d.key, label: d.label, types: new Map(), count: 0, docs: 0 }));
+  const byKey = new Map(tree.map((d) => [d.key, d]));
+  for (const e of entities) {
+    const d = byKey.get(cleanDomain(e.domain, e.type_group)) || byKey.get("project");
+    const type = e.type_group || "其他";
+    const list = d.types.get(type) || [];
+    list.push({ id: Number(e.id), name: e.name, docs: Number(e.docs || 0), status: e.status || "active" });
+    d.types.set(type, list); d.count++; d.docs += Number(e.docs || 0);
+  }
+  return tree.map((d) => ({
+    key: d.key, label: d.label, count: d.count,
+    types: [...d.types.entries()].map(([type, items]) => ({ type, count: items.length, entities: items.sort((a, b) => b.docs - a.docs || a.name.localeCompare(b.name, "zh-Hant")) }))
+      .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type, "zh-Hant")),
+  }));
 }
