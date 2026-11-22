@@ -5,7 +5,8 @@
  * 操作：拖背景＝旋轉視角；拖節點＝移動它（其他節點彈性跟著調整）；Shift／右鍵／雙指拖＝平移；
  *      滾輪或雙指捏合＝縮放（以游標為中心）；點一下＝選取；點兩下＝換中心；鍵盤方向鍵旋轉、＋－縮放、0 重置。
  *
- * 節點 { id, label, kind:'entity'|'doc', color, icon?, center?, dashed?, tip? }
+ * 節點 { id, label, kind:'entity'|'doc', color, icon?, center?, dashed?, tip?, group? }
+ * 分群（v256）：setData 傳 groups:[{key,label,color}]，有 group 的節點會被拉往該群在地面上的區域，地面標出區域與名稱。
  * 連線 { source, target, color, width, dash?:[a,b], opacity?, length?, label?, tip? }
  */
 (function (root) {
@@ -20,9 +21,16 @@
   }
 
   /** 3D 力導向排版。keep：沿用舊座標（只換選取或篩選時畫面不跳動）。 */
-  function createSim(nodes, edges, centerId, keep = null) {
+  function createSim(nodes, edges, centerId, keep = null, groups = []) {
     const rand = rng(11);
     const pos = new Map();
+    // 分群錨點：依出現的群平均分在水平圓周上
+    const present = groups.filter((g) => nodes.some((n) => n.group === g.key && n.id !== centerId));
+    const anchors = new Map(present.map((g, i) => {
+      const t = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, present.length);
+      return [g.key, { ...g, x: Math.cos(t) * 200, z: Math.sin(t) * 200 }];
+    }));
+    const groupOf = new Map(nodes.map((n) => [n.id, n.group]));
     const others = nodes.filter((n) => n.id !== centerId);
     others.forEach((n, i) => {
       const old = keep && keep.get(n.id);
@@ -30,7 +38,11 @@
       const k = (i + 0.5) / Math.max(1, others.length);
       const phi = Math.acos(1 - 2 * k), theta = Math.PI * (1 + Math.sqrt(5)) * i;
       const r = n.kind === 'doc' ? 260 : 170;
-      pos.set(n.id, { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.cos(phi), z: r * Math.sin(phi) * Math.sin(theta), vx: 0, vy: 0, vz: 0 });
+      const a = anchors.get(n.group);
+      const jitter = 70;
+      pos.set(n.id, a
+        ? { x: a.x + (rand() - 0.5) * jitter, y: (rand() - 0.5) * 160, z: a.z + (rand() - 0.5) * jitter, vx: 0, vy: 0, vz: 0 }
+        : { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.cos(phi), z: r * Math.sin(phi) * Math.sin(theta), vx: 0, vy: 0, vz: 0 });
     });
     const c = keep && keep.get(centerId);
     pos.set(centerId, { x: c ? c.x : 0, y: c ? c.y : 0, z: c ? c.z : 0, vx: 0, vy: 0, vz: 0, fixed: !c });
@@ -60,6 +72,8 @@
         const p = pos.get(id);
         if (p.fixed || p.dragging) { p.vx = p.vy = p.vz = 0; continue; }
         p.vx -= p.x * 0.004; p.vy -= p.y * 0.004; p.vz -= p.z * 0.004;
+        const a = anchors.get(groupOf.get(id));
+        if (a) { p.vx += (a.x - p.x) * 0.02; p.vz += (a.z - p.z) * 0.02; }
         p.x += Math.max(-30, Math.min(30, p.vx)) * alpha;
         p.y += Math.max(-30, Math.min(30, p.vy)) * alpha;
         p.z += Math.max(-30, Math.min(30, p.vz)) * alpha;
@@ -67,7 +81,7 @@
       }
     }
     function settle(steps = 380) { for (let s = 0; s < steps; s++) tick(1 - s / (steps + 40)); }
-    return { pos, tick, settle };
+    return { pos, tick, settle, anchors };
   }
 
   function rotate(p, yaw, pitch) {
@@ -135,6 +149,8 @@
     function bounds() {
       let r = 0;
       for (const p of S.sim ? S.sim.pos.values() : []) r = Math.max(r, Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z));
+      // 分群的區域名稱寫在錨點外側（×1.45），也要框進畫面
+      for (const a of S.sim && S.sim.anchors ? S.sim.anchors.values() : []) r = Math.max(r, Math.hypot(a.x, a.z) * 1.45 + 20);
       return r;
     }
     function fit() {
@@ -174,8 +190,8 @@
     }
 
     // ---------- 資料 ----------
-    function setData({ nodes, edges, center, selected = null }) {
-      const sig = `${center}|${nodes.map((n) => n.id).sort().join(',')}|${edges.length}`;
+    function setData({ nodes, edges, center, selected = null, groups = [] }) {
+      const sig = `${center}|${nodes.map((n) => `${n.id}:${n.group || ''}`).sort().join(',')}|${edges.length}|${groups.map((g) => g.key).join(',')}`;
       const same = sig === S.sig;
       S.nodes = nodes; S.edges = edges; S.center = center; S.selected = selected;
       S.byId = new Map(nodes.map((n) => [n.id, n]));
@@ -183,7 +199,7 @@
       if (!same || !S.sim) {
         const keep = S.sim ? new Map([...S.sim.pos].map(([k, v]) => [k, { x: v.x, y: v.y, z: v.z }])) : null;
         const reuse = keep && center === S.center0 ? keep : null;
-        S.sim = createSim(nodes, edges, center, reuse);
+        S.sim = createSim(nodes, edges, center, reuse, groups);
         S.sim.settle(reuse ? 120 : 380);
         S.sig = sig; S.center0 = center;
         if (!S.fitted || !reuse) { const v = bestView(); S.yaw = v.yaw; S.pitch = v.pitch; fit(); }
@@ -246,6 +262,17 @@
       const axes = [[{ x: -ringR, y: floorY, z: 0 }, { x: ringR, y: floorY, z: 0 }], [{ x: 0, y: floorY, z: -ringR }, { x: 0, y: floorY, z: ringR }]];
       for (const [a, b] of axes) { const qa = project(a), qb = project(b); ctx.moveTo(qa.sx, qa.sy); ctx.lineTo(qb.sx, qb.sy); }
       ctx.stroke(); ctx.restore();
+      // 分群區域：地面上每群一塊淡色圓盤＋群名
+      for (const a of S.sim.anchors ? S.sim.anchors.values() : []) {
+        ctx.save(); ctx.globalAlpha = 0.09; ctx.fillStyle = a.color || '#64748b'; ctx.beginPath();
+        for (let i = 0; i <= 40; i++) {
+          const t = (i / 40) * Math.PI * 2, q = project({ x: a.x + Math.cos(t) * 120, y: floorY, z: a.z + Math.sin(t) * 120 });
+          if (i === 0) ctx.moveTo(q.sx, q.sy); else ctx.lineTo(q.sx, q.sy);
+        }
+        ctx.fill(); ctx.restore();
+        const lq = project({ x: a.x * 1.45, y: floorY, z: a.z * 1.45 });
+        halo(a.label || a.key, lq.sx, lq.sy, Math.max(11, 15 * Math.min(1.3, lq.s)), a.color || '#334155', 0.95, 700);
+      }
       for (const n of S.nodes) {
         const q = S.proj.get(n.id); if (!q) continue;
         const f = project({ x: q.world.x, y: floorY, z: q.world.z });

@@ -73,7 +73,7 @@ import {
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile, saveSuggestion, vectorFolderSuggestion } from "./lib/autofile.js";
 import { suggestFilename } from "./lib/ai-naming.js";
-import { buildEntityGraph, KG_MODEL, KG_TEXT_CHARS, kgMessages, mergeCandidates, normalizeEntityKey, parseKgResult, parseTypeGroups, typeGroupMessages } from "./lib/kg.js";
+import { buildEntityGraph, buildKgTree, cleanDomain, guessDomain, KG_DOMAIN_KEYS, KG_DOMAINS, KG_MODEL, KG_TEXT_CHARS, kgMessages, mergeCandidates, normalizeEntityKey, parseKgResult, parseTypeDomains, parseTypeGroups, typeGroupMessages } from "./lib/kg.js";
 import { GLOSSARY_SETTING_KEY, cleanGlossary, loadGlossary, looksLikePromptEcho, toTraditional, whisperInput } from "./lib/transcribe.js";
 import { cleanFeedList, cleanLinks, cleanTodos, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
 import {
@@ -150,7 +150,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "255";
+const UI_VERSION = "256";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1403,23 +1403,45 @@ async function kgExtractOne(db, ai, entry, ctx) {
   return { entities: idByKey.size, created: created.length, relations: parsed.relations.length, merges };
 }
 
-/** 新出現的類型名稱交給 AI 歸群（例如 廠商／供應商／代工廠 → 同一群），一批一次呼叫 */
+/** 每個類型群都要有大類：沒有的先用備用規則補上（source=rule），之後 AI 或使用者可以改 */
+async function kgEnsureTypeDomains(db) {
+  const { results: missing = [] } = await db.prepare(
+    `SELECT DISTINCT COALESCE(g.type_group, k.type_label) AS grp
+     FROM kg_entities k LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
+     LEFT JOIN kg_type_domains d ON d.type_group = COALESCE(g.type_group, k.type_label)
+     WHERE k.status IN ('active', 'candidate') AND COALESCE(g.type_group, k.type_label) <> '' AND d.type_group IS NULL`
+  ).all();
+  for (const row of missing) {
+    await db.prepare("INSERT OR IGNORE INTO kg_type_domains (type_group, domain, source, updated_at) VALUES (?, ?, 'rule', ?)")
+      .bind(row.grp, guessDomain(row.grp), now()).run();
+  }
+  return missing.length;
+}
+
+/** 新出現的類型名稱交給 AI 歸群，並一併判斷每個群屬於哪一大類（使用者指定過的不覆蓋），一批一次呼叫 */
 async function kgConsolidateTypes(db, ai) {
   const { results: rows = [] } = await db.prepare(
     `SELECT DISTINCT k.type_label AS label FROM kg_entities k LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
      WHERE k.status = 'active' AND k.type_label <> '' AND g.type_label IS NULL LIMIT 80`
   ).all();
-  if (!rows.length) return 0;
-  const { results: groups = [] } = await db.prepare("SELECT DISTINCT type_group FROM kg_type_groups LIMIT 60").all();
-  const labels = rows.map((r) => r.label);
-  const result = await ai.run(KG_MODEL, {
-    messages: typeGroupMessages(labels, groups.map((g) => g.type_group)), temperature: 0, max_tokens: 900, ...NO_THINKING,
-  });
-  const mapping = parseTypeGroups(aiText(result) || result?.response, labels);
-  for (const [label, group] of Object.entries(mapping)) {
-    await db.prepare("INSERT OR REPLACE INTO kg_type_groups (type_label, type_group, updated_at) VALUES (?, ?, ?)").bind(label, group, now()).run();
+  if (rows.length) {
+    const { results: groups = [] } = await db.prepare("SELECT DISTINCT type_group FROM kg_type_groups LIMIT 60").all();
+    const labels = rows.map((r) => r.label);
+    const result = await ai.run(KG_MODEL, {
+      messages: typeGroupMessages(labels, groups.map((g) => g.type_group)), temperature: 0, max_tokens: 1100, ...NO_THINKING,
+    });
+    const text = aiText(result) || result?.response;
+    const mapping = parseTypeGroups(text, labels);
+    const domains = parseTypeDomains(text, [...new Set(Object.values(mapping))]);
+    for (const [label, group] of Object.entries(mapping)) {
+      await db.prepare("INSERT OR REPLACE INTO kg_type_groups (type_label, type_group, updated_at) VALUES (?, ?, ?)").bind(label, group, now()).run();
+    }
+    for (const [group, domain] of Object.entries(domains)) {
+      await db.prepare("INSERT OR IGNORE INTO kg_type_domains (type_group, domain, source, updated_at) VALUES (?, ?, 'ai', ?)").bind(group, domain, now()).run();
+    }
   }
-  return labels.length;
+  await kgEnsureTypeDomains(db);
+  return rows.length;
 }
 
 /** 建圖用的資料：全庫已擷取的實體與出現位置（試做規模不大，一次讀完） */
@@ -1430,13 +1452,14 @@ async function kgGraphData(db) {
      JOIN entries e ON e.id = m.entry_id AND COALESCE(e.deleted_at, '') = ''`
   ).all();
   const { results: entityRows = [] } = await db.prepare(
-    `SELECT k.id, k.name, k.type_label, k.aliases_json, COALESCE(g.type_group, k.type_label) AS type_group
-     FROM kg_entities k LEFT JOIN kg_type_groups g ON g.type_label = k.type_label WHERE k.status = 'active'`
+    `SELECT k.id, k.name, k.type_label, k.aliases_json, COALESCE(g.type_group, k.type_label) AS type_group, d.domain AS domain
+     FROM kg_entities k LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
+     LEFT JOIN kg_type_domains d ON d.type_group = COALESCE(g.type_group, k.type_label) WHERE k.status = 'active'`
   ).all();
   const entities = new Map(entityRows.map((r) => {
     let aliases = [];
     try { aliases = JSON.parse(r.aliases_json || "[]"); } catch { aliases = []; }
-    return [Number(r.id), { ...r, id: Number(r.id), aliases }];
+    return [Number(r.id), { ...r, id: Number(r.id), aliases, domain: cleanDomain(r.domain, r.type_group) }];
   }));
   const entryIds = [...new Set(mentions.map((m) => Number(m.entry_id)))];
   const entries = new Map();
@@ -4958,8 +4981,9 @@ async function handleApi(request, env, url, identity = {}) {
     if (!q) {
       // 沒輸入關鍵字：列出出現在最多份資料的實體，當作起點
       const { results = [] } = await db.prepare(
-        `SELECT k.id, k.name, k.type_label, COALESCE(g.type_group, k.type_label) AS type_group, COUNT(m.entry_id) AS docs
+        `SELECT k.id, k.name, k.type_label, COALESCE(g.type_group, k.type_label) AS type_group, d.domain AS domain, COUNT(m.entry_id) AS docs
          FROM kg_entities k JOIN kg_mentions m ON m.entity_id = k.id LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
+         LEFT JOIN kg_type_domains d ON d.type_group = COALESCE(g.type_group, k.type_label)
          WHERE k.status = 'active' GROUP BY k.id ORDER BY docs DESC, k.name LIMIT 24`
       ).all();
       return json({ results, top: true });
@@ -4967,9 +4991,10 @@ async function handleApi(request, env, url, identity = {}) {
     const like = `%${q}%`;
     const key = `%${normalizeEntityKey(q)}%`;
     const { results = [] } = await db.prepare(
-      `SELECT k.id, k.name, k.type_label, COALESCE(g.type_group, k.type_label) AS type_group,
+      `SELECT k.id, k.name, k.type_label, COALESCE(g.type_group, k.type_label) AS type_group, d.domain AS domain,
               (SELECT COUNT(*) FROM kg_mentions m WHERE m.entity_id = k.id) AS docs
        FROM kg_entities k LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
+       LEFT JOIN kg_type_domains d ON d.type_group = COALESCE(g.type_group, k.type_label)
        WHERE k.status = 'active' AND (k.name LIKE ? OR k.norm_key LIKE ? OR k.aliases_json LIKE ?)
        ORDER BY docs DESC, length(k.name) LIMIT 15`
     ).bind(like, key, like).all();
@@ -4977,6 +5002,7 @@ async function handleApi(request, env, url, identity = {}) {
   }
 
   if (path === "/kg/graph" && method === "GET") {
+    await kgEnsureTypeDomains(db);
     const data = await kgGraphData(db);
     let center = null;
     if (url.searchParams.get("entity")) center = { type: "entity", id: Number(url.searchParams.get("entity")) };
@@ -4998,6 +5024,35 @@ async function handleApi(request, env, url, identity = {}) {
     }
     const pending = await db.prepare("SELECT COUNT(*) AS n FROM kg_merge_suggestions WHERE status = 'pending'").first();
     return json({ ...graph, pending_merges: Number(pending?.n || 0) });
+  }
+
+  if (path === "/kg/tree" && method === "GET") {
+    await kgEnsureTypeDomains(db);
+    const { results = [] } = await db.prepare(
+      `SELECT k.id, k.name, k.status, COALESCE(g.type_group, k.type_label) AS type_group, d.domain AS domain, COUNT(m.entry_id) AS docs
+       FROM kg_entities k LEFT JOIN kg_mentions m ON m.entity_id = k.id LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
+       LEFT JOIN kg_type_domains d ON d.type_group = COALESCE(g.type_group, k.type_label)
+       WHERE k.status IN ('active', 'candidate') GROUP BY k.id`
+    ).all();
+    const { results: sources = [] } = await db.prepare("SELECT type_group, source FROM kg_type_domains").all();
+    const sourceOf = new Map(sources.map((r) => [r.type_group, r.source]));
+    const tree = buildKgTree(results.map((r) => ({ ...r, domain: cleanDomain(r.domain, r.type_group) })));
+    for (const d of tree) for (const t of d.types) t.source = sourceOf.get(t.type) || "rule";
+    return json({ domains: KG_DOMAINS.map((d) => ({ key: d.key, label: d.label })), tree });
+  }
+
+  const kgTypeMatch = path.match(/^\/kg\/types\/(.+)$/);
+  if (kgTypeMatch && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以改大類", 403);
+    const body = await request.json().catch(() => ({}));
+    if (!KG_DOMAIN_KEYS.includes(body.domain)) return bad("domain 要是 project、tech 或 reg");
+    const type = decodeURIComponent(kgTypeMatch[1]).slice(0, 40);
+    if (!type) return bad("缺少類型");
+    await db.prepare(
+      `INSERT INTO kg_type_domains (type_group, domain, source, updated_at) VALUES (?, ?, 'user', ?)
+       ON CONFLICT(type_group) DO UPDATE SET domain = excluded.domain, source = 'user', updated_at = excluded.updated_at`
+    ).bind(type, body.domain, now()).run();
+    return json({ ok: true, type, domain: body.domain });
   }
 
   if (path === "/kg/merges" && method === "GET") {

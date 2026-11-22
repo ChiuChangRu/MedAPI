@@ -134,6 +134,13 @@ export const SCHEMA = [
     type_group TEXT NOT NULL,
     updated_at TEXT DEFAULT ''
   )`,
+  // v256 三大類（專案開發／技術／法規）：每個「類型群」屬於哪一大類；source＝rule（備用規則）／ai／user（使用者指定，AI 不覆蓋）
+  `CREATE TABLE IF NOT EXISTS kg_type_domains (
+    type_group TEXT PRIMARY KEY,
+    domain TEXT NOT NULL,
+    source TEXT DEFAULT 'rule',
+    updated_at TEXT DEFAULT ''
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_kg_mentions_entry ON kg_mentions(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_kg_relations_entry ON kg_relations(entry_id)`,
   // v246 Face ID／Touch ID 登入（WebAuthn passkey）：已註冊的公鑰，與一次性挑戰碼
