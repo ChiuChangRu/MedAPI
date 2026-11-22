@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=254" />
-<link rel="stylesheet" href="home.css?v=254" />
+<link rel="stylesheet" href="style.css?v=255" />
+<link rel="stylesheet" href="home.css?v=255" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -83,7 +83,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=254">使用說明</a>
+        <a class="head-link" href="help.html?v=255">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -798,11 +798,11 @@
       <button class="btn small primary" id="graph-synth" type="button">✨ AI 綜整這張圖</button>
     </div>
     <div class="graph-body" id="graph-body">
-      <svg id="graph-svg" class="graph-svg" role="img" aria-label="關聯圖"></svg>
+      <div id="graph-stage" class="g3d-stage"></div>
       <aside id="graph-info" class="graph-info"></aside>
     </div>
     <p class="graph-stats sub" id="graph-stats"></p>
-    <p class="graph-hint sub">點一下看原因；點兩下或按「以這筆為中心」換中心。顏色＝資料夾分類；虛線外框＝還沒建立語意向量。內容相似只代表意思接近，不一定真的有關。</p>
+    <p class="graph-hint sub">拖曳背景＝旋轉；拖節點＝移動；滾輪／雙指＝縮放；Shift＋拖曳＝平移；點一下看原因，點兩下或按「以這筆為中心」換中心。顏色＝資料夾分類；虛線外框＝還沒建立語意向量。內容相似只代表意思接近，不一定真的有關。</p>
   </div>
 </div>
 
@@ -826,10 +826,10 @@
     </div>
     <div class="kg-types" id="kg-types"></div>
     <div class="graph-body" id="kg-body">
-      <svg id="kg-svg" class="graph-svg" role="img" aria-label="實體關聯圖"></svg>
+      <div id="kg-stage" class="g3d-stage"></div>
       <aside id="kg-info" class="graph-info"></aside>
     </div>
-    <p class="graph-hint sub">方框＝實體（顏色＝類型，類型由 AI 自己判斷），圓點＝資料。粗線上的字＝原文寫明的關係；細線＝這份資料提到它，越粗代表越是主角。點一下看原文依據，點兩下換中心。AI 擷取可能有錯，請以原文為準。</p>
+    <p class="graph-hint sub">方框＝實體（顏色＝類型，類型由 AI 自己判斷），圓點＝資料。粗線上的字＝原文寫明的關係；細線＝這份資料提到它，越粗代表越是主角。拖曳背景旋轉、拖節點移動、滾輪／雙指縮放；點一下看原文依據，點兩下換中心。AI 擷取可能有錯，請以原文為準。</p>
   </div>
 </div>
 
@@ -858,10 +858,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=254"></script>
+<script src="pdf-editor.js?v=255"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=254"></script>
+<script src="richtext-editor.js?v=255"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -872,13 +872,14 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=254"></script>
-<script src="inspector.js?v=254"></script>
+<script src="file-selection.js?v=255"></script>
+<script src="inspector.js?v=255"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=254"></script>
-<script src="graph-view.js?v=254"></script>
-<script src="entity-graph.js?v=254"></script>
-<script src="lab.js?v=254"></script>
+<script src="app.js?v=255"></script>
+<script src="graph3d.js?v=255"></script>
+<script src="graph-view.js?v=255"></script>
+<script src="entity-graph.js?v=255"></script>
+<script src="lab.js?v=255"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>
