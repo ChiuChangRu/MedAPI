@@ -314,6 +314,8 @@
     overlay.setAttribute("aria-hidden", "false");
     document.addEventListener("keydown", onKey);
     $("graph-close").onclick = close;
+    // v254 切到實體關聯圖（以同一筆資料為中心）
+    $("graph-kg").onclick = () => { const id = state.data?.center || target.id; close(); window.openEntityGraph?.({ entry: id }); };
     $("graph-synth").onclick = runSynthesis;
     state.synthMode = false;
     $("graph-body")?.classList.remove("synth");

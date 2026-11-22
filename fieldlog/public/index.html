@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=253" />
-<link rel="stylesheet" href="home.css?v=253" />
+<link rel="stylesheet" href="style.css?v=254" />
+<link rel="stylesheet" href="home.css?v=254" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -83,7 +83,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=253">使用說明</a>
+        <a class="head-link" href="help.html?v=254">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -390,6 +390,7 @@
         <button class="btn small upload-btn" id="btn-folder-upload-file" type="button">＋ 上傳檔案</button>
         <input id="folder-upload-file-input" type="file" multiple hidden />
         <button class="btn small" id="btn-folder-import-url" type="button">網址／連結</button>
+        <button class="btn small" id="btn-folder-kg" type="button" title="AI 找出這個資料夾裡的廠商、材料、設備、人員…，看它們怎麼串起來">實體關聯</button>
         <button class="btn small primary" id="btn-folder-export">匯出給 AI</button>
       </div>
     </div>
@@ -781,6 +782,7 @@
     <div class="graph-head">
       <button class="btn small ghost" id="graph-back" type="button" hidden>‹ 上一個</button>
       <h2 id="graph-title">關聯圖</h2>
+      <button class="btn small" id="graph-kg" type="button" title="改看這筆資料提到的廠商、材料、設備、人員…">實體關聯</button>
       <button class="btn small" id="graph-close" type="button">關閉</button>
     </div>
     <div class="graph-legend">
@@ -801,6 +803,33 @@
     </div>
     <p class="graph-stats sub" id="graph-stats"></p>
     <p class="graph-hint sub">點一下看原因；點兩下或按「以這筆為中心」換中心。顏色＝資料夾分類；虛線外框＝還沒建立語意向量。內容相似只代表意思接近，不一定真的有關。</p>
+  </div>
+</div>
+
+<!-- v254 實體關聯圖（知識圖譜試做）：方框＝AI 擷取的實體，圓點＝資料 -->
+<div class="overlay graph-overlay kg-overlay" id="kg-overlay" aria-hidden="true">
+  <div class="modal graph-modal" role="dialog" aria-modal="true" aria-labelledby="kg-title">
+    <div class="graph-head">
+      <button class="btn small ghost" id="kg-back" type="button" hidden>‹ 上一個</button>
+      <h2 id="kg-title">實體關聯圖</h2>
+      <button class="btn small" id="kg-merges" type="button" hidden>待確認合併</button>
+      <button class="btn small" id="kg-close" type="button">關閉</button>
+    </div>
+    <div class="kg-toolbar">
+      <input id="kg-search" type="search" list="kg-search-list" autocomplete="off" placeholder="輸入關鍵字當中心：廠商、材料、設備、人名、標準號…" />
+      <datalist id="kg-search-list"></datalist>
+      <button class="btn small primary" id="kg-go" type="button">以此為中心</button>
+    </div>
+    <div class="kg-extract" id="kg-extract" hidden>
+      <span id="kg-extract-status" class="sub"></span>
+      <button class="btn small" id="kg-extract-run" type="button">擷取這個資料夾的實體</button>
+    </div>
+    <div class="kg-types" id="kg-types"></div>
+    <div class="graph-body" id="kg-body">
+      <svg id="kg-svg" class="graph-svg" role="img" aria-label="實體關聯圖"></svg>
+      <aside id="kg-info" class="graph-info"></aside>
+    </div>
+    <p class="graph-hint sub">方框＝實體（顏色＝類型，類型由 AI 自己判斷），圓點＝資料。粗線上的字＝原文寫明的關係；細線＝這份資料提到它，越粗代表越是主角。點一下看原文依據，點兩下換中心。AI 擷取可能有錯，請以原文為準。</p>
   </div>
 </div>
 
@@ -829,10 +858,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=253"></script>
+<script src="pdf-editor.js?v=254"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=253"></script>
+<script src="richtext-editor.js?v=254"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -843,12 +872,13 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=253"></script>
-<script src="inspector.js?v=253"></script>
+<script src="file-selection.js?v=254"></script>
+<script src="inspector.js?v=254"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=253"></script>
-<script src="graph-view.js?v=253"></script>
-<script src="lab.js?v=253"></script>
+<script src="app.js?v=254"></script>
+<script src="graph-view.js?v=254"></script>
+<script src="entity-graph.js?v=254"></script>
+<script src="lab.js?v=254"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

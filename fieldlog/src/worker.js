@@ -73,6 +73,7 @@ import {
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile, saveSuggestion, vectorFolderSuggestion } from "./lib/autofile.js";
 import { suggestFilename } from "./lib/ai-naming.js";
+import { buildEntityGraph, KG_MODEL, KG_TEXT_CHARS, kgMessages, mergeCandidates, normalizeEntityKey, parseKgResult, parseTypeGroups, typeGroupMessages } from "./lib/kg.js";
 import { GLOSSARY_SETTING_KEY, cleanGlossary, loadGlossary, looksLikePromptEcho, toTraditional, whisperInput } from "./lib/transcribe.js";
 import { cleanFeedList, cleanLinks, cleanTodos, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
 import {
@@ -149,7 +150,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "253";
+const UI_VERSION = "254";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -1297,6 +1298,163 @@ async function autoOrganizeEntry(env, db, ai, entryId) {
   fields._auto_organized_at = now();
   await db.prepare("UPDATE entries SET fields_json = ? WHERE id = ?").bind(JSON.stringify(fields), entryId).run();
   return out;
+}
+
+// ---- v254 實體關聯圖（知識圖譜試做）。純函式在 lib/kg.js，這裡是資料庫存取 ----
+const KG_SOURCE_STAMP = `COALESCE(NULLIF(e.updated_at, ''), e.created_at) || ':' || COALESCE((
+    SELECT MAX(COALESCE(NULLIF(a.ocr_at, ''), NULLIF(a.transcribed_at, ''), a.created_at))
+    FROM attachments a WHERE a.entry_id = e.id), '')`;
+
+/** 資料夾子樹裡的記事（含擷取狀態）。folderId 為空＝全庫 */
+async function kgScopeEntries(db, folderId) {
+  const scoped = Number(folderId) > 0;
+  const sql = `${scoped ? `WITH RECURSIVE sub(id) AS (
+      SELECT id FROM folders WHERE id = ? AND COALESCE(deleted_at, '') = ''
+      UNION ALL SELECT f.id FROM folders f JOIN sub ON f.parent_id = sub.id WHERE COALESCE(f.deleted_at, '') = '')` : ""}
+    SELECT e.id, e.title, e.folder_id, e.fields_json, e.body, e.created_at, ${KG_SOURCE_STAMP} AS stamp,
+           COALESCE(s.source_stamp, '') AS done_stamp, COALESCE(s.status, '') AS kg_status
+    FROM entries e LEFT JOIN kg_entry_state s ON s.entry_id = e.id
+    WHERE COALESCE(e.deleted_at, '') = '' ${scoped ? "AND e.folder_id IN (SELECT id FROM sub)" : ""}
+    ORDER BY e.id`;
+  const stmt = db.prepare(sql);
+  const { results = [] } = await (scoped ? stmt.bind(Number(folderId)) : stmt).all();
+  return results;
+}
+
+/** 週報、AI 綜整、【AI彙整】是整理過的二手內容，不當實體來源（避免同一件事被重複計算） */
+function kgSkipEntry(entry) {
+  let fields = {};
+  try { fields = JSON.parse(entry.fields_json || "{}"); } catch { fields = {}; }
+  return ["weekly_report", "graph_synthesis"].includes(fields._kind) || /^\s*【AI彙整】/.test(entry.title || "");
+}
+
+async function kgEntryText(db, entry) {
+  const { results: atts = [] } = await db.prepare(
+    "SELECT filename, transcript, ocr_text FROM attachments WHERE entry_id = ? AND source_pdf_id IS NULL ORDER BY id LIMIT 12"
+  ).bind(entry.id).all();
+  const parts = [htmlToPlainText(entry.body || "")];
+  for (const a of atts) {
+    const t = String(a.transcript || a.ocr_text || "").trim();
+    parts.push(t ? `【${a.filename}】\n${t}` : `【檔案】${a.filename}`);
+  }
+  return parts.filter(Boolean).join("\n\n").slice(0, KG_TEXT_CHARS);
+}
+
+async function kgResolveEntity(db, row) {
+  let current = row;
+  for (let hop = 0; hop < 5 && current?.status === "merged" && current.merged_into; hop++) {
+    current = await db.prepare("SELECT id, name, norm_key, status, merged_into FROM kg_entities WHERE id = ?").bind(current.merged_into).first();
+  }
+  return current;
+}
+
+/** 擷取一筆：清掉這筆舊的出現紀錄與關係，重新寫入；新實體與既有實體比對，名稱相近的只產生合併建議 */
+async function kgExtractOne(db, ai, entry, ctx) {
+  const text = await kgEntryText(db, entry);
+  const result = await ai.run(KG_MODEL, {
+    messages: kgMessages({ title: entry.title, text, knownTypes: ctx.knownTypes, hiddenNames: ctx.hiddenNames }),
+    temperature: 0.1, max_tokens: 1800, ...NO_THINKING,
+  });
+  const parsed = parseKgResult(aiText(result) || result?.response, `${entry.title}\n${text}`);
+  const stamp = now();
+  await db.prepare("DELETE FROM kg_mentions WHERE entry_id = ?").bind(entry.id).run();
+  await db.prepare("DELETE FROM kg_relations WHERE entry_id = ?").bind(entry.id).run();
+  const idByKey = new Map();
+  const created = [];
+  for (const ent of parsed.entities) {
+    let row = await db.prepare("SELECT id, name, norm_key, status, merged_into FROM kg_entities WHERE norm_key = ?").bind(ent.key).first();
+    if (!row) {
+      const ins = await db.prepare(
+        "INSERT INTO kg_entities (name, norm_key, type_label, aliases_json, status, created_at, updated_at) VALUES (?, ?, ?, '[]', 'active', ?, ?)"
+      ).bind(ent.name, ent.key, ent.type, stamp, stamp).run();
+      row = { id: Number(ins.meta.last_row_id), name: ent.name, norm_key: ent.key, status: "active" };
+      created.push(row);
+      if (!ctx.knownTypes.includes(ent.type)) ctx.knownTypes.push(ent.type);
+    }
+    row = await kgResolveEntity(db, row);
+    if (!row || row.status !== "active") continue;
+    idByKey.set(ent.key, Number(row.id));
+    await db.prepare(
+      `INSERT INTO kg_mentions (entity_id, entry_id, salience, evidence, type_label, created_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(entity_id, entry_id) DO UPDATE SET salience = MAX(kg_mentions.salience, excluded.salience),
+         evidence = CASE WHEN kg_mentions.evidence = '' THEN excluded.evidence ELSE kg_mentions.evidence END`
+    ).bind(row.id, entry.id, ent.salience, ent.evidence, ent.type, stamp).run();
+  }
+  for (const r of parsed.relations) {
+    const a = idByKey.get(r.subjectKey), b = idByKey.get(r.objectKey);
+    if (!a || !b || a === b) continue;
+    await db.prepare("INSERT INTO kg_relations (subject_id, object_id, relation, entry_id, evidence, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(a, b, r.relation, entry.id, r.evidence, stamp).run();
+  }
+  let merges = 0;
+  for (const ent of created) {
+    for (const cand of mergeCandidates(ent, ctx.activeEntities)) {
+      const [a, b] = [Math.min(ent.id, cand.id), Math.max(ent.id, cand.id)];
+      const ins = await db.prepare("INSERT OR IGNORE INTO kg_merge_suggestions (a_id, b_id, reason, status, created_at) VALUES (?, ?, ?, 'pending', ?)")
+        .bind(a, b, cand.reason, stamp).run();
+      merges += Number(ins.meta.changes || 0);
+    }
+    ctx.activeEntities.push(ent);
+  }
+  await db.prepare(
+    `INSERT INTO kg_entry_state (entry_id, source_stamp, status, model, error, extracted_at) VALUES (?, ?, 'done', ?, '', ?)
+     ON CONFLICT(entry_id) DO UPDATE SET source_stamp = excluded.source_stamp, status = 'done', model = excluded.model, error = '', extracted_at = excluded.extracted_at`
+  ).bind(entry.id, entry.stamp, KG_MODEL, stamp).run();
+  return { entities: idByKey.size, created: created.length, relations: parsed.relations.length, merges };
+}
+
+/** 新出現的類型名稱交給 AI 歸群（例如 廠商／供應商／代工廠 → 同一群），一批一次呼叫 */
+async function kgConsolidateTypes(db, ai) {
+  const { results: rows = [] } = await db.prepare(
+    `SELECT DISTINCT k.type_label AS label FROM kg_entities k LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
+     WHERE k.status = 'active' AND k.type_label <> '' AND g.type_label IS NULL LIMIT 80`
+  ).all();
+  if (!rows.length) return 0;
+  const { results: groups = [] } = await db.prepare("SELECT DISTINCT type_group FROM kg_type_groups LIMIT 60").all();
+  const labels = rows.map((r) => r.label);
+  const result = await ai.run(KG_MODEL, {
+    messages: typeGroupMessages(labels, groups.map((g) => g.type_group)), temperature: 0, max_tokens: 900, ...NO_THINKING,
+  });
+  const mapping = parseTypeGroups(aiText(result) || result?.response, labels);
+  for (const [label, group] of Object.entries(mapping)) {
+    await db.prepare("INSERT OR REPLACE INTO kg_type_groups (type_label, type_group, updated_at) VALUES (?, ?, ?)").bind(label, group, now()).run();
+  }
+  return labels.length;
+}
+
+/** 建圖用的資料：全庫已擷取的實體與出現位置（試做規模不大，一次讀完） */
+async function kgGraphData(db) {
+  const { results: mentions = [] } = await db.prepare(
+    `SELECT m.entity_id, m.entry_id, m.salience, m.evidence FROM kg_mentions m
+     JOIN kg_entities k ON k.id = m.entity_id AND k.status = 'active'
+     JOIN entries e ON e.id = m.entry_id AND COALESCE(e.deleted_at, '') = ''`
+  ).all();
+  const { results: entityRows = [] } = await db.prepare(
+    `SELECT k.id, k.name, k.type_label, k.aliases_json, COALESCE(g.type_group, k.type_label) AS type_group
+     FROM kg_entities k LEFT JOIN kg_type_groups g ON g.type_label = k.type_label WHERE k.status = 'active'`
+  ).all();
+  const entities = new Map(entityRows.map((r) => {
+    let aliases = [];
+    try { aliases = JSON.parse(r.aliases_json || "[]"); } catch { aliases = []; }
+    return [Number(r.id), { ...r, id: Number(r.id), aliases }];
+  }));
+  const entryIds = [...new Set(mentions.map((m) => Number(m.entry_id)))];
+  const entries = new Map();
+  if (entryIds.length) {
+    const { results: folderRows = [] } = await db.prepare("SELECT id, name, parent_id FROM folders WHERE COALESCE(deleted_at, '') = ''").all();
+    const paths = new Map(withPaths(folderRows).map((f) => [Number(f.id), f.path]));
+    for (let i = 0; i < entryIds.length; i += 90) {
+      const chunk = entryIds.slice(i, i + 90);
+      const { results: rows = [] } = await db.prepare(
+        `SELECT e.id, e.title, e.folder_id, e.created_at,
+                (SELECT kind FROM attachments a WHERE a.entry_id = e.id AND a.source_pdf_id IS NULL ORDER BY a.id LIMIT 1) AS kind
+         FROM entries e WHERE e.id IN (${chunk.map(() => "?").join(",")})`
+      ).bind(...chunk).all();
+      for (const r of rows) entries.set(Number(r.id), { id: Number(r.id), title: r.title || "（未命名）", path: paths.get(Number(r.folder_id)) || "待分類", kind: r.kind || "note", created_at: r.created_at });
+    }
+  }
+  const { results: relations = [] } = await db.prepare("SELECT subject_id, object_id, relation, entry_id, evidence FROM kg_relations").all();
+  return { mentions, entities, entries, relations };
 }
 
 const OFFICE_MIME = {
@@ -4744,6 +4902,167 @@ async function handleApi(request, env, url, identity = {}) {
 
   // ---- v247 AI 整理：任何檔案／記事／資料夾 → 建議名稱（固定命名法則）＋建議搬到哪裡 ----
   // 只回建議，不改任何東西；前端對話框讓使用者逐項確認後，才用既有的改名／搬移 API 套用。
+  // ---- v254 實體關聯圖 ----
+  if (path === "/kg/status" && method === "GET") {
+    const rows = await kgScopeEntries(db, Number(url.searchParams.get("folder_id") || 0));
+    const eligible = rows.filter((r) => !kgSkipEntry(r));
+    const done = eligible.filter((r) => r.done_stamp === r.stamp && r.kg_status === "done").length;
+    const failed = eligible.filter((r) => r.done_stamp === r.stamp && r.kg_status === "failed").length;
+    const counts = await db.prepare(
+      `SELECT (SELECT COUNT(*) FROM kg_entities WHERE status = 'active') AS entities,
+              (SELECT COUNT(*) FROM kg_merge_suggestions WHERE status = 'pending') AS pending_merges`
+    ).first();
+    return json({ total: eligible.length, done, failed, pending: eligible.length - done - failed, skipped: rows.length - eligible.length, entities: Number(counts?.entities || 0), pending_merges: Number(counts?.pending_merges || 0) });
+  }
+
+  if (path === "/kg/extract" && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以擷取實體", 403);
+    if (!env.AI) return bad("尚未啟用 Workers AI", 501);
+    const body = await request.json().catch(() => ({}));
+    const folderId = Number(body.folder_id || 0);
+    if (!folderId) return bad("請指定資料夾");
+    try { await enforceAiSoftBudget(env); }
+    catch (err) { return bad(err.message, err.code === "AI_BUDGET_REACHED" ? 429 : 503); }
+    const limit = Math.min(6, Math.max(1, Number(body.limit || 3)));
+    const rows = (await kgScopeEntries(db, folderId)).filter((r) => !kgSkipEntry(r));
+    const todo = rows.filter((r) => r.done_stamp !== r.stamp || (body.retry_failed && r.kg_status === "failed"));
+    const ai = budgetedAi(env);
+    const { results: typeRows = [] } = await db.prepare("SELECT DISTINCT type_label FROM kg_entities WHERE status = 'active' AND type_label <> '' LIMIT 80").all();
+    const { results: hiddenRows = [] } = await db.prepare("SELECT name FROM kg_entities WHERE status = 'hidden' ORDER BY updated_at DESC LIMIT 40").all();
+    const { results: activeRows = [] } = await db.prepare("SELECT id, name, norm_key FROM kg_entities WHERE status = 'active'").all();
+    const ctx = { knownTypes: typeRows.map((r) => r.type_label), hiddenNames: hiddenRows.map((r) => r.name), activeEntities: activeRows };
+    const out = { processed: 0, failed: 0, new_entities: 0, new_merges: 0, stopped: false, errors: [] };
+    for (const entry of todo.slice(0, limit)) {
+      try {
+        const r = await kgExtractOne(db, ai, entry, ctx);
+        out.processed++; out.new_entities += r.created; out.new_merges += r.merges;
+      } catch (err) {
+        const message = friendlyAiError(err);
+        if (err?.code === "AI_BUDGET_REACHED" || /429|額度|上限|budget/i.test(message)) { out.stopped = true; out.errors.push(message); break; }
+        out.failed++;
+        out.errors.push(`${entry.title}：${message}`);
+        await db.prepare(
+          `INSERT INTO kg_entry_state (entry_id, source_stamp, status, model, error, extracted_at) VALUES (?, ?, 'failed', ?, ?, ?)
+           ON CONFLICT(entry_id) DO UPDATE SET source_stamp = excluded.source_stamp, status = 'failed', error = excluded.error, extracted_at = excluded.extracted_at`
+        ).bind(entry.id, entry.stamp, KG_MODEL, message.slice(0, 300), now()).run();
+      }
+    }
+    if (out.processed) await kgConsolidateTypes(db, ai).catch(() => 0);
+    out.remaining = Math.max(0, todo.length - out.processed - out.failed);
+    out.total = rows.length;
+    return json(out);
+  }
+
+  if (path === "/kg/search" && method === "GET") {
+    const q = String(url.searchParams.get("q") || "").trim().slice(0, 60);
+    if (!q) {
+      // 沒輸入關鍵字：列出出現在最多份資料的實體，當作起點
+      const { results = [] } = await db.prepare(
+        `SELECT k.id, k.name, k.type_label, COALESCE(g.type_group, k.type_label) AS type_group, COUNT(m.entry_id) AS docs
+         FROM kg_entities k JOIN kg_mentions m ON m.entity_id = k.id LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
+         WHERE k.status = 'active' GROUP BY k.id ORDER BY docs DESC, k.name LIMIT 24`
+      ).all();
+      return json({ results, top: true });
+    }
+    const like = `%${q}%`;
+    const key = `%${normalizeEntityKey(q)}%`;
+    const { results = [] } = await db.prepare(
+      `SELECT k.id, k.name, k.type_label, COALESCE(g.type_group, k.type_label) AS type_group,
+              (SELECT COUNT(*) FROM kg_mentions m WHERE m.entity_id = k.id) AS docs
+       FROM kg_entities k LEFT JOIN kg_type_groups g ON g.type_label = k.type_label
+       WHERE k.status = 'active' AND (k.name LIKE ? OR k.norm_key LIKE ? OR k.aliases_json LIKE ?)
+       ORDER BY docs DESC, length(k.name) LIMIT 15`
+    ).bind(like, key, like).all();
+    return json({ results });
+  }
+
+  if (path === "/kg/graph" && method === "GET") {
+    const data = await kgGraphData(db);
+    let center = null;
+    if (url.searchParams.get("entity")) center = { type: "entity", id: Number(url.searchParams.get("entity")) };
+    else if (url.searchParams.get("entry")) center = { type: "entry", id: Number(url.searchParams.get("entry")) };
+    else if (url.searchParams.get("q")) {
+      const q = normalizeEntityKey(url.searchParams.get("q"));
+      const match = [...data.entities.values()].find((e) => normalizeEntityKey(e.name) === q)
+        || [...data.entities.values()].find((e) => normalizeEntityKey(e.name).includes(q) || e.aliases.some((a) => normalizeEntityKey(a) === q));
+      if (match) center = { type: "entity", id: match.id };
+    }
+    if (!center) return bad("找不到這個關鍵字；請先擷取實體，或換個寫法", 404);
+    const graph = buildEntityGraph({ center, ...data });
+    if (!graph.center) {
+      if (center.type === "entry") {
+        const st = await db.prepare("SELECT status FROM kg_entry_state WHERE entry_id = ?").bind(center.id).first();
+        return bad(st ? "這筆資料沒有擷取到可連結的實體" : "這筆資料還沒擷取實體：請在它所在的資料夾按「擷取實體」", 404);
+      }
+      return bad("找不到這個實體", 404);
+    }
+    const pending = await db.prepare("SELECT COUNT(*) AS n FROM kg_merge_suggestions WHERE status = 'pending'").first();
+    return json({ ...graph, pending_merges: Number(pending?.n || 0) });
+  }
+
+  if (path === "/kg/merges" && method === "GET") {
+    const { results = [] } = await db.prepare(
+      `SELECT s.id, s.reason, a.id AS a_id, a.name AS a_name, a.type_label AS a_type, b.id AS b_id, b.name AS b_name, b.type_label AS b_type,
+              (SELECT COUNT(*) FROM kg_mentions m WHERE m.entity_id = a.id) AS a_docs,
+              (SELECT COUNT(*) FROM kg_mentions m WHERE m.entity_id = b.id) AS b_docs
+       FROM kg_merge_suggestions s JOIN kg_entities a ON a.id = s.a_id JOIN kg_entities b ON b.id = s.b_id
+       WHERE s.status = 'pending' AND a.status = 'active' AND b.status = 'active' ORDER BY s.id LIMIT 100`
+    ).all();
+    return json({ results });
+  }
+
+  const kgMergeMatch = path.match(/^\/kg\/merges\/(\d+)$/);
+  if (kgMergeMatch && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以確認合併", 403);
+    const body = await request.json().catch(() => ({}));
+    const s = await db.prepare("SELECT * FROM kg_merge_suggestions WHERE id = ?").bind(Number(kgMergeMatch[1])).first();
+    if (!s) return bad("找不到這筆建議", 404);
+    if (s.status !== "pending") return bad("這筆建議已處理", 409);
+    const stamp = now();
+    if (body.action === "reject") {
+      await db.prepare("UPDATE kg_merge_suggestions SET status = 'rejected', reviewed_at = ? WHERE id = ?").bind(stamp, s.id).run();
+      return json({ ok: true });
+    }
+    if (body.action !== "accept") return bad("action 要是 accept 或 reject");
+    const a = await db.prepare("SELECT * FROM kg_entities WHERE id = ?").bind(s.a_id).first();
+    const b = await db.prepare("SELECT * FROM kg_entities WHERE id = ?").bind(s.b_id).first();
+    if (!a || !b || a.status !== "active" || b.status !== "active") return bad("其中一個實體已經不存在或已合併", 409);
+    const count = async (id) => Number((await db.prepare("SELECT COUNT(*) AS n FROM kg_mentions WHERE entity_id = ?").bind(id).first())?.n || 0);
+    // 保留的名稱：使用者指定 keep_id，否則保留出現較多的那個
+    let keep = a, drop = b;
+    if (Number(body.keep_id) === Number(b.id) || (!body.keep_id && (await count(b.id)) > (await count(a.id)))) { keep = b; drop = a; }
+    const aliases = new Set();
+    for (const src of [keep, drop]) { try { for (const x of JSON.parse(src.aliases_json || "[]")) aliases.add(x); } catch { /* 舊資料 */ } }
+    aliases.add(drop.name);
+    aliases.delete(keep.name);
+    await db.prepare(
+      `INSERT OR IGNORE INTO kg_mentions (entity_id, entry_id, salience, evidence, type_label, created_at)
+       SELECT ?, entry_id, salience, evidence, type_label, created_at FROM kg_mentions WHERE entity_id = ?`
+    ).bind(keep.id, drop.id).run();
+    await db.prepare("DELETE FROM kg_mentions WHERE entity_id = ?").bind(drop.id).run();
+    await db.prepare("UPDATE kg_relations SET subject_id = ? WHERE subject_id = ?").bind(keep.id, drop.id).run();
+    await db.prepare("UPDATE kg_relations SET object_id = ? WHERE object_id = ?").bind(keep.id, drop.id).run();
+    await db.prepare("DELETE FROM kg_relations WHERE subject_id = object_id").run();
+    await db.prepare("UPDATE kg_entities SET status = 'merged', merged_into = ?, updated_at = ? WHERE id = ?").bind(keep.id, stamp, drop.id).run();
+    await db.prepare("UPDATE kg_entities SET aliases_json = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify([...aliases]), stamp, keep.id).run();
+    await db.prepare("UPDATE kg_merge_suggestions SET status = 'accepted', reviewed_at = ? WHERE id = ?").bind(stamp, s.id).run();
+    await db.prepare("UPDATE kg_merge_suggestions SET status = 'obsolete', reviewed_at = ? WHERE status = 'pending' AND (a_id = ? OR b_id = ?)").bind(stamp, drop.id, drop.id).run();
+    return json({ ok: true, keep_id: keep.id, keep_name: keep.name, merged: drop.name });
+  }
+
+  const kgEntityMatch = path.match(/^\/kg\/entities\/(\d+)$/);
+  if (kgEntityMatch && method === "POST") {
+    if (isMcpCaller(url)) return bad("只有使用者本人可以修改實體", 403);
+    const body = await request.json().catch(() => ({}));
+    const id = Number(kgEntityMatch[1]);
+    const entity = await db.prepare("SELECT * FROM kg_entities WHERE id = ?").bind(id).first();
+    if (!entity) return bad("找不到這個實體", 404);
+    if (!["hide", "unhide"].includes(body.action)) return bad("action 要是 hide 或 unhide");
+    if (entity.status === "merged") return bad("這個實體已合併到別的名稱", 409);
+    await db.prepare("UPDATE kg_entities SET status = ?, updated_at = ? WHERE id = ?").bind(body.action === "hide" ? "hidden" : "active", now(), id).run();
+    return json({ ok: true });
+  }
+
   if (path === "/ai-organize" && method === "POST") {
     if (isMcpCaller(url)) return bad("只有使用者本人可以使用 AI 整理", 403);
     if (!env.AI) return bad("尚未啟用 Workers AI", 501);

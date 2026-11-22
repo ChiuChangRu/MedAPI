@@ -181,9 +181,10 @@ test("前端：錄音結束與上傳完成都會觸發，結果放進最近開�
   const worker = await read("../fieldlog/src/worker.js");
   const sw = await read("../fieldlog/public/sw.js");
   const html = await read("../fieldlog/public/index.html");
-  assert.match(worker, /const UI_VERSION = "253";/);
-  assert.match(app, /const APP_VERSION = "253";/);
-  assert.match(sw, /fieldlog-v253-auto-organize/);
-  assert.match(html, /app\.js\?v=253/);
-  assert.doesNotMatch(html, /\?v=252/);
+  // 版本號之後還會再升，這裡只檢查四處一致
+  const version = worker.match(/const UI_VERSION = "(\d+)";/)[1];
+  assert.ok(Number(version) >= 253);
+  assert.match(app, new RegExp(`const APP_VERSION = "${version}";`));
+  assert.match(sw, new RegExp(`fieldlog-v${version}-`));
+  assert.match(html, new RegExp(`app\\.js\\?v=${version}`));
 });
