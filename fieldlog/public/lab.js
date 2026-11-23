@@ -206,13 +206,14 @@
     try {
       const data = await api("/lab/reagents");
       updateBadges(data);
-      if (!data.summary.total) { card.hidden = true; return; }
+      if (!data.summary.total) { card.hidden = true; window.loadInstrumentsHome?.(); return; }
       const urgent = data.reagents.filter((r) => ["expired", "soon"].includes(r.status.state))
         .sort((a, b) => (a.status.days ?? 0) - (b.status.days ?? 0)).slice(0, 5);
       card.hidden = false;
       $("lab-home-body").innerHTML = `${urgent.length ? `<ul class="lab-home-list">${urgent.map((r) => `<li><span class="${STATE_META[r.status.state].cls}">${esc(r.status.text)}</span> ${esc(r.code)} ${esc(r.name_zh || r.name_en || "")}<small>（${esc(r.status.deadline.label)} ${esc(r.status.deadline.display)}）</small></li>`).join("")}</ul>` : `<p class="sub">沒有即將到期的藥品。</p>`}
         <p class="sub">共 ${data.summary.total} 項${data.summary.unknown ? `｜期限待確認 ${data.summary.unknown}` : ""}${data.summary.need_inventory ? `｜待盤點 ${data.summary.need_inventory}` : ""}</p>`;
     } catch { card.hidden = true; }
+    window.loadInstrumentsHome?.();
   }
 
   // ---- 批次上傳 COA：一份多頁 PDF，依「資料來源：PDF 第 N 頁」拆頁後掛到各項 ----

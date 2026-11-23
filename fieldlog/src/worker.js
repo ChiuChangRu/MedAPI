@@ -73,6 +73,9 @@ import {
 } from "./lib/categories.js";
 import { ensureStagingFolder, runBaselineFilingReview, runHybridAutofile, saveSuggestion, vectorFolderSuggestion } from "./lib/autofile.js";
 import { suggestFilename } from "./lib/ai-naming.js";
+import {
+  cleanInstrumentInput, DEFAULT_CAL_WARN_DAYS, diffInstrument, instrumentStatus, instrumentSummary, nextInstrumentCode,
+} from "./lib/lab-instruments.js";
 import { buildEntityGraph, buildKgTree, cleanDomain, guessDomain, KG_DOMAIN_KEYS, KG_DOMAINS, KG_MODEL, KG_TEXT_CHARS, kgMessages, mergeCandidates, normalizeEntityKey, parseKgResult, parseTypeDomains, parseTypeGroups, typeGroupMessages } from "./lib/kg.js";
 import { GLOSSARY_SETTING_KEY, cleanGlossary, loadGlossary, looksLikePromptEcho, toTraditional, whisperInput } from "./lib/transcribe.js";
 import { cleanFeedList, cleanLinks, cleanTodos, eventsInRange, fetchText, parseFeed, taipeiWindow, validCalendarUrl } from "./lib/widgets.js";
@@ -150,7 +153,7 @@ async function ensureSearchSynonyms(db, timestamp) {
 // 都要跟這個一致（有測試在把關）。/api/config 會把它回給前端，讓前端能自己判斷
 // 「我這份 app.js 是不是舊的」——2026-07-25 花了很久才查出「部署是新的、
 // 瀏覽器跑的是舊的」，就是因為當時沒有任何辦法從畫面上看出版本。
-const UI_VERSION = "256";
+const UI_VERSION = "257";
 
 const AI_DAILY_FREE_NEURONS = 10000;
 // 2026-07-27 長儒確認：這一層跟錢完全無關（在免費額度內，USD 0），拉到跟
@@ -3507,7 +3510,7 @@ async function handleApi(request, env, url, identity = {}) {
   // 只有使用者本人能改（AI 經 MCP 只能讀）；刪除是軟刪除，修改都留紀錄。
   if (path.startsWith("/lab/")) {
     const labWrite = method !== "GET";
-    if (labWrite && isMcpCaller(url)) return bad("只有使用者本人可以修改藥品櫃", 403);
+    if (labWrite && isMcpCaller(url)) return bad("只有使用者本人可以修改 MyLab", 403);
     const warnRow = await db.prepare("SELECT value FROM settings WHERE key = 'lab.warn_days'").first();
     const warnDays = Math.min(730, Math.max(1, Number(warnRow?.value) || DEFAULT_WARN_DAYS));
     const statusOpts = { today: taipeiToday(), warnDays };
@@ -3604,6 +3607,116 @@ async function handleApi(request, env, url, identity = {}) {
         "cache-control": "private, max-age=300",
       } });
     }
+    // ---- v257 儀器設備：清冊與校正期限（讀取 AI 也可以，修改只有本人）----
+    if (path.startsWith("/lab/instruments")) {
+      const calRow = await db.prepare("SELECT value FROM settings WHERE key = 'lab.inst_warn_days'").first();
+      const calWarn = Math.min(365, Math.max(1, Number(calRow?.value) || DEFAULT_CAL_WARN_DAYS));
+      const instOpts = { today: taipeiToday(), warnDays: calWarn };
+      const withInst = (r) => ({ ...r, status: instrumentStatus(r, instOpts), cert: r.cert_key ? { filename: r.cert_filename, size: r.cert_size } : null, cert_key: undefined });
+      const logInst = (id, action, changes = {}, note = "") => db.prepare(
+        "INSERT INTO lab_instrument_log (instrument_id, action, changes_json, note, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(id, action, JSON.stringify(changes), String(note || "").slice(0, 500), now()).run();
+      const activeInst = (id) => db.prepare("SELECT * FROM lab_instruments WHERE id = ? AND COALESCE(deleted_at, '') = ''").bind(id).first();
+
+      if (path === "/lab/instruments" && method === "GET") {
+        const { results = [] } = await db.prepare("SELECT * FROM lab_instruments WHERE COALESCE(deleted_at, '') = '' ORDER BY code, id").all();
+        return json({ instruments: results.map(withInst), summary: instrumentSummary(results, instOpts), warn_days: calWarn, today: instOpts.today });
+      }
+      if (path === "/lab/instruments/settings" && method === "PUT") {
+        const body = await request.json().catch(() => ({}));
+        const days = Math.round(Number(body.warn_days));
+        if (!Number.isFinite(days) || days < 1 || days > 365) return bad("提醒天數要在 1～365 之間");
+        await db.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('lab.inst_warn_days', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+          .bind(String(days), now()).run();
+        return json({ ok: true, warn_days: days });
+      }
+      if (path === "/lab/instruments" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const { values, errors } = cleanInstrumentInput(body);
+        if (errors.length) return bad(errors.join("；"));
+        const { results: codes = [] } = await db.prepare("SELECT code FROM lab_instruments WHERE COALESCE(deleted_at, '') = ''").all();
+        if (!values.code) values.code = nextInstrumentCode(codes.map((c) => c.code));
+        if (codes.some((c) => String(c.code).toLowerCase() === values.code.toLowerCase())) return bad(`編號 ${values.code} 已經存在`, 409);
+        if (!values.name_zh && !values.name_en) return bad("中文或英文名稱至少要填一個");
+        if (!("use_status" in values)) values.use_status = "使用中";
+        if (!("calibration_required" in values)) values.calibration_required = 1;
+        const keys = Object.keys(values);
+        const r = await db.prepare(
+          `INSERT INTO lab_instruments (${keys.join(", ")}, created_at, updated_at) VALUES (${keys.map(() => "?").join(", ")}, ?, ?)`
+        ).bind(...keys.map((k) => values[k]), now(), now()).run();
+        const id = Number(r.meta.last_row_id);
+        await logInst(id, "create", values, body.log_note);
+        return json({ ok: true, instrument: withInst(await activeInst(id)) });
+      }
+      const instMatch = path.match(/^\/lab\/instruments\/(\d+)$/);
+      if (instMatch && method === "PUT") {
+        const id = Number(instMatch[1]);
+        const old = await activeInst(id);
+        if (!old) return bad("找不到這台儀器", 404);
+        const body = await request.json().catch(() => ({}));
+        const { values, errors } = cleanInstrumentInput(body);
+        if (errors.length) return bad(errors.join("；"));
+        if ("code" in values) {
+          if (!values.code) return bad("編號不可空白");
+          const clash = await db.prepare("SELECT id FROM lab_instruments WHERE lower(code) = lower(?) AND id != ? AND COALESCE(deleted_at, '') = ''").bind(values.code, id).first();
+          if (clash) return bad(`編號 ${values.code} 已經存在`, 409);
+        }
+        const changes = diffInstrument(old, values);
+        if (!Object.keys(changes).length) return json({ ok: true, unchanged: true, instrument: withInst(old) });
+        const keys = Object.keys(changes);
+        await db.prepare(`UPDATE lab_instruments SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = ? WHERE id = ?`)
+          .bind(...keys.map((k) => values[k]), now(), id).run();
+        const calibrationOnly = keys.every((k) => ["last_calibrated_date", "next_calibration_date", "calibration_vendor"].includes(k));
+        await logInst(id, calibrationOnly ? "calibration" : "update", changes, body.log_note);
+        return json({ ok: true, instrument: withInst(await activeInst(id)) });
+      }
+      if (instMatch && method === "DELETE") {
+        const id = Number(instMatch[1]);
+        const old = await activeInst(id);
+        if (!old) return bad("找不到這台儀器", 404);
+        await db.prepare("UPDATE lab_instruments SET deleted_at = ?, updated_at = ? WHERE id = ?").bind(now(), now(), id).run();
+        await logInst(id, "delete", {}, `${old.code} ${old.name_zh || old.name_en || ""}`);
+        return json({ ok: true });
+      }
+      const instLogMatch = path.match(/^\/lab\/instruments\/(\d+)\/log$/);
+      if (instLogMatch && method === "GET") {
+        const { results = [] } = await db.prepare("SELECT * FROM lab_instrument_log WHERE instrument_id = ? ORDER BY id DESC LIMIT 100").bind(Number(instLogMatch[1])).all();
+        return json({ log: results.map((l) => ({ ...l, changes: JSON.parse(l.changes_json || "{}") })) });
+      }
+      const certMatch = path.match(/^\/lab\/instruments\/(\d+)\/cert$/);
+      if (certMatch && method === "POST") {
+        if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+        const id = Number(certMatch[1]);
+        const old = await activeInst(id);
+        if (!old) return bad("找不到這台儀器", 404);
+        const bytes = new Uint8Array(await request.arrayBuffer());
+        if (!bytes.byteLength) return bad("沒有收到檔案");
+        if (bytes.byteLength > 25 * 1024 * 1024) return bad("檔案超過 25MB", 413);
+        const filename = decodeURIComponent(request.headers.get("x-filename") || "校正證書.pdf").replace(/[\\/\u0000-\u001f]+/g, "_").slice(0, 200);
+        const mime = (request.headers.get("content-type") || "application/octet-stream").split(";")[0];
+        const key = `lab/inst/${id}-${Date.now()}-${filename.replace(/[^\w.\-一-鿿]+/g, "_")}`;
+        await env.FILES.put(key, bytes, { httpMetadata: { contentType: mime } });
+        await db.prepare("UPDATE lab_instruments SET cert_key = ?, cert_filename = ?, cert_mime = ?, cert_size = ?, updated_at = ? WHERE id = ?")
+          .bind(key, filename, mime, bytes.byteLength, now(), id).run();
+        if (old.cert_key) await env.FILES.delete(old.cert_key).catch(() => {});
+        await logInst(id, "cert", { cert: [old.cert_filename || null, filename] });
+        return json({ ok: true, instrument: withInst(await activeInst(id)) });
+      }
+      if (certMatch && method === "GET") {
+        if (!env.FILES) return bad("尚未設定 R2 檔案儲存", 501);
+        const r = await activeInst(Number(certMatch[1]));
+        if (!r?.cert_key) return bad("這台儀器還沒有校正證書", 404);
+        const obj = await env.FILES.get(r.cert_key);
+        if (!obj) return bad("找不到檔案", 404);
+        return new Response(obj.body, { headers: {
+          "content-type": r.cert_mime || "application/octet-stream",
+          "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(r.cert_filename || "校正證書.pdf")}`,
+          "cache-control": "private, max-age=300",
+        } });
+      }
+      return bad("找不到這個儀器設備功能", 404);
+    }
+
     if (path === "/lab/settings" && method === "PUT") {
       const body = await request.json().catch(() => ({}));
       const days = Math.round(Number(body.warn_days));

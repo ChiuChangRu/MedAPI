@@ -143,6 +143,26 @@ export const SCHEMA = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_kg_mentions_entry ON kg_mentions(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_kg_relations_entry ON kg_relations(entry_id)`,
+  // v257 MyLab 儀器設備：清冊與校正期限
+  `CREATE TABLE IF NOT EXISTS lab_instruments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    name_zh TEXT, name_en TEXT, category TEXT, brand TEXT, model TEXT, serial_no TEXT, asset_no TEXT, supplier TEXT,
+    location TEXT, use_status TEXT DEFAULT '使用中', purchased_date TEXT,
+    calibration_required INTEGER DEFAULT 1, calibration_cycle_months INTEGER,
+    last_calibrated_date TEXT, next_calibration_date TEXT, calibration_vendor TEXT,
+    source TEXT, note TEXT,
+    cert_key TEXT, cert_filename TEXT, cert_mime TEXT, cert_size INTEGER,
+    created_at TEXT NOT NULL, updated_at TEXT, deleted_at TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS lab_instrument_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instrument_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    changes_json TEXT DEFAULT '{}',
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
   // v246 Face ID／Touch ID 登入（WebAuthn passkey）：已註冊的公鑰，與一次性挑戰碼
   `CREATE TABLE IF NOT EXISTS passkeys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
