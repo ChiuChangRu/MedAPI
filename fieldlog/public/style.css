@@ -2704,3 +2704,10 @@ body.reader-fullscreen .folder-preview {
 .kg-tree-items { list-style: none; margin: 4px 0 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .kg-tree-items li.cand { color: #94a3b8; }
 .kg-tree-items .link-btn { background: none; border: 0; padding: 0; color: #1d4ed8; cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+/* v257 儀器設備 */
+.lab-badge.na { background: #f1f5f9; color: #475569; }
+.lab-badge.repair { background: #e0f2fe; color: #075985; }
+.lab-badge.inactive { background: #f3f4f6; color: #6b7280; text-decoration: line-through; }
+.lab-home-inst { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.lab-home-sub { margin: 0; font-size: 15px; }
