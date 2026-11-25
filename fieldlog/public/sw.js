@@ -3,8 +3,8 @@
 // 換 CACHE 名稱＝舊快取全部作廢（activate 時會刪掉名稱不符的）。
 // ASSETS 裡的查詢字串要跟 index.html 上的一致，否則預快取的是另一個 URL、
 // 等於沒快取到（斷網時開不起來，而且不會有任何錯誤提示）。
-const CACHE = "fieldlog-v257-lab-instruments";
-const ASSETS = ["./", "index.html", "app.js?v=257", "file-selection.js?v=257", "inspector.js?v=257", "graph3d.js?v=257", "graph-view.js?v=257", "entity-graph.js?v=257", "lab.js?v=257", "instruments.js?v=257", "style.css?v=257", "home.css?v=257", "pdf-editor.js?v=257", "richtext-editor.js?v=257", "wiki.html", "help.html?v=257", "patrol.html", "pm.html", "manifest.json", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
+const CACHE = "fieldlog-v258-lab-export";
+const ASSETS = ["./", "index.html", "app.js?v=258", "file-selection.js?v=258", "inspector.js?v=258", "graph3d.js?v=258", "graph-view.js?v=258", "entity-graph.js?v=258", "lab-export.js?v=258", "lab.js?v=258", "instruments.js?v=258", "style.css?v=258", "home.css?v=258", "pdf-editor.js?v=258", "richtext-editor.js?v=258", "wiki.html", "help.html?v=258", "patrol.html", "pm.html", "manifest.json", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));

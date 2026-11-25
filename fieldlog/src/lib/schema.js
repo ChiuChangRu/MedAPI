@@ -66,7 +66,7 @@ export const SCHEMA = [
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL,
     name_zh TEXT, name_en TEXT, formula TEXT, cas TEXT, brand TEXT, catalog_no TEXT, grade TEXT,
-    purity_spec TEXT, coa_result TEXT, lot_no TEXT,
+    purity_spec TEXT, coa_result TEXT, lot_no TEXT, used_in TEXT,
     purchased_qty REAL, remaining_qty REAL, unit TEXT DEFAULT 'g', location TEXT,
     opened_date TEXT, manufactured_date TEXT, released_date TEXT, expiry_date TEXT, retest_date TEXT, retest_month TEXT,
     source TEXT, note TEXT,
@@ -389,6 +389,8 @@ export const SCHEMA = [
 
 // 舊表補欄位用（D1 沒有 ADD COLUMN IF NOT EXISTS，欄位已存在時失敗直接忽略即可）
 export const MIGRATIONS = [
+  // v258 藥品櫃「用於實驗」（例：抗結痂－人工尿液），多個用「、」分隔
+  `ALTER TABLE lab_reagents ADD COLUMN used_in TEXT`,
   `ALTER TABLE folders ADD COLUMN parent_id INTEGER`,
   // 資料夾的特殊身分。目前只有一種：role='staging'＝「暫存區」，現場來不及分類
   // 的東西先丟這裡。用欄位而不是靠名字認，是因為名字可以被使用者改掉，改完
