@@ -11,8 +11,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="MyWiki" />
-<link rel="stylesheet" href="style.css?v=257" />
-<link rel="stylesheet" href="home.css?v=257" />
+<link rel="stylesheet" href="style.css?v=258" />
+<link rel="stylesheet" href="home.css?v=258" />
 <!-- Quill 只在編輯記事時才需要；非阻塞載入，避免外部 CDN 讓首頁卡在 3%。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css"
       media="print" onload="this.media='all'" />
@@ -84,7 +84,7 @@
       <nav class="masthead-actions" aria-label="其他頁面">
         <button class="head-link layout-edit-btn" id="btn-layout-edit" type="button" title="拖曳調整首頁區塊、切換一欄／兩欄（僅桌機）">編輯版面</button>
         <button class="head-link" id="btn-deleted-items" type="button">已刪除項目</button>
-        <a class="head-link" href="help.html?v=257">使用說明</a>
+        <a class="head-link" href="help.html?v=258">使用說明</a>
         <span id="app-version" class="app-version"></span>
       </nav>
     </header>
@@ -853,13 +853,17 @@
     <div class="lab-head">
       <h2 id="lab-title">🧪 MyLab｜藥品櫃</h2>
       <label class="btn small" title="選一份多頁的 COA PDF，依各項「資料來源：PDF 第 N 頁」自動拆頁掛上">📄 批次上傳 COA<input type="file" id="lab-bulk-coa-file" accept="application/pdf" hidden></label>
+      <button class="btn small" id="lab-export" type="button" title="把目前畫面上顯示的藥品（套用篩選與搜尋）下載成 Excel">⬇ Excel</button>
+      <button class="btn small" id="lab-share" type="button" title="用手機或系統的分享功能傳送 Excel（不支援時改成下載）">分享</button>
       <button class="btn small primary" id="lab-add" type="button">＋ 新增藥品</button>
       <button class="btn small" id="lab-close" type="button">關閉</button>
     </div>
     <p class="lab-summary" id="lab-summary"></p>
     <div class="lab-toolbar">
       <div class="lab-filters" id="lab-filters"></div>
-      <input id="lab-search" type="search" placeholder="搜尋名稱、CAS、批號、位置…" />
+      <select id="lab-exp" aria-label="用於實驗篩選"><option value="">用於實驗：全部</option></select>
+      <datalist id="lab-exp-list"></datalist>
+      <input id="lab-search" type="search" placeholder="搜尋名稱、CAS、批號、位置、實驗…" />
       <label class="lab-warn">到期提醒 <input id="lab-warn-days" type="number" min="1" max="730" step="1" /> 天</label>
     </div>
     <div class="lab-list-wrap" id="lab-list-wrap">
@@ -874,6 +878,8 @@
   <div class="modal lab-modal" role="dialog" aria-modal="true" aria-labelledby="inst-title">
     <div class="lab-head">
       <h2 id="inst-title">🔬 MyLab｜儀器設備</h2>
+      <button class="btn small" id="inst-export" type="button" title="把目前畫面上顯示的儀器（套用篩選與搜尋）下載成 Excel">⬇ Excel</button>
+      <button class="btn small" id="inst-share" type="button" title="用手機或系統的分享功能傳送 Excel（不支援時改成下載）">分享</button>
       <button class="btn small primary" id="inst-add" type="button">＋ 新增儀器</button>
       <button class="btn small" id="inst-close" type="button">關閉</button>
     </div>
@@ -893,10 +899,10 @@
 <div class="toast" id="toast"></div>
 
 <!-- PDF 塗鴉：獨立檔案（會動態載入 pdf-lib），載入後掛上 window.fieldlogOpenPdfEditor -->
-<script src="pdf-editor.js?v=257"></script>
+<script src="pdf-editor.js?v=258"></script>
 <!-- 富文字記事編輯框：獨立檔案，封裝 Quill 初始化/取值/插圖，載入後掛上
      window.fieldlogRichEditor -->
-<script src="richtext-editor.js?v=257"></script>
+<script src="richtext-editor.js?v=258"></script>
 <!-- 首頁程式必須先啟動；PDF.js 與 Quill 是選用功能，CDN 無回應也不能擋住登入。 -->
 <dialog id="inspector-unsaved" class="inspector-dialog" aria-labelledby="inspector-unsaved-title" aria-describedby="inspector-unsaved-message">
   <h2 id="inspector-unsaved-title">尚有未儲存修改</h2>
@@ -907,15 +913,16 @@
     <button type="button" class="btn primary" id="inspector-unsaved-save">儲存並繼續</button>
   </div>
 </dialog>
-<script src="file-selection.js?v=257"></script>
-<script src="inspector.js?v=257"></script>
+<script src="file-selection.js?v=258"></script>
+<script src="inspector.js?v=258"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="app.js?v=257"></script>
-<script src="graph3d.js?v=257"></script>
-<script src="graph-view.js?v=257"></script>
-<script src="entity-graph.js?v=257"></script>
-<script src="lab.js?v=257"></script>
-<script src="instruments.js?v=257"></script>
+<script src="app.js?v=258"></script>
+<script src="graph3d.js?v=258"></script>
+<script src="graph-view.js?v=258"></script>
+<script src="entity-graph.js?v=258"></script>
+<script src="lab-export.js?v=258"></script>
+<script src="lab.js?v=258"></script>
+<script src="instruments.js?v=258"></script>
 <script async src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
 </body>

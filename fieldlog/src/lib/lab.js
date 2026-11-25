@@ -26,6 +26,7 @@ export const LAB_FIELDS = [
   { key: "expiry_date", label: "有效期限", type: "date" },
   { key: "retest_date", label: "複驗日期", type: "date" },
   { key: "retest_month", label: "複驗月份（僅年月）", type: "month" },
+  { key: "used_in", label: "用於實驗", type: "tags" },
   { key: "source", label: "資料來源", type: "text" },
   { key: "note", label: "備註", type: "text" },
 ];
@@ -52,10 +53,28 @@ function cleanMonth(value) {
   return `${m[1]}-${m[2].padStart(2, "0")}`;
 }
 
+/** 「用於實驗」這類多值欄位：用「、」「,」「;」或換行分隔，去空白、去重（不分大小寫），統一用「、」串起來 */
+export function splitTags(raw) {
+  const seen = new Set();
+  const out = [];
+  for (const part of String(raw ?? "").split(/[、,，;；\n]+/)) {
+    const t = part.replace(/\s+/g, " ").trim().slice(0, 60);
+    const key = t.toLowerCase();
+    if (!t || seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
 /** 清理單一欄位；回傳 { value } 或 { error } */
 export function cleanLabField(key, raw) {
   const field = LAB_FIELDS.find((f) => f.key === key);
   if (!field) return { error: `未知欄位 ${key}` };
+  if (field.type === "tags") {
+    const tags = splitTags(raw).slice(0, 12);
+    return { value: tags.length ? tags.join("、") : null };
+  }
   if (field.type === "number") {
     if (raw === null || raw === undefined || String(raw).trim() === "") return { value: null };
     const n = Number(String(raw).replace(/,/g, ""));

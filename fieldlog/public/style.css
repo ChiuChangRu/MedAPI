@@ -2711,3 +2711,7 @@ body.reader-fullscreen .folder-preview {
 .lab-badge.inactive { background: #f3f4f6; color: #6b7280; text-decoration: line-through; }
 .lab-home-inst { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--border); }
 .lab-home-sub { margin: 0; font-size: 15px; }
+
+/* v258 用於實驗標籤、匯出 */
+.lab-tag { display: inline-block; padding: 1px 8px; margin: 1px 2px 1px 0; border-radius: 6px; background: #e0f2fe; color: #075985; font-size: 12px; white-space: nowrap; }
+.lab-toolbar #lab-exp { max-width: 230px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 13px; }

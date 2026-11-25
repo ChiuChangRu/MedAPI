@@ -4,6 +4,7 @@
 (function () {
   const GROUPS = [
     { title: "基本資料", keys: ["code", "name_zh", "name_en", "formula", "cas"] },
+    { title: "用途", keys: ["used_in"] },
     { title: "盤點", keys: ["remaining_qty", "unit", "location", "opened_date", "purchased_qty"] },
     { title: "期限", keys: ["expiry_date", "retest_date", "retest_month", "manufactured_date", "released_date"] },
     { title: "來源與規格", keys: ["brand", "catalog_no", "grade", "purity_spec", "coa_result", "lot_no", "source"] },
@@ -13,11 +14,11 @@
     code: "編號", name_zh: "中文名稱", name_en: "英文名稱", formula: "化學式", cas: "CAS No.", brand: "品牌", catalog_no: "貨號",
     grade: "等級", purity_spec: "純度規格", coa_result: "COA 實測", lot_no: "批號", purchased_qty: "已知購買量", remaining_qty: "實際餘量",
     unit: "單位", location: "存放位置", opened_date: "開封日期", manufactured_date: "製造日期", released_date: "放行／檢驗日期",
-    expiry_date: "有效期限", retest_date: "複驗日期", retest_month: "複驗月份（僅年月）", source: "資料來源", note: "備註",
+    expiry_date: "有效期限", retest_date: "複驗日期", retest_month: "複驗月份（僅年月）", used_in: "用於實驗（多個用「、」分隔）", source: "資料來源", note: "備註",
   };
   const TYPES = {
     purchased_qty: "number", remaining_qty: "number", opened_date: "date", manufactured_date: "date", released_date: "date",
-    expiry_date: "date", retest_date: "date", retest_month: "month", note: "textarea", unit: "unit",
+    expiry_date: "date", retest_date: "date", retest_month: "month", note: "textarea", unit: "unit", used_in: "tags",
   };
   const UNITS = ["g", "kg", "mg", "mL", "L", "瓶", "個"];
   const STATE_META = {
@@ -29,7 +30,8 @@
   const FILTERS = [
     ["all", "全部"], ["attention", "需注意"], ["expired", "已過期"], ["soon", "即將到期"], ["unknown", "期限待確認"], ["inventory", "待盤點"],
   ];
-  const state = { data: null, filter: "all", query: "", editing: null };
+  const state = { data: null, filter: "all", query: "", exp: "", editing: null };
+  const tagsOf = (r) => String(r.used_in || "").split("、").map((t) => t.trim()).filter(Boolean);
   const $ = (id) => document.getElementById(id);
 
   function needsAttention(r) { return ["expired", "soon", "unknown"].includes(r.status.state) || r.status.flags.length; }
@@ -38,9 +40,11 @@
     if (f === "attention" && !needsAttention(r)) return false;
     if (["expired", "soon", "unknown"].includes(f) && r.status.state !== f) return false;
     if (f === "inventory" && !r.status.flags.includes("待盤點")) return false;
+    if (state.exp === "__none") { if (tagsOf(r).length) return false; }
+    else if (state.exp && !tagsOf(r).includes(state.exp)) return false;
     const q = state.query.trim().toLowerCase();
     if (!q) return true;
-    return [r.code, r.name_zh, r.name_en, r.formula, r.cas, r.brand, r.lot_no, r.location].some((v) => String(v || "").toLowerCase().includes(q));
+    return [r.code, r.name_zh, r.name_en, r.formula, r.cas, r.brand, r.lot_no, r.location, r.used_in].some((v) => String(v || "").toLowerCase().includes(q));
   }
   function qty(r) {
     if (r.remaining_qty === null || r.remaining_qty === undefined) return `<span class="lab-missing">待盤點</span>`;
@@ -63,16 +67,28 @@
     ].filter(Boolean).join(" ");
     $("lab-filters").innerHTML = FILTERS.map(([k, label]) => `<button type="button" class="btn small${state.filter === k ? " active" : ""}" data-lab-filter="${k}">${label}</button>`).join("");
     $("lab-filters").querySelectorAll("[data-lab-filter]").forEach((b) => b.onclick = () => { state.filter = b.dataset.labFilter; renderSummary(); renderTable(); });
+    renderExpFilter();
+  }
+
+  /** 「用於實驗」篩選：列出目前所有出現過的實驗名稱與各有幾項 */
+  function renderExpFilter() {
+    const counts = new Map();
+    for (const r of state.data.reagents) for (const t of tagsOf(r)) counts.set(t, (counts.get(t) || 0) + 1);
+    const none = state.data.reagents.filter((r) => !tagsOf(r).length).length;
+    if (state.exp && state.exp !== "__none" && !counts.has(state.exp)) state.exp = "";
+    $("lab-exp").innerHTML = `<option value="">用於實驗：全部</option>` + [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hant")).map(([t, n]) => `<option value="${esc(t)}"${state.exp === t ? " selected" : ""}>${esc(t)}（${n}）</option>`).join("") + `<option value="__none"${state.exp === "__none" ? " selected" : ""}>尚未註明用途（${none}）</option>`;
+    $("lab-exp-list").innerHTML = [...counts.keys()].map((t) => `<option value="${esc(t)}"></option>`).join("");
   }
 
   function renderTable() {
     const rows = state.data.reagents.filter(matches);
     $("lab-table").innerHTML = rows.length ? `<table class="lab-table">
-      <thead><tr><th>編號</th><th>名稱</th><th>CAS</th><th>品牌／批號</th><th>餘量</th><th>位置</th><th>期限</th><th>狀態</th><th>COA</th></tr></thead>
+      <thead><tr><th>編號</th><th>名稱</th><th>CAS</th><th>用於實驗</th><th>品牌／批號</th><th>餘量</th><th>位置</th><th>期限</th><th>狀態</th><th>COA</th></tr></thead>
       <tbody>${rows.map((r) => `<tr data-lab-id="${r.id}" tabindex="0">
         <td class="lab-code">${esc(r.code)}</td>
         <td><b>${esc(r.name_zh || r.name_en || "")}</b>${r.name_zh && r.name_en ? `<br><small>${esc(r.name_en)}</small>` : ""}${r.formula ? `<br><small class="lab-formula">${esc(r.formula)}</small>` : ""}</td>
         <td>${esc(r.cas || "")}</td>
+        <td>${tagsOf(r).map((t) => `<span class="lab-tag">${esc(t)}</span>`).join(" ") || `<span class="lab-missing">—</span>`}</td>
         <td>${esc(r.brand || "")}${r.lot_no ? `<br><small>批號 ${esc(r.lot_no)}</small>` : ""}</td>
         <td>${qty(r)}</td>
         <td>${r.location ? esc(r.location) : `<span class="lab-missing">待補</span>`}</td>
@@ -105,6 +121,7 @@
     const v = value === null || value === undefined ? "" : String(value);
     if (type === "textarea") return `<textarea id="lab-f-${key}" rows="3">${esc(v)}</textarea>`;
     if (type === "unit") return `<select id="lab-f-${key}">${UNITS.map((u) => `<option${(v || "g") === u ? " selected" : ""}>${u}</option>`).join("")}</select>`;
+    if (type === "tags") return `<input id="lab-f-${key}" type="text" list="lab-exp-list" value="${esc(v)}" placeholder="例：抗結痂－人工尿液（多個用「、」分隔）" autocomplete="off">`;
     const htmlType = type === "number" ? "number" : type === "date" ? "date" : type === "month" ? "month" : "text";
     return `<input id="lab-f-${key}" type="${htmlType}" ${type === "number" ? 'step="any" min="0"' : ""} value="${esc(v)}" placeholder="${type === "text" ? "待補" : ""}">`;
   }
@@ -286,6 +303,34 @@
     }
   }
 
+  const FILTER_LABELS = Object.fromEntries(FILTERS);
+  /** 匯出目前畫面上的清單（套用篩選與搜尋） */
+  function exportSpec() {
+    const rows = state.data.reagents.filter(matches);
+    const expLabel = state.exp === "__none" ? "尚未註明用途" : state.exp;
+    const filterLabel = [state.filter !== "all" ? FILTER_LABELS[state.filter] : "", expLabel].filter(Boolean).join("＋") || "全部";
+    const today = state.data.today;
+    return {
+      title: "藥品櫃", sheetName: "藥品櫃", today, filterLabel, rows: LabExport.reagentRows(rows),
+      info: LabExport.infoRows({ title: "MyLab｜藥品櫃", count: rows.length, total: state.data.reagents.length, filterLabel, query: state.query, today, extra: [["到期提醒天數", `${state.data.warn_days} 天`]] }),
+    };
+  }
+  async function exportExcel(mode) {
+    if (!state.data) return;
+    if (!window.LabExport) { showToast("匯出功能尚未載入，請重新整理頁面"); return; }
+    const spec = exportSpec();
+    if (spec.rows.length <= 1) { showToast("目前畫面上沒有可匯出的藥品"); return; }
+    try {
+      if (mode === "share") {
+        const r = await LabExport.share(spec);
+        showToast(r.cancelled ? "已取消分享" : r.shared ? "已開啟分享" : `這個瀏覽器不能直接分享，已改成下載「${r.file.name}」，請從檔案傳送`);
+      } else {
+        const file = LabExport.download(spec);
+        showToast(`已下載「${file.name}」（${spec.rows.length - 1} 項）`);
+      }
+    } catch (error) { alert(`匯出失敗：${error.message}`); }
+  }
+
   function close() {
     $("lab-overlay").classList.remove("open");
     $("lab-overlay").setAttribute("aria-hidden", "true");
@@ -305,6 +350,9 @@
     $("lab-add").onclick = () => openEditor(null);
     $("lab-bulk-coa-file").onchange = (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; bulkCoa(f); };
     $("lab-search").oninput = () => { state.query = $("lab-search").value; renderTable(); };
+    $("lab-exp").onchange = () => { state.exp = $("lab-exp").value; renderTable(); };
+    $("lab-export").onclick = () => exportExcel("download");
+    $("lab-share").onclick = () => exportExcel("share");
     $("lab-warn-days").onchange = async () => {
       try { await api("/lab/settings", { method: "PUT", body: JSON.stringify({ warn_days: Number($("lab-warn-days").value) }) }); await load(); }
       catch (error) { showToast("設定失敗：" + error.message); }

@@ -212,6 +212,32 @@
     } catch { box.hidden = true; }
   }
 
+  const FILTER_LABELS = Object.fromEntries(FILTERS);
+  function exportSpec() {
+    const rows = state.data.instruments.filter(matches);
+    const filterLabel = state.filter !== "all" ? FILTER_LABELS[state.filter] : "全部";
+    const today = state.data.today;
+    return {
+      title: "儀器設備", sheetName: "儀器設備", today, filterLabel, rows: LabExport.instrumentRows(rows),
+      info: LabExport.infoRows({ title: "MyLab｜儀器設備", count: rows.length, total: state.data.instruments.length, filterLabel, query: state.query, today, extra: [["校正提醒天數", `${state.data.warn_days} 天`]] }),
+    };
+  }
+  async function exportExcel(mode) {
+    if (!state.data) return;
+    if (!window.LabExport) { showToast("匯出功能尚未載入，請重新整理頁面"); return; }
+    const spec = exportSpec();
+    if (spec.rows.length <= 1) { showToast("目前畫面上沒有可匯出的儀器"); return; }
+    try {
+      if (mode === "share") {
+        const r = await LabExport.share(spec);
+        showToast(r.cancelled ? "已取消分享" : r.shared ? "已開啟分享" : `這個瀏覽器不能直接分享，已改成下載「${r.file.name}」，請從檔案傳送`);
+      } else {
+        const file = LabExport.download(spec);
+        showToast(`已下載「${file.name}」（${spec.rows.length - 1} 台）`);
+      }
+    } catch (error) { alert(`匯出失敗：${error.message}`); }
+  }
+
   function close() {
     $("inst-overlay").classList.remove("open");
     $("inst-overlay").setAttribute("aria-hidden", "true");
@@ -230,6 +256,8 @@
     $("inst-close").onclick = close;
     $("inst-add").onclick = () => openEditor(null);
     $("inst-search").oninput = () => { state.query = $("inst-search").value; renderTable(); };
+    $("inst-export").onclick = () => exportExcel("download");
+    $("inst-share").onclick = () => exportExcel("share");
     $("inst-warn-days").onchange = async () => {
       try { await api("/lab/instruments/settings", { method: "PUT", body: JSON.stringify({ warn_days: Number($("inst-warn-days").value) }) }); await load(); }
       catch (error) { showToast("設定失敗：" + error.message); }
